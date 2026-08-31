@@ -104,17 +104,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
   min-height: 100vh;
 }
 
-.sidebar {
-  background: linear-gradient(180deg, var(--bg-void-2), var(--bg-panel-inset));
-  border-right: 1px solid var(--hairline);
-  padding: 28px 18px;
-  display: flex;
-  flex-direction: column;
-  position: sticky;
-  top: 0;
-  height: 100vh;
-  transition: border-color 0.4s ease;
-}
+
 
 .sidebar-brand {
   display: flex;
