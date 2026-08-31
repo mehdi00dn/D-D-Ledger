@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% set active_page = 'dice' %}
+{% block title %}Dice — Campaign Ledger{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <p class="page-eyebrow">The Roll</p>
+    <h1 class="page-title">Dice</h1>
+    <p class="page-sub">Tap a die to queue it, roll them all at once, totals tally automatically.</p>
+  </div>
+</div>
+
+<div class="dice-tray" id="dice-tray">
+  {% for d in [4, 6, 8, 10, 12, 20, 100] %}
+  <div class="die-selector" data-die="{{ d }}">
+    <div class="die-shape d{{ d }}">
+      <span>d{{ d }}</span>
+    </div>
+    <span class="die-count-badge" hidden>0</span>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="dice-controls">
+  <div class="field" style="max-width:120px;">
+    <label for="modifier">Modifier</label>
+    <input type="number" id="modifier" value="0">
+  </div>
+  <button type="button" class="btn btn-ghost" id="clear-tray-btn">{{ icon('x') }} Clear Tray</button>
+  <button type="button" class="btn btn-primary btn-lg" id="roll-btn"> Roll</button>
+</div>
+
+<div id="dice-results"></div>
+
+<template id="empty-results-template">
+  <div class="empty-state">
+    <span>{{ icon('dices') }}</span>
+    <h3>No dice queued</h3>
+    <p>Tap a die shape above to add it to your roll, then hit Roll.</p>
+  </div>
+</template>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="{{ url_for('static', filename='js/dice.js') }}"></script>
+{% endblock %}

@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% set active_page = 'groups' %}
+{% block title %}{{ 'Edit' if group else 'New' }} Group — Campaign Ledger{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <p class="page-eyebrow">{{ 'Amend Faction' if group else 'New Faction' }}</p>
+    <h1 class="page-title">{{ group.name if group else 'New Group' }}</h1>
+  </div>
+  <a href="{{ url_for('groups_list') }}" class="btn btn-ghost">{{ icon('arrow-left') }} Back to list</a>
+</div>
+
+<form class="form-panel" method="POST" enctype="multipart/form-data">
+
+  <div class="form-section">
+    <p class="form-section-title">Identity</p>
+    <div class="field" style="margin-bottom:14px;">
+      <label for="name">Name</label>
+      <input type="text" id="name" name="name" value="{{ group.name if group else '' }}" placeholder="e.g. The Ashfall Company" required>
+    </div>
+
+    <div class="field">
+      <label>Avatar</label>
+      <div class="avatar-preview-row">
+        <div class="avatar-frame-wrap">
+          <div class="avatar-frame">
+            {% if group and group.avatar_path %}
+              <img id="group-avatar-preview" src="{{ url_for('uploaded_file', filename=group.avatar_path) }}" alt="avatar preview">
+            {% else %}
+              <img id="group-avatar-preview" style="display:none;" alt="avatar preview">
+              {{ icon('shield', 'avatar-placeholder-icon') }}
+            {% endif %}
+          </div>
+          <button type="button" class="avatar-remove-btn" id="group-avatar-remove-btn" title="Remove avatar" {{ '' if group and group.avatar_path else 'hidden' }}>{{ icon('x') }}</button>
+        </div>
+        <div class="file-drop" style="flex:1;">
+          {{ icon('upload') }}
+          <div>Click or drop an image</div>
+          <span class="file-name"></span>
+          <input type="file" name="avatar" accept="image/*" data-avatar-input="#group-avatar-preview" data-remove-btn="#group-avatar-remove-btn" data-remove-input="#group-remove-avatar-input">
+        </div>
+      </div>
+      <input type="hidden" name="remove_avatar" id="group-remove-avatar-input" value="">
+    </div>
+  </div>
+
+  <div class="form-section">
+    <p class="form-section-title">Color</p>
+    <div class="field">
+      <label>Used to mark this group's side in battle</label>
+      <div class="color-swatch-row" data-color-group="#color_input">
+        {% for c in ['#c9a24b', '#b3453f', '#5f9174', '#4d7ea8', '#8e6bb0', '#c76f3f', '#607080', '#a3a3a3'] %}
+        <button type="button" class="color-swatch" data-color="{{ c }}" style="background:{{ c }};"></button>
+        {% endfor %}
+        <input type="color" class="color-swatch-custom" value="{{ group.color if group else '#c9a24b' }}">
+      </div>
+      <input type="hidden" id="color_input" name="color" value="{{ group.color if group else '#c9a24b' }}">
+    </div>
+  </div>
+
+  <div class="form-section">
+    <p class="form-section-title">Bio</p>
+    <div class="field">
+      <textarea name="bio" placeholder="Who they are, their goals, notable history...">{{ group.bio if group else '' }}</textarea>
+    </div>
+  </div>
+
+  <div class="form-actions">
+    <a href="{{ url_for('groups_list') }}" class="btn btn-ghost">Cancel</a>
+    <button type="submit" class="btn btn-primary">{{ icon('check') }} {{ 'Save Changes' if group else 'Add Group' }}</button>
+  </div>
+</form>
+{% endblock %}

@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% set active_page = 'groups' %}
+{% block title %}Groups — Campaign Ledger{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <p class="page-eyebrow">Factions &amp; Parties</p>
+    <h1 class="page-title">Groups</h1>
+    <p class="page-sub">{{ groups|length }} {{ 'group' if groups|length == 1 else 'groups' }} defined. Used to sort battles and mark sides.</p>
+  </div>
+  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+    <a href="{{ url_for('export_data') }}" class="btn btn-ghost">{{ icon('upload') }} Export</a>
+    <form method="POST" action="{{ url_for('import_data') }}" enctype="multipart/form-data">
+      <label class="btn btn-ghost import-label">
+        {{ icon('images') }} Import
+        <input type="file" name="import_file" accept=".zip" onchange="this.form.submit()">
+      </label>
+    </form>
+    <a href="{{ url_for('group_new') }}" class="btn btn-primary">{{ icon('plus') }} New Group</a>
+  </div>
+</div>
+
+{% if request.args.get('imported') %}
+<div class="banner-notice banner-success">Import complete — new characters and groups have been added.</div>
+{% endif %}
+{% if request.args.get('import_error') %}
+<div class="banner-notice banner-error">That file couldn't be read as a Campaign Ledger export. Make sure you're uploading a .zip created by the Export button.</div>
+{% endif %}
+
+<div class="search-bar">
+  {{ icon('search') }}
+  <input type="text" id="group-search" placeholder="Search groups…" autocomplete="off">
+</div>
+
+{% if groups %}
+<div class="group-grid" id="group-grid">
+  {% for g in groups %}
+  <div class="group-card" data-name="{{ g.name|lower }}">
+    <div class="group-image-block" style="{{ '' if g.avatar_path else 'background: linear-gradient(135deg, ' ~ g.color ~ ', var(--bg-panel-inset));' }}">
+      {% if g.avatar_path %}
+        <img src="{{ url_for('uploaded_file', filename=g.avatar_path) }}" alt="{{ g.name }} avatar">
+      {% else %}
+        <div class="group-image-placeholder">{{ icon('shield') }}</div>
+      {% endif %}
+    </div>
+    <div class="group-body">
+      <h3 class="group-name"><span class="group-dot" style="background:{{ g.color }}"></span>{{ g.name }}</h3>
+      <p class="group-count">{{ g.member_count }} member{{ '' if g.member_count == 1 else 's' }}</p>
+      <p class="group-bio">{{ g.bio }}</p>
+      <div class="group-actions">
+        <a href="{{ url_for('group_edit', group_id=g.id) }}" class="btn btn-ghost btn-sm">{{ icon('pencil') }} Edit</a>
+        <a href="{{ url_for('group_export', group_id=g.id) }}" class="btn-icon" title="Export this group">{{ icon('upload') }}</a>
+        <form method="POST" action="{{ url_for('group_delete', group_id=g.id) }}" data-confirm="Delete group '{{ g.name }}'? Members will become ungrouped.">
+          <button type="submit" class="btn btn-danger btn-sm">{{ icon('trash-2') }} Delete</button>
+        </form>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="empty-state">
+  {{ icon('shield') }}
+  <h3>No groups yet</h3>
+  <p>Create a party or faction to organize your characters.</p>
+  <a href="{{ url_for('group_new') }}" class="btn btn-primary">{{ icon('plus') }} New Group</a>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const searchInput = document.getElementById('group-search');
+  if (!searchInput) return;
+  searchInput.addEventListener('input', () => {
+    const q = searchInput.value.trim().toLowerCase();
+    document.querySelectorAll('#group-grid .group-card').forEach((card) => {
+      card.style.display = (!q || card.dataset.name.includes(q)) ? '' : 'none';
+    });
+  });
+});
+</script>
+{% endblock %}

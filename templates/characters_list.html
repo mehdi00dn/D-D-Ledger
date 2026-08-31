@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% set active_page = 'characters' %}
+{% block title %}Characters — Campaign Ledger{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <p class="page-eyebrow">Dramatis Personae</p>
+    <h1 class="page-title">Characters</h1>
+    <p class="page-sub">{{ characters|length }} recorded {{ 'entry' if characters|length == 1 else 'entries' }} in the ledger.</p>
+  </div>
+  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+    <a href="{{ url_for('export_data') }}" class="btn btn-ghost">{{ icon('upload') }} Export</a>
+    <form method="POST" action="{{ url_for('import_data') }}" enctype="multipart/form-data">
+      <label class="btn btn-ghost import-label">
+        {{ icon('images') }} Import
+        <input type="file" name="import_file" accept=".zip" onchange="this.form.submit()">
+      </label>
+    </form>
+    <a href="{{ url_for('character_new') }}" class="btn btn-primary">{{ icon('plus') }} New Character</a>
+  </div>
+</div>
+
+{% if request.args.get('imported') %}
+<div class="banner-notice banner-success">Import complete — new characters and groups have been added.</div>
+{% endif %}
+{% if request.args.get('import_error') %}
+<div class="banner-notice banner-error">That file couldn't be read as a Campaign Ledger export. Make sure you're uploading a .zip created by the Export button.</div>
+{% endif %}
+
+<div class="search-bar">
+  {{ icon('search') }}
+  <input type="text" id="character-search" placeholder="Search characters…" autocomplete="off">
+</div>
+
+{% if groups %}
+<div class="filter-bar" id="group-filter">
+  <button class="chip active" data-filter="all">All</button>
+  {% for g in groups %}
+  <button class="chip" data-filter="{{ g.id }}">
+    <span class="group-dot" style="background:{{ g.color }};"></span>{{ g.name }}
+  </button>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if characters %}
+<div class="card-grid" id="character-grid">
+  {% for c in characters %}
+  <div class="dossier-card" data-group="{{ c.group_id or '' }}" data-name="{{ c.name|lower }}">
+    <span class="dossier-tag {{ 'npc' if c.is_npc else '' }}">{{ 'NPC' if c.is_npc else 'PC' }}</span>
+    <div class="dossier-head">
+      <div class="avatar-frame">
+        {% if c.avatar_path %}
+          <img src="{{ url_for('uploaded_file', filename=c.avatar_path) }}" alt="{{ c.name }} avatar">
+        {% else %}
+          {{ icon('user') }}
+        {% endif %}
+      </div>
+      <div class="dossier-name-block">
+        <div class="dossier-name">{{ c.name }}</div>
+        <div class="dossier-meta">
+          Lvl {{ c.level }}
+          {% if c.group_name %}
+            <span class="group-dot" style="background:{{ c.group_color }}"></span>{{ c.group_name }}
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <div class="dossier-stats">
+      <div class="stat-pill"><span class="val">{{ c.str_score }}</span><span class="lbl">STR</span></div>
+      <div class="stat-pill"><span class="val">{{ c.dex_score }}</span><span class="lbl">DEX</span></div>
+      <div class="stat-pill"><span class="val">{{ c.con_score }}</span><span class="lbl">CON</span></div>
+      <div class="stat-pill"><span class="val">{{ c.int_score }}</span><span class="lbl">INT</span></div>
+      <div class="stat-pill"><span class="val">{{ c.wis_score }}</span><span class="lbl">WIS</span></div>
+      <div class="stat-pill"><span class="val">{{ c.cha_score }}</span><span class="lbl">CHA</span></div>
+    </div>
+
+    <div class="dossier-hp-ac">
+      <span class="badge-hp">{{ icon('heart') }}{{ c.max_hp }} HP</span>
+      <span class="badge-ac">{{ icon('shield') }}{{ c.armor_class }} AC</span>
+    </div>
+
+    <div class="dossier-notes">{{ c.notes }}</div>
+
+    <div class="dossier-actions">
+      <a href="{{ url_for('character_edit', char_id=c.id) }}" class="btn btn-ghost btn-sm">{{ icon('pencil') }} Edit</a>
+      <a href="{{ url_for('character_export', char_id=c.id) }}" class="btn-icon" title="Export this character">{{ icon('upload') }}</a>
+      <form method="POST" action="{{ url_for('character_delete', char_id=c.id) }}" data-confirm="Remove {{ c.name }} from the ledger permanently?">
+        <button type="submit" class="btn btn-danger btn-sm">{{ icon('trash-2') }} Delete</button>
+      </form>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="empty-state">
+  {{ icon('scroll-text') }}
+  <h3>No characters yet</h3>
+  <p>Start your dossier by adding your first hero or villain.</p>
+  <a href="{{ url_for('character_new') }}" class="btn btn-primary">{{ icon('plus') }} New Character</a>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const filterBar = document.getElementById('group-filter');
+  const searchInput = document.getElementById('character-search');
+  let activeGroupFilter = 'all';
+  let searchQuery = '';
+
+  function applyFilters() {
+    document.querySelectorAll('#character-grid .dossier-card').forEach((card) => {
+      const groupMatch = activeGroupFilter === 'all' || card.dataset.group === activeGroupFilter;
+      const nameMatch = !searchQuery || card.dataset.name.includes(searchQuery);
+      card.style.display = (groupMatch && nameMatch) ? '' : 'none';
+    });
+  }
+
+  if (filterBar) {
+    filterBar.addEventListener('click', (e) => {
+      const btn = e.target.closest('.chip');
+      if (!btn) return;
+      filterBar.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+      btn.classList.add('active');
+      activeGroupFilter = btn.dataset.filter;
+      applyFilters();
+    });
+  }
+
+  if (searchInput) {
+    searchInput.addEventListener('input', () => {
+      searchQuery = searchInput.value.trim().toLowerCase();
+      applyFilters();
+    });
+  }
+});
+</script>
+{% endblock %}

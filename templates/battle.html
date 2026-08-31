@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% set active_page = 'battle' %}
+{% block title %}Battle — Campaign Ledger{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <p class="page-eyebrow">The Field</p>
+    <h1 class="page-title">Battle</h1>
+    <p class="page-sub">Track initiative, HP, and casualties for the current encounter.</p>
+  </div>
+  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+    <a href="{{ url_for('character_new', **{'from': 'battle'}) }}" class="btn btn-ghost">{{ icon('plus') }} Create Character</a>
+    <button type="button" class="btn btn-ghost" id="open-add-modal">{{ icon('user') }} Add Character</button>
+    <button type="button" class="btn btn-danger" id="clear-battle-btn">{{ icon('trash-2') }} Clear Battle</button>
+  </div>
+</div>
+
+<div class="battle-toolbar">
+  <span class="hint-text" style="margin:0;">Sort by</span>
+  <div class="sort-toggle" id="sort-toggle">
+    <button type="button" class="sort-option active" data-sort="initiative">Initiative</button>
+    <button type="button" class="sort-option" data-sort="group">Group</button>
+  </div>
+</div>
+
+<div id="battle-root" data-added-id="{{ added_id or '' }}"></div>
+
+<template id="empty-battle-template">
+  <div class="empty-state">
+    <span>{{ icon('swords') }}</span>
+    <h3>No one's on the field</h3>
+    <p>Add an existing character or create a new one to begin the encounter.</p>
+  </div>
+</template>
+
+<!-- Add Character Modal -->
+<div class="modal-overlay" id="add-modal" hidden>
+  <div class="modal-panel">
+    <div class="modal-header">
+      <h3>Add to Battle</h3>
+      <button type="button" class="btn-icon" id="close-add-modal">{{ icon('x') }}</button>
+    </div>
+    <div class="modal-body">
+      <div class="field" style="margin-bottom:14px;">
+        <input type="text" id="add-modal-search" placeholder="Search characters…" autocomplete="off">
+      </div>
+      <div id="add-modal-groups"></div>
+      <div id="add-modal-list"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Character Detail Modal -->
+<div class="modal-overlay" id="detail-modal" hidden>
+  <div class="modal-panel">
+    <div class="modal-header">
+      <h3 id="detail-modal-title">Character</h3>
+      <button type="button" class="btn-icon" id="close-detail-modal">{{ icon('x') }}</button>
+    </div>
+    <div class="modal-body" id="detail-modal-body"></div>
+  </div>
+</div>
+
+<script id="characters-data" type="application/json">{{ characters | tojson }}</script>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="{{ url_for('static', filename='js/battle.js') }}"></script>
+{% endblock %}

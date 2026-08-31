@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{% block title %}Campaign Ledger{% endblock %}</title>
+<script>
+  (function () {
+    var saved = localStorage.getItem('ledger-theme');
+    if (saved === 'light' || saved === 'dark') {
+      document.documentElement.setAttribute('data-theme', saved);
+    }
+  })();
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;0,9..144,700;1,9..144,500&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+{% block extra_head %}{% endblock %}
+</head>
+<body>
+{% from "_icons.html" import icon %}
+<div class="app-shell">
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 40 40" width="30" height="30">
+          <polygon points="20,2 36,12 36,28 20,38 4,28 4,12" fill="none" stroke="currentColor" stroke-width="2"/>
+          <polygon points="20,10 29,15.5 29,24.5 20,30 11,24.5 11,15.5" fill="currentColor" opacity="0.85"/>
+        </svg>
+      </span>
+      <div class="brand-text">
+        <span class="brand-title">Campaign</span>
+        <span class="brand-subtitle">Ledger</span>
+      </div>
+    </div>
+
+    <nav class="sidebar-nav">
+      <a href="{{ url_for('characters_list') }}" class="nav-tab {{ 'active' if active_page == 'characters' else '' }}">
+        {{ icon('scroll-text') }}<span>Characters</span>
+      </a>
+      <a href="{{ url_for('groups_list') }}" class="nav-tab {{ 'active' if active_page == 'groups' else '' }}">
+        {{ icon('shield') }}<span>Groups</span>
+      </a>
+      <a href="{{ url_for('battle_view') }}" class="nav-tab {{ 'active' if active_page == 'battle' else '' }}">
+        {{ icon('swords') }}<span>Battle</span>
+      </a>
+      <a href="{{ url_for('dice_view') }}" class="nav-tab {{ 'active' if active_page == 'dice' else '' }}">
+        {{ icon('dices') }}<span>Dice</span>
+      </a>
+    </nav>
+
+    <div class="sidebar-foot">
+      <button type="button" class="theme-toggle-btn" id="theme-toggle" title="Toggle light/dark mode">
+        <span class="theme-icon theme-icon-sun">{{ icon('sun') }}</span>
+        <span class="theme-icon theme-icon-moon">{{ icon('moon') }}</span>
+      </button>
+      <span class="foot-line"></span>
+      <span class="foot-label">v0.1 &middot; local session</span>
+    </div>
+  </aside>
+
+  <main class="content">
+    {% block content %}{% endblock %}
+  </main>
+</div>
+
+<div class="lightbox-overlay" id="image-lightbox" hidden>
+  <button type="button" class="btn-icon lightbox-close" id="lightbox-close-btn">{{ icon('x') }}</button>
+  <button type="button" class="btn btn-danger lightbox-delete" id="lightbox-delete-btn" hidden>{{ icon('trash-2') }} Delete this image</button>
+  <div class="lightbox-stage">
+    <img id="lightbox-img" src="" alt="Preview">
+  </div>
+  <p class="lightbox-hint">Click to zoom &middot; hold and drag to pan</p>
+</div>
+
+<div class="modal-overlay" id="confirm-modal" hidden>
+  <div class="modal-panel confirm-modal-panel">
+    <div class="modal-body">
+      <p class="confirm-modal-message" id="confirm-modal-message"></p>
+      <div class="form-actions">
+        <button type="button" class="btn btn-ghost" id="confirm-modal-no">No</button>
+        <button type="button" class="btn btn-danger" id="confirm-modal-yes">Yes</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="crop-modal" hidden>
+  <div class="modal-panel crop-modal-panel">
+    <div class="modal-header">
+      <h3>Position Avatar</h3>
+      <button type="button" class="btn-icon" id="crop-cancel-btn">{{ icon('x') }}</button>
+    </div>
+    <div class="modal-body">
+      <div class="crop-stage-wrap">
+        <canvas id="crop-canvas" width="480" height="480"></canvas>
+        <div class="crop-circle-guide"></div>
+      </div>
+      <p class="hint-text" style="text-align:center; margin-top:10px;">Drag to reposition &middot; use the slider to zoom</p>
+      <div class="crop-zoom-row">
+        <label>{{ icon('images') }}</label>
+        <input type="range" id="crop-zoom-slider" min="0" max="100" value="0">
+      </div>
+      <div class="form-actions">
+        <button type="button" class="btn btn-ghost" id="crop-cancel-btn-2">Cancel</button>
+        <button type="button" class="btn btn-primary" id="crop-apply-btn">{{ icon('check') }} Apply Crop</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='js/theme.js') }}"></script>
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+<script src="{{ url_for('static', filename='js/cropper.js') }}"></script>
+<script src="{{ url_for('static', filename='js/lightbox.js') }}"></script>
+<script src="{{ url_for('static', filename='js/confirm.js') }}"></script>
+{% block extra_scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% set active_page = 'characters' %}
+{% block title %}{{ 'Edit' if character else 'New' }} Character — Campaign Ledger{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <p class="page-eyebrow">{{ 'Amend Dossier' if character else 'New Dossier' }}</p>
+    <h1 class="page-title">{{ character.name if character else 'New Character' }}</h1>
+  </div>
+  <a href="{{ url_for('battle_view') if from_battle else url_for('characters_list') }}" class="btn btn-ghost">{{ icon('arrow-left') }} {{ 'Back to battle' if from_battle else 'Back to list' }}</a>
+</div>
+
+<form class="form-panel" method="POST" enctype="multipart/form-data">
+  <input type="hidden" name="from_battle" value="{{ '1' if from_battle else '' }}">
+
+  <div class="form-section">
+    <p class="form-section-title">Identity</p>
+    <div class="form-row cols-2">
+      <div class="field">
+        <label for="name">Name</label>
+        <input type="text" id="name" name="name" value="{{ character.name if character else '' }}" placeholder="e.g. Sylas Thorne" required>
+      </div>
+      <div class="field">
+        <label for="group_id">Group</label>
+        <select id="group_id" name="group_id">
+          <option value="">— None —</option>
+          {% for g in groups %}
+          <option value="{{ g.id }}" {{ 'selected' if character and character.group_id == g.id else '' }}>{{ g.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    <div class="form-row cols-2">
+      <div class="field">
+        <label for="level">Level</label>
+        <input type="number" id="level" name="level" min="1" max="30" value="{{ character.level if character else 1 }}">
+      </div>
+      <div class="field" style="display:flex; align-items:flex-end;">
+        <label class="field-checkbox">
+          <input type="checkbox" name="is_npc" {{ 'checked' if character and character.is_npc else '' }}>
+          This is an NPC (not a player character)
+        </label>
+      </div>
+    </div>
+  </div>
+
+  <div class="form-section">
+    <p class="form-section-title">Vitals</p>
+    <div class="form-row cols-2">
+      <div class="field">
+        <label for="max_hp">Max HP</label>
+        <input type="number" id="max_hp" name="max_hp" min="1" value="{{ character.max_hp if character else 10 }}">
+      </div>
+      <div class="field">
+        <label for="armor_class">Armor Class</label>
+        <input type="number" id="armor_class" name="armor_class" min="0" value="{{ character.armor_class if character else 10 }}">
+      </div>
+    </div>
+  </div>
+
+  <div class="form-section">
+    <p class="form-section-title">Ability Scores</p>
+    <div class="form-row cols-6">
+      <div class="field"><label for="str_score">STR</label><input type="number" id="str_score" name="str_score" value="{{ character.str_score if character else 10 }}"></div>
+      <div class="field"><label for="dex_score">DEX</label><input type="number" id="dex_score" name="dex_score" value="{{ character.dex_score if character else 10 }}"></div>
+      <div class="field"><label for="con_score">CON</label><input type="number" id="con_score" name="con_score" value="{{ character.con_score if character else 10 }}"></div>
+      <div class="field"><label for="int_score">INT</label><input type="number" id="int_score" name="int_score" value="{{ character.int_score if character else 10 }}"></div>
+      <div class="field"><label for="wis_score">WIS</label><input type="number" id="wis_score" name="wis_score" value="{{ character.wis_score if character else 10 }}"></div>
+      <div class="field"><label for="cha_score">CHA</label><input type="number" id="cha_score" name="cha_score" value="{{ character.cha_score if character else 10 }}"></div>
+    </div>
+  </div>
+
+  <div class="form-section">
+    <p class="form-section-title">Media</p>
+    <div class="form-row cols-2">
+      <div class="field">
+        <label>Avatar</label>
+        <div class="avatar-preview-row">
+          <div class="avatar-frame-wrap">
+            <div class="avatar-frame">
+              {% if character and character.avatar_path %}
+                <img id="avatar-preview-img" src="{{ url_for('uploaded_file', filename=character.avatar_path) }}" alt="avatar preview">
+              {% else %}
+                <img id="avatar-preview-img" style="display:none;" alt="avatar preview">
+                {{ icon('user', 'avatar-placeholder-icon') }}
+              {% endif %}
+            </div>
+            <button type="button" class="avatar-remove-btn" id="avatar-remove-btn" title="Remove avatar" {{ '' if character and character.avatar_path else 'hidden' }}>{{ icon('x') }}</button>
+          </div>
+          <div class="file-drop" style="flex:1;">
+            {{ icon('upload') }}
+            <div>Click or drop an image</div>
+            <span class="file-name"></span>
+            <input type="file" name="avatar" accept="image/*" data-avatar-input="#avatar-preview-img" data-remove-btn="#avatar-remove-btn" data-remove-input="#remove_avatar_input">
+          </div>
+        </div>
+        <input type="hidden" name="remove_avatar" id="remove_avatar_input" value="">
+      </div>
+      <div class="field">
+        <label>Character Sheets <span class="hint-text" style="margin:0;">(multiple images)</span></label>
+        {% if sheets %}
+        <div class="sheet-thumbs">
+          {% for s in sheets %}
+          <div class="sheet-thumb">
+            <img src="{{ url_for('uploaded_file', filename=s.image_path) }}" alt="sheet"
+                 data-lightbox-src="{{ url_for('uploaded_file', filename=s.image_path) }}"
+                 data-delete-url="{{ url_for('sheet_delete', char_id=character.id, sheet_id=s.id) }}">
+            <button type="button" class="btn-icon" title="Remove"
+                    data-sheet-delete-url="{{ url_for('sheet_delete', char_id=character.id, sheet_id=s.id) }}"
+                    data-confirm-msg="Remove this sheet image?">{{ icon('x') }}</button>
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
+        <div class="file-drop">
+          {{ icon('images') }}
+          <div>Click or drop image(s)</div>
+          <span class="file-name"></span>
+          <input type="file" name="sheets" accept="image/*" multiple data-multi-input>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="form-section">
+    <p class="form-section-title">Notes</p>
+    <div class="field">
+      <textarea name="notes" placeholder="Backstory, quirks, tactics, secrets the DM shouldn't forget...">{{ character.notes if character else '' }}</textarea>
+    </div>
+  </div>
+
+  <div class="form-actions">
+    <a href="{{ url_for('battle_view') if from_battle else url_for('characters_list') }}" class="btn btn-ghost">Cancel</a>
+    <button type="submit" class="btn btn-primary">{{ icon('check') }} {{ 'Save Changes' if character else 'Add Character' }}</button>
+  </div>
+</form>
+{% endblock %}
