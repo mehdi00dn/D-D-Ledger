@@ -103,7 +103,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
   grid-template-columns: 232px 1fr;
   min-height: 100vh;
 }
-/* test */
+
 .sidebar {
   background: linear-gradient(180deg, var(--bg-void-2), var(--bg-panel-inset));
   border-right: 1px solid var(--hairline);
