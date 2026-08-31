@@ -105,7 +105,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
   min-height: 100vh;
   transition: grid-template-columns 0.35s cubic-bezier(0.22, 1, 0.36, 1);
 }
-
+/* test */
 .sidebar {
   background: linear-gradient(180deg, var(--bg-void-2), var(--bg-panel-inset));
   border-right: 1px solid var(--hairline);
