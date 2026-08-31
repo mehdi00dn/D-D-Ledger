@@ -1,6 +1,53 @@
 // Shared helpers used across pages: file input previews, color swatches.
 
 document.addEventListener('DOMContentLoaded', () => {
+  const appShell = document.getElementById('app-shell');
+  const sidebar = document.getElementById('sidebar');
+  const sidebarToggle = document.getElementById('sidebar-toggle');
+  const EXPANDED_WIDTH = 232;
+  const COLLAPSED_WIDTH = 86;
+
+  if (appShell && sidebar && sidebarToggle) {
+    let isCollapsed = false;
+
+    const applySidebarWidth = (width) => {
+      appShell.style.setProperty('--sidebar-width', `${width}px`);
+      sidebar.style.width = `${width}px`;
+      sidebar.style.minWidth = `${width}px`;
+    };
+
+    const refreshSidebarState = () => {
+      sidebar.classList.toggle('is-collapsed', isCollapsed);
+      sidebarToggle.setAttribute('aria-expanded', String(!isCollapsed));
+      sidebarToggle.setAttribute('aria-label', isCollapsed ? 'Expand sidebar' : 'Collapse sidebar');
+      sidebarToggle.title = isCollapsed ? 'Expand sidebar' : 'Collapse sidebar';
+      const width = isCollapsed ? COLLAPSED_WIDTH : EXPANDED_WIDTH;
+      applySidebarWidth(width);
+    };
+
+    sidebar.addEventListener('mouseenter', () => {
+      if (isCollapsed) {
+        applySidebarWidth(EXPANDED_WIDTH);
+        sidebar.classList.add('is-hovered');
+      }
+    });
+
+    sidebar.addEventListener('mouseleave', () => {
+      if (isCollapsed) {
+        applySidebarWidth(COLLAPSED_WIDTH);
+        sidebar.classList.remove('is-hovered');
+      }
+    });
+
+    sidebarToggle.addEventListener('click', () => {
+      isCollapsed = !isCollapsed;
+      sidebar.classList.remove('is-hovered');
+      refreshSidebarState();
+    });
+
+    refreshSidebarState();
+  }
+
   // Note: avatar file inputs ([data-avatar-input]) are handled entirely by
   // cropper.js, which opens the crop modal on selection and updates the
   // preview + input files once the user applies a crop.
