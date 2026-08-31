@@ -20,25 +20,19 @@
 </head>
 <body>
 {% from "_icons.html" import icon %}
-<div class="app-shell" id="app-shell">
-  <aside class="sidebar" id="sidebar">
-    <div class="sidebar-top">
-      <div class="sidebar-brand">
-        <span class="brand-mark" aria-hidden="true">
-          <svg viewBox="0 0 40 40" width="30" height="30">
-            <polygon points="20,2 36,12 36,28 20,38 4,28 4,12" fill="none" stroke="currentColor" stroke-width="2"/>
-            <polygon points="20,10 29,15.5 29,24.5 20,30 11,24.5 11,15.5" fill="currentColor" opacity="0.85"/>
-          </svg>
-        </span>
-        <div class="brand-text">
-          <span class="brand-title">Campaign</span>
-          <span class="brand-subtitle">Ledger</span>
-        </div>
+<div class="app-shell">
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 40 40" width="30" height="30">
+          <polygon points="20,2 36,12 36,28 20,38 4,28 4,12" fill="none" stroke="currentColor" stroke-width="2"/>
+          <polygon points="20,10 29,15.5 29,24.5 20,30 11,24.5 11,15.5" fill="currentColor" opacity="0.85"/>
+        </svg>
+      </span>
+      <div class="brand-text">
+        <span class="brand-title">Campaign</span>
+        <span class="brand-subtitle">Ledger</span>
       </div>
-
-      <button type="button" class="sidebar-toggle-btn" id="sidebar-toggle" aria-label="Collapse sidebar" aria-expanded="true" title="Collapse sidebar">
-        {{ icon('arrow-left') }}
-      </button>
     </div>
 
     <nav class="sidebar-nav">
