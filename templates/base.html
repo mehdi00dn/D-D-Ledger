@@ -16,6 +16,10 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;0,9..144,700;1,9..144,500&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+<link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
+<link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='favicon-32x32.png') }}">
+<link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='favicon-16x16.png') }}">
+<link rel="apple-touch-icon" href="{{ url_for('static', filename='logo-128.png') }}">
 {% block extra_head %}{% endblock %}
 </head>
 <body>
@@ -24,10 +28,7 @@
   <aside class="sidebar">
     <div class="sidebar-brand">
       <span class="brand-mark" aria-hidden="true">
-        <svg viewBox="0 0 40 40" width="30" height="30">
-          <polygon points="20,2 36,12 36,28 20,38 4,28 4,12" fill="none" stroke="currentColor" stroke-width="2"/>
-          <polygon points="20,10 29,15.5 29,24.5 20,30 11,24.5 11,15.5" fill="currentColor" opacity="0.85"/>
-        </svg>
+        <img src="{{ url_for('static', filename='logo-128.png') }}" alt="D&D Ledger Logo" width="30" height="30">
       </span>
       <div class="brand-text">
         <span class="brand-title">Campaign</span>
