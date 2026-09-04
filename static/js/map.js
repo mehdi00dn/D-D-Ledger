@@ -3,6 +3,7 @@
   const mapId = initData.id;
 
   const stageWrap = document.getElementById('map-stage-wrap');
+  const stageInner = document.getElementById('map-stage-inner');
   const canvas = document.getElementById('map-canvas');
   const ctx = canvas.getContext('2d');
   const pinLayer = document.getElementById('map-pin-layer');
@@ -74,7 +75,7 @@
   bgImage.src = '/uploads/' + initData.image_path;
 
   function getNaturalPos(clientX, clientY) {
-    const rect = stageWrap.getBoundingClientRect();
+    const rect = stageInner.getBoundingClientRect();
     const fracX = (clientX - rect.left) / rect.width;
     const fracY = (clientY - rect.top) / rect.height;
     return { x: fracX * naturalWidth, y: fracY * naturalHeight };
@@ -478,16 +479,19 @@
 
   function positionPinBubble(pinId) {
     const el = pinLayer.querySelector(`[data-pin-id="${pinId}"]`);
-    if (!el) { pinBubble.hidden = true; return; }
-    const wrapRect = stageWrap.getBoundingClientRect();
-    const elRect = el.getBoundingClientRect();
-    const cx = elRect.left - wrapRect.left + elRect.width / 2;
-    const top = elRect.top - wrapRect.top - 14;
-    pinBubble.style.left = `${cx}px`;
-    pinBubble.style.top = `${top}px`;
-    pinBubble.hidden = false;
     const pin = pins.find((p) => p.id === pinId);
-    pinViewBtn.style.display = pin && pin.pin_type === 'character' ? '' : 'none';
+    if (!el || !pin) { pinBubble.hidden = true; return; }
+    // Positioned in stageInner's own (untransformed) pixel space, computed
+    // straight from the pin's data — not from the pin element's rendered
+    // rect, which would already include the zoom transform and double it.
+    const wrapRect = stageWrap.getBoundingClientRect();
+    const leftPx = (pin.x / naturalWidth) * wrapRect.width;
+    const topPx = (pin.y / naturalHeight) * wrapRect.height;
+    const halfHeightPx = ((gridSize * (pin.scale || 1)) / naturalHeight) * wrapRect.height / 2;
+    pinBubble.style.left = `${leftPx}px`;
+    pinBubble.style.top = `${topPx - halfHeightPx - 14}px`;
+    pinBubble.hidden = false;
+    pinViewBtn.style.display = pin.pin_type === 'character' ? '' : 'none';
   }
 
   function positionShapeBubble() {
@@ -588,6 +592,30 @@
     shapeRotateToggle.classList.toggle('active', shapeHandleMode === 'rotate');
     shapeResizeToggle.classList.remove('active');
     redraw();
+  });
+  // Hold-and-drag straight from the buttons themselves (same gesture as the
+  // pin buttons), on top of the click-to-toggle-handles behavior above.
+  shapeResizeToggle.addEventListener('mousedown', (e) => {
+    if (selectedShapeId == null) return;
+    const d = drawings.find((s) => s.id === selectedShapeId);
+    if (!d) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const pos = eventPos(e);
+    const startDist = Math.max(1, Math.hypot(pos.x - d.cx, pos.y - d.cy));
+    const before = { cx: d.cx, cy: d.cy, w: d.w, h: d.h, rotation: d.rotation };
+    activeDrag = { type: 'resize-shape-uniform', d, startDist, startW: d.w, startH: d.h, before };
+  });
+  shapeRotateToggle.addEventListener('mousedown', (e) => {
+    if (selectedShapeId == null) return;
+    const d = drawings.find((s) => s.id === selectedShapeId);
+    if (!d) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const pos = eventPos(e);
+    const before = { cx: d.cx, cy: d.cy, w: d.w, h: d.h, rotation: d.rotation };
+    const startAngle = Math.atan2(pos.y - d.cy, pos.x - d.cx) * (180 / Math.PI);
+    activeDrag = { type: 'rotate-shape', d, before, startAngle, startRotation: d.rotation || 0 };
   });
   shapeDeleteBtn.addEventListener('click', () => {
     if (selectedShapeIds.size > 1) {
@@ -992,6 +1020,29 @@
     }
   });
 
+  // Zoom/pan hint: shown once on load, dismissed after a timeout or the
+  // first time the person actually zooms or pans.
+  const NAV_HINT_KEY = 'ledger-map-nav-hint-dismissed';
+  const navHintEl = document.getElementById('nav-hint');
+  let navHintTimer = null;
+  function hideNavHint() {
+    navHintEl.hidden = true;
+    clearTimeout(navHintTimer);
+  }
+  function dismissNavHintForGood() {
+    hideNavHint();
+    try { localStorage.setItem(NAV_HINT_KEY, '1'); } catch (err) { /* ignore */ }
+  }
+  function showNavHintIfNeeded() {
+    if (suppressMainGrid) return; // wait until the setup wizard is done
+    let alreadySeen = false;
+    try { alreadySeen = !!localStorage.getItem(NAV_HINT_KEY); } catch (err) { /* ignore */ }
+    if (alreadySeen) return;
+    navHintEl.hidden = false;
+    navHintTimer = setTimeout(hideNavHint, 7000);
+  }
+  showNavHintIfNeeded();
+
   document.querySelectorAll('.map-tool-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
       document.querySelectorAll('.map-tool-btn').forEach((b) => b.classList.remove('active'));
@@ -1262,6 +1313,17 @@
       if (selectedShapeId != null) positionShapeBubble();
       return;
     }
+    if (activeDrag.type === 'resize-shape-uniform') {
+      const pos = eventPos(e);
+      const d = activeDrag.d;
+      const dist = Math.max(1, Math.hypot(pos.x - d.cx, pos.y - d.cy));
+      const ratio = dist / activeDrag.startDist;
+      d.w = Math.max(6, activeDrag.startW * ratio);
+      d.h = Math.max(6, activeDrag.startH * ratio);
+      redraw();
+      positionShapeBubble();
+      return;
+    }
     if (activeDrag.type === 'resize-shape') {
       const pos = eventPos(e);
       const d = activeDrag.d;
@@ -1365,7 +1427,7 @@
         }
         return;
       }
-      if (drag.type === 'resize-shape' || drag.type === 'rotate-shape') {
+      if (drag.type === 'resize-shape' || drag.type === 'rotate-shape' || drag.type === 'resize-shape-uniform') {
         const d = drag.d;
         const after = { cx: d.cx, cy: d.cy, w: d.w, h: d.h, rotation: d.rotation };
         pushCommand(makeShapeTransformCommand(d, drag.before, after));
@@ -1563,8 +1625,84 @@
       contentArea.classList.remove('blurred');
       renderPins();
       redraw();
+      showNavHintIfNeeded();
     });
   }
+
+  // ---------------------------------------------------------------------
+  // Zoom (mouse wheel + trackpad pinch, centered on the cursor) and
+  // Space+drag panning. The grid is baked into the canvas raster, so it
+  // scales along with everything else automatically — no separate logic
+  // needed to keep it "infinite"; it simply covers whatever of the map is
+  // visible at any zoom/pan position.
+  // ---------------------------------------------------------------------
+  const ZOOM_MIN = 0.25, ZOOM_MAX = 6;
+  let zoomLevel = 1;
+  let panX = 0, panY = 0;
+  const zoomLevelLabel = document.getElementById('zoom-level-label');
+  const zoomResetBtn = document.getElementById('zoom-reset-btn');
+
+  function applyZoomTransform() {
+    stageInner.style.transform = `translate(${panX}px, ${panY}px) scale(${zoomLevel})`;
+    if (zoomLevelLabel) zoomLevelLabel.textContent = `${Math.round(zoomLevel * 100)}%`;
+  }
+
+  stageWrap.addEventListener('wheel', (e) => {
+    if (!(e.ctrlKey || e.metaKey)) return; // plain scroll is left alone; Ctrl/Cmd+wheel (or trackpad pinch) zooms
+    e.preventDefault();
+    dismissNavHintForGood();
+    const rect = stageWrap.getBoundingClientRect();
+    const vx = e.clientX - rect.left, vy = e.clientY - rect.top;
+    const zoomFactor = Math.exp(-e.deltaY * 0.0018);
+    const newZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, zoomLevel * zoomFactor));
+    const factor = newZoom / zoomLevel;
+    panX = vx - (vx - panX) * factor;
+    panY = vy - (vy - panY) * factor;
+    zoomLevel = newZoom;
+    applyZoomTransform();
+  }, { passive: false });
+
+  zoomResetBtn.addEventListener('click', () => {
+    zoomLevel = 1; panX = 0; panY = 0;
+    applyZoomTransform();
+  });
+
+  // Hold Space to pan by dragging, regardless of the active tool — a
+  // temporary override, like Figma/Photoshop's spacebar-pan.
+  let spaceHeld = false;
+  let panDrag = null;
+  document.addEventListener('keydown', (e) => {
+    if (e.code === 'Space') {
+      const tag = (e.target.tagName || '').toLowerCase();
+      if (tag === 'input' || tag === 'textarea') return;
+      e.preventDefault();
+      if (!spaceHeld) { spaceHeld = true; stageWrap.classList.add('panning'); dismissNavHintForGood(); }
+    }
+  });
+  document.addEventListener('keyup', (e) => {
+    if (e.code === 'Space') {
+      spaceHeld = false;
+      stageWrap.classList.remove('panning', 'panning-active');
+    }
+  });
+  stageWrap.addEventListener('mousedown', (e) => {
+    if (!spaceHeld) return;
+    e.preventDefault();
+    e.stopPropagation();
+    panDrag = { startX: e.clientX, startY: e.clientY, origPanX: panX, origPanY: panY };
+    stageWrap.classList.add('panning-active');
+  }, true);
+  window.addEventListener('mousemove', (e) => {
+    if (!panDrag) return;
+    panX = panDrag.origPanX + (e.clientX - panDrag.startX);
+    panY = panDrag.origPanY + (e.clientY - panDrag.startY);
+    applyZoomTransform();
+  });
+  window.addEventListener('mouseup', () => {
+    if (!panDrag) return;
+    panDrag = null;
+    stageWrap.classList.remove('panning-active');
+  });
 
   // ---------------------------------------------------------------------
   // Init

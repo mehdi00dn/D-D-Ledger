@@ -61,32 +61,44 @@
   <div class="map-tool-group">
     <button type="button" class="btn btn-ghost btn-sm" id="clear-drawings-btn">{{ icon('trash-2') }} Clear Drawings</button>
   </div>
+
+  <div class="map-tool-group">
+    <button type="button" class="btn btn-ghost btn-sm" id="zoom-reset-btn" title="Reset zoom to 100%">Reset Zoom</button>
+    <span class="map-setup-value" id="zoom-level-label">100%</span>
+    <span class="hint-text" style="margin:0;">Hold Space to pan</span>
+  </div>
 </div>
 
 <div class="map-stage-wrap" id="map-stage-wrap" data-natural-width="{{ map.image_width }}" data-natural-height="{{ map.image_height }}" style="aspect-ratio: {{ map.image_width or 16 }} / {{ map.image_height or 9 }};">
-  <canvas id="map-canvas"></canvas>
-  <div id="map-pin-layer"></div>
-  <!-- Pin action bubble shown when a pin is selected -->
-  <div class="pin-action-bubble" id="pin-action-bubble" hidden>
-    <button type="button" class="btn-icon" id="pin-view-btn" title="View details">{{ icon('images') }}</button>
-    <button type="button" class="btn-icon" id="pin-resize-btn" title="Hold and drag to resize">{{ icon('resize') }}</button>
-    <button type="button" class="btn-icon" id="pin-rotate-btn" title="Hold and drag to rotate">{{ icon('rotate') }}</button>
-    <button type="button" class="btn-icon" id="pin-lock-btn" title="Lock in place">{{ icon('lock') }}</button>
-    <button type="button" class="btn-icon btn-icon-danger" id="pin-delete-btn" title="Delete">{{ icon('trash-2') }}</button>
-  </div>
+  <div class="map-stage-inner" id="map-stage-inner">
+    <canvas id="map-canvas"></canvas>
+    <div id="map-pin-layer"></div>
+    <!-- Pin action bubble shown when a pin is selected -->
+    <div class="pin-action-bubble" id="pin-action-bubble" hidden>
+      <button type="button" class="btn-icon" id="pin-view-btn" title="View details">{{ icon('images') }}</button>
+      <button type="button" class="btn-icon" id="pin-resize-btn" title="Hold and drag to resize">{{ icon('resize') }}</button>
+      <button type="button" class="btn-icon" id="pin-rotate-btn" title="Hold and drag to rotate">{{ icon('rotate') }}</button>
+      <button type="button" class="btn-icon" id="pin-lock-btn" title="Lock in place">{{ icon('lock') }}</button>
+      <button type="button" class="btn-icon btn-icon-danger" id="pin-delete-btn" title="Delete">{{ icon('trash-2') }}</button>
+    </div>
 
-  <!-- Shape action bubble shown when a drawn shape is selected -->
-  <div class="pin-action-bubble" id="shape-action-bubble" hidden>
-    <button type="button" class="btn-icon" id="shape-resize-toggle" title="Toggle resize handles">{{ icon('resize') }}</button>
-    <button type="button" class="btn-icon" id="shape-rotate-toggle" title="Toggle rotate handle">{{ icon('rotate') }}</button>
-    <button type="button" class="btn-icon" id="shape-lock-btn" title="Lock in place">{{ icon('lock') }}</button>
-    <button type="button" class="btn-icon btn-icon-danger" id="shape-delete-btn" title="Delete">{{ icon('trash-2') }}</button>
+    <!-- Shape action bubble shown when a drawn shape is selected -->
+    <div class="pin-action-bubble" id="shape-action-bubble" hidden>
+      <button type="button" class="btn-icon" id="shape-resize-toggle" title="Toggle resize handles">{{ icon('resize') }}</button>
+      <button type="button" class="btn-icon" id="shape-rotate-toggle" title="Toggle rotate handle">{{ icon('rotate') }}</button>
+      <button type="button" class="btn-icon" id="shape-lock-btn" title="Lock in place">{{ icon('lock') }}</button>
+      <button type="button" class="btn-icon btn-icon-danger" id="shape-delete-btn" title="Delete">{{ icon('trash-2') }}</button>
+    </div>
   </div>
 </div>
 </div>
 
 <div class="modifier-hint" id="modifier-hint" hidden>
   <strong>Shift</strong> draw/resize from center &middot; <strong>Alt</strong> lock square/circle (45&deg; snap for lines)
+</div>
+
+<div class="modifier-hint" id="nav-hint" hidden>
+  <strong>Ctrl</strong>+Scroll to zoom &middot; <strong>Space</strong>+drag to pan
 </div>
 
 <!-- Mandatory one-time grid setup, shown the first time a map is opened.
