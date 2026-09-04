@@ -46,9 +46,24 @@ Deleting `dnd.db` (with the app stopped) gives you a completely fresh start.
   add an entire group at once, or create a new one on the fly), track
   initiative and AC live (AC edits here are a temporary in-battle override —
   a character's base AC on their profile is never touched), heal/damage
-  with one click, mark deaths (with an undo), remove combatants (with a
+  with one click, grant temporary HP (which absorbs damage before real HP,
+  per the rules), mark deaths (with an undo), remove combatants (with a
   yes/no confirmation), and sort the field by initiative or by group. Each
-  combatant's avatar is bordered in their group's color.
+  combatant's avatar is bordered in their group's color. The HP bar itself
+  is also a scrubber — click or drag across it to set HP directly.
+- **Maps** — import a map image, or start from a blank white grid canvas
+  at whatever size you like (adjustable any time from the toolbar — this
+  rescales existing drawings and pins to fit). Draw lines, rectangles, and
+  ovals (hold Shift to draw from the center, Alt to lock to a 1:1 ratio —
+  both work together), or freehand with the pen tool; toggle a fill with
+  its own opacity slider. Drag the grid to reposition it and adjust its
+  size independently. Drop familiar/marker pins (paw, skull, sword) that
+  scale to match the grid. Check "Link to current battle" to auto-populate
+  character pins from your battle roster, sized to the grid and bordered in
+  their group's color — drag them into position, click a pin for a resize
+  handle (drag to scale it up for large creatures) and a details button
+  (opens the same character viewer as the Battle screen). Downed characters
+  automatically grey out on the map the moment they die in battle.
 - **Sheet image viewer** — click any sheet image to open a full-size
   preview. Click anywhere on it to zoom toward that spot; while zoomed,
   hold and drag to pan around; click again to zoom back out. A delete
