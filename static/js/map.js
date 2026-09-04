@@ -1,0 +1,1578 @@
+(function () {
+  const initData = JSON.parse(document.getElementById('map-init-data').textContent);
+  const mapId = initData.id;
+
+  const stageWrap = document.getElementById('map-stage-wrap');
+  const canvas = document.getElementById('map-canvas');
+  const ctx = canvas.getContext('2d');
+  const pinLayer = document.getElementById('map-pin-layer');
+
+  const pinBubble = document.getElementById('pin-action-bubble');
+  const pinViewBtn = document.getElementById('pin-view-btn');
+  const pinResizeBtn = document.getElementById('pin-resize-btn');
+  const pinRotateBtn = document.getElementById('pin-rotate-btn');
+  const pinLockBtn = document.getElementById('pin-lock-btn');
+  const pinDeleteBtn = document.getElementById('pin-delete-btn');
+
+  const shapeBubble = document.getElementById('shape-action-bubble');
+  const shapeResizeToggle = document.getElementById('shape-resize-toggle');
+  const shapeRotateToggle = document.getElementById('shape-rotate-toggle');
+  const shapeLockBtn = document.getElementById('shape-lock-btn');
+  const shapeDeleteBtn = document.getElementById('shape-delete-btn');
+
+  const undoBtn = document.getElementById('undo-btn');
+  const redoBtn = document.getElementById('redo-btn');
+
+  let naturalWidth = initData.image_width || 1000;
+  let naturalHeight = initData.image_height || 1000;
+  let gridSize = initData.grid_size || 50;
+  let gridOffsetX = initData.grid_offset_x || 0;
+  let gridOffsetY = initData.grid_offset_y || 0;
+  let gridColor = initData.grid_color || 'gray';
+  let gridVisible = initData.grid_visible == null ? true : !!initData.grid_visible;
+  // While the mandatory first-time setup wizard is open, the grid must not
+  // appear on the real (blurred) canvas behind it — only in the wizard's
+  // own preview — regardless of the persisted/default grid_visible value.
+  let suppressMainGrid = !initData.grid_setup_done;
+  let linkedToBattle = !!initData.linked_to_battle;
+
+  let bgImage = new Image();
+  let bgLoaded = false;
+  let drawings = [];   // shape objects: {id, kind, cx, cy, w, h, rotation, color, fill, fill_opacity, data, locked}
+  let pins = [];        // {id, pin_type, x, y, scale, rotation, locked, ...}
+  let currentTool = 'select';
+  let selectedShapeId = null;      // the single selected shape, only meaningful when selectedShapeIds.size === 1
+  let selectedShapeIds = new Set(); // multi-select (Ctrl/Cmd+click)
+  let selectedPinId = null;
+  let shapeHandleMode = null; // null | 'resize' | 'rotate'
+  let hoveredLockedShapeId = null; // shape under the cursor that's locked (shows the unlock icon)
+  let pollTimer = null;
+
+  const UNLOCK_ICON_PATH = 'M7 11h10a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-6a2 2 0 0 1 2-2z M8 11V7a4 4 0 0 1 7.75-1.5';
+  const UNLOCK_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M7 11h10a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-6a2 2 0 0 1 2-2z"/><path d="M8 11V7a4 4 0 0 1 7.75-1.5"/></svg>';
+
+  const PROP_ICON_SRC = {
+    paw: '/static/icons/pins/paw.svg',
+    skull: '/static/icons/pins/skull.svg',
+    sword: '/static/icons/pins/sword.svg',
+  };
+  const USER_FALLBACK_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.5"/><path d="M4.5 20c1.2-4 4-6 7.5-6s6.3 2 7.5 6"/></svg>';
+
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str == null ? '' : String(str);
+    return div.innerHTML;
+  }
+
+  // ---------------------------------------------------------------------
+  // Canvas setup: internal resolution matches the image's natural pixels,
+  // so every drawing operation and stored coordinate uses that same space.
+  // ---------------------------------------------------------------------
+  canvas.width = naturalWidth;
+  canvas.height = naturalHeight;
+  bgImage.onload = () => { bgLoaded = true; redraw(); };
+  bgImage.src = '/uploads/' + initData.image_path;
+
+  function getNaturalPos(clientX, clientY) {
+    const rect = stageWrap.getBoundingClientRect();
+    const fracX = (clientX - rect.left) / rect.width;
+    const fracY = (clientY - rect.top) / rect.height;
+    return { x: fracX * naturalWidth, y: fracY * naturalHeight };
+  }
+
+  function eventPos(e) {
+    const t = e.touches ? e.touches[0] : e;
+    return getNaturalPos(t.clientX, t.clientY);
+  }
+
+  // ---------------------------------------------------------------------
+  // Undo / redo — a generic command stack. Every mutating action (add,
+  // delete, move, resize, rotate, recolor, clear) pushes a command with its
+  // own undo()/redo() implementation so Ctrl+Z / Ctrl+Shift+Z works uniformly.
+  // ---------------------------------------------------------------------
+  const undoStack = [];
+  const redoStack = [];
+
+  function pushCommand(cmd) {
+    undoStack.push(cmd);
+    redoStack.length = 0;
+    if (undoStack.length > 60) undoStack.shift();
+    updateHistoryButtons();
+  }
+  async function undo() {
+    const cmd = undoStack.pop();
+    if (!cmd) return;
+    await cmd.undo();
+    redoStack.push(cmd);
+    updateHistoryButtons();
+  }
+  async function redo() {
+    const cmd = redoStack.pop();
+    if (!cmd) return;
+    await cmd.redo();
+    undoStack.push(cmd);
+    updateHistoryButtons();
+  }
+  function updateHistoryButtons() {
+    undoBtn.disabled = undoStack.length === 0;
+    redoBtn.disabled = redoStack.length === 0;
+  }
+  undoBtn.addEventListener('click', undo);
+  redoBtn.addEventListener('click', redo);
+
+  document.addEventListener('keydown', (e) => {
+    const tag = (e.target.tagName || '').toLowerCase();
+    if (tag === 'input' || tag === 'textarea') return;
+    const mod = e.ctrlKey || e.metaKey;
+    if (mod && e.key.toLowerCase() === 'z') {
+      e.preventDefault();
+      if (e.shiftKey) redo(); else undo();
+      return;
+    }
+    if (e.key === 'Delete' || e.key === 'Backspace') {
+      if (selectedShapeIds.size > 0) {
+        e.preventDefault();
+        [...selectedShapeIds].forEach((id) => {
+          const d = drawings.find((s) => s.id === id);
+          if (d) deleteShape(d);
+        });
+      } else if (selectedPinId != null) {
+        e.preventDefault();
+        const p = pins.find((x) => x.id === selectedPinId);
+        if (p) deletePinObj(p);
+      }
+    }
+  });
+
+  // ---------------------------------------------------------------------
+  // Shape geometry: every shape is a rotated bounding box (cx, cy, w, h,
+  // rotation) in natural-image pixel space. Kind-specific geometry that
+  // lives inside that box (line endpoints, pen points) is stored in `data`
+  // as fractions of w/h, so resizing/rotating the box carries it along.
+  // ---------------------------------------------------------------------
+  function toRad(deg) { return ((deg || 0) * Math.PI) / 180; }
+
+  function localOffsetToNatural(d, lx, ly) {
+    const rad = toRad(d.rotation);
+    const cos = Math.cos(rad), sin = Math.sin(rad);
+    return { x: d.cx + (lx * cos - ly * sin), y: d.cy + (lx * sin + ly * cos) };
+  }
+
+  function naturalToLocalOffset(d, x, y) {
+    const dx = x - d.cx, dy = y - d.cy;
+    const rad = toRad(-d.rotation);
+    const cos = Math.cos(rad), sin = Math.sin(rad);
+    return { x: dx * cos - dy * sin, y: dx * sin + dy * cos };
+  }
+
+  function unitAxes(rotationDeg) {
+    const rad = toRad(rotationDeg);
+    return { u: { x: Math.cos(rad), y: Math.sin(rad) }, v: { x: -Math.sin(rad), y: Math.cos(rad) } };
+  }
+
+  function getShapeCorners(d) {
+    const hw = d.w / 2, hh = d.h / 2;
+    return [
+      localOffsetToNatural(d, -hw, -hh),
+      localOffsetToNatural(d, hw, -hh),
+      localOffsetToNatural(d, hw, hh),
+      localOffsetToNatural(d, -hw, hh),
+    ];
+  }
+
+  function getRotateHandlePos(d) {
+    const dist = d.h / 2 + Math.max(30, canvas.width / 25);
+    return localOffsetToNatural(d, 0, -dist);
+  }
+
+  function distToSegment(p, a, b) {
+    const abx = b.x - a.x, aby = b.y - a.y;
+    const t = ((p.x - a.x) * abx + (p.y - a.y) * aby) / Math.max(1e-6, abx * abx + aby * aby);
+    const tc = Math.max(0, Math.min(1, t));
+    const cx = a.x + abx * tc, cy = a.y + aby * tc;
+    return Math.hypot(p.x - cx, p.y - cy);
+  }
+
+  function hitTestShape(d, pos) {
+    const local = naturalToLocalOffset(d, pos.x, pos.y);
+    const lx = local.x, ly = local.y;
+    const hw = d.w / 2, hh = d.h / 2;
+    const pad = Math.max(6, canvas.width / 300);
+    const hasFill = (d.fill_opacity || 0) > 0.001;
+    if (d.kind === 'rect') {
+      if (hasFill) return lx >= -hw - pad && lx <= hw + pad && ly >= -hh - pad && ly <= hh + pad;
+      const nearVert = Math.abs(Math.abs(lx) - hw) < pad && ly >= -hh - pad && ly <= hh + pad;
+      const nearHoriz = Math.abs(Math.abs(ly) - hh) < pad && lx >= -hw - pad && lx <= hw + pad;
+      return nearVert || nearHoriz;
+    }
+    if (d.kind === 'oval') {
+      if (hw < 0.01 || hh < 0.01) return false;
+      const nx = lx / hw, ny = ly / hh;
+      const r = Math.hypot(nx, ny);
+      if (hasFill) return r <= 1 + pad / Math.max(hw, 1);
+      return Math.abs(r - 1) < pad / Math.max(Math.min(hw, hh), 1);
+    }
+    if (d.kind === 'line') {
+      const g = d.data || {};
+      const p1 = { x: (g.x1n || 0) * d.w, y: (g.y1n || 0) * d.h };
+      const p2 = { x: (g.x2n || 0) * d.w, y: (g.y2n || 0) * d.h };
+      return distToSegment({ x: lx, y: ly }, p1, p2) < pad;
+    }
+    if (d.kind === 'pen') {
+      const pts = (d.data && d.data.points) || [];
+      for (let i = 1; i < pts.length; i++) {
+        const p1 = { x: pts[i - 1][0] * d.w, y: pts[i - 1][1] * d.h };
+        const p2 = { x: pts[i][0] * d.w, y: pts[i][1] * d.h };
+        if (distToSegment({ x: lx, y: ly }, p1, p2) < pad) return true;
+      }
+      return false;
+    }
+    return false;
+  }
+
+  function hitTestResizeHandle(d, pos) {
+    const corners = getShapeCorners(d);
+    const hs = Math.max(12, canvas.width / 90);
+    for (let i = 0; i < 4; i++) {
+      if (Math.hypot(pos.x - corners[i].x, pos.y - corners[i].y) < hs) return i;
+    }
+    return null;
+  }
+
+  function hitTestRotateHandle(d, pos) {
+    const rp = getRotateHandlePos(d);
+    const hs = Math.max(14, canvas.width / 80);
+    return Math.hypot(pos.x - rp.x, pos.y - rp.y) < hs;
+  }
+
+  // ---------------------------------------------------------------------
+  // Rendering
+  // ---------------------------------------------------------------------
+  function drawGridOnto(targetCtx, w, h, size, offX, offY, color, visible) {
+    if (!visible || !size || size < 2) return;
+    targetCtx.save();
+    const startX = ((offX % size) + size) % size;
+    const startY = ((offY % size) + size) % size;
+    const outerWidth = Math.max(1, w / 700);
+    const innerWidth = Math.max(0.5, w / 1400);
+
+    function strokeLines(strokeColor, width) {
+      targetCtx.strokeStyle = strokeColor;
+      targetCtx.lineWidth = width;
+      for (let x = startX; x < w; x += size) {
+        targetCtx.beginPath(); targetCtx.moveTo(x, 0); targetCtx.lineTo(x, h); targetCtx.stroke();
+      }
+      for (let y = startY; y < h; y += size) {
+        targetCtx.beginPath(); targetCtx.moveTo(0, y); targetCtx.lineTo(w, y); targetCtx.stroke();
+      }
+    }
+
+    if (color === 'white') {
+      strokeLines('rgba(255,255,255,0.7)', outerWidth);
+    } else if (color === 'black') {
+      strokeLines('rgba(0,0,0,0.7)', outerWidth);
+    } else {
+      // 'gray' (default): a two-tone dark+light pass gives the lines
+      // contrast against both light and dark map art.
+      strokeLines('rgba(0,0,0,0.45)', outerWidth);
+      strokeLines('rgba(255,255,255,0.55)', innerWidth);
+    }
+    targetCtx.restore();
+  }
+
+  function drawGrid() {
+    if (suppressMainGrid) return;
+    drawGridOnto(ctx, canvas.width, canvas.height, gridSize, gridOffsetX, gridOffsetY, gridColor, gridVisible);
+  }
+
+  function drawShape(d) {
+    ctx.save();
+    ctx.translate(d.cx, d.cy);
+    ctx.rotate(toRad(d.rotation));
+    ctx.strokeStyle = d.color;
+    ctx.fillStyle = d.color;
+    ctx.lineWidth = Math.max(2, canvas.width / 450);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    const w = d.w, h = d.h;
+
+    const hasFill = (d.fill_opacity || 0) > 0.001;
+    if (d.kind === 'rect') {
+      if (hasFill) { ctx.globalAlpha = d.fill_opacity; ctx.fillRect(-w / 2, -h / 2, w, h); ctx.globalAlpha = 1; }
+      ctx.strokeRect(-w / 2, -h / 2, w, h);
+    } else if (d.kind === 'oval') {
+      ctx.beginPath();
+      ctx.ellipse(0, 0, Math.max(0.01, Math.abs(w / 2)), Math.max(0.01, Math.abs(h / 2)), 0, 0, Math.PI * 2);
+      if (hasFill) { ctx.globalAlpha = d.fill_opacity; ctx.fill(); ctx.globalAlpha = 1; }
+      ctx.stroke();
+    } else if (d.kind === 'line') {
+      const g = d.data || {};
+      ctx.beginPath();
+      ctx.moveTo((g.x1n || 0) * w, (g.y1n || 0) * h);
+      ctx.lineTo((g.x2n || 0) * w, (g.y2n || 0) * h);
+      ctx.stroke();
+    } else if (d.kind === 'pen') {
+      const pts = (d.data && d.data.points) || [];
+      if (pts.length > 1) {
+        ctx.beginPath();
+        ctx.moveTo(pts[0][0] * w, pts[0][1] * h);
+        for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0] * w, pts[i][1] * h);
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
+
+  function drawShapeOutline(d) {
+    const corners = getShapeCorners(d);
+    ctx.beginPath();
+    ctx.moveTo(corners[0].x, corners[0].y);
+    for (let i = 1; i < 4; i++) ctx.lineTo(corners[i].x, corners[i].y);
+    ctx.closePath();
+    ctx.stroke();
+    return corners;
+  }
+
+  function drawSelectionOverlay() {
+    if (selectedShapeIds.size === 0) return;
+    ctx.save();
+    ctx.strokeStyle = '#4d9eff';
+    ctx.lineWidth = Math.max(1.5, canvas.width / 900);
+    ctx.setLineDash([canvas.width / 150, canvas.width / 220]);
+
+    let primaryCorners = null;
+    selectedShapeIds.forEach((id) => {
+      const d = drawings.find((s) => s.id === id);
+      if (!d) return;
+      const corners = drawShapeOutline(d);
+      if (id === selectedShapeId) primaryCorners = { d, corners };
+    });
+    ctx.setLineDash([]);
+
+    // Resize/rotate handles only make sense for a single selected shape.
+    if (primaryCorners) {
+      const { d, corners } = primaryCorners;
+      if (shapeHandleMode === 'resize') {
+        const hs = Math.max(9, canvas.width / 130);
+        ctx.fillStyle = '#4d9eff';
+        corners.forEach((c) => ctx.fillRect(c.x - hs / 2, c.y - hs / 2, hs, hs));
+      }
+      if (shapeHandleMode === 'rotate') {
+        const top = { x: (corners[0].x + corners[1].x) / 2, y: (corners[0].y + corners[1].y) / 2 };
+        const rp = getRotateHandlePos(d);
+        ctx.beginPath();
+        ctx.moveTo(top.x, top.y);
+        ctx.lineTo(rp.x, rp.y);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(rp.x, rp.y, Math.max(8, canvas.width / 140), 0, Math.PI * 2);
+        ctx.fillStyle = '#4d9eff';
+        ctx.fill();
+      }
+    }
+    ctx.restore();
+  }
+
+  function lockIconRadius() { return Math.max(15, canvas.width / 55); }
+
+  function drawLockHoverIcon() {
+    if (hoveredLockedShapeId == null) return;
+    const d = drawings.find((s) => s.id === hoveredLockedShapeId);
+    if (!d) return;
+    const r = lockIconRadius();
+    ctx.save();
+    ctx.translate(d.cx, d.cy);
+    ctx.globalAlpha = 0.7;
+    ctx.fillStyle = '#14161d';
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.fill();
+    const scale = (r * 1.1) / 24;
+    ctx.translate(-12 * scale, -12 * scale);
+    ctx.scale(scale, scale);
+    ctx.strokeStyle = '#f2f2f2';
+    ctx.lineWidth = 2.2;
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    ctx.stroke(new Path2D(UNLOCK_ICON_PATH));
+    ctx.restore();
+  }
+
+  let previewShape = null; // the shape currently being drawn, shown live
+
+  function redraw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (bgLoaded) ctx.drawImage(bgImage, 0, 0, canvas.width, canvas.height);
+    drawGrid();
+    drawings.forEach(drawShape);
+    if (previewShape) drawShape(previewShape);
+    drawSelectionOverlay();
+    drawLockHoverIcon();
+  }
+
+  // ---------------------------------------------------------------------
+  // Data loading
+  // ---------------------------------------------------------------------
+  async function loadDrawings() {
+    const res = await fetch(`/api/maps/${mapId}/drawings`);
+    drawings = await res.json();
+    redraw();
+  }
+
+  async function loadPins() {
+    if (activeDrag && (activeDrag.type === 'move-pin' || activeDrag.type === 'resize-pin' || activeDrag.type === 'rotate-pin')) return;
+    const res = await fetch(`/api/maps/${mapId}/pins`);
+    pins = await res.json();
+    renderPins();
+  }
+
+  // ---------------------------------------------------------------------
+  // Pins
+  // ---------------------------------------------------------------------
+  function pinMarkup(p) {
+    const isChar = p.pin_type === 'character';
+    const scale = p.scale || 1;
+    const wPct = (gridSize * scale / naturalWidth) * 100;
+    const hPct = (gridSize * scale / naturalHeight) * 100;
+    const leftPct = (p.x / naturalWidth) * 100;
+    const topPct = (p.y / naturalHeight) * 100;
+    const borderColor = isChar ? (p.group_color || '#c9a24b') : '#c9a24b';
+    const dead = isChar && p.is_dead;
+    const avatarInner = isChar
+      ? (p.avatar_path ? `<img src="/uploads/${p.avatar_path}" alt="">` : USER_FALLBACK_ICON)
+      : `<img src="${PROP_ICON_SRC[p.icon_key] || PROP_ICON_SRC.paw}" alt="" class="prop-icon-img">`;
+    const label = isChar ? escapeHtml(p.char_name || '') : escapeHtml(p.icon_key || 'Marker');
+    const unlockOverlay = p.locked ? `<button type="button" class="pin-unlock-icon" data-unlock-pin="${p.id}" title="Unlock">${UNLOCK_SVG}</button>` : '';
+    // The label sits on `.map-pin` itself (never rotated); only the inner
+    // `.map-pin-visual` circle spins, so names stay upright and in place.
+    return `
+      <div class="map-pin" data-pin-id="${p.id}" data-pin-type="${p.pin_type}" data-locked="${!!p.locked}"
+           data-character-id="${p.character_id || ''}"
+           style="left:${leftPct}%; top:${topPct}%; width:${wPct}%; height:${hPct}%;">
+        <div class="map-pin-visual ${dead ? 'is-dead' : ''}" style="border-color:${borderColor}; transform: rotate(${p.rotation || 0}deg);">
+          <div class="map-pin-avatar">${avatarInner}</div>
+        </div>
+        <span class="map-pin-label">${label}</span>
+        ${unlockOverlay}
+      </div>`;
+  }
+
+  function renderPins() {
+    pinLayer.innerHTML = pins.map(pinMarkup).join('');
+    if (selectedPinId) positionPinBubble(selectedPinId);
+  }
+
+  function applyPinStyle(pin, el) {
+    const scale = pin.scale || 1;
+    const wPct = (gridSize * scale / naturalWidth) * 100;
+    const hPct = (gridSize * scale / naturalHeight) * 100;
+    const leftPct = (pin.x / naturalWidth) * 100;
+    const topPct = (pin.y / naturalHeight) * 100;
+    el.style.left = `${leftPct}%`;
+    el.style.top = `${topPct}%`;
+    el.style.width = `${wPct}%`;
+    el.style.height = `${hPct}%`;
+    const visual = el.querySelector('.map-pin-visual');
+    if (visual) visual.style.transform = `rotate(${pin.rotation || 0}deg)`;
+  }
+
+  function positionPinBubble(pinId) {
+    const el = pinLayer.querySelector(`[data-pin-id="${pinId}"]`);
+    if (!el) { pinBubble.hidden = true; return; }
+    const wrapRect = stageWrap.getBoundingClientRect();
+    const elRect = el.getBoundingClientRect();
+    const cx = elRect.left - wrapRect.left + elRect.width / 2;
+    const top = elRect.top - wrapRect.top - 14;
+    pinBubble.style.left = `${cx}px`;
+    pinBubble.style.top = `${top}px`;
+    pinBubble.hidden = false;
+    const pin = pins.find((p) => p.id === pinId);
+    pinViewBtn.style.display = pin && pin.pin_type === 'character' ? '' : 'none';
+  }
+
+  function positionShapeBubble() {
+    const d = drawings.find((s) => s.id === selectedShapeId);
+    if (!d) { shapeBubble.hidden = true; return; }
+    const wrapRect = stageWrap.getBoundingClientRect();
+    const corners = getShapeCorners(d).map((c) => ({
+      x: (c.x / naturalWidth) * wrapRect.width,
+      y: (c.y / naturalHeight) * wrapRect.height,
+    }));
+    const minX = Math.min(...corners.map((c) => c.x));
+    const maxX = Math.max(...corners.map((c) => c.x));
+    const minY = Math.min(...corners.map((c) => c.y));
+    const maxY = Math.max(...corners.map((c) => c.y));
+    const midY = (minY + maxY) / 2;
+    // Place the bubble to the side of the shape (never above it), so it can
+    // never overlap the on-canvas resize corners or the rotate handle, which
+    // both sit near the top of the shape's bounding box.
+    shapeBubble.hidden = false;
+    const bubbleRect = shapeBubble.getBoundingClientRect();
+    const bubbleW = bubbleRect.width || 118;
+    const gutter = 18;
+    let left = maxX + gutter;
+    let translateX = '0%';
+    if (left + bubbleW > wrapRect.width) {
+      left = minX - gutter;
+      translateX = '-100%';
+    }
+    shapeBubble.style.left = `${left}px`;
+    shapeBubble.style.top = `${midY}px`;
+    shapeBubble.style.transform = `translate(${translateX}, -50%)`;
+  }
+
+  // ---- Selection ----
+  function selectShape(id) {
+    selectedShapeIds = new Set([id]);
+    selectedShapeId = id;
+    shapeHandleMode = null;
+    shapeResizeToggle.classList.remove('active');
+    shapeRotateToggle.classList.remove('active');
+    deselectPin();
+    positionShapeBubble();
+    redraw();
+  }
+  function deselectShape() {
+    if (selectedShapeIds.size === 0) return;
+    selectedShapeIds = new Set();
+    selectedShapeId = null;
+    shapeHandleMode = null;
+    shapeResizeToggle.classList.remove('active');
+    shapeRotateToggle.classList.remove('active');
+    shapeBubble.hidden = true;
+    redraw();
+  }
+  // Ctrl/Cmd+click: add or remove a shape from the current multi-selection.
+  function toggleShapeSelection(id) {
+    if (selectedShapeIds.has(id)) selectedShapeIds.delete(id);
+    else selectedShapeIds.add(id);
+    if (selectedShapeIds.size === 0) {
+      deselectShape();
+    } else if (selectedShapeIds.size === 1) {
+      selectedShapeId = [...selectedShapeIds][0];
+      shapeHandleMode = null;
+      shapeResizeToggle.classList.remove('active');
+      shapeRotateToggle.classList.remove('active');
+      deselectPin();
+      positionShapeBubble();
+      redraw();
+    } else {
+      // Multiple shapes selected: hide the per-shape bubble (resize/rotate/
+      // lock/delete for a single object don't make sense for a group).
+      selectedShapeId = null;
+      shapeHandleMode = null;
+      shapeBubble.hidden = true;
+      deselectPin();
+      redraw();
+    }
+  }
+  function selectPin(pinId) {
+    selectedPinId = pinId;
+    deselectShape();
+    positionPinBubble(pinId);
+  }
+  function deselectPin() {
+    if (selectedPinId == null) return;
+    selectedPinId = null;
+    pinBubble.hidden = true;
+  }
+
+  shapeResizeToggle.addEventListener('click', () => {
+    shapeHandleMode = shapeHandleMode === 'resize' ? null : 'resize';
+    shapeResizeToggle.classList.toggle('active', shapeHandleMode === 'resize');
+    shapeRotateToggle.classList.remove('active');
+    redraw();
+  });
+  shapeRotateToggle.addEventListener('click', () => {
+    shapeHandleMode = shapeHandleMode === 'rotate' ? null : 'rotate';
+    shapeRotateToggle.classList.toggle('active', shapeHandleMode === 'rotate');
+    shapeResizeToggle.classList.remove('active');
+    redraw();
+  });
+  shapeDeleteBtn.addEventListener('click', () => {
+    if (selectedShapeIds.size > 1) {
+      [...selectedShapeIds].forEach((id) => {
+        const d = drawings.find((s) => s.id === id);
+        if (d) deleteShape(d);
+      });
+      return;
+    }
+    const d = drawings.find((s) => s.id === selectedShapeId);
+    if (d) deleteShape(d);
+  });
+  shapeLockBtn.addEventListener('click', async () => {
+    const ids = selectedShapeIds.size ? [...selectedShapeIds] : (selectedShapeId != null ? [selectedShapeId] : []);
+    for (const id of ids) {
+      const d = drawings.find((s) => s.id === id);
+      if (!d) continue;
+      await lockShape(d);
+    }
+    deselectShape();
+  });
+  async function lockShape(d) {
+    const before = { locked: false };
+    const after = { locked: true };
+    d.locked = true;
+    await persistShapeFields(d, after);
+    pushCommand({
+      label: 'lock-shape',
+      undo: async () => { d.locked = false; await persistShapeFields(d, before); redraw(); },
+      redo: async () => { d.locked = true; await persistShapeFields(d, after); redraw(); },
+    });
+  }
+  async function unlockShape(d) {
+    const before = { locked: true };
+    const after = { locked: false };
+    d.locked = false;
+    redraw();
+    await persistShapeFields(d, after);
+    pushCommand({
+      label: 'unlock-shape',
+      undo: async () => { d.locked = true; await persistShapeFields(d, before); redraw(); },
+      redo: async () => { d.locked = false; await persistShapeFields(d, after); redraw(); },
+    });
+  }
+
+  document.addEventListener('click', (e) => {
+    if (e.target.closest('.map-pin') || e.target.closest('#pin-action-bubble')) return;
+    deselectPin();
+  });
+
+  // ---------------------------------------------------------------------
+  // Persistence + undo/redo command factories
+  // ---------------------------------------------------------------------
+  function serializeShapeForCreate(d) {
+    return { kind: d.kind, data: d.data, cx: d.cx, cy: d.cy, w: d.w, h: d.h, rotation: d.rotation, color: d.color, fill: d.fill, fill_opacity: d.fill_opacity, locked: !!d.locked };
+  }
+  async function persistShapeFields(d, fields) {
+    await fetch(`/api/maps/${mapId}/drawings/${d.id}/update`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(fields),
+    });
+  }
+  function makeShapeTransformCommand(d, before, after) {
+    return {
+      label: 'transform-shape',
+      undo: async () => { Object.assign(d, before); await persistShapeFields(d, before); redraw(); positionShapeBubble(); },
+      redo: async () => { Object.assign(d, after); await persistShapeFields(d, after); redraw(); positionShapeBubble(); },
+    };
+  }
+  function makeAddShapeCommand(d) {
+    return {
+      label: 'add-shape',
+      undo: async () => {
+        await fetch(`/api/maps/${mapId}/drawings/${d.id}/delete`, { method: 'POST' });
+        const idx = drawings.findIndex((s) => s.id === d.id);
+        if (idx >= 0) drawings.splice(idx, 1);
+        if (selectedShapeId === d.id) deselectShape();
+        redraw();
+      },
+      redo: async () => {
+        const res = await fetch(`/api/maps/${mapId}/drawings`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(serializeShapeForCreate(d)),
+        });
+        const json = await res.json();
+        d.id = json.id;
+        drawings.push(d);
+        redraw();
+      },
+    };
+  }
+  function makeDeleteShapeCommand(d, index) {
+    return {
+      label: 'delete-shape',
+      undo: async () => {
+        const res = await fetch(`/api/maps/${mapId}/drawings`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(serializeShapeForCreate(d)),
+        });
+        const json = await res.json();
+        d.id = json.id;
+        drawings.splice(Math.min(index, drawings.length), 0, d);
+        redraw();
+      },
+      redo: async () => {
+        await fetch(`/api/maps/${mapId}/drawings/${d.id}/delete`, { method: 'POST' });
+        const idx = drawings.findIndex((s) => s.id === d.id);
+        if (idx >= 0) drawings.splice(idx, 1);
+        if (selectedShapeId === d.id) deselectShape();
+        redraw();
+      },
+    };
+  }
+  async function deleteShape(d) {
+    const index = drawings.findIndex((s) => s.id === d.id);
+    await fetch(`/api/maps/${mapId}/drawings/${d.id}/delete`, { method: 'POST' });
+    drawings.splice(index, 1);
+    if (selectedShapeId === d.id) deselectShape();
+    redraw();
+    pushCommand(makeDeleteShapeCommand(d, index));
+  }
+
+  function serializePinForCreate(p) {
+    return { pin_type: p.pin_type, icon_key: p.icon_key, x: p.x, y: p.y, scale: p.scale || 1, rotation: p.rotation || 0, locked: !!p.locked };
+  }
+  async function persistPinFields(p, fields) {
+    await fetch(`/api/maps/${mapId}/pins/${p.id}/update`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(fields),
+    });
+  }
+  function makePinTransformCommand(p, before, after) {
+    return {
+      label: 'transform-pin',
+      undo: async () => { Object.assign(p, before); renderPins(); await persistPinFields(p, before); },
+      redo: async () => { Object.assign(p, after); renderPins(); await persistPinFields(p, after); },
+    };
+  }
+  function makeAddPinCommand(p) {
+    return {
+      label: 'add-pin',
+      undo: async () => {
+        await fetch(`/api/maps/${mapId}/pins/${p.id}/delete`, { method: 'POST' });
+        const idx = pins.findIndex((x) => x.id === p.id);
+        if (idx >= 0) pins.splice(idx, 1);
+        if (selectedPinId === p.id) deselectPin();
+        renderPins();
+      },
+      redo: async () => {
+        const res = await fetch(`/api/maps/${mapId}/pins`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(serializePinForCreate(p)),
+        });
+        const json = await res.json();
+        p.id = json.id;
+        pins.push(p);
+        renderPins();
+      },
+    };
+  }
+  function makeDeletePinCommand(p, index) {
+    return {
+      label: 'delete-pin',
+      undo: async () => {
+        const res = await fetch(`/api/maps/${mapId}/pins`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(serializePinForCreate(p)),
+        });
+        const json = await res.json();
+        p.id = json.id;
+        pins.splice(Math.min(index, pins.length), 0, p);
+        renderPins();
+      },
+      redo: async () => {
+        await fetch(`/api/maps/${mapId}/pins/${p.id}/delete`, { method: 'POST' });
+        const idx = pins.findIndex((x) => x.id === p.id);
+        if (idx >= 0) pins.splice(idx, 1);
+        if (selectedPinId === p.id) deselectPin();
+        renderPins();
+      },
+    };
+  }
+  async function deletePinObj(pin) {
+    const index = pins.findIndex((p) => p.id === pin.id);
+    await fetch(`/api/maps/${mapId}/pins/${pin.id}/delete`, { method: 'POST' });
+    pins.splice(index, 1);
+    if (selectedPinId === pin.id) deselectPin();
+    renderPins();
+    pushCommand(makeDeletePinCommand(pin, index));
+  }
+
+  // Live color change on a selected shape (color swatches already exist in
+  // the toolbar for setting the *next* drawing's color — reuse them here).
+  // Live fill-opacity change on a selected shape (0 = no visible fill).
+  const fillOpacityInput = document.getElementById('fill-opacity');
+  let fillOpacityBefore = null;
+  fillOpacityInput.addEventListener('pointerdown', () => {
+    if (selectedShapeId == null) return;
+    const d = drawings.find((s) => s.id === selectedShapeId);
+    fillOpacityBefore = d ? d.fill_opacity : null;
+  });
+  fillOpacityInput.addEventListener('input', () => {
+    if (selectedShapeId == null) return;
+    const d = drawings.find((s) => s.id === selectedShapeId);
+    if (!d) return;
+    d.fill_opacity = getFillOpacity();
+    redraw();
+  });
+  fillOpacityInput.addEventListener('change', async () => {
+    if (selectedShapeId == null || fillOpacityBefore == null) return;
+    const d = drawings.find((s) => s.id === selectedShapeId);
+    if (!d) return;
+    const before = { fill_opacity: fillOpacityBefore };
+    const after = { fill_opacity: d.fill_opacity };
+    fillOpacityBefore = null;
+    if (before.fill_opacity === after.fill_opacity) return;
+    await persistShapeFields(d, after);
+    pushCommand({
+      label: 'fill-opacity-shape',
+      undo: async () => { d.fill_opacity = before.fill_opacity; await persistShapeFields(d, before); redraw(); },
+      redo: async () => { d.fill_opacity = after.fill_opacity; await persistShapeFields(d, after); redraw(); },
+    });
+  });
+
+  document.querySelectorAll('.color-swatch').forEach((sw) => {
+    sw.addEventListener('click', () => {
+      if (selectedShapeId == null) return;
+      const d = drawings.find((s) => s.id === selectedShapeId);
+      if (!d) return;
+      const before = { color: d.color };
+      const after = { color: sw.dataset.color };
+      d.color = after.color;
+      redraw();
+      persistShapeFields(d, after);
+      pushCommand({
+        label: 'recolor-shape',
+        undo: async () => { d.color = before.color; await persistShapeFields(d, before); redraw(); },
+        redo: async () => { d.color = after.color; await persistShapeFields(d, after); redraw(); },
+      });
+    });
+  });
+
+  // ---- Pin drag (move) ----
+  async function unlockPin(pin) {
+    const before = { locked: true };
+    const after = { locked: false };
+    pin.locked = false;
+    renderPins();
+    await persistPinFields(pin, after);
+    pushCommand({
+      label: 'unlock-pin',
+      undo: async () => { pin.locked = true; await persistPinFields(pin, before); renderPins(); },
+      redo: async () => { pin.locked = false; await persistPinFields(pin, after); renderPins(); },
+    });
+  }
+  async function lockPin(pin) {
+    const before = { locked: false };
+    const after = { locked: true };
+    pin.locked = true;
+    await persistPinFields(pin, after);
+    pushCommand({
+      label: 'lock-pin',
+      undo: async () => { pin.locked = false; await persistPinFields(pin, before); renderPins(); },
+      redo: async () => { pin.locked = true; await persistPinFields(pin, after); renderPins(); },
+    });
+  }
+
+  pinLayer.addEventListener('mousedown', (e) => {
+    const unlockBtn = e.target.closest('.pin-unlock-icon');
+    if (unlockBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      const pinId = Number(unlockBtn.dataset.unlockPin);
+      const pin = pins.find((p) => p.id === pinId);
+      if (pin) unlockPin(pin);
+      return;
+    }
+    const el = e.target.closest('.map-pin');
+    if (!el) return;
+    const pin = pins.find((p) => String(p.id) === el.dataset.pinId);
+    if (!pin) return;
+    if (pin.locked) return; // locked pins can't be selected, dragged, or erased
+    if (currentTool === 'eraser') { e.preventDefault(); deletePinObj(pin); return; }
+    if (currentTool !== 'select') return;
+    const pos = eventPos(e);
+    activeDrag = { type: 'move-pin', pin, el, startPos: pos, startX: pin.x, startY: pin.y, moved: false };
+    e.preventDefault();
+  });
+
+  pinResizeBtn.addEventListener('mousedown', (e) => {
+    if (!selectedPinId) return;
+    const pin = pins.find((p) => p.id === selectedPinId);
+    const el = pinLayer.querySelector(`[data-pin-id="${selectedPinId}"]`);
+    if (!pin || !el) return;
+    const rect = el.getBoundingClientRect();
+    const centerClientX = rect.left + rect.width / 2;
+    const centerClientY = rect.top + rect.height / 2;
+    const startDist = Math.max(1, Math.hypot(e.clientX - centerClientX, e.clientY - centerClientY));
+    activeDrag = { type: 'resize-pin', pin, el, centerClientX, centerClientY, startDist, startScale: pin.scale || 1 };
+    e.preventDefault();
+    e.stopPropagation();
+  });
+
+  pinRotateBtn.addEventListener('mousedown', (e) => {
+    if (!selectedPinId) return;
+    const pin = pins.find((p) => p.id === selectedPinId);
+    const el = pinLayer.querySelector(`[data-pin-id="${selectedPinId}"]`);
+    if (!pin || !el) return;
+    const rect = el.getBoundingClientRect();
+    const centerClientX = rect.left + rect.width / 2;
+    const centerClientY = rect.top + rect.height / 2;
+    const startAngle = Math.atan2(e.clientY - centerClientY, e.clientX - centerClientX) * (180 / Math.PI);
+    activeDrag = { type: 'rotate-pin', pin, el, centerClientX, centerClientY, startAngle, startRotation: pin.rotation || 0 };
+    e.preventDefault();
+    e.stopPropagation();
+  });
+
+  pinLockBtn.addEventListener('click', async () => {
+    const pin = pins.find((p) => p.id === selectedPinId);
+    if (!pin) return;
+    await lockPin(pin);
+    deselectPin();
+    renderPins();
+  });
+
+  pinDeleteBtn.addEventListener('click', () => {
+    const pin = pins.find((p) => p.id === selectedPinId);
+    if (pin) deletePinObj(pin);
+  });
+
+  pinViewBtn.addEventListener('click', () => {
+    if (!selectedPinId) return;
+    const pin = pins.find((p) => p.id === selectedPinId);
+    if (pin && pin.character_id) openDetailModal(pin.character_id);
+  });
+
+  // ---------------------------------------------------------------------
+  // Detail modal (mirrors the battle screen's character viewer)
+  // ---------------------------------------------------------------------
+  const detailModal = document.getElementById('detail-modal');
+  const detailTitle = document.getElementById('detail-modal-title');
+  const detailBody = document.getElementById('detail-modal-body');
+
+  async function openDetailModal(characterId) {
+    const res = await fetch(`/api/characters/${characterId}/detail`);
+    const c = await res.json();
+    detailTitle.textContent = c.name;
+    const sheetsHtml = c.sheets.length
+      ? `<div class="sheet-thumbs">${c.sheets.map((s) => `<div class="sheet-thumb"><img src="/uploads/${s.image_path}" data-lightbox-src="/uploads/${s.image_path}"></div>`).join('')}</div>`
+      : `<p class="hint-text">No sheet images attached.</p>`;
+    detailBody.innerHTML = `
+      <div class="detail-header">
+        <div class="avatar-frame" style="width:72px;height:72px;">${c.avatar_path ? `<img src="/uploads/${c.avatar_path}">` : ''}</div>
+        <div>
+          <div class="dossier-name">${escapeHtml(c.name)}</div>
+          <div class="dossier-meta">Lvl ${c.level} &middot; ${c.group_name || 'Ungrouped'}</div>
+        </div>
+      </div>
+      <div class="dossier-stats" style="margin-top:16px;">
+        <div class="stat-pill"><span class="val">${c.str_score}</span><span class="lbl">STR</span></div>
+        <div class="stat-pill"><span class="val">${c.dex_score}</span><span class="lbl">DEX</span></div>
+        <div class="stat-pill"><span class="val">${c.con_score}</span><span class="lbl">CON</span></div>
+        <div class="stat-pill"><span class="val">${c.int_score}</span><span class="lbl">INT</span></div>
+        <div class="stat-pill"><span class="val">${c.wis_score}</span><span class="lbl">WIS</span></div>
+        <div class="stat-pill"><span class="val">${c.cha_score}</span><span class="lbl">CHA</span></div>
+      </div>
+      <div class="dossier-hp-ac" style="margin-top:12px;">
+        <span class="badge-hp">${c.max_hp} HP</span>
+        <span class="badge-ac">AC ${c.armor_class}</span>
+      </div>
+      <p style="font-size:13px; color:var(--parchment-dim); line-height:1.6; margin-top:14px;">${escapeHtml(c.notes) || '<em>No notes recorded.</em>'}</p>
+      <div class="form-section-title" style="margin-top:18px;">Sheets</div>
+      ${sheetsHtml}
+    `;
+    detailModal.hidden = false;
+  }
+  document.getElementById('close-detail-modal').addEventListener('click', () => { detailModal.hidden = true; });
+  detailModal.addEventListener('click', (e) => { if (e.target === detailModal) detailModal.hidden = true; });
+
+  // ---------------------------------------------------------------------
+  // Toolbar
+  // ---------------------------------------------------------------------
+  const MODIFIER_HINT_KEY = 'ledger-map-modifier-hint-dismissed';
+  const modifierHintEl = document.getElementById('modifier-hint');
+  let modifierHintTimer = null;
+
+  function hideModifierHint() {
+    modifierHintEl.hidden = true;
+    clearTimeout(modifierHintTimer);
+  }
+  function dismissModifierHintForGood() {
+    hideModifierHint();
+    try { localStorage.setItem(MODIFIER_HINT_KEY, '1'); } catch (err) { /* ignore */ }
+  }
+  function showModifierHintIfNeeded() {
+    let alreadySeen = false;
+    try { alreadySeen = !!localStorage.getItem(MODIFIER_HINT_KEY); } catch (err) { /* ignore */ }
+    if (alreadySeen) return;
+    modifierHintEl.hidden = false;
+    clearTimeout(modifierHintTimer);
+    modifierHintTimer = setTimeout(hideModifierHint, 6000);
+  }
+  // The hint disappears the moment the user actually uses Shift/Alt, so it
+  // never nags again once they've learned the shortcut.
+  document.addEventListener('keydown', (e) => {
+    if (!modifierHintEl.hidden && (e.key === 'Shift' || e.key === 'Alt')) {
+      dismissModifierHintForGood();
+    }
+  });
+
+  document.querySelectorAll('.map-tool-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.map-tool-btn').forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentTool = btn.dataset.tool;
+      deselectPin();
+      deselectShape();
+      canvas.classList.toggle('tool-eraser', currentTool === 'eraser');
+      if (['line', 'rect', 'oval'].includes(currentTool)) {
+        showModifierHintIfNeeded();
+      } else {
+        hideModifierHint();
+      }
+    });
+  });
+
+  function getColor() { return document.getElementById('map-color-input').value; }
+  function getFillOpacity() { return parseInt(document.getElementById('fill-opacity').value, 10) / 100; }
+
+  document.getElementById('clear-drawings-btn').addEventListener('click', async () => {
+    if (!drawings.length) return;
+    const ok = window.confirmAction ? await window.confirmAction('Clear all drawings on this map?') : confirm('Clear all drawings on this map?');
+    if (!ok) return;
+    const snapshot = drawings.map((d) => ({ ...d }));
+    await fetch(`/api/maps/${mapId}/drawings/clear`, { method: 'POST' });
+    drawings = [];
+    deselectShape();
+    redraw();
+    pushCommand({
+      label: 'clear-drawings',
+      undo: async () => {
+        const restored = [];
+        for (const s of snapshot) {
+          const res = await fetch(`/api/maps/${mapId}/drawings`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(serializeShapeForCreate(s)),
+          });
+          const json = await res.json();
+          restored.push({ ...s, id: json.id });
+        }
+        drawings = restored;
+        redraw();
+      },
+      redo: async () => {
+        await fetch(`/api/maps/${mapId}/drawings/clear`, { method: 'POST' });
+        drawings = [];
+        deselectShape();
+        redraw();
+      },
+    });
+  });
+
+  document.getElementById('link-battle-checkbox').addEventListener('change', async (e) => {
+    linkedToBattle = e.target.checked;
+    await fetch(`/api/maps/${mapId}/settings`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ linked_to_battle: linkedToBattle }),
+    });
+    await loadPins();
+    setupPolling();
+  });
+
+  function setupPolling() {
+    if (pollTimer) clearInterval(pollTimer);
+    if (linkedToBattle) pollTimer = setInterval(loadPins, 4000);
+  }
+
+  // ---------------------------------------------------------------------
+  // Shape geometry helpers for the draw tools (shift = from-center, alt = 1:1 lock)
+  // ---------------------------------------------------------------------
+  function computeBoxGeometry(start, current, shiftKey, altKey) {
+    let w = current.x - start.x;
+    let h = current.y - start.y;
+    if (altKey) {
+      const mag = Math.max(Math.abs(w), Math.abs(h));
+      w = (w < 0 ? -1 : 1) * mag;
+      h = (h < 0 ? -1 : 1) * mag;
+    }
+    if (shiftKey) {
+      const width = Math.abs(w) * 2;
+      const height = Math.abs(h) * 2;
+      return { cx: start.x, cy: start.y, w: width, h: height };
+    }
+    const x = Math.min(start.x, start.x + w), y = Math.min(start.y, start.y + h);
+    const ww = Math.abs(w), hh = Math.abs(h);
+    return { cx: x + ww / 2, cy: y + hh / 2, w: ww, h: hh };
+  }
+
+  function computeLineGeometry(start, current, shiftKey, altKey) {
+    let x2 = current.x, y2 = current.y;
+    if (altKey) {
+      const dx = x2 - start.x, dy = y2 - start.y;
+      const dist = Math.hypot(dx, dy);
+      const angle = Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) * (Math.PI / 4);
+      x2 = start.x + Math.cos(angle) * dist;
+      y2 = start.y + Math.sin(angle) * dist;
+    }
+    let x1 = start.x, y1 = start.y;
+    if (shiftKey) {
+      x1 = start.x - (x2 - start.x);
+      y1 = start.y - (y2 - start.y);
+    }
+    const minX = Math.min(x1, x2), maxX = Math.max(x1, x2);
+    const minY = Math.min(y1, y2), maxY = Math.max(y1, y2);
+    const w = Math.max(1e-3, maxX - minX), h = Math.max(1e-3, maxY - minY);
+    const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+    return { cx, cy, w, h, data: { x1n: (x1 - cx) / w, y1n: (y1 - cy) / h, x2n: (x2 - cx) / w, y2n: (y2 - cy) / h } };
+  }
+
+  function finalizePenShape(points) {
+    const xs = points.map((p) => p[0]), ys = points.map((p) => p[1]);
+    const minX = Math.min(...xs), maxX = Math.max(...xs);
+    const minY = Math.min(...ys), maxY = Math.max(...ys);
+    const w = Math.max(1e-3, maxX - minX), h = Math.max(1e-3, maxY - minY);
+    const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+    const norm = points.map(([x, y]) => [(x - cx) / w, (y - cy) / h]);
+    return { cx, cy, w, h, data: { points: norm } };
+  }
+
+  // ---------------------------------------------------------------------
+  // Canvas interactions
+  // ---------------------------------------------------------------------
+  let drawState = null;   // creating a brand-new shape, or moving the grid
+  let activeDrag = null;  // manipulating an existing shape or pin
+
+  canvas.addEventListener('mousedown', (e) => {
+    const pos = eventPos(e);
+
+    if (currentTool === 'select') {
+      // Clicking the hover-unlock icon on a locked shape takes priority.
+      if (hoveredLockedShapeId != null) {
+        const locked = drawings.find((s) => s.id === hoveredLockedShapeId);
+        if (locked && Math.hypot(pos.x - locked.cx, pos.y - locked.cy) < lockIconRadius()) {
+          unlockShape(locked);
+          hoveredLockedShapeId = null;
+          return;
+        }
+      }
+      if (selectedShapeId != null && shapeHandleMode === 'resize') {
+        const d = drawings.find((s) => s.id === selectedShapeId);
+        if (d) {
+          const corner = hitTestResizeHandle(d, pos);
+          if (corner != null) {
+            const before = { cx: d.cx, cy: d.cy, w: d.w, h: d.h, rotation: d.rotation };
+            const corners = getShapeCorners(d);
+            const anchor = corners[(corner + 2) % 4];
+            const axes = unitAxes(d.rotation);
+            activeDrag = { type: 'resize-shape', d, anchor, axes, before };
+            return;
+          }
+        }
+      }
+      if (selectedShapeId != null && shapeHandleMode === 'rotate') {
+        const d = drawings.find((s) => s.id === selectedShapeId);
+        if (d && hitTestRotateHandle(d, pos)) {
+          const before = { cx: d.cx, cy: d.cy, w: d.w, h: d.h, rotation: d.rotation };
+          const startAngle = Math.atan2(pos.y - d.cy, pos.x - d.cx) * (180 / Math.PI);
+          activeDrag = { type: 'rotate-shape', d, before, startAngle, startRotation: d.rotation || 0 };
+          return;
+        }
+      }
+      const multiKey = e.ctrlKey || e.metaKey;
+      for (let i = drawings.length - 1; i >= 0; i--) {
+        const cand = drawings[i];
+        if (cand.locked) continue;
+        if (hitTestShape(cand, pos)) {
+          if (multiKey) {
+            toggleShapeSelection(cand.id);
+          } else if (!selectedShapeIds.has(cand.id)) {
+            selectShape(cand.id);
+          }
+          beginGroupMoveDrag(pos);
+          return;
+        }
+      }
+      if (!multiKey) deselectShape();
+      return;
+    }
+
+    if (currentTool === 'eraser') {
+      for (let i = drawings.length - 1; i >= 0; i--) {
+        if (drawings[i].locked) continue;
+        if (hitTestShape(drawings[i], pos)) { deleteShape(drawings[i]); return; }
+      }
+      return;
+    }
+
+    if (currentTool === 'move-grid') {
+      drawState = { tool: 'move-grid', start: pos, origOffsetX: gridOffsetX, origOffsetY: gridOffsetY };
+      return;
+    }
+    if (currentTool.startsWith('prop-')) {
+      const iconKey = currentTool.replace('prop-', '');
+      placeProp(pos, iconKey);
+      return;
+    }
+    if (['line', 'rect', 'oval'].includes(currentTool)) {
+      drawState = { tool: currentTool, start: pos };
+    } else if (currentTool === 'pen') {
+      drawState = { tool: 'pen', points: [[pos.x, pos.y]] };
+    }
+  });
+
+  function beginGroupMoveDrag(pos) {
+    const ids = [...selectedShapeIds];
+    const starts = new Map();
+    ids.forEach((id) => {
+      const d = drawings.find((s) => s.id === id);
+      if (d) starts.set(id, { cx: d.cx, cy: d.cy });
+    });
+    activeDrag = { type: 'group-move-shapes', ids, starts, startPos: pos, moved: false };
+  }
+
+  canvas.addEventListener('mousemove', (e) => {
+    // Hover detection for the "click to unlock" icon (select tool only).
+    if (currentTool === 'select' && !drawState && !activeDrag) {
+      const pos = eventPos(e);
+      let hit = null;
+      for (let i = drawings.length - 1; i >= 0; i--) {
+        if (drawings[i].locked && hitTestShape(drawings[i], pos)) { hit = drawings[i].id; break; }
+      }
+      if (hit !== hoveredLockedShapeId) { hoveredLockedShapeId = hit; redraw(); }
+    }
+
+    if (!drawState) return;
+    const pos = eventPos(e);
+
+    if (drawState.tool === 'move-grid') {
+      gridOffsetX = drawState.origOffsetX + (pos.x - drawState.start.x);
+      gridOffsetY = drawState.origOffsetY + (pos.y - drawState.start.y);
+      redraw();
+      return;
+    }
+    if (drawState.tool === 'pen') {
+      const pts = drawState.points;
+      const last = pts[pts.length - 1];
+      if (Math.hypot(pos.x - last[0], pos.y - last[1]) > 2) pts.push([pos.x, pos.y]);
+      if (pts.length > 1) {
+        const g = finalizePenShape(pts);
+        previewShape = { kind: 'pen', cx: g.cx, cy: g.cy, w: g.w, h: g.h, rotation: 0, data: g.data, color: getColor(), fill: false, fill_opacity: 1 };
+      }
+      redraw();
+      return;
+    }
+    if (drawState.tool === 'line') {
+      const g = computeLineGeometry(drawState.start, pos, e.shiftKey, e.altKey);
+      previewShape = { kind: 'line', cx: g.cx, cy: g.cy, w: g.w, h: g.h, rotation: 0, data: g.data, color: getColor(), fill: false, fill_opacity: 1 };
+      redraw();
+    } else if (drawState.tool === 'rect' || drawState.tool === 'oval') {
+      const g = computeBoxGeometry(drawState.start, pos, e.shiftKey, e.altKey);
+      previewShape = { kind: drawState.tool, cx: g.cx, cy: g.cy, w: g.w, h: g.h, rotation: 0, data: {}, color: getColor(), fill: true, fill_opacity: getFillOpacity() };
+      redraw();
+    }
+  });
+
+  window.addEventListener('mousemove', (e) => {
+    if (!activeDrag) return;
+
+    if (activeDrag.type === 'group-move-shapes') {
+      const pos = eventPos(e);
+      const dx = pos.x - activeDrag.startPos.x, dy = pos.y - activeDrag.startPos.y;
+      if (Math.hypot(dx, dy) > 1) activeDrag.moved = true;
+      activeDrag.ids.forEach((id) => {
+        const d = drawings.find((s) => s.id === id);
+        const start = activeDrag.starts.get(id);
+        if (d && start) { d.cx = start.cx + dx; d.cy = start.cy + dy; }
+      });
+      redraw();
+      if (selectedShapeId != null) positionShapeBubble();
+      return;
+    }
+    if (activeDrag.type === 'resize-shape') {
+      const pos = eventPos(e);
+      const d = activeDrag.d;
+      const axes = activeDrag.axes;
+      const vec = { x: pos.x - activeDrag.anchor.x, y: pos.y - activeDrag.anchor.y };
+      let du = vec.x * axes.u.x + vec.y * axes.u.y;
+      let dv = vec.x * axes.v.x + vec.y * axes.v.y;
+      if (e.altKey) {
+        // Lock to a 1:1 aspect ratio, using whichever axis moved further.
+        const mag = Math.max(Math.abs(du), Math.abs(dv));
+        du = (du < 0 ? -1 : 1) * mag;
+        dv = (dv < 0 ? -1 : 1) * mag;
+      }
+      if (e.shiftKey) {
+        // Resize symmetrically from the shape's original center instead of
+        // from the opposite corner.
+        d.w = Math.max(6, Math.abs(du) * 2);
+        d.h = Math.max(6, Math.abs(dv) * 2);
+        d.cx = activeDrag.before.cx;
+        d.cy = activeDrag.before.cy;
+      } else {
+        // Reconstruct the (possibly alt-adjusted) dragged-corner position so
+        // the center is derived from the same du/dv used for w/h, not the
+        // raw mouse position.
+        const effX = activeDrag.anchor.x + axes.u.x * du + axes.v.x * dv;
+        const effY = activeDrag.anchor.y + axes.u.y * du + axes.v.y * dv;
+        d.w = Math.max(6, Math.abs(du));
+        d.h = Math.max(6, Math.abs(dv));
+        d.cx = (activeDrag.anchor.x + effX) / 2;
+        d.cy = (activeDrag.anchor.y + effY) / 2;
+      }
+      redraw();
+      positionShapeBubble();
+      return;
+    }
+    if (activeDrag.type === 'rotate-shape') {
+      const pos = eventPos(e);
+      const d = activeDrag.d;
+      const angleNow = Math.atan2(pos.y - d.cy, pos.x - d.cx) * (180 / Math.PI);
+      d.rotation = activeDrag.startRotation + (angleNow - activeDrag.startAngle);
+      redraw();
+      positionShapeBubble();
+      return;
+    }
+    if (activeDrag.type === 'move-pin') {
+      const pos = eventPos(e);
+      const pin = pins.find((p) => p.id === activeDrag.pin.id);
+      if (!pin) return;
+      const dx = pos.x - activeDrag.startPos.x, dy = pos.y - activeDrag.startPos.y;
+      if (Math.hypot(dx, dy) > 3) activeDrag.moved = true;
+      pin.x = activeDrag.startX + dx;
+      pin.y = activeDrag.startY + dy;
+      applyPinStyle(pin, activeDrag.el);
+      if (selectedPinId === pin.id) positionPinBubble(pin.id);
+      return;
+    }
+    if (activeDrag.type === 'resize-pin') {
+      const dist = Math.max(1, Math.hypot(e.clientX - activeDrag.centerClientX, e.clientY - activeDrag.centerClientY));
+      let newScale = activeDrag.startScale * (dist / activeDrag.startDist);
+      newScale = Math.max(0.3, Math.min(5, newScale));
+      const pin = pins.find((p) => p.id === activeDrag.pin.id);
+      if (!pin) return;
+      pin.scale = newScale;
+      applyPinStyle(pin, activeDrag.el);
+      positionPinBubble(pin.id);
+      return;
+    }
+    if (activeDrag.type === 'rotate-pin') {
+      const angleNow = Math.atan2(e.clientY - activeDrag.centerClientY, e.clientX - activeDrag.centerClientX) * (180 / Math.PI);
+      const pin = pins.find((p) => p.id === activeDrag.pin.id);
+      if (!pin) return;
+      pin.rotation = activeDrag.startRotation + (angleNow - activeDrag.startAngle);
+      applyPinStyle(pin, activeDrag.el);
+      positionPinBubble(pin.id);
+      return;
+    }
+  });
+
+  window.addEventListener('mouseup', async (e) => {
+    if (activeDrag) {
+      const drag = activeDrag;
+      activeDrag = null;
+
+      if (drag.type === 'group-move-shapes') {
+        if (drag.moved) {
+          const commands = [];
+          for (const id of drag.ids) {
+            const d = drawings.find((s) => s.id === id);
+            const start = drag.starts.get(id);
+            if (!d || !start) continue;
+            const before = { cx: start.cx, cy: start.cy, w: d.w, h: d.h, rotation: d.rotation };
+            const after = { cx: d.cx, cy: d.cy, w: d.w, h: d.h, rotation: d.rotation };
+            commands.push({ d, before, after });
+            await persistShapeFields(d, after);
+          }
+          pushCommand({
+            label: 'group-move-shapes',
+            undo: async () => { for (const c of commands) { Object.assign(c.d, c.before); await persistShapeFields(c.d, c.before); } redraw(); positionShapeBubble(); },
+            redo: async () => { for (const c of commands) { Object.assign(c.d, c.after); await persistShapeFields(c.d, c.after); } redraw(); positionShapeBubble(); },
+          });
+        }
+        return;
+      }
+      if (drag.type === 'resize-shape' || drag.type === 'rotate-shape') {
+        const d = drag.d;
+        const after = { cx: d.cx, cy: d.cy, w: d.w, h: d.h, rotation: d.rotation };
+        pushCommand(makeShapeTransformCommand(d, drag.before, after));
+        await persistShapeFields(d, after);
+        return;
+      }
+      if (drag.type === 'move-pin') {
+        const pin = pins.find((p) => p.id === drag.pin.id);
+        const wasClick = !drag.moved;
+        if (pin && drag.moved) {
+          const before = { x: drag.startX, y: drag.startY };
+          const after = { x: pin.x, y: pin.y };
+          pushCommand(makePinTransformCommand(pin, before, after));
+          await persistPinFields(pin, after);
+        }
+        if (wasClick) selectPin(drag.pin.id);
+        return;
+      }
+      if (drag.type === 'resize-pin') {
+        const pin = pins.find((p) => p.id === drag.pin.id);
+        if (pin) {
+          const before = { scale: drag.startScale };
+          const after = { scale: pin.scale };
+          pushCommand(makePinTransformCommand(pin, before, after));
+          await persistPinFields(pin, after);
+        }
+        return;
+      }
+      if (drag.type === 'rotate-pin') {
+        const pin = pins.find((p) => p.id === drag.pin.id);
+        if (pin) {
+          const before = { rotation: drag.startRotation };
+          const after = { rotation: pin.rotation };
+          pushCommand(makePinTransformCommand(pin, before, after));
+          await persistPinFields(pin, after);
+        }
+        return;
+      }
+      return;
+    }
+
+    if (!drawState) return;
+    const state = drawState;
+    drawState = null;
+
+    if (state.tool === 'move-grid') {
+      await fetch(`/api/maps/${mapId}/settings`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ grid_offset_x: Math.round(gridOffsetX), grid_offset_y: Math.round(gridOffsetY) }),
+      });
+      return;
+    }
+
+    if (!previewShape) return;
+    const shapeToSave = previewShape;
+    previewShape = null;
+    redraw();
+
+    if (shapeToSave.kind === 'pen') {
+      if (!shapeToSave.data.points || shapeToSave.data.points.length < 2) return;
+    } else if (Math.hypot(shapeToSave.w, shapeToSave.h) < 4) {
+      return;
+    }
+
+    const res = await fetch(`/api/maps/${mapId}/drawings`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(serializeShapeForCreate(shapeToSave)),
+    });
+    const json = await res.json();
+    const shape = { ...shapeToSave, id: json.id };
+    drawings.push(shape);
+    redraw();
+    pushCommand(makeAddShapeCommand(shape));
+  });
+
+  async function placeProp(pos, iconKey) {
+    const res = await fetch(`/api/maps/${mapId}/pins`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pin_type: 'prop', icon_key: iconKey, x: pos.x, y: pos.y, scale: 1.0, rotation: 0 }),
+    });
+    const json = await res.json();
+    const pin = { id: json.id, pin_type: 'prop', icon_key: iconKey, x: pos.x, y: pos.y, scale: 1.0, rotation: 0, locked: false };
+    pins.push(pin);
+    renderPins();
+    pushCommand(makeAddPinCommand(pin));
+    // Drop back into select mode so the pin can be named/positioned right away.
+    const selectBtn = document.querySelector('.map-tool-btn[data-tool="select"]');
+    if (selectBtn) selectBtn.click();
+    selectPin(pin.id);
+  }
+
+  // ---------------------------------------------------------------------
+  // Mandatory one-time grid setup (shown once per map, on first open).
+  // Also intended to be reopened later as the "grid/canvas settings"
+  // button once that exists — same lightbox, not a new one.
+  // ---------------------------------------------------------------------
+  const setupOverlay = document.getElementById('map-setup-overlay');
+  const contentArea = document.getElementById('map-content-area');
+  if (setupOverlay && !setupOverlay.hidden) {
+    contentArea.classList.add('blurred');
+    const setupVisibleCheckbox = document.getElementById('setup-grid-visible');
+    const setupSizeSlider = document.getElementById('setup-grid-size');
+    const setupSizeValue = document.getElementById('setup-grid-size-value');
+    const setupConfirmBtn = document.getElementById('setup-confirm-btn');
+    const previewCanvas = document.getElementById('setup-preview-canvas');
+    const previewCtx = previewCanvas.getContext('2d');
+
+    // Seed the wizard controls from the current (default) grid state and
+    // clamp the starting size into the new 25–100 range.
+    gridSize = Math.max(25, Math.min(100, gridSize || 50));
+    setupSizeSlider.value = gridSize;
+    setupSizeValue.textContent = `${gridSize}px`;
+    setupVisibleCheckbox.checked = gridVisible;
+    document.querySelectorAll('.grid-color-swatch').forEach((sw) => {
+      sw.classList.toggle('active', sw.dataset.gridColor === gridColor);
+    });
+
+    // A small, crisp (never blurred) preview of the actual map + grid,
+    // rendered at a downscaled resolution inside the lightbox itself.
+    function drawSetupPreview() {
+      const maxW = 900, maxH = 640;
+      let w = naturalWidth, h = naturalHeight;
+      const scale = Math.min(maxW / w, maxH / h, 1);
+      w = Math.round(w * scale);
+      h = Math.round(h * scale);
+      previewCanvas.width = w;
+      previewCanvas.height = h;
+      previewCtx.clearRect(0, 0, w, h);
+      if (bgLoaded) previewCtx.drawImage(bgImage, 0, 0, w, h);
+      drawGridOnto(previewCtx, w, h, gridSize * scale, gridOffsetX * scale, gridOffsetY * scale, gridColor, gridVisible);
+    }
+    drawSetupPreview();
+    redraw();
+
+    setupVisibleCheckbox.addEventListener('change', () => {
+      gridVisible = setupVisibleCheckbox.checked;
+      setupSizeSlider.disabled = !gridVisible;
+      drawSetupPreview();
+      redraw();
+    });
+    setupSizeSlider.addEventListener('input', () => {
+      gridSize = parseInt(setupSizeSlider.value, 10);
+      setupSizeValue.textContent = `${gridSize}px`;
+      drawSetupPreview();
+      redraw();
+    });
+    document.querySelectorAll('.grid-color-swatch').forEach((sw) => {
+      sw.addEventListener('click', () => {
+        gridColor = sw.dataset.gridColor;
+        document.querySelectorAll('.grid-color-swatch').forEach((b) => b.classList.remove('active'));
+        sw.classList.add('active');
+        drawSetupPreview();
+        redraw();
+      });
+    });
+
+    // Hold and drag on the preview to move the grid without leaving the
+    // lightbox — dragging in preview-pixel space is converted back to
+    // natural-image pixels since the preview is downscaled.
+    let previewDrag = null;
+    previewCanvas.addEventListener('mousedown', (e) => {
+      previewDrag = { startX: e.clientX, startY: e.clientY, origOffsetX: gridOffsetX, origOffsetY: gridOffsetY };
+    });
+    window.addEventListener('mousemove', (e) => {
+      if (!previewDrag) return;
+      const rect = previewCanvas.getBoundingClientRect();
+      const scale = naturalWidth / rect.width;
+      gridOffsetX = previewDrag.origOffsetX + (e.clientX - previewDrag.startX) * scale;
+      gridOffsetY = previewDrag.origOffsetY + (e.clientY - previewDrag.startY) * scale;
+      drawSetupPreview();
+      redraw();
+    });
+    window.addEventListener('mouseup', () => {
+      if (!previewDrag) return;
+      previewDrag = null;
+      fetch(`/api/maps/${mapId}/settings`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ grid_offset_x: Math.round(gridOffsetX), grid_offset_y: Math.round(gridOffsetY) }),
+      });
+    });
+
+    // The image may still be loading when the wizard first appears.
+    const prevOnLoad = bgImage.onload;
+    bgImage.onload = () => { if (prevOnLoad) prevOnLoad(); drawSetupPreview(); };
+
+    setupConfirmBtn.addEventListener('click', async () => {
+      await fetch(`/api/maps/${mapId}/settings`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          grid_size: gridSize, grid_color: gridColor, grid_visible: gridVisible, grid_setup_done: true,
+          grid_offset_x: Math.round(gridOffsetX), grid_offset_y: Math.round(gridOffsetY),
+        }),
+      });
+      suppressMainGrid = false;
+      setupOverlay.hidden = true;
+      contentArea.classList.remove('blurred');
+      renderPins();
+      redraw();
+    });
+  }
+
+  // ---------------------------------------------------------------------
+  // Init
+  // ---------------------------------------------------------------------
+  updateHistoryButtons();
+  (async function init() {
+    await loadDrawings();
+    await loadPins();
+    setupPolling();
+  })();
+})();

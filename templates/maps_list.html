@@ -1,0 +1,187 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% set active_page = 'maps' %}
+{% block title %}Maps — Campaign Ledger{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <p class="page-eyebrow">The Terrain</p>
+    <h1 class="page-title">Maps</h1>
+    <p class="page-sub">{{ maps|length }} {{ 'map' if maps|length == 1 else 'maps' }} saved.</p>
+  </div>
+  <button type="button" class="btn btn-primary" id="open-new-map-modal">{{ icon('plus') }} Import Map</button>
+</div>
+
+{% if maps %}
+<div class="map-grid">
+  {% for m in maps %}
+  <div class="map-card">
+    <a href="{{ url_for('map_editor', map_id=m.id) }}" class="map-card-image-link">
+      <div class="map-card-image">
+        <img src="{{ url_for('uploaded_file', filename=m.image_path) }}" alt="{{ m.name }}">
+        {% if m.linked_to_battle %}<span class="map-linked-badge">{{ icon('swords') }} Linked</span>{% endif %}
+      </div>
+    </a>
+    <div class="map-card-body">
+      <a href="{{ url_for('map_editor', map_id=m.id) }}" class="map-card-name">{{ m.name }}</a>
+      <form method="POST" action="{{ url_for('map_delete', map_id=m.id) }}" data-confirm="Delete map '{{ m.name }}'? This removes its drawings and pins too.">
+        <button type="submit" class="btn-icon" title="Delete map">{{ icon('trash-2') }}</button>
+      </form>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="empty-state">
+  {{ icon('map') }}
+  <h3>No maps yet</h3>
+  <p>Import a battle map image to start placing your grid and pins.</p>
+  <button type="button" class="btn btn-primary" id="open-new-map-modal-2">{{ icon('plus') }} Import Map</button>
+</div>
+{% endif %}
+
+<div class="modal-overlay" id="new-map-modal" hidden>
+  <div class="modal-panel">
+    <div class="modal-header">
+      <h3>Import Map</h3>
+      <button type="button" class="btn-icon" id="close-new-map-modal">{{ icon('x') }}</button>
+    </div>
+    <form class="modal-body" method="POST" action="{{ url_for('map_new') }}" enctype="multipart/form-data">
+      <div class="form-row cols-2" style="margin-bottom:14px; align-items: end;">
+        <div class="field">
+          <label for="map-name">Map name</label>
+          <input type="text" id="map-name" name="name" placeholder="e.g. The Sunken Crypt" required>
+        </div>
+        <div class="field">
+          <label>Source</label>
+          <div class="sort-toggle" id="map-source-toggle">
+            <button type="button" class="sort-option active" data-source="image">Upload Image</button>
+            <button type="button" class="sort-option" data-source="blank">Blank Canvas</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="field" id="map-image-field">
+        <label>Map image</label>
+        <div class="file-drop">
+          {{ icon('upload') }}
+          <div>Click or drop an image</div>
+          <span class="file-name"></span>
+          <input type="file" name="image" id="map-image-input" accept="image/*" data-multi-input>
+        </div>
+        <div id="map-image-preview-wrap" hidden style="margin-top:12px;">
+          <canvas id="map-image-preview-canvas" style="max-width:100%; max-height:220px; display:block; margin:0 auto; border-radius:var(--radius-s); border:1px solid var(--hairline);"></canvas>
+          <div style="display:flex; gap:8px; justify-content:center; margin-top:10px;">
+            <button type="button" class="btn btn-ghost btn-sm" id="map-image-rotate-btn">{{ icon('rotate') }} Rotate 90&deg;</button>
+          </div>
+          <p class="hint-text" style="text-align:center; margin-top:6px;">The canvas will match the image's size automatically.</p>
+        </div>
+      </div>
+
+      <div class="form-row cols-2" id="map-blank-field" hidden>
+        <div class="field">
+          <label for="blank-width">Width (px)</label>
+          <input type="number" id="blank-width" name="blank_width" value="1500" min="200" max="6000">
+        </div>
+        <div class="field">
+          <label for="blank-height">Height (px)</label>
+          <input type="number" id="blank-height" name="blank_height" value="1000" min="200" max="6000">
+        </div>
+      </div>
+
+      <div class="form-actions">
+        <button type="button" class="btn btn-ghost" id="cancel-new-map">Cancel</button>
+        <button type="submit" class="btn btn-primary">{{ icon('check') }} Create Map</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const modal = document.getElementById('new-map-modal');
+  const openers = [document.getElementById('open-new-map-modal'), document.getElementById('open-new-map-modal-2')];
+  openers.forEach((btn) => btn && btn.addEventListener('click', () => { modal.hidden = false; }));
+  document.getElementById('close-new-map-modal').addEventListener('click', () => { modal.hidden = true; });
+  document.getElementById('cancel-new-map').addEventListener('click', () => { modal.hidden = true; });
+  modal.addEventListener('click', (e) => { if (e.target === modal) modal.hidden = true; });
+
+  const sourceToggle = document.getElementById('map-source-toggle');
+  const imageField = document.getElementById('map-image-field');
+  const blankField = document.getElementById('map-blank-field');
+  const imageInput = imageField.querySelector('input[type="file"]');
+  sourceToggle.addEventListener('click', (e) => {
+    const btn = e.target.closest('.sort-option');
+    if (!btn) return;
+    sourceToggle.querySelectorAll('.sort-option').forEach((b) => b.classList.remove('active'));
+    btn.classList.add('active');
+    const isBlank = btn.dataset.source === 'blank';
+    imageField.hidden = isBlank;
+    blankField.hidden = !isBlank;
+    if (isBlank) { imageInput.value = ''; previewWrap.hidden = true; }
+  });
+
+  // --- Rotate-before-you-import preview ---
+  // Each click both spins the preview and bakes that rotation straight into
+  // the file that will be uploaded, so there's no separate confirm step.
+  const previewWrap = document.getElementById('map-image-preview-wrap');
+  const previewCanvas = document.getElementById('map-image-preview-canvas');
+  const previewCtx = previewCanvas.getContext('2d');
+  const rotateBtn = document.getElementById('map-image-rotate-btn');
+  let previewImage = null;
+
+  function drawPreview(img) {
+    const w = img.naturalWidth, h = img.naturalHeight;
+    previewCanvas.width = w;
+    previewCanvas.height = h;
+    previewCtx.clearRect(0, 0, w, h);
+    previewCtx.drawImage(img, 0, 0);
+  }
+
+  function loadPreviewFromBlob(blob) {
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    img.onload = () => {
+      previewImage = img;
+      drawPreview(img);
+      URL.revokeObjectURL(url);
+    };
+    img.src = url;
+  }
+
+  imageInput.addEventListener('change', () => {
+    const file = imageInput.files && imageInput.files[0];
+    if (!file) { previewWrap.hidden = true; return; }
+    loadPreviewFromBlob(file);
+    previewWrap.hidden = false;
+  });
+
+  rotateBtn.addEventListener('click', () => {
+    if (!previewImage) return;
+    // Rotate 90° into a fresh canvas (dimensions swap), then bake the
+    // result straight into the file input so what's on screen is exactly
+    // what gets uploaded.
+    const w = previewImage.naturalWidth, h = previewImage.naturalHeight;
+    const rotated = document.createElement('canvas');
+    rotated.width = h;
+    rotated.height = w;
+    const rctx = rotated.getContext('2d');
+    rctx.translate(h / 2, w / 2);
+    rctx.rotate(Math.PI / 2);
+    rctx.drawImage(previewImage, -w / 2, -h / 2);
+    rotated.toBlob((blob) => {
+      if (!blob) return;
+      const originalName = (imageInput.files[0] && imageInput.files[0].name) || 'map.png';
+      const rotatedFile = new File([blob], originalName, { type: 'image/png' });
+      const dt = new DataTransfer();
+      dt.items.add(rotatedFile);
+      imageInput.files = dt.files;
+      loadPreviewFromBlob(blob);
+    }, 'image/png');
+  });
+});
+</script>
+{% endblock %}

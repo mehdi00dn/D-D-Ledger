@@ -65,6 +65,25 @@ def optimize_image_if_needed(full_path, max_bytes=OPTIMIZE_THRESHOLD_BYTES, max_
         pass
 
 
+def enforce_map_image_max_dimension(full_path, max_dimension=OPTIMIZE_MAX_DIMENSION):
+    """Map background images are always capped at max_dimension on their
+    longest edge, regardless of file size (unlike the generic byte-size
+    optimizer above). Returns the resulting (width, height)."""
+    with Image.open(full_path) as img:
+        width, height = img.size
+        if max(width, height) <= max_dimension:
+            return width, height
+        fmt = img.format or 'PNG'
+        img_copy = img.copy()
+        img_copy.thumbnail((max_dimension, max_dimension), Image.LANCZOS)
+        if fmt == 'JPEG':
+            img_copy = img_copy.convert('RGB')
+            img_copy.save(full_path, format='JPEG', quality=90, optimize=True)
+        else:
+            img_copy.save(full_path, format=fmt)
+        return img_copy.size
+
+
 def save_upload(file_storage, subfolder):
     if not file_storage or file_storage.filename == '':
         return None
@@ -782,6 +801,307 @@ def import_data():
 
     dest = 'groups_list' if 'groups' in (request.referrer or '') else 'characters_list'
     return redirect(url_for(dest, imported=1))
+
+
+# ---------------- MAPS ----------------
+
+@app.route('/maps')
+def maps_list():
+    db = get_db()
+    maps = db.execute('SELECT * FROM maps ORDER BY created_at DESC').fetchall()
+    db.close()
+    return render_template('maps_list.html', maps=[dict(m) for m in maps])
+
+
+@app.route('/maps/new', methods=['POST'])
+def map_new():
+    name = request.form.get('name', '').strip() or 'Untitled Map'
+    image_file = request.files.get('image')
+
+    if image_file and image_file.filename != '':
+        image_path = save_upload(image_file, 'maps')
+        if not image_path:
+            return redirect(url_for('maps_list'))
+        full_path = os.path.join(UPLOAD_DIR, image_path)
+        try:
+            width, height = enforce_map_image_max_dimension(full_path)
+        except Exception:
+            width, height = 1500, 1000
+    else:
+        # No image provided: start with a blank white canvas at the requested size
+        width = max(200, min(6000, int(request.form.get('blank_width', 1500) or 1500)))
+        height = max(200, min(6000, int(request.form.get('blank_height', 1000) or 1000)))
+        image_path = _generate_blank_canvas(width, height)
+
+    db = get_db()
+    cur = db.execute(
+        'INSERT INTO maps (name, image_path, image_width, image_height) VALUES (?, ?, ?, ?)',
+        (name, image_path, width, height)
+    )
+    map_id = cur.lastrowid
+    db.commit()
+    db.close()
+    return redirect(url_for('map_editor', map_id=map_id))
+
+
+@app.route('/maps/<int:map_id>')
+def map_editor(map_id):
+    db = get_db()
+    m = db.execute('SELECT * FROM maps WHERE id = ?', (map_id,)).fetchone()
+    db.close()
+    if m is None:
+        return redirect(url_for('maps_list'))
+    return render_template('map_editor.html', map=dict(m))
+
+
+@app.route('/maps/<int:map_id>/delete', methods=['POST'])
+def map_delete(map_id):
+    db = get_db()
+    m = db.execute('SELECT image_path FROM maps WHERE id = ?', (map_id,)).fetchone()
+    if m:
+        delete_upload(m['image_path'])
+    db.execute('DELETE FROM maps WHERE id = ?', (map_id,))
+    db.commit()
+    db.close()
+    return redirect(url_for('maps_list'))
+
+
+@app.route('/api/maps/<int:map_id>/settings', methods=['POST'])
+def api_map_settings(map_id):
+    data = request.get_json(force=True)
+    db = get_db()
+    fields = []
+    values = []
+    if 'grid_size' in data:
+        fields.append('grid_size = ?'); values.append(max(25, min(100, int(data['grid_size']))))
+    if 'grid_offset_x' in data:
+        fields.append('grid_offset_x = ?'); values.append(int(data['grid_offset_x']))
+    if 'grid_offset_y' in data:
+        fields.append('grid_offset_y = ?'); values.append(int(data['grid_offset_y']))
+    if 'grid_color' in data and data['grid_color'] in ('gray', 'white', 'black'):
+        fields.append('grid_color = ?'); values.append(data['grid_color'])
+    if 'grid_visible' in data:
+        fields.append('grid_visible = ?'); values.append(1 if data['grid_visible'] else 0)
+    if 'grid_setup_done' in data:
+        fields.append('grid_setup_done = ?'); values.append(1 if data['grid_setup_done'] else 0)
+    if 'linked_to_battle' in data:
+        fields.append('linked_to_battle = ?'); values.append(1 if data['linked_to_battle'] else 0)
+    if fields:
+        values.append(map_id)
+        db.execute(f'UPDATE maps SET {", ".join(fields)} WHERE id = ?', values)
+        db.commit()
+    m = db.execute('SELECT * FROM maps WHERE id = ?', (map_id,)).fetchone()
+    db.close()
+    return jsonify(dict(m) if m else {})
+
+
+def _generate_blank_canvas(width, height):
+    """Create a plain white PNG in the maps upload folder and return its relative path."""
+    img = Image.new('RGB', (width, height), color=(255, 255, 255))
+    fname = f"{uuid.uuid4().hex}.png"
+    folder = os.path.join(UPLOAD_DIR, 'maps')
+    os.makedirs(folder, exist_ok=True)
+    img.save(os.path.join(folder, fname), format='PNG')
+    return f"maps/{fname}"
+
+
+# ---- Drawings ----
+
+@app.route('/api/maps/<int:map_id>/drawings')
+def api_map_drawings_list(map_id):
+    db = get_db()
+    rows = db.execute('SELECT * FROM map_drawings WHERE map_id = ? ORDER BY sort_order, id', (map_id,)).fetchall()
+    db.close()
+    result = []
+    for r in rows:
+        d = dict(r)
+        d['data'] = json.loads(d['data'])
+        result.append(d)
+    return jsonify(result)
+
+
+@app.route('/api/maps/<int:map_id>/drawings', methods=['POST'])
+def api_map_drawings_add(map_id):
+    data = request.get_json(force=True)
+    kind = data.get('kind')
+    geometry = data.get('data', {})
+    color = data.get('color', '#c9a24b')
+    fill = 1 if data.get('fill') else 0
+    fill_opacity = float(data.get('fill_opacity', 0.4))
+    cx = float(data.get('cx', 0))
+    cy = float(data.get('cy', 0))
+    w = float(data.get('w', 0))
+    h = float(data.get('h', 0))
+    rotation = float(data.get('rotation', 0))
+    locked = 1 if data.get('locked') else 0
+    if kind not in ('line', 'rect', 'oval', 'pen'):
+        return jsonify({'error': 'invalid kind'}), 400
+    db = get_db()
+    max_order = db.execute('SELECT COALESCE(MAX(sort_order), -1) AS m FROM map_drawings WHERE map_id = ?', (map_id,)).fetchone()['m']
+    cur = db.execute(
+        '''INSERT INTO map_drawings (map_id, kind, data, cx, cy, w, h, rotation, color, fill, fill_opacity, sort_order, locked)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+        (map_id, kind, json.dumps(geometry), cx, cy, w, h, rotation, color, fill, fill_opacity, max_order + 1, locked)
+    )
+    db.commit()
+    db.close()
+    return jsonify({'id': cur.lastrowid})
+
+
+@app.route('/api/maps/<int:map_id>/drawings/<int:drawing_id>/update', methods=['POST'])
+def api_map_drawing_update(map_id, drawing_id):
+    data = request.get_json(force=True)
+    db = get_db()
+    fields = []
+    values = []
+    for key in ('cx', 'cy', 'w', 'h', 'rotation', 'fill_opacity'):
+        if key in data:
+            fields.append(f'{key} = ?'); values.append(float(data[key]))
+    if 'color' in data:
+        fields.append('color = ?'); values.append(str(data['color']))
+    if 'fill' in data:
+        fields.append('fill = ?'); values.append(1 if data['fill'] else 0)
+    if 'locked' in data:
+        fields.append('locked = ?'); values.append(1 if data['locked'] else 0)
+    if 'data' in data:
+        fields.append('data = ?'); values.append(json.dumps(data['data']))
+    if fields:
+        values.append(drawing_id)
+        values.append(map_id)
+        db.execute(f'UPDATE map_drawings SET {", ".join(fields)} WHERE id = ? AND map_id = ?', values)
+        db.commit()
+    db.close()
+    return jsonify({'ok': True})
+
+
+@app.route('/api/maps/<int:map_id>/drawings/<int:drawing_id>/delete', methods=['POST'])
+def api_map_drawing_delete(map_id, drawing_id):
+    db = get_db()
+    db.execute('DELETE FROM map_drawings WHERE id = ? AND map_id = ?', (drawing_id, map_id))
+    db.commit()
+    db.close()
+    return jsonify({'ok': True})
+
+
+@app.route('/api/maps/<int:map_id>/drawings/clear', methods=['POST'])
+def api_map_drawings_clear(map_id):
+    db = get_db()
+    db.execute('DELETE FROM map_drawings WHERE map_id = ?', (map_id,))
+    db.commit()
+    db.close()
+    return jsonify({'ok': True})
+
+
+# ---- Pins ----
+
+@app.route('/api/maps/<int:map_id>/pins')
+def api_map_pins_list(map_id):
+    db = get_db()
+    m = db.execute('SELECT * FROM maps WHERE id = ?', (map_id,)).fetchone()
+    if m is None:
+        db.close()
+        return jsonify([])
+
+    if m['linked_to_battle']:
+        # Auto-place a pin for any battle participant that doesn't have one yet
+        participants = db.execute('SELECT id FROM battle_participants').fetchall()
+        participant_ids = [p['id'] for p in participants]
+        existing = db.execute(
+            "SELECT participant_id FROM map_pins WHERE map_id = ? AND pin_type = 'character'", (map_id,)
+        ).fetchall()
+        existing_ids = {e['participant_id'] for e in existing}
+        new_ids = [pid for pid in participant_ids if pid not in existing_ids]
+        for i, participant_id in enumerate(new_ids):
+            offset = 40 + (i * 30) % 200
+            db.execute(
+                "INSERT INTO map_pins (map_id, pin_type, participant_id, x, y, scale) VALUES (?, 'character', ?, ?, ?, 1.0)",
+                (map_id, participant_id, offset, offset)
+            )
+        # Drop pins for participants no longer in the current battle
+        if participant_ids:
+            placeholders = ','.join('?' * len(participant_ids))
+            db.execute(
+                f"DELETE FROM map_pins WHERE map_id = ? AND pin_type = 'character' AND participant_id NOT IN ({placeholders})",
+                [map_id] + participant_ids
+            )
+        else:
+            db.execute("DELETE FROM map_pins WHERE map_id = ? AND pin_type = 'character'", (map_id,))
+        db.commit()
+
+    rows = db.execute('SELECT * FROM map_pins WHERE map_id = ?', (map_id,)).fetchall()
+    result = []
+    for r in rows:
+        p = dict(r)
+        if p['pin_type'] == 'character' and p['participant_id']:
+            live = db.execute('''
+                SELECT bp.current_hp, bp.is_dead, c.id AS character_id, c.name AS char_name, c.avatar_path,
+                       c.max_hp AS char_max_hp, g.color AS group_color
+                FROM battle_participants bp
+                JOIN characters c ON bp.character_id = c.id
+                LEFT JOIN groups g ON c.group_id = g.id
+                WHERE bp.id = ?
+            ''', (p['participant_id'],)).fetchone()
+            if live is None:
+                continue
+            p.update(dict(live))
+        result.append(p)
+    db.close()
+    return jsonify(result)
+
+
+@app.route('/api/maps/<int:map_id>/pins', methods=['POST'])
+def api_map_pins_add(map_id):
+    data = request.get_json(force=True)
+    pin_type = data.get('pin_type', 'prop')
+    icon_key = data.get('icon_key')
+    x = float(data.get('x', 0))
+    y = float(data.get('y', 0))
+    scale = float(data.get('scale', 1.0))
+    rotation = float(data.get('rotation', 0))
+    locked = 1 if data.get('locked') else 0
+    db = get_db()
+    cur = db.execute(
+        "INSERT INTO map_pins (map_id, pin_type, icon_key, x, y, scale, rotation, locked) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (map_id, pin_type, icon_key, x, y, scale, rotation, locked)
+    )
+    db.commit()
+    new_id = cur.lastrowid
+    db.close()
+    return jsonify({'id': new_id})
+
+
+@app.route('/api/maps/<int:map_id>/pins/<int:pin_id>/update', methods=['POST'])
+def api_map_pin_update(map_id, pin_id):
+    data = request.get_json(force=True)
+    db = get_db()
+    fields = []
+    values = []
+    if 'x' in data:
+        fields.append('x = ?'); values.append(float(data['x']))
+    if 'y' in data:
+        fields.append('y = ?'); values.append(float(data['y']))
+    if 'scale' in data:
+        fields.append('scale = ?'); values.append(float(data['scale']))
+    if 'rotation' in data:
+        fields.append('rotation = ?'); values.append(float(data['rotation']))
+    if 'locked' in data:
+        fields.append('locked = ?'); values.append(1 if data['locked'] else 0)
+    if fields:
+        values.append(pin_id)
+        values.append(map_id)
+        db.execute(f'UPDATE map_pins SET {", ".join(fields)} WHERE id = ? AND map_id = ?', values)
+        db.commit()
+    db.close()
+    return jsonify({'ok': True})
+
+
+@app.route('/api/maps/<int:map_id>/pins/<int:pin_id>/delete', methods=['POST'])
+def api_map_pin_delete(map_id, pin_id):
+    db = get_db()
+    db.execute('DELETE FROM map_pins WHERE id = ? AND map_id = ?', (pin_id, map_id))
+    db.commit()
+    db.close()
+    return jsonify({'ok': True})
 
 
 if __name__ == '__main__':

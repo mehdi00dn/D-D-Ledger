@@ -61,6 +61,11 @@
 }
 
 * { box-sizing: border-box; }
+/* Any element using the `hidden` attribute must actually hide, even when a
+   later same-specificity class rule (e.g. `.form-row { display: grid }`)
+   would otherwise win the cascade and silently reveal it. */
+[hidden] { display: none !important; }
+
 
 html, body {
   height: 100%;
@@ -68,12 +73,10 @@ html, body {
 
 body {
   margin: 0;
-  min-height: 10vh;
   background:
     radial-gradient(ellipse at 15% 0%, rgba(201,162,75,0.06), transparent 45%),
     radial-gradient(ellipse at 85% 100%, rgba(95,145,116,0.05), transparent 50%),
     var(--bg-void);
-  background-attachment: fixed;
   color: var(--parchment);
   font-family: var(--font-body);
   -webkit-font-smoothing: antialiased;
@@ -103,7 +106,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
   grid-template-columns: 232px 1fr;
   min-height: 100vh;
 }
-/* test */
+
 .sidebar {
   background: linear-gradient(180deg, var(--bg-void-2), var(--bg-panel-inset));
   border-right: 1px solid var(--hairline);
@@ -123,6 +126,9 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
   padding: 0 6px 28px;
   color: var(--brass-bright);
 }
+
+.brand-mark { width: 30px; height: 30px; display: flex; flex: 0 0 30px; }
+.brand-mark img { width: 100%; height: 100%; object-fit: contain; display: block; }
 
 .brand-text { display: flex; flex-direction: column; line-height: 1.1; }
 .brand-title { font-family: var(--font-display); font-size: 19px; font-weight: 600; color: var(--parchment); }
@@ -875,7 +881,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
   border-top-right-radius: 999px;
   border-bottom-right-radius: 999px;
   transition: width 0.3s ease, background 0.3s ease;
-  position: relative; 
+  position: relative;
   z-index: 0; /* Ensure it's below the temp hp bar */
 }
 .hp-bar-fill.hp-healthy { background: linear-gradient(90deg, var(--moss), var(--moss-bright)); }
@@ -887,10 +893,10 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
   left: 0; /* Start from the far left */
   height: 100%;
   /* Softer diagonal slashes with muted, closer colors */
-  background: 
+  background:
     repeating-linear-gradient(
       45deg,
-      #6ba7cf, 
+      #6ba7cf,
       #6ba7cf 4px,
       #5d94b8 4px,
       #5d94b8 8px
@@ -1343,3 +1349,342 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
   .roll-total { font-size: 48px; }
 }
 
+
+/* ==========================================================================
+   Maps
+   ========================================================================== */
+.map-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 20px;
+}
+.map-card {
+  display: block;
+  background: var(--bg-panel);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-m);
+  overflow: hidden;
+  box-shadow: var(--shadow-deep);
+  transition: transform 0.15s ease, border-color 0.15s ease;
+  color: inherit;
+}
+.map-card:hover { transform: translateY(-2px); border-color: var(--hairline-strong); }
+.map-card-image-link { display: block; }
+.map-card-image { position: relative; width: 100%; height: 150px; background: var(--bg-panel-inset); overflow: hidden; }
+.map-card-image img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.map-linked-badge {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(16,18,26,0.75);
+  color: var(--brass-bright);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 4px 9px;
+  border-radius: 999px;
+}
+.map-linked-badge svg { width: 11px; height: 11px; }
+.map-card-body { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; }
+.map-card-name { font-family: var(--font-display); font-size: 15.5px; font-weight: 600; color: inherit; text-decoration: none; }
+
+.map-link-toggle { font-size: 13px; }
+
+.map-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+  background: var(--bg-panel);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-m);
+  padding: 12px 16px;
+  margin-bottom: 18px;
+}
+.map-tool-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-right: 18px;
+  border-right: 1px solid var(--hairline);
+}
+.map-tool-group:last-child { border-right: none; padding-right: 0; }
+.map-tool-group input[type="number"] {
+  width: 60px;
+  background: var(--bg-panel-inset);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-s);
+  color: var(--parchment);
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  padding: 6px 6px;
+  text-align: center;
+}
+.grid-size-label { font-family: var(--font-mono); font-size: 11px; color: var(--parchment-dim); }
+
+.map-tool-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-s);
+  border: 1px solid var(--hairline);
+  background: transparent;
+  color: var(--parchment-dim);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+.map-tool-btn svg { width: 17px; height: 17px; }
+.map-tool-btn:hover { border-color: var(--brass); color: var(--parchment); }
+.map-tool-btn.active { background: var(--brass); border-color: var(--brass); color: #21170a; }
+.map-tool-svg-icon {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #ffffff;
+  padding: 3px;
+  box-sizing: border-box;
+  object-fit: contain;
+  display: block;
+}
+
+.map-stage-wrap {
+  position: relative;
+  width: 100%;
+  border-radius: var(--radius-m);
+  overflow: hidden;
+  border: 1px solid var(--hairline-strong);
+  box-shadow: var(--shadow-deep);
+  background: #fff;
+}
+#map-canvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
+#map-pin-layer { position: absolute; inset: 0; pointer-events: none; }
+.map-pin { pointer-events: auto; }
+
+.map-pin {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  cursor: grab;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.map-pin:active { cursor: grabbing; }
+/* The visual (border, avatar, rotation) is a separate inner element so the
+   pin's rotation never affects the label or the outer hit/positioning box. */
+.map-pin-visual {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  border: 3px solid var(--brass);
+  overflow: visible;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 3px 10px rgba(0,0,0,0.4);
+  transition: filter 0.2s ease, opacity 0.2s ease;
+}
+.map-pin-visual.is-dead { filter: grayscale(1); opacity: 0.5; }
+.map-pin-avatar {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--bg-panel-inset);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--brass-dim);
+}
+.map-pin-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.map-pin[data-pin-type="prop"] .map-pin-avatar { background: #ffffff; padding: 12%; box-sizing: border-box; }
+.map-pin[data-pin-type="prop"] .map-pin-avatar img { object-fit: contain; }
+.map-pin-label {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-top: 4px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--parchment);
+  background: var(--bg-panel);
+  border: 1px solid var(--hairline);
+  padding: 2px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.map-pin[data-locked="true"] { cursor: default; }
+.pin-unlock-icon {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(20,22,29,0.9);
+  color: #f2f2f2;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+  pointer-events: none;
+}
+.pin-unlock-icon svg { width: 13px; height: 13px; }
+.map-pin[data-locked="true"]:hover .pin-unlock-icon { opacity: 0.7; pointer-events: auto; }
+
+.pin-action-bubble {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  display: flex;
+  background: var(--bg-panel);
+  border: 1px solid var(--hairline-strong);
+  border-radius: 999px;
+  box-shadow: var(--shadow-deep);
+  overflow: hidden;
+  z-index: 10;
+}
+.pin-action-bubble[hidden] { display: none; }
+/* Buttons sit flush against each other inside the pill; overflow:hidden on
+   the pill clips the end buttons' square hover state back into a rounded
+   cap, so only the two outer edges look rounded and everything between
+   looks rectangular, matching the pill's own shape. */
+.pin-action-bubble .btn-icon { border: none; background: var(--bg-panel-inset); border-radius: 0; padding: 9px 11px; }
+.pin-action-bubble .btn-icon:hover { background: var(--brass); color: #21170a; }
+.pin-action-bubble .btn-icon.active { background: var(--brass); color: #21170a; }
+.pin-action-bubble .btn-icon-danger:hover { background: #e63946; color: #fff; }
+
+#undo-btn:disabled, #redo-btn:disabled { opacity: 0.35; cursor: default; }
+#undo-btn:disabled:hover, #redo-btn:disabled:hover { border-color: var(--hairline); color: var(--parchment-dim); }
+
+#map-canvas.tool-eraser { cursor: cell; }
+#map-canvas.tool-move-shape { cursor: grab; }
+#map-canvas.tool-move-shape:active { cursor: grabbing; }
+
+.map-content-area.blurred {
+  filter: blur(7px);
+  pointer-events: none;
+  user-select: none;
+  transition: filter 0.2s ease;
+}
+
+.map-setup-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(10,11,16,0.6);
+  backdrop-filter: blur(1px);
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.map-setup-overlay[hidden] { display: none; }
+.map-setup-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  max-width: 92vw;
+  max-height: 92vh;
+}
+.map-setup-preview-box {
+  background: var(--bg-panel);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-l);
+  box-shadow: var(--shadow-deep);
+  padding: 10px;
+  display: inline-flex;
+  max-width: 100%;
+  max-height: 62vh;
+}
+.map-setup-preview-box canvas {
+  display: block;
+  max-width: 100%;
+  max-height: 62vh;
+  width: auto;
+  height: auto;
+  border-radius: var(--radius-m);
+  cursor: grab;
+  background: #000;
+}
+.map-setup-preview-box canvas:active { cursor: grabbing; }
+.map-setup-drag-hint {
+  margin: 0;
+  font-size: 11px;
+  text-align: center;
+  color: var(--parchment-dim);
+}
+.map-setup-bar {
+  background: var(--bg-panel);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-l);
+  box-shadow: var(--shadow-deep);
+  padding: 14px 22px;
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  flex-wrap: wrap;
+  justify-content: center;
+  max-width: 100%;
+}
+.map-setup-title {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--brass-bright);
+  white-space: nowrap;
+}
+.map-setup-slider-group, .map-setup-color-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.map-setup-value {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--parchment-dim);
+  min-width: 40px;
+}
+.grid-color-swatch {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid var(--hairline-strong);
+  cursor: pointer;
+  padding: 0;
+}
+.grid-color-swatch[data-grid-color="gray"] { background: linear-gradient(135deg, #9a9a9a 50%, #f2f2f2 50%); }
+.grid-color-swatch[data-grid-color="white"] { background: #ffffff; }
+.grid-color-swatch[data-grid-color="black"] { background: #1a1a1a; }
+.grid-color-swatch.active { border-color: var(--brass-bright); box-shadow: 0 0 0 2px rgba(201,162,75,0.35); }
+
+.modifier-hint {
+  position: fixed;
+  right: 22px;
+  bottom: 22px;
+  background: var(--bg-panel);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-m);
+  padding: 9px 14px;
+  font-size: 12px;
+  color: var(--parchment-dim);
+  box-shadow: var(--shadow-deep);
+  z-index: 30;
+  animation: modifier-hint-in 0.2s ease;
+}
+.modifier-hint strong { color: var(--brass-bright); font-weight: 600; }
+.modifier-hint[hidden] { display: none; }
+@keyframes modifier-hint-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}

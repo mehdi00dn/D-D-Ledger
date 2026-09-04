@@ -39,7 +39,7 @@
   <button class="chip active" data-filter="all">All</button>
   {% for g in groups %}
   <button class="chip" data-filter="{{ g.id }}">
-    <span class="group-dot" style="background:{{ g.color }};"></span>{{ g.name }}
+    <span class="group-dot" style="background:{{ g.color }}"></span>{{ g.name }}
   </button>
   {% endfor %}
 </div>

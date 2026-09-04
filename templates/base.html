@@ -15,11 +15,12 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;0,9..144,700;1,9..144,500&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="icon" href="{{ url_for('static', filename='logo/favicon.ico') }}" sizes="any">
+<link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='logo/favicon-16x16.png') }}">
+<link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='logo/favicon-32x32.png') }}">
+<link rel="icon" type="image/png" sizes="64x64" href="{{ url_for('static', filename='logo/favicon-64x64.png') }}">
+<link rel="apple-touch-icon" href="{{ url_for('static', filename='logo/logo-128.png') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-<link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
-<link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='favicon-32x32.png') }}">
-<link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='favicon-16x16.png') }}">
-<link rel="apple-touch-icon" href="{{ url_for('static', filename='logo-128.png') }}">
 {% block extra_head %}{% endblock %}
 </head>
 <body>
@@ -27,8 +28,8 @@
 <div class="app-shell">
   <aside class="sidebar">
     <div class="sidebar-brand">
-      <span class="brand-mark" aria-hidden="true">
-        <img src="{{ url_for('static', filename='logo-128.png') }}" alt="D&D Ledger Logo" width="30" height="30">
+      <span class="brand-mark">
+        <img src="{{ url_for('static', filename='logo/logo-128.png') }}" alt="">
       </span>
       <div class="brand-text">
         <span class="brand-title">Campaign</span>
@@ -45,6 +46,9 @@
       </a>
       <a href="{{ url_for('battle_view') }}" class="nav-tab {{ 'active' if active_page == 'battle' else '' }}">
         {{ icon('swords') }}<span>Battle</span>
+      </a>
+      <a href="{{ url_for('maps_list') }}" class="nav-tab {{ 'active' if active_page == 'maps' else '' }}">
+        {{ icon('map') }}<span>Maps</span>
       </a>
       <a href="{{ url_for('dice_view') }}" class="nav-tab {{ 'active' if active_page == 'dice' else '' }}">
         {{ icon('dices') }}<span>Dice</span>
