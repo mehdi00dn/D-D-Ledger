@@ -1458,8 +1458,15 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
   overflow: hidden;
   border: 1px solid var(--hairline-strong);
   box-shadow: var(--shadow-deep);
-  background: #fff;
+  background: var(--bg-panel);
 }
+.map-stage-inner {
+  position: absolute;
+  inset: 0;
+  transform-origin: 0 0;
+}
+.map-stage-wrap.panning, .map-stage-wrap.panning * { cursor: grab !important; }
+.map-stage-wrap.panning-active, .map-stage-wrap.panning-active * { cursor: grabbing !important; }
 #map-canvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
 #map-pin-layer { position: absolute; inset: 0; pointer-events: none; }
 .map-pin { pointer-events: auto; }
@@ -1667,6 +1674,8 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
 .grid-color-swatch[data-grid-color="white"] { background: #ffffff; }
 .grid-color-swatch[data-grid-color="black"] { background: #1a1a1a; }
 .grid-color-swatch.active { border-color: var(--brass-bright); box-shadow: 0 0 0 2px rgba(201,162,75,0.35); }
+
+#nav-hint { bottom: 68px; }
 
 .modifier-hint {
   position: fixed;
