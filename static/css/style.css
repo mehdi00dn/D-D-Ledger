@@ -932,17 +932,6 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
   text-align: center;
   padding: 6px 4px;
 }
-.temphp-input {
-  width: 64px;
-  background: var(--bg-panel-inset);
-  border: 1px solid #4a8bc2;
-  border-radius: var(--radius-s);
-  color: var(--parchment);
-  font-family: var(--font-mono);
-  font-size: 12.5px;
-  text-align: center;
-  padding: 6px 4px;
-}
 .hp-btn {
   width: 30px;
   height: 30px;
@@ -1392,6 +1381,94 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
 
 .map-link-toggle { font-size: 13px; }
 
+.toggle-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--parchment-dim);
+  user-select: none;
+}
+.toggle-switch input { position: absolute; opacity: 0; width: 0; height: 0; }
+.toggle-switch-track {
+  position: relative;
+  width: 38px;
+  height: 21px;
+  border-radius: 999px;
+  background: var(--bg-panel-inset);
+  border: 1px solid var(--hairline-strong);
+  transition: background 0.15s ease, border-color 0.15s ease;
+  flex-shrink: 0;
+}
+.toggle-switch-track::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: var(--parchment-dim);
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+.toggle-switch input:checked + .toggle-switch-track {
+  background: var(--brass);
+  border-color: var(--brass);
+}
+.toggle-switch input:checked + .toggle-switch-track::after {
+  transform: translateX(17px);
+  background: #21170a;
+}
+.toggle-switch input:focus-visible + .toggle-switch-track {
+  box-shadow: 0 0 0 2px rgba(201,162,75,0.4);
+}
+.toggle-switch input:checked ~ .toggle-switch-label { color: var(--parchment); }
+
+.tool-flyout { position: relative; }
+.flyout-trigger { display: flex; align-items: center; gap: 2px; padding-right: 6px; }
+.flyout-caret { width: 10px; height: 10px; opacity: 0.6; }
+.color-flyout-swatch {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1px solid rgba(0,0,0,0.25);
+  flex-shrink: 0;
+}
+/* The outer element is the hover target and includes an invisible bottom
+   padding "bridge" so moving the mouse from the trigger up to the menu
+   never crosses dead space and drops the hover. The visible pill itself
+   (background/border/shadow) lives on the inner element only, so it never
+   grows even though the hoverable area does. */
+.tool-flyout-menu {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translate(-50%, 4px);
+  padding-bottom: 14px;
+  width: max-content;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.12s ease, transform 0.12s ease;
+  z-index: 60;
+}
+.tool-flyout-menu-inner {
+  display: flex;
+  gap: 4px;
+  background: var(--bg-panel);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-m);
+  padding: 6px;
+  box-shadow: var(--shadow-deep);
+}
+.tool-flyout:hover .tool-flyout-menu,
+.tool-flyout.open .tool-flyout-menu {
+  opacity: 1;
+  visibility: visible;
+  transform: translate(-50%, 0);
+}
+
 .map-toolbar {
   display: flex;
   align-items: center;
@@ -1470,6 +1547,10 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
 #map-canvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
 #map-pin-layer { position: absolute; inset: 0; pointer-events: none; }
 .map-pin { pointer-events: auto; }
+/* While a shape-drawing tool is active, pins must not intercept clicks —
+   otherwise it's impossible to draw a shape at a point a pin happens to
+   be sitting on top of. */
+#map-pin-layer.draw-mode .map-pin { pointer-events: none; }
 
 .map-pin {
   position: absolute;
@@ -1513,7 +1594,8 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
   position: absolute;
   top: 100%;
   left: 50%;
-  transform: translateX(-50%);
+  transform: translateX(-50%) scale(var(--ledger-zoom-inv, 1));
+  transform-origin: top center;
   margin-top: 4px;
   font-family: var(--font-mono);
   font-size: 10px;
@@ -1526,6 +1608,19 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
   pointer-events: none;
 }
 .map-pin[data-locked="true"] { cursor: default; }
+#angle-labels-layer { position: absolute; inset: 0; pointer-events: none; }
+.angle-degree-label {
+  position: absolute;
+  transform: translate(-50%, -50%) scale(var(--ledger-zoom-inv, 1));
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: #fff;
+  background: rgba(20,22,29,0.75);
+  padding: 1px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
 .pin-unlock-icon {
   position: absolute;
   top: 50%;
@@ -1604,6 +1699,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
   max-height: 92vh;
 }
 .map-setup-preview-box {
+  position: relative;
   background: var(--bg-panel);
   border: 1px solid var(--hairline-strong);
   border-radius: var(--radius-l);
@@ -1612,6 +1708,14 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
   display: inline-flex;
   max-width: 100%;
   max-height: 62vh;
+}
+.map-setup-close-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 5;
+  background: rgba(20,22,29,0.85);
+  border: none;
 }
 .map-setup-preview-box canvas {
   display: block;

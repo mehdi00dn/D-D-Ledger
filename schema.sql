@@ -68,6 +68,7 @@ CREATE TABLE IF NOT EXISTS maps (
     grid_color TEXT DEFAULT 'gray',
     grid_visible INTEGER DEFAULT 1,
     grid_setup_done INTEGER DEFAULT 0,
+    snap_to_grid INTEGER DEFAULT 0,
     linked_to_battle INTEGER DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

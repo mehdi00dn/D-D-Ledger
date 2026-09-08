@@ -48,10 +48,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Confirm before destructive deletes
   document.querySelectorAll('[data-confirm]').forEach((form) => {
-    form.addEventListener('submit', (e) => {
-      if (!confirm(form.dataset.confirm)) {
-        e.preventDefault();
-      }
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const confirmed = await window.confirmAction(form.dataset.confirm);
+      if (confirmed) form.submit();
     });
   });
 

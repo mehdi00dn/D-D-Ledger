@@ -829,8 +829,8 @@ def map_new():
             width, height = 1500, 1000
     else:
         # No image provided: start with a blank white canvas at the requested size
-        width = max(200, min(6000, int(request.form.get('blank_width', 1500) or 1500)))
-        height = max(200, min(6000, int(request.form.get('blank_height', 1000) or 1000)))
+        width = max(200, min(2000, int(request.form.get('blank_width', 1500) or 1500)))
+        height = max(200, min(2000, int(request.form.get('blank_height', 1000) or 1000)))
         image_path = _generate_blank_canvas(width, height)
 
     db = get_db()
@@ -884,6 +884,8 @@ def api_map_settings(map_id):
         fields.append('grid_visible = ?'); values.append(1 if data['grid_visible'] else 0)
     if 'grid_setup_done' in data:
         fields.append('grid_setup_done = ?'); values.append(1 if data['grid_setup_done'] else 0)
+    if 'snap_to_grid' in data:
+        fields.append('snap_to_grid = ?'); values.append(1 if data['snap_to_grid'] else 0)
     if 'linked_to_battle' in data:
         fields.append('linked_to_battle = ?'); values.append(1 if data['linked_to_battle'] else 0)
     if fields:
@@ -934,7 +936,7 @@ def api_map_drawings_add(map_id):
     h = float(data.get('h', 0))
     rotation = float(data.get('rotation', 0))
     locked = 1 if data.get('locked') else 0
-    if kind not in ('line', 'rect', 'oval', 'pen'):
+    if kind not in ('line', 'rect', 'oval', 'pen', 'angle'):
         return jsonify({'error': 'invalid kind'}), 400
     db = get_db()
     max_order = db.execute('SELECT COALESCE(MAX(sort_order), -1) AS m FROM map_drawings WHERE map_id = ?', (map_id,)).fetchone()['m']
@@ -1029,6 +1031,9 @@ def api_map_pins_list(map_id):
         db.commit()
 
     rows = db.execute('SELECT * FROM map_pins WHERE map_id = ?', (map_id,)).fetchall()
+    # Reuse the battle tracker's own duplicate-numbering (e.g. "Goblin #1",
+    # "Goblin #2") so character pins on the map match the battle menu exactly.
+    battle_display_names = {r['id']: r['display_name'] for r in _battle_rows(db)}
     result = []
     for r in rows:
         p = dict(r)
@@ -1044,6 +1049,7 @@ def api_map_pins_list(map_id):
             if live is None:
                 continue
             p.update(dict(live))
+            p['char_name'] = battle_display_names.get(p['participant_id'], p['char_name'])
         result.append(p)
     db.close()
     return jsonify(result)

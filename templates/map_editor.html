@@ -10,9 +10,10 @@
     <h1 class="page-title">{{ map.name }}</h1>
   </div>
   <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-    <label class="field-checkbox map-link-toggle">
+    <label class="toggle-switch">
       <input type="checkbox" id="link-battle-checkbox" {{ 'checked' if map.linked_to_battle else '' }}>
-      Link to current battle
+      <span class="toggle-switch-track"></span>
+      <span class="toggle-switch-label">Link to current battle</span>
     </label>
     <a href="{{ url_for('maps_list') }}" class="btn btn-ghost">{{ icon('arrow-left') }} Back to maps</a>
   </div>
@@ -21,22 +22,42 @@
 <div class="map-content-area" id="map-content-area">
 <div class="map-toolbar">
   <div class="map-tool-group">
-    <button type="button" class="map-tool-btn active" data-tool="select" title="Select / drag pins">{{ icon('cursor') }}</button>
-    <button type="button" class="map-tool-btn" data-tool="line" title="Line">{{ icon('line-tool') }}</button>
-    <button type="button" class="map-tool-btn" data-tool="rect" title="Rectangle">{{ icon('rect-tool') }}</button>
-    <button type="button" class="map-tool-btn" data-tool="oval" title="Oval">{{ icon('oval-tool') }}</button>
-    <button type="button" class="map-tool-btn" data-tool="pen" title="Free draw">{{ icon('pen-tool') }}</button>
-    <button type="button" class="map-tool-btn" data-tool="prop-paw" data-icon-key="paw" title="Place a familiar marker">
-      <img src="{{ url_for('static', filename='icons/pins/paw.svg') }}" class="map-tool-svg-icon" alt="">
-    </button>
-    <button type="button" class="map-tool-btn" data-tool="prop-skull" data-icon-key="skull" title="Place a monster/undead marker">
-      <img src="{{ url_for('static', filename='icons/pins/skull.svg') }}" class="map-tool-svg-icon" alt="">
-    </button>
-    <button type="button" class="map-tool-btn" data-tool="prop-sword" data-icon-key="sword" title="Place a combat marker">
-      <img src="{{ url_for('static', filename='icons/pins/sword.svg') }}" class="map-tool-svg-icon" alt="">
-    </button>
-    <button type="button" class="map-tool-btn" data-tool="move-grid" title="Move grid">{{ icon('move') }}</button>
-    <button type="button" class="map-tool-btn" data-tool="eraser" title="Eraser: click a shape or pin to delete it">{{ icon('eraser') }}</button>
+    <button type="button" class="map-tool-btn active" data-tool="select" title="Select / drag pins (V)">{{ icon('cursor') }}</button>
+
+    <div class="tool-flyout" id="shapes-flyout" data-flyout-group="shapes">
+      <button type="button" class="map-tool-btn flyout-trigger" data-flyout-trigger title="Shape tools">
+        {{ icon('shapes-group') }}
+      </button>
+      <div class="tool-flyout-menu"><div class="tool-flyout-menu-inner">
+        <button type="button" class="map-tool-btn" data-tool="line" title="Line">{{ icon('line-tool') }}</button>
+        <button type="button" class="map-tool-btn" data-tool="rect" title="Rectangle">{{ icon('rect-tool') }}</button>
+        <button type="button" class="map-tool-btn" data-tool="oval" title="Oval">{{ icon('oval-tool') }}</button>
+        <button type="button" class="map-tool-btn" data-tool="pen" title="Free draw">{{ icon('pen-tool') }}</button>
+        <button type="button" class="map-tool-btn" data-tool="angle" title="Angle / cone: click a start point, click again to set the reach, then drag its edges to widen or narrow">{{ icon('angle-tool') }}</button>
+      </div></div>
+    </div>
+
+    <div class="tool-flyout" id="pins-flyout" data-flyout-group="pins">
+      <button type="button" class="map-tool-btn flyout-trigger" data-flyout-trigger title="Marker pins">
+        {{ icon('flag') }}
+      </button>
+      <div class="tool-flyout-menu"><div class="tool-flyout-menu-inner">
+        <button type="button" class="map-tool-btn" data-tool="prop-paw" data-icon-key="paw" title="Animal">
+          <img src="{{ url_for('static', filename='icons/pins/paw.svg') }}" class="map-tool-svg-icon" alt="">
+        </button>
+        <button type="button" class="map-tool-btn" data-tool="prop-skull" data-icon-key="skull" title="Creature / undead">
+          <img src="{{ url_for('static', filename='icons/pins/skull.svg') }}" class="map-tool-svg-icon" alt="">
+        </button>
+        <button type="button" class="map-tool-btn" data-tool="prop-sword" data-icon-key="sword" title="Weapon / combat marker">
+          <img src="{{ url_for('static', filename='icons/pins/sword.svg') }}" class="map-tool-svg-icon" alt="">
+        </button>
+        <button type="button" class="map-tool-btn" data-tool="prop-hand" data-icon-key="hand" title="Mage hand / spell marker">
+          <img src="{{ url_for('static', filename='icons/pins/hand.svg') }}" class="map-tool-svg-icon" alt="">
+        </button>
+      </div></div>
+    </div>
+
+    <button type="button" class="map-tool-btn" data-tool="eraser" title="Eraser: click a shape or pin to delete it (E)">{{ icon('eraser') }}</button>
   </div>
 
   <div class="map-tool-group">
@@ -44,16 +65,21 @@
     <button type="button" class="btn-icon" id="redo-btn" title="Redo (Ctrl+Shift+Z)" disabled>{{ icon('redo') }}</button>
   </div>
 
-  <div class="map-tool-group">
-    <div class="color-swatch-row" data-color-group="#map-color-input" style="gap:6px;">
-      {% for c in ['#c9a24b', '#e63946', '#5f9174', '#4d7ea8', '#8e6bb0', '#8a5a34', '#f2f2f2', '#1a1a1a'] %}
-      <button type="button" class="color-swatch {{ 'selected' if loop.first }}" data-color="{{ c }}" style="background:{{ c }}; width:22px; height:22px;"></button>
-      {% endfor %}
+  <div class="map-tool-group" id="shape-style-group" hidden>
+    <div class="tool-flyout" id="colors-flyout" data-flyout-group="colors">
+      <button type="button" class="map-tool-btn flyout-trigger" id="colors-flyout-trigger" data-flyout-trigger title="Shape color">
+        <span class="color-flyout-swatch" id="colors-flyout-swatch" style="background:#c9a24b;"></span>
+      </button>
+      <div class="tool-flyout-menu"><div class="tool-flyout-menu-inner">
+        <div class="color-swatch-row" data-color-group="#map-color-input" style="gap:6px;">
+          {% for c in ['#c9a24b', '#e63946', '#5f9174', '#4d7ea8', '#8e6bb0', '#8a5a34', '#f2f2f2', '#1a1a1a'] %}
+          <button type="button" class="color-swatch {{ 'selected' if loop.first }}" data-color="{{ c }}" style="background:{{ c }}; width:22px; height:22px;"></button>
+          {% endfor %}
+        </div>
+      </div></div>
     </div>
     <input type="hidden" id="map-color-input" value="#c9a24b">
-  </div>
-
-  <div class="map-tool-group">
+    <span class="hint-text" style="margin:0 2px;">|</span>
     <label class="grid-size-label">Fill</label>
     <input type="range" id="fill-opacity" min="0" max="95" value="25" title="Fill opacity (0 = no fill)">
   </div>
@@ -63,9 +89,10 @@
   </div>
 
   <div class="map-tool-group">
+    <button type="button" class="btn-icon" id="grid-settings-btn" title="Grid &amp; canvas settings">{{ icon('settings') }}</button>
     <button type="button" class="btn btn-ghost btn-sm" id="zoom-reset-btn" title="Reset zoom to 100%">Reset Zoom</button>
     <span class="map-setup-value" id="zoom-level-label">100%</span>
-    <span class="hint-text" style="margin:0;">Hold Space to pan</span>
+    <span class="hint-text" id="hold-space-hint" style="margin:0;">Hold Space to pan</span>
   </div>
 </div>
 
@@ -73,6 +100,7 @@
   <div class="map-stage-inner" id="map-stage-inner">
     <canvas id="map-canvas"></canvas>
     <div id="map-pin-layer"></div>
+    <div id="angle-labels-layer"></div>
     <!-- Pin action bubble shown when a pin is selected -->
     <div class="pin-action-bubble" id="pin-action-bubble" hidden>
       <button type="button" class="btn-icon" id="pin-view-btn" title="View details">{{ icon('images') }}</button>
@@ -86,6 +114,7 @@
     <div class="pin-action-bubble" id="shape-action-bubble" hidden>
       <button type="button" class="btn-icon" id="shape-resize-toggle" title="Toggle resize handles">{{ icon('resize') }}</button>
       <button type="button" class="btn-icon" id="shape-rotate-toggle" title="Toggle rotate handle">{{ icon('rotate') }}</button>
+      <button type="button" class="btn-icon" id="shape-angle-toggle" title="Toggle angle handles (widen/narrow the cone)" hidden>{{ icon('protractor') }}</button>
       <button type="button" class="btn-icon" id="shape-lock-btn" title="Lock in place">{{ icon('lock') }}</button>
       <button type="button" class="btn-icon btn-icon-danger" id="shape-delete-btn" title="Delete">{{ icon('trash-2') }}</button>
     </div>
@@ -108,11 +137,12 @@
 <div class="map-setup-overlay" id="map-setup-overlay" {{ '' if not map.grid_setup_done else 'hidden' }}>
   <div class="map-setup-stack">
     <div class="map-setup-preview-box">
+      <button type="button" class="btn-icon map-setup-close-btn" id="setup-close-btn" title="Close without saving" hidden>{{ icon('x') }}</button>
       <canvas id="setup-preview-canvas"></canvas>
     </div>
     <p class="map-setup-drag-hint">Click and drag the preview to move the grid</p>
     <div class="map-setup-bar">
-      <div class="map-setup-title">Set up your grid</div>
+      <div class="map-setup-title" id="setup-title">Set up your grid</div>
       <label class="field-checkbox">
         <input type="checkbox" id="setup-grid-visible" checked>
         Show grid
@@ -128,6 +158,10 @@
         <button type="button" class="grid-color-swatch" data-grid-color="white" title="White"></button>
         <button type="button" class="grid-color-swatch" data-grid-color="black" title="Black"></button>
       </div>
+      <label class="field-checkbox">
+        <input type="checkbox" id="setup-snap-grid" {{ 'checked' if map.snap_to_grid else '' }}>
+        Snap pins to grid
+      </label>
       <button type="button" class="btn btn-primary" id="setup-confirm-btn">{{ icon('check') }} Confirm</button>
     </div>
   </div>
