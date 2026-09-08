@@ -18,6 +18,7 @@
   const shapeBubble = document.getElementById('shape-action-bubble');
   const shapeResizeToggle = document.getElementById('shape-resize-toggle');
   const shapeRotateToggle = document.getElementById('shape-rotate-toggle');
+  const shapeAngleToggle = document.getElementById('shape-angle-toggle');
   const shapeLockBtn = document.getElementById('shape-lock-btn');
   const shapeDeleteBtn = document.getElementById('shape-delete-btn');
 
@@ -172,6 +173,20 @@
   }
 
   function getShapeCorners(d) {
+    if (d.kind === 'angle') {
+      // The vertex (cx, cy) is one edge of the box, not its center — the
+      // wedge reaches from the vertex out to radius w, spanning ±half the
+      // sweep vertically. A generic center-based box would badly misfit it.
+      const sweep = (((d.data && d.data.sweepDeg) || 60) * Math.PI) / 180;
+      const yMax = d.w * Math.sin(sweep / 2);
+      const r = d.w;
+      return [
+        localOffsetToNatural(d, 0, -yMax),
+        localOffsetToNatural(d, r, -yMax),
+        localOffsetToNatural(d, r, yMax),
+        localOffsetToNatural(d, 0, yMax),
+      ];
+    }
     const hw = d.w / 2, hh = d.h / 2;
     return [
       localOffsetToNatural(d, -hw, -hh),
@@ -182,8 +197,24 @@
   }
 
   function getRotateHandlePos(d) {
+    if (d.kind === 'angle') {
+      const sweep = (((d.data && d.data.sweepDeg) || 60) * Math.PI) / 180;
+      const yMax = d.w * Math.sin(sweep / 2);
+      const dist = yMax + Math.max(30, canvas.width / 25);
+      return localOffsetToNatural(d, d.w / 2, -dist);
+    }
     const dist = d.h / 2 + Math.max(30, canvas.width / 25);
     return localOffsetToNatural(d, 0, -dist);
+  }
+
+  function getAngleHandlePositions(d) {
+    const sweep = (((d.data && d.data.sweepDeg) || 60) * Math.PI) / 180;
+    const half = sweep / 2;
+    const r = d.w;
+    return [
+      localOffsetToNatural(d, r * Math.cos(-half), r * Math.sin(-half)),
+      localOffsetToNatural(d, r * Math.cos(half), r * Math.sin(half)),
+    ];
   }
 
   function distToSegment(p, a, b) {
@@ -227,6 +258,18 @@
         if (distToSegment({ x: lx, y: ly }, p1, p2) < pad) return true;
       }
       return false;
+    }
+    if (d.kind === 'angle') {
+      const r = d.w;
+      const sweep = (((d.data && d.data.sweepDeg) || 60) * Math.PI) / 180;
+      const dist = Math.hypot(lx, ly);
+      if (dist > r + pad) return false;
+      const angle = Math.atan2(ly, lx);
+      const half = sweep / 2;
+      if (hasFill) return Math.abs(angle) <= half + 0.02;
+      const nearEdge = Math.abs(angle - half) < 0.05 || Math.abs(angle + half) < 0.05;
+      const nearArc = Math.abs(dist - r) < pad;
+      return nearEdge || nearArc;
     }
     return false;
   }
@@ -320,6 +363,15 @@
         for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0] * w, pts[i][1] * h);
         ctx.stroke();
       }
+    } else if (d.kind === 'angle') {
+      const r = w;
+      const sweep = (((d.data && d.data.sweepDeg) || 60) * Math.PI) / 180;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.arc(0, 0, Math.max(0.01, r), -sweep / 2, sweep / 2);
+      ctx.closePath();
+      if (hasFill) { ctx.globalAlpha = d.fill_opacity; ctx.fill(); ctx.globalAlpha = 1; }
+      ctx.stroke();
     }
     ctx.restore();
   }
@@ -370,6 +422,16 @@
         ctx.fillStyle = '#4d9eff';
         ctx.fill();
       }
+      if (shapeHandleMode === 'angle-adjust' && d.kind === 'angle') {
+        const handles = getAngleHandlePositions(d);
+        const hs = Math.max(9, canvas.width / 130);
+        ctx.fillStyle = '#4d9eff';
+        handles.forEach((p) => {
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, hs / 2, 0, Math.PI * 2);
+          ctx.fill();
+        });
+      }
     }
     ctx.restore();
   }
@@ -401,6 +463,20 @@
 
   let previewShape = null; // the shape currently being drawn, shown live
 
+  function renderAngleLabels() {
+    const layer = document.getElementById('angle-labels-layer');
+    if (!layer) return;
+    const angleShapes = drawings.filter((d) => d.kind === 'angle');
+    if (previewShape && previewShape.kind === 'angle') angleShapes.push(previewShape);
+    layer.innerHTML = angleShapes.map((d) => {
+      const sweepDeg = Math.round((d.data && d.data.sweepDeg) || 60);
+      const labelPos = localOffsetToNatural(d, d.w * 0.45, 0);
+      const leftPct = (labelPos.x / naturalWidth) * 100;
+      const topPct = (labelPos.y / naturalHeight) * 100;
+      return `<div class="angle-degree-label" style="left:${leftPct}%; top:${topPct}%;">${sweepDeg}\u00b0</div>`;
+    }).join('');
+  }
+
   function redraw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     if (bgLoaded) ctx.drawImage(bgImage, 0, 0, canvas.width, canvas.height);
@@ -409,6 +485,7 @@
     if (previewShape) drawShape(previewShape);
     drawSelectionOverlay();
     drawLockHoverIcon();
+    renderAngleLabels();
   }
 
   // ---------------------------------------------------------------------
@@ -463,6 +540,16 @@
     if (selectedPinId) positionPinBubble(selectedPinId);
   }
 
+  // Chess-piece-style snapping: the pin's CENTER locks to the nearest grid
+  // cell's center rather than forcing the whole pin inside one cell, so a
+  // large creature's marker can still visually cover several cells.
+  function snapPointToGridCenter(x, y) {
+    if (!snapToGrid || !gridSize || gridSize < 2) return { x, y };
+    const cellX = Math.round((x - gridOffsetX - gridSize / 2) / gridSize);
+    const cellY = Math.round((y - gridOffsetY - gridSize / 2) / gridSize);
+    return { x: gridOffsetX + gridSize / 2 + cellX * gridSize, y: gridOffsetY + gridSize / 2 + cellY * gridSize };
+  }
+
   function applyPinStyle(pin, el) {
     const scale = pin.scale || 1;
     const wPct = (gridSize * scale / naturalWidth) * 100;
@@ -498,7 +585,15 @@
     const d = drawings.find((s) => s.id === selectedShapeId);
     if (!d) { shapeBubble.hidden = true; return; }
     const wrapRect = stageWrap.getBoundingClientRect();
-    const corners = getShapeCorners(d).map((c) => ({
+    // Angle shapes' adjust handles sit out at the full reach (radius w),
+    // well beyond the shape's own small nominal bounding box — use a
+    // bounding circle of that radius instead so the bubble never overlaps
+    // them, regardless of rotation.
+    const rawCorners = d.kind === 'angle'
+      ? [{ x: d.cx - d.w, y: d.cy - d.w }, { x: d.cx + d.w, y: d.cy - d.w },
+         { x: d.cx + d.w, y: d.cy + d.w }, { x: d.cx - d.w, y: d.cy + d.w }]
+      : getShapeCorners(d);
+    const corners = rawCorners.map((c) => ({
       x: (c.x / naturalWidth) * wrapRect.width,
       y: (c.y / naturalHeight) * wrapRect.height,
     }));
@@ -526,6 +621,12 @@
   }
 
   // ---- Selection ----
+  function updateAngleToggleVisibility() {
+    const d = drawings.find((s) => s.id === selectedShapeId);
+    shapeAngleToggle.hidden = !(d && d.kind === 'angle');
+    if (shapeAngleToggle.hidden) shapeAngleToggle.classList.remove('active');
+  }
+
   function selectShape(id) {
     selectedShapeIds = new Set([id]);
     selectedShapeId = id;
@@ -534,7 +635,9 @@
     shapeRotateToggle.classList.remove('active');
     deselectPin();
     positionShapeBubble();
+    updateAngleToggleVisibility();
     redraw();
+    updateStylePanelVisibility();
   }
   function deselectShape() {
     if (selectedShapeIds.size === 0) return;
@@ -545,6 +648,7 @@
     shapeRotateToggle.classList.remove('active');
     shapeBubble.hidden = true;
     redraw();
+    updateStylePanelVisibility();
   }
   // Ctrl/Cmd+click: add or remove a shape from the current multi-selection.
   function toggleShapeSelection(id) {
@@ -559,6 +663,7 @@
       shapeRotateToggle.classList.remove('active');
       deselectPin();
       positionShapeBubble();
+      updateAngleToggleVisibility();
       redraw();
     } else {
       // Multiple shapes selected: hide the per-shape bubble (resize/rotate/
@@ -569,6 +674,7 @@
       deselectPin();
       redraw();
     }
+    updateStylePanelVisibility();
   }
   function selectPin(pinId) {
     selectedPinId = pinId;
@@ -585,12 +691,21 @@
     shapeHandleMode = shapeHandleMode === 'resize' ? null : 'resize';
     shapeResizeToggle.classList.toggle('active', shapeHandleMode === 'resize');
     shapeRotateToggle.classList.remove('active');
+    shapeAngleToggle.classList.remove('active');
     redraw();
   });
   shapeRotateToggle.addEventListener('click', () => {
     shapeHandleMode = shapeHandleMode === 'rotate' ? null : 'rotate';
     shapeRotateToggle.classList.toggle('active', shapeHandleMode === 'rotate');
     shapeResizeToggle.classList.remove('active');
+    shapeAngleToggle.classList.remove('active');
+    redraw();
+  });
+  shapeAngleToggle.addEventListener('click', () => {
+    shapeHandleMode = shapeHandleMode === 'angle-adjust' ? null : 'angle-adjust';
+    shapeAngleToggle.classList.toggle('active', shapeHandleMode === 'angle-adjust');
+    shapeResizeToggle.classList.remove('active');
+    shapeRotateToggle.classList.remove('active');
     redraw();
   });
   // Hold-and-drag straight from the buttons themselves (same gesture as the
@@ -684,6 +799,22 @@
       redo: async () => { Object.assign(d, after); await persistShapeFields(d, after); redraw(); positionShapeBubble(); },
     };
   }
+  async function finalizeNewShape(shapeToSave) {
+    if (shapeToSave.kind === 'pen') {
+      if (!shapeToSave.data.points || shapeToSave.data.points.length < 2) return;
+    } else if (shapeToSave.kind !== 'angle' && Math.hypot(shapeToSave.w, shapeToSave.h) < 4) {
+      return;
+    }
+    const res = await fetch(`/api/maps/${mapId}/drawings`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(serializeShapeForCreate(shapeToSave)),
+    });
+    const json = await res.json();
+    const shape = { ...shapeToSave, id: json.id };
+    drawings.push(shape);
+    redraw();
+    pushCommand(makeAddShapeCommand(shape));
+  }
+
   function makeAddShapeCommand(d) {
     return {
       label: 'add-shape',
@@ -836,6 +967,10 @@
 
   document.querySelectorAll('.color-swatch').forEach((sw) => {
     sw.addEventListener('click', () => {
+      const flyoutSwatch = document.getElementById('colors-flyout-swatch');
+      if (flyoutSwatch) flyoutSwatch.style.background = sw.dataset.color;
+      const colorsFlyout = document.getElementById('colors-flyout');
+      if (colorsFlyout) colorsFlyout.classList.remove('open');
       if (selectedShapeId == null) return;
       const d = drawings.find((s) => s.id === selectedShapeId);
       if (!d) return;
@@ -1043,20 +1178,84 @@
   }
   showNavHintIfNeeded();
 
-  document.querySelectorAll('.map-tool-btn').forEach((btn) => {
+  // "Hold Space to pan" toolbar hint disappears for good the first time
+  // it's actually used.
+  const SPACE_HINT_KEY = 'ledger-map-space-hint-dismissed';
+  const holdSpaceHintEl = document.getElementById('hold-space-hint');
+  if (holdSpaceHintEl) {
+    let spaceHintSeen = false;
+    try { spaceHintSeen = !!localStorage.getItem(SPACE_HINT_KEY); } catch (err) { /* ignore */ }
+    if (spaceHintSeen) holdSpaceHintEl.hidden = true;
+  }
+  function dismissSpaceHint() {
+    if (holdSpaceHintEl) holdSpaceHintEl.hidden = true;
+    try { localStorage.setItem(SPACE_HINT_KEY, '1'); } catch (err) { /* ignore */ }
+  }
+
+  const SHAPE_TOOLS = ['line', 'rect', 'oval', 'pen', 'angle'];
+  const styleGroup = document.getElementById('shape-style-group');
+  function updateStylePanelVisibility() {
+    const show = SHAPE_TOOLS.includes(currentTool) || selectedShapeIds.size > 0;
+    styleGroup.hidden = !show;
+  }
+
+  document.querySelectorAll('.map-tool-btn[data-tool]').forEach((btn) => {
     btn.addEventListener('click', () => {
-      document.querySelectorAll('.map-tool-btn').forEach((b) => b.classList.remove('active'));
+      document.querySelectorAll('.map-tool-btn[data-tool]').forEach((b) => b.classList.remove('active'));
       btn.classList.add('active');
       currentTool = btn.dataset.tool;
       deselectPin();
       deselectShape();
       canvas.classList.toggle('tool-eraser', currentTool === 'eraser');
+      pinLayer.classList.toggle('draw-mode', SHAPE_TOOLS.includes(currentTool));
+      angleDrawState = null;
+      previewShape = null;
       if (['line', 'rect', 'oval'].includes(currentTool)) {
         showModifierHintIfNeeded();
       } else {
         hideModifierHint();
       }
+      // If the chosen tool lives inside a flyout, mirror its icon onto the
+      // flyout's own trigger button so the toolbar shows what's active.
+      const flyout = btn.closest('.tool-flyout');
+      document.querySelectorAll('.tool-flyout').forEach((f) => f.classList.remove('open'));
+      document.querySelectorAll('.flyout-trigger').forEach((t) => t.classList.remove('active'));
+      if (flyout) {
+        const trigger = flyout.querySelector('.flyout-trigger');
+        trigger.classList.add('active');
+        trigger.innerHTML = btn.innerHTML;
+      }
+      updateStylePanelVisibility();
     });
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    const tag = (e.target.tagName || '').toLowerCase();
+    if (tag === 'input' || tag === 'textarea' || tag === 'select' || e.target.isContentEditable) return;
+    const tool = { v: 'select', e: 'eraser' }[e.key.toLowerCase()];
+    if (!tool) return;
+    const toolBtn = document.querySelector(`.map-tool-btn[data-tool="${tool}"]`);
+    if (toolBtn) {
+      e.preventDefault();
+      toolBtn.click();
+    }
+  });
+
+  // Flyout open/close: hover already reveals it via CSS, but click support
+  // keeps it open for touch/trackpad users and while picking a tool.
+  document.querySelectorAll('[data-flyout-trigger]').forEach((trigger) => {
+    trigger.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const flyout = trigger.closest('.tool-flyout');
+      const isOpen = flyout.classList.contains('open');
+      document.querySelectorAll('.tool-flyout').forEach((f) => f.classList.remove('open'));
+      if (!isOpen) flyout.classList.add('open');
+    });
+  });
+  document.addEventListener('click', (e) => {
+    if (e.target.closest('.tool-flyout')) return;
+    document.querySelectorAll('.tool-flyout').forEach((f) => f.classList.remove('open'));
   });
 
   function getColor() { return document.getElementById('map-color-input').value; }
@@ -1165,6 +1364,7 @@
   // Canvas interactions
   // ---------------------------------------------------------------------
   let drawState = null;   // creating a brand-new shape, or moving the grid
+  let angleDrawState = null; // {vertex} while placing an angle/cone shape (click, then click again)
   let activeDrag = null;  // manipulating an existing shape or pin
 
   canvas.addEventListener('mousedown', (e) => {
@@ -1186,6 +1386,14 @@
           const corner = hitTestResizeHandle(d, pos);
           if (corner != null) {
             const before = { cx: d.cx, cy: d.cy, w: d.w, h: d.h, rotation: d.rotation };
+            if (d.kind === 'angle') {
+              // The vertex must stay put — just scale the reach (radius)
+              // by distance from it, rather than the generic opposite-
+              // corner anchor math, which assumes a center-based box.
+              const startDist = Math.max(1, Math.hypot(pos.x - d.cx, pos.y - d.cy));
+              activeDrag = { type: 'resize-angle-radius', d, startDist, startW: d.w, before };
+              return;
+            }
             const corners = getShapeCorners(d);
             const anchor = corners[(corner + 2) % 4];
             const axes = unitAxes(d.rotation);
@@ -1201,6 +1409,19 @@
           const startAngle = Math.atan2(pos.y - d.cy, pos.x - d.cx) * (180 / Math.PI);
           activeDrag = { type: 'rotate-shape', d, before, startAngle, startRotation: d.rotation || 0 };
           return;
+        }
+      }
+      if (selectedShapeId != null && shapeHandleMode === 'angle-adjust') {
+        const d = drawings.find((s) => s.id === selectedShapeId);
+        if (d && d.kind === 'angle') {
+          const handles = getAngleHandlePositions(d);
+          const hs = Math.max(14, canvas.width / 80);
+          const hitIdx = handles.findIndex((p) => Math.hypot(pos.x - p.x, pos.y - p.y) < hs);
+          if (hitIdx !== -1) {
+            const before = { data: { ...d.data } };
+            activeDrag = { type: 'adjust-angle-sweep', d, before };
+            return;
+          }
         }
       }
       const multiKey = e.ctrlKey || e.metaKey;
@@ -1229,13 +1450,25 @@
       return;
     }
 
-    if (currentTool === 'move-grid') {
-      drawState = { tool: 'move-grid', start: pos, origOffsetX: gridOffsetX, origOffsetY: gridOffsetY };
-      return;
-    }
     if (currentTool.startsWith('prop-')) {
       const iconKey = currentTool.replace('prop-', '');
       placeProp(pos, iconKey);
+      return;
+    }
+    if (currentTool === 'angle') {
+      if (!angleDrawState) {
+        angleDrawState = { vertex: pos };
+      } else {
+        const vertex = angleDrawState.vertex;
+        angleDrawState = null;
+        previewShape = null;
+        const dist = Math.max(20, Math.hypot(pos.x - vertex.x, pos.y - vertex.y));
+        const rotation = Math.atan2(pos.y - vertex.y, pos.x - vertex.x) * (180 / Math.PI);
+        finalizeNewShape({
+          kind: 'angle', cx: vertex.x, cy: vertex.y, w: dist, h: dist, rotation,
+          data: { sweepDeg: 60 }, color: getColor(), fill: true, fill_opacity: getFillOpacity(),
+        });
+      }
       return;
     }
     if (['line', 'rect', 'oval'].includes(currentTool)) {
@@ -1266,15 +1499,22 @@
       if (hit !== hoveredLockedShapeId) { hoveredLockedShapeId = hit; redraw(); }
     }
 
-    if (!drawState) return;
-    const pos = eventPos(e);
-
-    if (drawState.tool === 'move-grid') {
-      gridOffsetX = drawState.origOffsetX + (pos.x - drawState.start.x);
-      gridOffsetY = drawState.origOffsetY + (pos.y - drawState.start.y);
+    if (currentTool === 'angle' && angleDrawState) {
+      const pos = eventPos(e);
+      const vertex = angleDrawState.vertex;
+      const dist = Math.max(20, Math.hypot(pos.x - vertex.x, pos.y - vertex.y));
+      const rotation = Math.atan2(pos.y - vertex.y, pos.x - vertex.x) * (180 / Math.PI);
+      previewShape = {
+        kind: 'angle', cx: vertex.x, cy: vertex.y, w: dist, h: dist, rotation,
+        data: { sweepDeg: 60 }, color: getColor(), fill: true, fill_opacity: getFillOpacity(),
+      };
       redraw();
       return;
     }
+
+    if (!drawState) return;
+    const pos = eventPos(e);
+
     if (drawState.tool === 'pen') {
       const pts = drawState.points;
       const last = pts[pts.length - 1];
@@ -1324,6 +1564,17 @@
       positionShapeBubble();
       return;
     }
+    if (activeDrag.type === 'resize-angle-radius') {
+      const pos = eventPos(e);
+      const d = activeDrag.d;
+      const dist = Math.max(1, Math.hypot(pos.x - d.cx, pos.y - d.cy));
+      const ratio = dist / activeDrag.startDist;
+      d.w = Math.max(20, activeDrag.startW * ratio);
+      d.h = d.w;
+      redraw();
+      positionShapeBubble();
+      return;
+    }
     if (activeDrag.type === 'resize-shape') {
       const pos = eventPos(e);
       const d = activeDrag.d;
@@ -1368,14 +1619,26 @@
       positionShapeBubble();
       return;
     }
+    if (activeDrag.type === 'adjust-angle-sweep') {
+      const pos = eventPos(e);
+      const d = activeDrag.d;
+      const local = naturalToLocalOffset(d, pos.x, pos.y);
+      const angle = Math.atan2(local.y, local.x) * (180 / Math.PI);
+      const newSweep = Math.max(5, Math.min(170, Math.abs(angle) * 2));
+      d.data = { ...d.data, sweepDeg: newSweep };
+      redraw();
+      positionShapeBubble();
+      return;
+    }
     if (activeDrag.type === 'move-pin') {
       const pos = eventPos(e);
       const pin = pins.find((p) => p.id === activeDrag.pin.id);
       if (!pin) return;
       const dx = pos.x - activeDrag.startPos.x, dy = pos.y - activeDrag.startPos.y;
       if (Math.hypot(dx, dy) > 3) activeDrag.moved = true;
-      pin.x = activeDrag.startX + dx;
-      pin.y = activeDrag.startY + dy;
+      const snapped = snapPointToGridCenter(activeDrag.startX + dx, activeDrag.startY + dy);
+      pin.x = snapped.x;
+      pin.y = snapped.y;
       applyPinStyle(pin, activeDrag.el);
       if (selectedPinId === pin.id) positionPinBubble(pin.id);
       return;
@@ -1427,10 +1690,22 @@
         }
         return;
       }
-      if (drag.type === 'resize-shape' || drag.type === 'rotate-shape' || drag.type === 'resize-shape-uniform') {
+      if (drag.type === 'resize-shape' || drag.type === 'rotate-shape' || drag.type === 'resize-shape-uniform' || drag.type === 'resize-angle-radius') {
         const d = drag.d;
         const after = { cx: d.cx, cy: d.cy, w: d.w, h: d.h, rotation: d.rotation };
         pushCommand(makeShapeTransformCommand(d, drag.before, after));
+        await persistShapeFields(d, after);
+        return;
+      }
+      if (drag.type === 'adjust-angle-sweep') {
+        const d = drag.d;
+        const before = drag.before;
+        const after = { data: { ...d.data } };
+        pushCommand({
+          label: 'adjust-angle-sweep',
+          undo: async () => { d.data = { ...before.data }; await persistShapeFields(d, before); redraw(); positionShapeBubble(); },
+          redo: async () => { d.data = { ...after.data }; await persistShapeFields(d, after); redraw(); positionShapeBubble(); },
+        });
         await persistShapeFields(d, after);
         return;
       }
@@ -1473,42 +1748,21 @@
     const state = drawState;
     drawState = null;
 
-    if (state.tool === 'move-grid') {
-      await fetch(`/api/maps/${mapId}/settings`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ grid_offset_x: Math.round(gridOffsetX), grid_offset_y: Math.round(gridOffsetY) }),
-      });
-      return;
-    }
-
     if (!previewShape) return;
     const shapeToSave = previewShape;
     previewShape = null;
     redraw();
-
-    if (shapeToSave.kind === 'pen') {
-      if (!shapeToSave.data.points || shapeToSave.data.points.length < 2) return;
-    } else if (Math.hypot(shapeToSave.w, shapeToSave.h) < 4) {
-      return;
-    }
-
-    const res = await fetch(`/api/maps/${mapId}/drawings`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(serializeShapeForCreate(shapeToSave)),
-    });
-    const json = await res.json();
-    const shape = { ...shapeToSave, id: json.id };
-    drawings.push(shape);
-    redraw();
-    pushCommand(makeAddShapeCommand(shape));
+    await finalizeNewShape(shapeToSave);
   });
 
   async function placeProp(pos, iconKey) {
+    const snapped = snapPointToGridCenter(pos.x, pos.y);
     const res = await fetch(`/api/maps/${mapId}/pins`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pin_type: 'prop', icon_key: iconKey, x: pos.x, y: pos.y, scale: 1.0, rotation: 0 }),
+      body: JSON.stringify({ pin_type: 'prop', icon_key: iconKey, x: snapped.x, y: snapped.y, scale: 1.0, rotation: 0 }),
     });
     const json = await res.json();
-    const pin = { id: json.id, pin_type: 'prop', icon_key: iconKey, x: pos.x, y: pos.y, scale: 1.0, rotation: 0, locked: false };
+    const pin = { id: json.id, pin_type: 'prop', icon_key: iconKey, x: snapped.x, y: snapped.y, scale: 1.0, rotation: 0, locked: false };
     pins.push(pin);
     renderPins();
     pushCommand(makeAddPinCommand(pin));
@@ -1519,115 +1773,145 @@
   }
 
   // ---------------------------------------------------------------------
-  // Mandatory one-time grid setup (shown once per map, on first open).
-  // Also intended to be reopened later as the "grid/canvas settings"
-  // button once that exists — same lightbox, not a new one.
+  // Grid/canvas settings lightbox. Shown mandatorily once per map on first
+  // open; reopenable afterward (non-mandatory) from the toolbar's Grid
+  // Settings button — same component both times, not two separate UIs.
   // ---------------------------------------------------------------------
   const setupOverlay = document.getElementById('map-setup-overlay');
   const contentArea = document.getElementById('map-content-area');
-  if (setupOverlay && !setupOverlay.hidden) {
-    contentArea.classList.add('blurred');
-    const setupVisibleCheckbox = document.getElementById('setup-grid-visible');
-    const setupSizeSlider = document.getElementById('setup-grid-size');
-    const setupSizeValue = document.getElementById('setup-grid-size-value');
-    const setupConfirmBtn = document.getElementById('setup-confirm-btn');
-    const previewCanvas = document.getElementById('setup-preview-canvas');
-    const previewCtx = previewCanvas.getContext('2d');
+  const setupVisibleCheckbox = document.getElementById('setup-grid-visible');
+  const setupSizeSlider = document.getElementById('setup-grid-size');
+  const setupSizeValue = document.getElementById('setup-grid-size-value');
+  const setupSnapCheckbox = document.getElementById('setup-snap-grid');
+  const setupConfirmBtn = document.getElementById('setup-confirm-btn');
+  const setupCloseBtn = document.getElementById('setup-close-btn');
+  const setupTitle = document.getElementById('setup-title');
+  const previewCanvas = document.getElementById('setup-preview-canvas');
+  const previewCtx = previewCanvas.getContext('2d');
+  let snapToGrid = !!initData.snap_to_grid;
+  let gridSettingsBefore = null; // snapshot for cancel/revert when reopened
 
-    // Seed the wizard controls from the current (default) grid state and
-    // clamp the starting size into the new 25–100 range.
+  function syncSetupControlsFromState() {
     gridSize = Math.max(25, Math.min(100, gridSize || 50));
     setupSizeSlider.value = gridSize;
     setupSizeValue.textContent = `${gridSize}px`;
+    setupSizeSlider.disabled = !gridVisible;
     setupVisibleCheckbox.checked = gridVisible;
+    setupSnapCheckbox.checked = snapToGrid;
     document.querySelectorAll('.grid-color-swatch').forEach((sw) => {
       sw.classList.toggle('active', sw.dataset.gridColor === gridColor);
     });
+  }
 
-    // A small, crisp (never blurred) preview of the actual map + grid,
-    // rendered at a downscaled resolution inside the lightbox itself.
-    function drawSetupPreview() {
-      const maxW = 900, maxH = 640;
-      let w = naturalWidth, h = naturalHeight;
-      const scale = Math.min(maxW / w, maxH / h, 1);
-      w = Math.round(w * scale);
-      h = Math.round(h * scale);
-      previewCanvas.width = w;
-      previewCanvas.height = h;
-      previewCtx.clearRect(0, 0, w, h);
-      if (bgLoaded) previewCtx.drawImage(bgImage, 0, 0, w, h);
-      drawGridOnto(previewCtx, w, h, gridSize * scale, gridOffsetX * scale, gridOffsetY * scale, gridColor, gridVisible);
-    }
+  // A small, crisp (never blurred) preview of the actual map + grid,
+  // rendered at a downscaled resolution inside the lightbox itself.
+  function drawSetupPreview() {
+    const maxW = 900, maxH = 640;
+    let w = naturalWidth, h = naturalHeight;
+    const scale = Math.min(maxW / w, maxH / h, 1);
+    w = Math.round(w * scale);
+    h = Math.round(h * scale);
+    previewCanvas.width = w;
+    previewCanvas.height = h;
+    previewCtx.clearRect(0, 0, w, h);
+    if (bgLoaded) previewCtx.drawImage(bgImage, 0, 0, w, h);
+    drawGridOnto(previewCtx, w, h, gridSize * scale, gridOffsetX * scale, gridOffsetY * scale, gridColor, gridVisible);
+  }
+
+  function openGridSettings(mandatory) {
+    gridSettingsBefore = { gridSize, gridColor, gridVisible, gridOffsetX, gridOffsetY, snapToGrid };
+    setupOverlay.hidden = false;
+    contentArea.classList.add('blurred');
+    setupCloseBtn.hidden = !!mandatory;
+    setupTitle.textContent = mandatory ? 'Set up your grid' : 'Grid & canvas settings';
+    if (mandatory) suppressMainGrid = true;
+    syncSetupControlsFromState();
     drawSetupPreview();
     redraw();
-
-    setupVisibleCheckbox.addEventListener('change', () => {
-      gridVisible = setupVisibleCheckbox.checked;
-      setupSizeSlider.disabled = !gridVisible;
-      drawSetupPreview();
-      redraw();
-    });
-    setupSizeSlider.addEventListener('input', () => {
-      gridSize = parseInt(setupSizeSlider.value, 10);
-      setupSizeValue.textContent = `${gridSize}px`;
-      drawSetupPreview();
-      redraw();
-    });
-    document.querySelectorAll('.grid-color-swatch').forEach((sw) => {
-      sw.addEventListener('click', () => {
-        gridColor = sw.dataset.gridColor;
-        document.querySelectorAll('.grid-color-swatch').forEach((b) => b.classList.remove('active'));
-        sw.classList.add('active');
-        drawSetupPreview();
-        redraw();
-      });
-    });
-
-    // Hold and drag on the preview to move the grid without leaving the
-    // lightbox — dragging in preview-pixel space is converted back to
-    // natural-image pixels since the preview is downscaled.
-    let previewDrag = null;
-    previewCanvas.addEventListener('mousedown', (e) => {
-      previewDrag = { startX: e.clientX, startY: e.clientY, origOffsetX: gridOffsetX, origOffsetY: gridOffsetY };
-    });
-    window.addEventListener('mousemove', (e) => {
-      if (!previewDrag) return;
-      const rect = previewCanvas.getBoundingClientRect();
-      const scale = naturalWidth / rect.width;
-      gridOffsetX = previewDrag.origOffsetX + (e.clientX - previewDrag.startX) * scale;
-      gridOffsetY = previewDrag.origOffsetY + (e.clientY - previewDrag.startY) * scale;
-      drawSetupPreview();
-      redraw();
-    });
-    window.addEventListener('mouseup', () => {
-      if (!previewDrag) return;
-      previewDrag = null;
-      fetch(`/api/maps/${mapId}/settings`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ grid_offset_x: Math.round(gridOffsetX), grid_offset_y: Math.round(gridOffsetY) }),
-      });
-    });
-
-    // The image may still be loading when the wizard first appears.
-    const prevOnLoad = bgImage.onload;
-    bgImage.onload = () => { if (prevOnLoad) prevOnLoad(); drawSetupPreview(); };
-
-    setupConfirmBtn.addEventListener('click', async () => {
-      await fetch(`/api/maps/${mapId}/settings`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          grid_size: gridSize, grid_color: gridColor, grid_visible: gridVisible, grid_setup_done: true,
-          grid_offset_x: Math.round(gridOffsetX), grid_offset_y: Math.round(gridOffsetY),
-        }),
-      });
-      suppressMainGrid = false;
-      setupOverlay.hidden = true;
-      contentArea.classList.remove('blurred');
-      renderPins();
-      redraw();
-      showNavHintIfNeeded();
-    });
   }
+
+  function closeGridSettings(reverted) {
+    if (reverted && gridSettingsBefore) {
+      gridSize = gridSettingsBefore.gridSize;
+      gridColor = gridSettingsBefore.gridColor;
+      gridVisible = gridSettingsBefore.gridVisible;
+      gridOffsetX = gridSettingsBefore.gridOffsetX;
+      gridOffsetY = gridSettingsBefore.gridOffsetY;
+      snapToGrid = gridSettingsBefore.snapToGrid;
+    }
+    suppressMainGrid = false;
+    setupOverlay.hidden = true;
+    contentArea.classList.remove('blurred');
+    renderPins();
+    redraw();
+  }
+
+  setupVisibleCheckbox.addEventListener('change', () => {
+    gridVisible = setupVisibleCheckbox.checked;
+    setupSizeSlider.disabled = !gridVisible;
+    drawSetupPreview();
+    redraw();
+  });
+  setupSizeSlider.addEventListener('input', () => {
+    gridSize = parseInt(setupSizeSlider.value, 10);
+    setupSizeValue.textContent = `${gridSize}px`;
+    drawSetupPreview();
+    redraw();
+  });
+  setupSnapCheckbox.addEventListener('change', () => {
+    snapToGrid = setupSnapCheckbox.checked;
+  });
+  document.querySelectorAll('.grid-color-swatch').forEach((sw) => {
+    sw.addEventListener('click', () => {
+      gridColor = sw.dataset.gridColor;
+      document.querySelectorAll('.grid-color-swatch').forEach((b) => b.classList.remove('active'));
+      sw.classList.add('active');
+      drawSetupPreview();
+      redraw();
+    });
+  });
+
+  // Hold and drag on the preview to move the grid without leaving the
+  // lightbox — dragging in preview-pixel space is converted back to
+  // natural-image pixels since the preview is downscaled.
+  let previewDrag = null;
+  previewCanvas.addEventListener('mousedown', (e) => {
+    previewDrag = { startX: e.clientX, startY: e.clientY, origOffsetX: gridOffsetX, origOffsetY: gridOffsetY };
+  });
+  window.addEventListener('mousemove', (e) => {
+    if (!previewDrag) return;
+    const rect = previewCanvas.getBoundingClientRect();
+    const scale = naturalWidth / rect.width;
+    gridOffsetX = previewDrag.origOffsetX + (e.clientX - previewDrag.startX) * scale;
+    gridOffsetY = previewDrag.origOffsetY + (e.clientY - previewDrag.startY) * scale;
+    drawSetupPreview();
+    redraw();
+  });
+  window.addEventListener('mouseup', () => {
+    previewDrag = null;
+  });
+
+  // The image may still be loading when the overlay first appears.
+  const prevOnLoad = bgImage.onload;
+  bgImage.onload = () => { if (prevOnLoad) prevOnLoad(); drawSetupPreview(); };
+
+  setupCloseBtn.addEventListener('click', () => closeGridSettings(true));
+
+  setupConfirmBtn.addEventListener('click', async () => {
+    await fetch(`/api/maps/${mapId}/settings`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        grid_size: gridSize, grid_color: gridColor, grid_visible: gridVisible, grid_setup_done: true,
+        grid_offset_x: Math.round(gridOffsetX), grid_offset_y: Math.round(gridOffsetY), snap_to_grid: snapToGrid,
+      }),
+    });
+    closeGridSettings(false);
+    showNavHintIfNeeded();
+  });
+
+  document.getElementById('grid-settings-btn').addEventListener('click', () => openGridSettings(false));
+
+  if (!initData.grid_setup_done) openGridSettings(true);
 
   // ---------------------------------------------------------------------
   // Zoom (mouse wheel + trackpad pinch, centered on the cursor) and
@@ -1644,6 +1928,7 @@
 
   function applyZoomTransform() {
     stageInner.style.transform = `translate(${panX}px, ${panY}px) scale(${zoomLevel})`;
+    stageInner.style.setProperty('--ledger-zoom-inv', String(1 / zoomLevel));
     if (zoomLevelLabel) zoomLevelLabel.textContent = `${Math.round(zoomLevel * 100)}%`;
   }
 
@@ -1676,7 +1961,7 @@
       const tag = (e.target.tagName || '').toLowerCase();
       if (tag === 'input' || tag === 'textarea') return;
       e.preventDefault();
-      if (!spaceHeld) { spaceHeld = true; stageWrap.classList.add('panning'); dismissNavHintForGood(); }
+      if (!spaceHeld) { spaceHeld = true; stageWrap.classList.add('panning'); dismissNavHintForGood(); dismissSpaceHint(); }
     }
   });
   document.addEventListener('keyup', (e) => {

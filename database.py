@@ -43,6 +43,6 @@ def _migrate(conn):
 
     map_cols = {row['name'] for row in conn.execute('PRAGMA table_info(maps)')}
     for col, ddl in (('grid_color', "TEXT DEFAULT 'gray'"), ('grid_visible', 'INTEGER DEFAULT 1'),
-                     ('grid_setup_done', 'INTEGER DEFAULT 0')):
+                     ('grid_setup_done', 'INTEGER DEFAULT 0'), ('snap_to_grid', 'INTEGER DEFAULT 0')):
         if col not in map_cols:
             conn.execute(f'ALTER TABLE maps ADD COLUMN {col} {ddl}')

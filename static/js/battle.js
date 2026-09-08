@@ -72,8 +72,7 @@
         <input type="number" class="hp-amount-input" min="0" placeholder="1" value="" ${dead ? 'disabled' : ''}>
         <button type="button" class="hp-btn heal-btn" data-action="heal" title="Heal" ${dead ? 'disabled' : ''}>${ICONS.heart}</button>
         <button type="button" class="hp-btn damage-btn" data-action="damage" title="Damage" ${dead ? 'disabled' : ''}>${ICONS.swords}</button>
-        <button type="button" class="hp-btn temphp-btn" data-action="temphp-toggle" title="Temporary HP" ${dead ? 'disabled' : ''}>${ICONS.shieldPlus}</button>
-        <input type="number" class="temphp-input" data-action="temphp" min="0" placeholder="Temp HP" style="display:none;" value="">
+        <button type="button" class="hp-btn temphp-btn" data-action="temphp" title="Temporary HP" ${dead ? 'disabled' : ''}>${ICONS.shieldPlus}</button>
       </div>
 
       <button type="button" class="btn-icon" data-action="view" title="View details">${ICONS.images}</button>
@@ -167,10 +166,11 @@
     const pid = row.dataset.pid;
     const action = btn.dataset.action;
 
-    if (action === 'heal' || action === 'damage') {
+    if (action === 'heal' || action === 'damage' || action === 'temphp') {
       const input = row.querySelector('.hp-amount-input');
       const amount = parseInt(input.value, 10) || 1;
-      participants = await apiCall(`/api/battle/${pid}/${action}`, { amount });
+      const payload = action === 'temphp' ? { value: amount } : { amount };
+      participants = await apiCall(`/api/battle/${pid}/${action}`, payload);
       render();
     } else if (action === 'die') {
       participants = await apiCall(`/api/battle/${pid}/die`, {});
@@ -188,21 +188,11 @@
     } else if (action === 'view') {
       const p = participants.find((x) => String(x.id) === pid);
       if (p) openDetailModal(p.character_id);
-    } else if (action === 'temphp-toggle') {
-      const input = row.querySelector('.temphp-input');
-      const isHidden = input.style.display === 'none' || !input.style.display;
-      if (isHidden) {
-        input.style.display = 'inline-block';
-        input.focus();
-        input.select();
-      } else {
-        input.style.display = 'none';
-      }
     }
   });
 
   root.addEventListener('change', async (e) => {
-    const input = e.target.closest('[data-action="initiative"], [data-action="ac"], [data-action="temphp"]');
+    const input = e.target.closest('[data-action="initiative"], [data-action="ac"]');
     if (!input) return;
     const row = input.closest('.battle-row');
     const pid = row.dataset.pid;
@@ -210,12 +200,6 @@
     const value = parseInt(input.value, 10) || 0;
     participants = await apiCall(`/api/battle/${pid}/${action}`, { value });
     render();
-  });
-
-  root.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && e.target.matches('.temphp-input')) {
-      e.target.blur(); // triggers the 'change' handler above
-    }
   });
 
   // ---- Sort toggle ----
@@ -230,7 +214,8 @@
 
   // ---- Clear battle ----
   document.getElementById('clear-battle-btn').addEventListener('click', async () => {
-    if (!confirm('Clear the entire battle? This removes everyone from the field.')) return;
+    const confirmed = await window.confirmAction('Clear the entire battle? This removes everyone from the field.');
+    if (!confirmed) return;
     participants = await apiCall('/api/battle/clear', {});
     render();
   });
