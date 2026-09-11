@@ -102,8 +102,13 @@
     <div id="map-pin-layer"></div>
     <div id="angle-labels-layer"></div>
     <!-- Pin action bubble shown when a pin is selected -->
+    <div class="pin-rename-box" id="pin-rename-box" hidden>
+      <input type="text" id="pin-rename-input" maxlength="40" placeholder="Name this marker">
+    </div>
+
     <div class="pin-action-bubble" id="pin-action-bubble" hidden>
       <button type="button" class="btn-icon" id="pin-view-btn" title="View details">{{ icon('images') }}</button>
+      <button type="button" class="btn-icon" id="pin-rename-btn" title="Rename">{{ icon('pencil') }}</button>
       <button type="button" class="btn-icon" id="pin-resize-btn" title="Hold and drag to resize">{{ icon('resize') }}</button>
       <button type="button" class="btn-icon" id="pin-rotate-btn" title="Hold and drag to rotate">{{ icon('rotate') }}</button>
       <button type="button" class="btn-icon" id="pin-lock-btn" title="Lock in place">{{ icon('lock') }}</button>
@@ -114,7 +119,7 @@
     <div class="pin-action-bubble" id="shape-action-bubble" hidden>
       <button type="button" class="btn-icon" id="shape-resize-toggle" title="Toggle resize handles">{{ icon('resize') }}</button>
       <button type="button" class="btn-icon" id="shape-rotate-toggle" title="Toggle rotate handle">{{ icon('rotate') }}</button>
-      <button type="button" class="btn-icon" id="shape-angle-toggle" title="Toggle angle handles (widen/narrow the cone)" hidden>{{ icon('protractor') }}</button>
+      <button type="button" class="btn-icon" id="shape-angle-toggle" title="Toggle angle handles (widen/narrow the cone)" hidden>{{ icon('angle-tool') }}</button>
       <button type="button" class="btn-icon" id="shape-lock-btn" title="Lock in place">{{ icon('lock') }}</button>
       <button type="button" class="btn-icon btn-icon-danger" id="shape-delete-btn" title="Delete">{{ icon('trash-2') }}</button>
     </div>

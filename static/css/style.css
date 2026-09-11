@@ -815,6 +815,15 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
 }
 .battle-avatar img { width: 100%; height: 100%; object-fit: cover; }
 .battle-avatar svg { width: 18px; height: 18px; }
+.battle-avatar .familiar-avatar-icon {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #ffffff;
+  padding: 15%;
+  box-sizing: border-box;
+  border-radius: 50%;
+}
 
 .battle-name-block { min-width: 130px; flex: 1 1 150px; }
 .battle-name { font-family: var(--font-display); font-size: 16px; font-weight: 600; color: var(--parchment); }
@@ -1655,6 +1664,25 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
   z-index: 10;
 }
 .pin-action-bubble[hidden] { display: none; }
+.pin-rename-box {
+  position: absolute;
+  z-index: 15;
+  transform: translate(-50%, 0);
+}
+.pin-rename-box[hidden] { display: none; }
+.pin-rename-box input {
+  width: 130px;
+  background: var(--bg-panel);
+  border: 1px solid var(--brass);
+  border-radius: var(--radius-s);
+  color: var(--parchment);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 4px 8px;
+  text-align: center;
+  box-shadow: var(--shadow-deep);
+}
+.pin-rename-box input:focus { outline: none; box-shadow: 0 0 0 2px rgba(201,162,75,0.4); }
 /* Buttons sit flush against each other inside the pill; overflow:hidden on
    the pill clips the end buttons' square hover state back into a rounded
    cap, so only the two outer edges look rounded and everything between

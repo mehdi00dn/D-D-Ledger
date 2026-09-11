@@ -10,10 +10,13 @@
 
   const pinBubble = document.getElementById('pin-action-bubble');
   const pinViewBtn = document.getElementById('pin-view-btn');
+  const pinRenameBtn = document.getElementById('pin-rename-btn');
   const pinResizeBtn = document.getElementById('pin-resize-btn');
   const pinRotateBtn = document.getElementById('pin-rotate-btn');
   const pinLockBtn = document.getElementById('pin-lock-btn');
   const pinDeleteBtn = document.getElementById('pin-delete-btn');
+  const pinRenameBox = document.getElementById('pin-rename-box');
+  const pinRenameInput = document.getElementById('pin-rename-input');
 
   const shapeBubble = document.getElementById('shape-action-bubble');
   const shapeResizeToggle = document.getElementById('shape-resize-toggle');
@@ -57,6 +60,7 @@
     paw: '/static/icons/pins/paw.svg',
     skull: '/static/icons/pins/skull.svg',
     sword: '/static/icons/pins/sword.svg',
+    hand: '/static/icons/pins/hand.svg',
   };
   const USER_FALLBACK_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.5"/><path d="M4.5 20c1.2-4 4-6 7.5-6s6.3 2 7.5 6"/></svg>';
 
@@ -519,7 +523,7 @@
     const avatarInner = isChar
       ? (p.avatar_path ? `<img src="/uploads/${p.avatar_path}" alt="">` : USER_FALLBACK_ICON)
       : `<img src="${PROP_ICON_SRC[p.icon_key] || PROP_ICON_SRC.paw}" alt="" class="prop-icon-img">`;
-    const label = isChar ? escapeHtml(p.char_name || '') : escapeHtml(p.icon_key || 'Marker');
+    const label = isChar ? escapeHtml(p.char_name || '') : escapeHtml(p.custom_name || p.icon_key || 'Marker');
     const unlockOverlay = p.locked ? `<button type="button" class="pin-unlock-icon" data-unlock-pin="${p.id}" title="Unlock">${UNLOCK_SVG}</button>` : '';
     // The label sits on `.map-pin` itself (never rotated); only the inner
     // `.map-pin-visual` circle spins, so names stay upright and in place.
@@ -579,7 +583,60 @@
     pinBubble.style.top = `${topPx - halfHeightPx - 14}px`;
     pinBubble.hidden = false;
     pinViewBtn.style.display = pin.pin_type === 'character' ? '' : 'none';
+    pinRenameBtn.style.display = pin.pin_type === 'character' ? 'none' : '';
   }
+
+  function positionPinRenameBox(pinId) {
+    const pin = pins.find((p) => p.id === pinId);
+    if (!pin) { pinRenameBox.hidden = true; return; }
+    const wrapRect = stageWrap.getBoundingClientRect();
+    const leftPx = (pin.x / naturalWidth) * wrapRect.width;
+    const topPx = (pin.y / naturalHeight) * wrapRect.height;
+    const halfHeightPx = ((gridSize * (pin.scale || 1)) / naturalHeight) * wrapRect.height / 2;
+    pinRenameBox.style.left = `${leftPx}px`;
+    pinRenameBox.style.top = `${topPx + halfHeightPx + 8}px`;
+  }
+
+  let renamingPinId = null;
+  function openPinRename(pinId) {
+    const pin = pins.find((p) => p.id === pinId);
+    if (!pin || pin.pin_type === 'character') return;
+    renamingPinId = pinId;
+    pinBubble.hidden = true;
+    positionPinRenameBox(pinId);
+    pinRenameBox.hidden = false;
+    pinRenameInput.value = pin.custom_name || '';
+    pinRenameInput.focus();
+    pinRenameInput.select();
+  }
+  async function commitPinRename() {
+    const pinId = renamingPinId;
+    renamingPinId = null;
+    pinRenameBox.hidden = true;
+    if (pinId == null) return;
+    const pin = pins.find((p) => p.id === pinId);
+    if (!pin) return;
+    const before = { custom_name: pin.custom_name || null };
+    const newName = pinRenameInput.value.trim();
+    const after = { custom_name: newName || null };
+    if (before.custom_name === after.custom_name) return;
+    pin.custom_name = after.custom_name;
+    renderPins();
+    await persistPinFields(pin, after);
+    pushCommand({
+      label: 'rename-pin',
+      undo: async () => { pin.custom_name = before.custom_name; renderPins(); await persistPinFields(pin, before); },
+      redo: async () => { pin.custom_name = after.custom_name; renderPins(); await persistPinFields(pin, after); },
+    });
+  }
+  pinRenameInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); pinRenameInput.blur(); }
+    if (e.key === 'Escape') { e.preventDefault(); renamingPinId = null; pinRenameBox.hidden = true; }
+  });
+  pinRenameInput.addEventListener('blur', commitPinRename);
+  pinRenameBtn.addEventListener('click', () => {
+    if (selectedPinId != null) openPinRename(selectedPinId);
+  });
 
   function positionShapeBubble() {
     const d = drawings.find((s) => s.id === selectedShapeId);
@@ -685,6 +742,7 @@
     if (selectedPinId == null) return;
     selectedPinId = null;
     pinBubble.hidden = true;
+    if (renamingPinId != null) { renamingPinId = null; pinRenameBox.hidden = true; }
   }
 
   shapeResizeToggle.addEventListener('click', () => {
@@ -1762,14 +1820,15 @@
       body: JSON.stringify({ pin_type: 'prop', icon_key: iconKey, x: snapped.x, y: snapped.y, scale: 1.0, rotation: 0 }),
     });
     const json = await res.json();
-    const pin = { id: json.id, pin_type: 'prop', icon_key: iconKey, x: snapped.x, y: snapped.y, scale: 1.0, rotation: 0, locked: false };
+    const pin = { id: json.id, pin_type: 'prop', icon_key: iconKey, x: snapped.x, y: snapped.y, scale: 1.0, rotation: 0, locked: false, custom_name: null };
     pins.push(pin);
     renderPins();
     pushCommand(makeAddPinCommand(pin));
-    // Drop back into select mode so the pin can be named/positioned right away.
+    // Drop back into select mode and prompt straight away for a name.
     const selectBtn = document.querySelector('.map-tool-btn[data-tool="select"]');
     if (selectBtn) selectBtn.click();
     selectPin(pin.id);
+    openPinRename(pin.id);
   }
 
   // ---------------------------------------------------------------------

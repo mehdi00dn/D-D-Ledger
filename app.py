@@ -129,6 +129,7 @@ def characters_list():
         SELECT c.*, g.name AS group_name, g.color AS group_color
         FROM characters c
         LEFT JOIN groups g ON c.group_id = g.id
+        WHERE c.is_temp_familiar = 0
         ORDER BY c.name COLLATE NOCASE ASC
     ''').fetchall()
     groups = db.execute('SELECT * FROM groups ORDER BY name COLLATE NOCASE ASC').fetchall()
@@ -340,6 +341,7 @@ def api_characters():
     rows = db.execute('''
         SELECT c.*, g.name AS group_name, g.color AS group_color
         FROM characters c LEFT JOIN groups g ON c.group_id = g.id
+        WHERE c.is_temp_familiar = 0
         ORDER BY c.name COLLATE NOCASE ASC
     ''').fetchall()
     db.close()
@@ -372,6 +374,7 @@ def battle_view():
     characters = db.execute('''
         SELECT c.*, g.name AS group_name, g.color AS group_color
         FROM characters c LEFT JOIN groups g ON c.group_id = g.id
+        WHERE c.is_temp_familiar = 0
         ORDER BY c.name COLLATE NOCASE ASC
     ''').fetchall()
     db.close()
@@ -382,7 +385,8 @@ def battle_view():
 def _battle_rows(db):
     rows = db.execute('''
         SELECT bp.*, c.name AS char_name, c.avatar_path, c.is_npc, c.max_hp AS char_max_hp,
-               c.armor_class AS base_ac, g.id AS gid, g.name AS group_name, g.color AS group_color
+               c.armor_class AS base_ac, c.is_temp_familiar, c.familiar_icon_key,
+               g.id AS gid, g.name AS group_name, g.color AS group_color
         FROM battle_participants bp
         JOIN characters c ON bp.character_id = c.id
         LEFT JOIN groups g ON c.group_id = g.id
@@ -406,6 +410,39 @@ def _battle_rows(db):
         else:
             r['display_name'] = n
     return rows
+
+
+def _create_familiar_participant(db, icon_key, custom_name):
+    """A familiar/prop pin gets a lightweight, temporary battle presence: a
+    throwaway character (flagged is_temp_familiar so it never shows in the
+    real character roster) plus a normal battle_participants row. Deleting
+    the character (see _cleanup_familiar_participants) cascades to remove
+    the participant row too."""
+    display_name = custom_name or (icon_key or 'familiar').capitalize()
+    cur = db.execute(
+        '''INSERT INTO characters (name, level, max_hp, armor_class, is_npc, is_temp_familiar, familiar_icon_key)
+           VALUES (?, 1, 4, 10, 1, 1, ?)''',
+        (display_name, icon_key)
+    )
+    char_id = cur.lastrowid
+    cur2 = db.execute('INSERT INTO battle_participants (character_id, current_hp) VALUES (?, 4)', (char_id,))
+    return cur2.lastrowid
+
+
+def _cleanup_familiar_participants(db, map_id):
+    """Remove every temporary familiar this map ever added to the battle —
+    called when the map is unlinked from battle, another map takes over as
+    the linked map, or this map is deleted."""
+    pins = db.execute(
+        "SELECT id, participant_id FROM map_pins WHERE map_id = ? AND pin_type = 'prop' AND participant_id IS NOT NULL",
+        (map_id,)
+    ).fetchall()
+    for p in pins:
+        row = db.execute('SELECT character_id FROM battle_participants WHERE id = ?', (p['participant_id'],)).fetchone()
+        if row:
+            db.execute('DELETE FROM characters WHERE id = ? AND is_temp_familiar = 1', (row['character_id'],))
+        db.execute('UPDATE map_pins SET participant_id = NULL WHERE id = ?', (p['id'],))
+    db.commit()
 
 
 @app.route('/api/battle')
@@ -548,6 +585,27 @@ def api_battle_ac(pid):
     db = get_db()
     db.execute('UPDATE battle_participants SET ac_override = ? WHERE id = ?', (value, pid))
     db.commit()
+    rows = _battle_rows(db)
+    db.close()
+    return jsonify(rows)
+
+
+@app.route('/api/battle/<int:pid>/max-hp', methods=['POST'])
+def api_battle_max_hp(pid):
+    """Familiars have no character sheet to edit max HP on, so the battle
+    tracker lets you set it directly — real characters keep their sheet as
+    the single source of truth and aren't affected here."""
+    data = request.get_json(force=True)
+    value = max(1, int(data.get('value', 1)))
+    db = get_db()
+    row = db.execute('''
+        SELECT c.id AS character_id FROM battle_participants bp
+        JOIN characters c ON bp.character_id = c.id
+        WHERE bp.id = ? AND c.is_temp_familiar = 1
+    ''', (pid,)).fetchone()
+    if row:
+        db.execute('UPDATE characters SET max_hp = ? WHERE id = ?', (value, row['character_id']))
+        db.commit()
     rows = _battle_rows(db)
     db.close()
     return jsonify(rows)
@@ -858,6 +916,7 @@ def map_editor(map_id):
 def map_delete(map_id):
     db = get_db()
     m = db.execute('SELECT image_path FROM maps WHERE id = ?', (map_id,)).fetchone()
+    _cleanup_familiar_participants(db, map_id)
     if m:
         delete_upload(m['image_path'])
     db.execute('DELETE FROM maps WHERE id = ?', (map_id,))
@@ -887,7 +946,17 @@ def api_map_settings(map_id):
     if 'snap_to_grid' in data:
         fields.append('snap_to_grid = ?'); values.append(1 if data['snap_to_grid'] else 0)
     if 'linked_to_battle' in data:
-        fields.append('linked_to_battle = ?'); values.append(1 if data['linked_to_battle'] else 0)
+        new_val = 1 if data['linked_to_battle'] else 0
+        if new_val:
+            # Only one map may be linked at a time — unlink any other map
+            # first, cleaning up whatever familiars it added to the battle.
+            others = db.execute('SELECT id FROM maps WHERE linked_to_battle = 1 AND id != ?', (map_id,)).fetchall()
+            for o in others:
+                _cleanup_familiar_participants(db, o['id'])
+                db.execute('UPDATE maps SET linked_to_battle = 0 WHERE id = ?', (o['id'],))
+        else:
+            _cleanup_familiar_participants(db, map_id)
+        fields.append('linked_to_battle = ?'); values.append(new_val)
     if fields:
         values.append(map_id)
         db.execute(f'UPDATE maps SET {", ".join(fields)} WHERE id = ?', values)
@@ -1005,8 +1074,14 @@ def api_map_pins_list(map_id):
         return jsonify([])
 
     if m['linked_to_battle']:
-        # Auto-place a pin for any battle participant that doesn't have one yet
-        participants = db.execute('SELECT id FROM battle_participants').fetchall()
+        # Auto-place a pin for any battle participant that doesn't have one
+        # yet — but never for a familiar's own participant, since a familiar
+        # already has its own prop pin representing it on the map.
+        participants = db.execute('''
+            SELECT bp.id FROM battle_participants bp
+            JOIN characters c ON bp.character_id = c.id
+            WHERE c.is_temp_familiar = 0
+        ''').fetchall()
         participant_ids = [p['id'] for p in participants]
         existing = db.execute(
             "SELECT participant_id FROM map_pins WHERE map_id = ? AND pin_type = 'character'", (map_id,)
@@ -1060,20 +1135,26 @@ def api_map_pins_add(map_id):
     data = request.get_json(force=True)
     pin_type = data.get('pin_type', 'prop')
     icon_key = data.get('icon_key')
+    custom_name = data.get('custom_name')
     x = float(data.get('x', 0))
     y = float(data.get('y', 0))
     scale = float(data.get('scale', 1.0))
     rotation = float(data.get('rotation', 0))
     locked = 1 if data.get('locked') else 0
     db = get_db()
+    participant_id = None
+    if pin_type == 'prop':
+        m = db.execute('SELECT linked_to_battle FROM maps WHERE id = ?', (map_id,)).fetchone()
+        if m and m['linked_to_battle']:
+            participant_id = _create_familiar_participant(db, icon_key, custom_name)
     cur = db.execute(
-        "INSERT INTO map_pins (map_id, pin_type, icon_key, x, y, scale, rotation, locked) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        (map_id, pin_type, icon_key, x, y, scale, rotation, locked)
+        "INSERT INTO map_pins (map_id, pin_type, icon_key, custom_name, x, y, scale, rotation, locked, participant_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (map_id, pin_type, icon_key, custom_name, x, y, scale, rotation, locked, participant_id)
     )
     db.commit()
     new_id = cur.lastrowid
     db.close()
-    return jsonify({'id': new_id})
+    return jsonify({'id': new_id, 'participant_id': participant_id})
 
 
 @app.route('/api/maps/<int:map_id>/pins/<int:pin_id>/update', methods=['POST'])
@@ -1092,6 +1173,15 @@ def api_map_pin_update(map_id, pin_id):
         fields.append('rotation = ?'); values.append(float(data['rotation']))
     if 'locked' in data:
         fields.append('locked = ?'); values.append(1 if data['locked'] else 0)
+    if 'custom_name' in data:
+        fields.append('custom_name = ?'); values.append(data['custom_name'])
+        # Keep a familiar's battle-tracker name in sync with its pin name.
+        pin_row = db.execute('SELECT participant_id, icon_key FROM map_pins WHERE id = ? AND map_id = ?', (pin_id, map_id)).fetchone()
+        if pin_row and pin_row['participant_id']:
+            new_name = data['custom_name'] or (pin_row['icon_key'] or 'familiar').capitalize()
+            char_row = db.execute('SELECT character_id FROM battle_participants WHERE id = ?', (pin_row['participant_id'],)).fetchone()
+            if char_row:
+                db.execute('UPDATE characters SET name = ? WHERE id = ?', (new_name, char_row['character_id']))
     if fields:
         values.append(pin_id)
         values.append(map_id)
@@ -1104,6 +1194,11 @@ def api_map_pin_update(map_id, pin_id):
 @app.route('/api/maps/<int:map_id>/pins/<int:pin_id>/delete', methods=['POST'])
 def api_map_pin_delete(map_id, pin_id):
     db = get_db()
+    pin = db.execute('SELECT participant_id FROM map_pins WHERE id = ? AND map_id = ?', (pin_id, map_id)).fetchone()
+    if pin and pin['participant_id']:
+        char_row = db.execute('SELECT character_id FROM battle_participants WHERE id = ?', (pin['participant_id'],)).fetchone()
+        if char_row:
+            db.execute('DELETE FROM characters WHERE id = ? AND is_temp_familiar = 1', (char_row['character_id'],))
     db.execute('DELETE FROM map_pins WHERE id = ? AND map_id = ?', (pin_id, map_id))
     db.commit()
     db.close()
