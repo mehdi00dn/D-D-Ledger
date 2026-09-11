@@ -20,6 +20,9 @@
   }
 
   function avatarMarkup(p) {
+    if (p.is_temp_familiar) {
+      return `<img src="/static/icons/pins/${p.familiar_icon_key || 'paw'}.svg" alt="${escapeHtml(p.char_name)}" class="familiar-avatar-icon">`;
+    }
     if (p.avatar_path) {
       return `<img src="/uploads/${p.avatar_path}" alt="${escapeHtml(p.char_name)}">`;
     }
@@ -75,7 +78,9 @@
         <button type="button" class="hp-btn temphp-btn" data-action="temphp" title="Temporary HP" ${dead ? 'disabled' : ''}>${ICONS.shieldPlus}</button>
       </div>
 
-      <button type="button" class="btn-icon" data-action="view" title="View details">${ICONS.images}</button>
+      ${p.is_temp_familiar
+        ? `<div class="stat-chip"><label>MAX HP</label><input type="number" class="stat-chip-input" data-action="max-hp" min="1" value="${p.char_max_hp}" ${dead ? 'disabled' : ''}></div>`
+        : `<button type="button" class="btn-icon" data-action="view" title="View details">${ICONS.images}</button>`}
 
       ${showDiedBtn ? `<button type="button" class="btn btn-danger btn-sm" data-action="die">${ICONS.skull} Died?</button>` : ''}
       ${dead ? `<button type="button" class="btn btn-ghost btn-sm" data-action="revive">Revive</button>` : ''}
@@ -192,7 +197,7 @@
   });
 
   root.addEventListener('change', async (e) => {
-    const input = e.target.closest('[data-action="initiative"], [data-action="ac"]');
+    const input = e.target.closest('[data-action="initiative"], [data-action="ac"], [data-action="max-hp"]');
     if (!input) return;
     const row = input.closest('.battle-row');
     const pid = row.dataset.pid;

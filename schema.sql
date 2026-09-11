@@ -25,6 +25,8 @@ CREATE TABLE IF NOT EXISTS characters (
     avatar_path TEXT,
     notes TEXT,
     group_id INTEGER,
+    is_temp_familiar INTEGER DEFAULT 0,
+    familiar_icon_key TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE SET NULL
 );
@@ -106,6 +108,7 @@ CREATE TABLE IF NOT EXISTS map_pins (
     pin_type TEXT NOT NULL DEFAULT 'character',  -- 'character' | 'prop'
     participant_id INTEGER,
     icon_key TEXT,
+    custom_name TEXT,
     x REAL NOT NULL,   -- natural image pixels
     y REAL NOT NULL,
     scale REAL DEFAULT 1.0,

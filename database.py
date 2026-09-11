@@ -29,6 +29,11 @@ def _migrate(conn):
     if 'temp_hp' not in existing_cols:
         conn.execute('ALTER TABLE battle_participants ADD COLUMN temp_hp INTEGER DEFAULT 0')
 
+    char_cols = {row['name'] for row in conn.execute('PRAGMA table_info(characters)')}
+    for col, ddl in (('is_temp_familiar', 'INTEGER DEFAULT 0'), ('familiar_icon_key', 'TEXT')):
+        if col not in char_cols:
+            conn.execute(f'ALTER TABLE characters ADD COLUMN {col} {ddl}')
+
     drawing_cols = {row['name'] for row in conn.execute('PRAGMA table_info(map_drawings)')}
     for col, ddl in (('cx', 'REAL DEFAULT 0'), ('cy', 'REAL DEFAULT 0'),
                      ('w', 'REAL DEFAULT 0'), ('h', 'REAL DEFAULT 0'),
@@ -37,7 +42,7 @@ def _migrate(conn):
             conn.execute(f'ALTER TABLE map_drawings ADD COLUMN {col} {ddl}')
 
     pin_cols = {row['name'] for row in conn.execute('PRAGMA table_info(map_pins)')}
-    for col, ddl in (('rotation', 'REAL DEFAULT 0'), ('locked', 'INTEGER DEFAULT 0')):
+    for col, ddl in (('rotation', 'REAL DEFAULT 0'), ('locked', 'INTEGER DEFAULT 0'), ('custom_name', 'TEXT')):
         if col not in pin_cols:
             conn.execute(f'ALTER TABLE map_pins ADD COLUMN {col} {ddl}')
 
