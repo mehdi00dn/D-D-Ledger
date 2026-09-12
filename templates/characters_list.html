@@ -83,7 +83,7 @@
       <span class="badge-ac">{{ icon('shield') }}{{ c.armor_class }} AC</span>
     </div>
 
-    <div class="dossier-notes">{{ c.notes }}</div>
+    <div class="dossier-notes">{{ c.notes | notes_preview }}</div>
 
     <div class="dossier-actions">
       <a href="{{ url_for('character_edit', char_id=c.id) }}" class="btn btn-ghost btn-sm">{{ icon('pencil') }} Edit</a>

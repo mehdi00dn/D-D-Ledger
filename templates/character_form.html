@@ -1,6 +1,17 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon %}
 {% set active_page = 'characters' %}
+{% macro note_block(content='') %}
+<div class="note-block" data-note-block>
+  <div class="note-toolbar">
+    <button type="button" class="note-tool-btn" data-cmd="bold" title="Bold">{{ icon('bold') }}</button>
+    <button type="button" class="note-tool-btn" data-cmd="italic" title="Italic">{{ icon('italic') }}</button>
+    <button type="button" class="note-tool-btn" data-cmd="insertUnorderedList" title="Bullet list">{{ icon('list') }}</button>
+    <button type="button" class="note-remove-btn btn-icon" data-note-remove title="Remove this note">{{ icon('x') }}</button>
+  </div>
+  <div class="note-editor" contenteditable="true" data-placeholder="Backstory, quirks, tactics, secrets the DM shouldn't forget...">{{ content | safe }}</div>
+</div>
+{% endmacro %}
 {% block title %}{{ 'Edit' if character else 'New' }} Character — Campaign Ledger{% endblock %}
 
 {% block content %}
@@ -127,7 +138,12 @@
   <div class="form-section">
     <p class="form-section-title">Notes</p>
     <div class="field">
-      <textarea name="notes" placeholder="Backstory, quirks, tactics, secrets the DM shouldn't forget...">{{ character.notes if character else '' }}</textarea>
+      <div class="note-blocks" id="note-blocks">
+        {% for block in notes_blocks %}{{ note_block(block) }}{% endfor %}
+      </div>
+      <button type="button" class="btn btn-ghost btn-sm btn-add-note" id="add-note-btn">{{ icon('plus') }} Add Note</button>
+      <input type="hidden" name="notes" id="notes-hidden-input">
+      <template id="note-block-template">{{ note_block('') }}</template>
     </div>
   </div>
 

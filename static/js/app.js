@@ -66,4 +66,104 @@ document.addEventListener('DOMContentLoaded', () => {
         .catch(() => alert('Could not remove the image. Please try again.'));
     });
   });
+
+  // ---- Character notes: multi-box rich text editor (bold/italic/bullet list) ----
+  const noteBlocks = document.getElementById('note-blocks');
+  if (noteBlocks) {
+    const addNoteBtn = document.getElementById('add-note-btn');
+    const notesHiddenInput = document.getElementById('notes-hidden-input');
+    const noteTemplate = document.getElementById('note-block-template');
+    const form = noteBlocks.closest('form');
+
+    // Use <div> per line on Enter (not the default <p> in some browsers) so line
+    // breaks survive as one block per line, consistently across blocks.
+    try { document.execCommand('defaultParagraphSeparator', false, 'div'); } catch (e) { /* no-op */ }
+
+    const ALLOWED_NOTE_TAGS = new Set(['B', 'STRONG', 'I', 'EM', 'UL', 'LI', 'BR', 'DIV']);
+
+    function sanitizeNoteHtml(html) {
+      const scratch = document.createElement('div');
+      scratch.innerHTML = html;
+      (function clean(node) {
+        Array.from(node.childNodes).forEach((child) => {
+          if (child.nodeType === 1) {
+            if (!ALLOWED_NOTE_TAGS.has(child.tagName)) {
+              while (child.firstChild) node.insertBefore(child.firstChild, child);
+              node.removeChild(child);
+              return;
+            }
+            Array.from(child.attributes).forEach((attr) => child.removeAttribute(attr.name));
+            clean(child);
+          } else if (child.nodeType !== 3) {
+            node.removeChild(child);
+          }
+        });
+      }(scratch));
+      return scratch.innerHTML;
+    }
+
+    function isEditorEmpty(editor) {
+      const html = editor.innerHTML.trim().toLowerCase();
+      return html === '' || html === '<br>' || html === '<div><br></div>';
+    }
+
+    function updateRemoveButtons() {
+      const blocks = noteBlocks.querySelectorAll('[data-note-block]');
+      blocks.forEach((block) => {
+        const removeBtn = block.querySelector('[data-note-remove]');
+        if (removeBtn) removeBtn.hidden = blocks.length <= 1;
+      });
+    }
+
+    function addNoteBlock(focus) {
+      const fragment = noteTemplate.content.cloneNode(true);
+      noteBlocks.appendChild(fragment);
+      updateRemoveButtons();
+      if (focus) {
+        const editors = noteBlocks.querySelectorAll('.note-editor');
+        editors[editors.length - 1].focus();
+      }
+    }
+
+    // Keep the empty-state placeholder (CSS :empty) accurate after edits, since
+    // some browsers leave a stray <br> behind when a box is cleared out.
+    noteBlocks.addEventListener('input', (e) => {
+      const editor = e.target.closest('.note-editor');
+      if (editor && isEditorEmpty(editor)) editor.innerHTML = '';
+    });
+
+    // Toolbar buttons: keep the editor's selection alive through the click, then
+    // run the formatting command on it.
+    noteBlocks.addEventListener('mousedown', (e) => {
+      if (e.target.closest('.note-tool-btn')) e.preventDefault();
+    });
+    noteBlocks.addEventListener('click', (e) => {
+      const toolBtn = e.target.closest('.note-tool-btn');
+      if (toolBtn) {
+        const editor = toolBtn.closest('.note-block').querySelector('.note-editor');
+        editor.focus();
+        document.execCommand(toolBtn.dataset.cmd, false, null);
+        return;
+      }
+      const removeBtn = e.target.closest('[data-note-remove]');
+      if (removeBtn) {
+        const blocks = noteBlocks.querySelectorAll('[data-note-block]');
+        if (blocks.length <= 1) return;
+        removeBtn.closest('[data-note-block]').remove();
+        updateRemoveButtons();
+      }
+    });
+
+    if (addNoteBtn) addNoteBtn.addEventListener('click', () => addNoteBlock(true));
+    updateRemoveButtons();
+
+    if (form && notesHiddenInput) {
+      form.addEventListener('submit', () => {
+        const blocks = Array.from(noteBlocks.querySelectorAll('.note-editor'))
+          .map((editor) => sanitizeNoteHtml(editor.innerHTML))
+          .filter((html) => !['', '<br>', '<div><br></div>'].includes(html));
+        notesHiddenInput.value = JSON.stringify(blocks);
+      });
+    }
+  }
 });

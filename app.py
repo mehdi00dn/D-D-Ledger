@@ -1,4 +1,5 @@
 import os
+import re
 import uuid
 import io
 import json
@@ -24,6 +25,84 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB uploads
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+# ---------------- CHARACTER NOTES (multi-box rich text) ----------------
+# Notes are stored in characters.notes as a JSON array of small HTML fragments,
+# one per note box, produced by the note editor in character_form.html.
+# Characters saved before this feature existed have notes as a plain string,
+# which is treated as a single legacy block wherever notes are read back.
+
+_NOTE_ALLOWED_TAGS = {'b', 'strong', 'i', 'em', 'ul', 'li', 'br', 'div'}
+_NOTE_TAG_RE = re.compile(r'<(/?)([a-zA-Z0-9]+)[^>]*>')
+_NOTE_STRIP_TAGS_RE = re.compile(r'<[^>]+>')
+
+
+def _sanitize_note_fragment(fragment):
+    """Strip a note fragment down to a small safe-tag whitelist and drop all
+    attributes, so a hand-crafted POST can't smuggle in scripts or styles."""
+    def repl(m):
+        closing, tag = m.group(1), m.group(2).lower()
+        if tag not in _NOTE_ALLOWED_TAGS:
+            return ''
+        if tag == 'br':
+            return '<br>'
+        return f'</{tag}>' if closing else f'<{tag}>'
+    return _NOTE_TAG_RE.sub(repl, fragment or '')
+
+
+def sanitize_notes_payload(raw):
+    """Sanitize the notes field submitted by the note editor before storing it."""
+    if not raw:
+        return ''
+    try:
+        blocks = json.loads(raw)
+    except (ValueError, TypeError):
+        return raw  # not JSON (shouldn't happen via the UI) - leave as-is
+    if not isinstance(blocks, list):
+        return ''
+    cleaned = [_sanitize_note_fragment(b) for b in blocks if isinstance(b, str)]
+    cleaned = [b for b in cleaned if b and b not in ('<br>', '<div><br></div>')]
+    return json.dumps(cleaned)
+
+
+def notes_parse_blocks(raw):
+    """Parse characters.notes into a list of trusted HTML fragments, one per
+    note box (used to prefill the note editor when editing a character)."""
+    if not raw:
+        return []
+    try:
+        blocks = json.loads(raw)
+        if isinstance(blocks, list):
+            return [b for b in blocks if isinstance(b, str) and b]
+    except (ValueError, TypeError):
+        pass
+    # Legacy plain-text notes: escape and turn line breaks into <br> so each
+    # line the user typed still shows up as its own line.
+    escaped = raw.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+    return [escaped.replace('\n', '<br>')]
+
+
+def notes_to_html(raw):
+    """Render stored notes as HTML for detail views (battle/map popups)."""
+    blocks = notes_parse_blocks(raw)
+    if not blocks:
+        return ''
+    return ''.join(f'<div class="note-block-text">{b}</div>' for b in blocks)
+
+
+def notes_plain_preview(raw):
+    """Flatten stored notes to plain text for compact card previews."""
+    blocks = notes_parse_blocks(raw)
+    if not blocks:
+        return ''
+    joined = re.sub(r'<(br|/div|/li|/p)\s*/?>', ' ', ' '.join(blocks), flags=re.I)
+    joined = _NOTE_STRIP_TAGS_RE.sub('', joined)
+    joined = joined.replace('&lt;', '<').replace('&gt;', '>').replace('&amp;', '&')
+    return re.sub(r'\s+', ' ', joined).strip()
+
+
+app.jinja_env.filters['notes_preview'] = notes_plain_preview
 
 
 def optimize_image_if_needed(full_path, max_bytes=OPTIMIZE_THRESHOLD_BYTES, max_dimension=OPTIMIZE_MAX_DIMENSION):
@@ -149,7 +228,7 @@ def character_new():
     groups = db.execute('SELECT * FROM groups ORDER BY name COLLATE NOCASE ASC').fetchall()
     db.close()
     from_battle = request.args.get('from') == 'battle'
-    return render_template('character_form.html', character=None, sheets=[], groups=groups, from_battle=from_battle)
+    return render_template('character_form.html', character=None, sheets=[], groups=groups, from_battle=from_battle, notes_blocks=[''])
 
 
 @app.route('/characters/<int:char_id>/edit', methods=['GET', 'POST'])
@@ -165,7 +244,8 @@ def character_edit(char_id):
     db.close()
     if character is None:
         return redirect(url_for('characters_list'))
-    return render_template('character_form.html', character=character, sheets=sheets, groups=groups, from_battle=False)
+    notes_blocks = notes_parse_blocks(character['notes']) or ['']
+    return render_template('character_form.html', character=character, sheets=sheets, groups=groups, from_battle=False, notes_blocks=notes_blocks)
 
 
 def _save_character(db, char_id):
@@ -181,7 +261,7 @@ def _save_character(db, char_id):
     wis_score = int(form.get('wis_score') or 10)
     cha_score = int(form.get('cha_score') or 10)
     armor_class = int(form.get('armor_class') or 10)
-    notes = form.get('notes', '')
+    notes = sanitize_notes_payload(form.get('notes', ''))
     group_id = form.get('group_id') or None
 
     avatar_file = request.files.get('avatar')
@@ -363,6 +443,7 @@ def api_character_detail(char_id):
     db.close()
     data = dict(character)
     data['sheets'] = [dict(s) for s in sheets]
+    data['notes_html'] = notes_to_html(character['notes'])
     return jsonify(data)
 
 

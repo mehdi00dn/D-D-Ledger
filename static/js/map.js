@@ -1173,7 +1173,7 @@
         <span class="badge-hp">${c.max_hp} HP</span>
         <span class="badge-ac">AC ${c.armor_class}</span>
       </div>
-      <p style="font-size:13px; color:var(--parchment-dim); line-height:1.6; margin-top:14px;">${escapeHtml(c.notes) || '<em>No notes recorded.</em>'}</p>
+      <div class="detail-notes">${c.notes_html || '<em>No notes recorded.</em>'}</div>
       <div class="form-section-title" style="margin-top:18px;">Sheets</div>
       ${sheetsHtml}
     `;
@@ -2047,6 +2047,22 @@
     panDrag = null;
     stageWrap.classList.remove('panning-active');
   });
+
+  // ---------------------------------------------------------------------
+  // Sticky toolbar: detaches with a shadow once it hits the top of the
+  // viewport on scroll, and returns to its normal in-flow look once
+  // scrolled back up. Positioning is handled by CSS (position: sticky);
+  // this just toggles the "pinned" look at the exact moment it sticks.
+  // ---------------------------------------------------------------------
+  const mapToolbar = document.getElementById('map-toolbar');
+  const toolbarSentinel = document.getElementById('map-toolbar-sentinel');
+  if (mapToolbar && toolbarSentinel && 'IntersectionObserver' in window) {
+    const toolbarPinObserver = new IntersectionObserver(
+      ([entry]) => mapToolbar.classList.toggle('is-pinned', !entry.isIntersecting),
+      { threshold: 0 }
+    );
+    toolbarPinObserver.observe(toolbarSentinel);
+  }
 
   // ---------------------------------------------------------------------
   // Init

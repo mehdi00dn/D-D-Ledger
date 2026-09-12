@@ -343,7 +343,7 @@
         <span class="badge-hp">${ICONS.heart} ${c.max_hp} HP</span>
         <span class="badge-ac">${ICONS.shield} AC ${c.armor_class}</span>
       </div>
-      <p style="font-size:13px; color:var(--parchment-dim); line-height:1.6; margin-top:14px;">${escapeHtml(c.notes) || '<em>No notes recorded.</em>'}</p>
+      <div class="detail-notes">${c.notes_html || '<em>No notes recorded.</em>'}</div>
       <div class="form-section-title" style="margin-top:18px;">Sheets</div>
       ${sheetsHtml}
     `;
