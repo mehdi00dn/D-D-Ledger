@@ -10,6 +10,11 @@
     if (saved === 'light' || saved === 'dark') {
       document.documentElement.setAttribute('data-theme', saved);
     }
+    // Applied before paint (like the theme above) to avoid a flash of the
+    // expanded sidebar before sidebar.js has a chance to run.
+    if (localStorage.getItem('ledger-sidebar-collapsed') === '1') {
+      document.documentElement.setAttribute('data-sidebar', 'collapsed');
+    }
   })();
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -26,31 +31,34 @@
 <body>
 {% from "_icons.html" import icon %}
 <div class="app-shell">
-  <aside class="sidebar">
+  <aside class="sidebar" id="sidebar">
     <div class="sidebar-brand">
       <span class="brand-mark">
         <img src="{{ url_for('static', filename='logo/logo-128.png') }}" alt="">
       </span>
-      <div class="brand-text">
+      <span class="brand-text">
         <span class="brand-title">Campaign</span>
         <span class="brand-subtitle">Ledger</span>
-      </div>
+      </span>
+      <button type="button" class="sidebar-toggle-btn" id="sidebar-toggle-btn" title="Collapse menu">
+        {{ icon('sidebar-collapse') }}
+      </button>
     </div>
 
     <nav class="sidebar-nav">
-      <a href="{{ url_for('characters_list') }}" class="nav-tab {{ 'active' if active_page == 'characters' else '' }}">
+      <a href="{{ url_for('characters_list') }}" class="nav-tab {{ 'active' if active_page == 'characters' else '' }}" title="Characters">
         {{ icon('scroll-text') }}<span>Characters</span>
       </a>
-      <a href="{{ url_for('groups_list') }}" class="nav-tab {{ 'active' if active_page == 'groups' else '' }}">
+      <a href="{{ url_for('groups_list') }}" class="nav-tab {{ 'active' if active_page == 'groups' else '' }}" title="Groups">
         {{ icon('shield') }}<span>Groups</span>
       </a>
-      <a href="{{ url_for('battle_view') }}" class="nav-tab {{ 'active' if active_page == 'battle' else '' }}">
+      <a href="{{ url_for('battle_view') }}" class="nav-tab {{ 'active' if active_page == 'battle' else '' }}" title="Battle">
         {{ icon('swords') }}<span>Battle</span>
       </a>
-      <a href="{{ url_for('maps_list') }}" class="nav-tab {{ 'active' if active_page == 'maps' else '' }}">
+      <a href="{{ url_for('maps_list') }}" class="nav-tab {{ 'active' if active_page == 'maps' else '' }}" title="Maps">
         {{ icon('map') }}<span>Maps</span>
       </a>
-      <a href="{{ url_for('dice_view') }}" class="nav-tab {{ 'active' if active_page == 'dice' else '' }}">
+      <a href="{{ url_for('dice_view') }}" class="nav-tab {{ 'active' if active_page == 'dice' else '' }}" title="Dice">
         {{ icon('dices') }}<span>Dice</span>
       </a>
     </nav>
@@ -116,6 +124,8 @@
 </div>
 
 <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
+<script src="{{ url_for('static', filename='js/sidebar.js') }}"></script>
+<script src="{{ url_for('static', filename='js/transitions.js') }}"></script>
 <script src="{{ url_for('static', filename='js/app.js') }}"></script>
 <script src="{{ url_for('static', filename='js/cropper.js') }}"></script>
 <script src="{{ url_for('static', filename='js/lightbox.js') }}"></script>

@@ -4,6 +4,7 @@ import uuid
 import io
 import json
 import zipfile
+from datetime import datetime
 from flask import (
     Flask, render_template, request, redirect, url_for,
     send_from_directory, jsonify, flash, send_file
@@ -782,6 +783,7 @@ def _build_export_zip(group_ids=None, character_ids=None, download_name='campaig
 
     manifest = {
         'version': 1,
+        'exported_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
         'groups': [
             {
                 'name': g['name'],
@@ -834,7 +836,15 @@ def _build_export_zip(group_ids=None, character_ids=None, download_name='campaig
 
     buf.seek(0)
     return send_file(buf, mimetype='application/zip', as_attachment=True,
-                      download_name=download_name)
+                      download_name=_dated_filename(download_name))
+
+
+def _dated_filename(base_name):
+    """Stamp an export filename with today's date, e.g. campaign_export_2026-09-12.zip."""
+    stamp = datetime.now().strftime('%Y-%m-%d')
+    if base_name.endswith('.zip'):
+        return f'{base_name[:-4]}_{stamp}.zip'
+    return f'{base_name}_{stamp}'
 
 
 def _slugify(name):

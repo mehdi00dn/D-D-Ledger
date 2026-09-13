@@ -105,6 +105,10 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
   display: grid;
   grid-template-columns: 232px 1fr;
   min-height: 100vh;
+  transition: grid-template-columns 0.32s cubic-bezier(0.4, 0, 0.2, 1);
+}
+:root[data-sidebar="collapsed"] .app-shell {
+  grid-template-columns: 76px 1fr;
 }
 
 .sidebar {
@@ -116,8 +120,9 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
   position: sticky;
   top: 0;
   height: 100vh;
-  transition: border-color 0.4s ease;
+  transition: border-color 0.4s ease, padding 0.32s cubic-bezier(0.4, 0, 0.2, 1);
 }
+:root[data-sidebar="collapsed"] .sidebar { padding: 28px 14px; }
 
 .sidebar-brand {
   display: flex;
@@ -125,14 +130,56 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
   gap: 12px;
   padding: 0 6px 28px;
   color: var(--brass-bright);
+  transition: gap 0.32s cubic-bezier(0.4, 0, 0.2, 1), justify-content 0.32s;
 }
+:root[data-sidebar="collapsed"] .sidebar-brand { gap: 0; justify-content: center; }
 
-.brand-mark { width: 30px; height: 30px; display: flex; flex: 0 0 30px; }
+.brand-mark {
+  width: 30px; height: 30px; flex: 0 0 30px;
+  overflow: hidden;
+  opacity: 1;
+  transition: opacity 0.18s ease, max-width 0.32s cubic-bezier(0.4, 0, 0.2, 1),
+              flex-basis 0.32s cubic-bezier(0.4, 0, 0.2, 1);
+}
 .brand-mark img { width: 100%; height: 100%; object-fit: contain; display: block; }
+:root[data-sidebar="collapsed"] .brand-mark { opacity: 0; max-width: 0; flex-basis: 0; }
 
-.brand-text { display: flex; flex-direction: column; line-height: 1.1; }
+.brand-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.1;
+  max-width: 160px;
+  overflow: hidden;
+  white-space: nowrap;
+  opacity: 1;
+  transition: opacity 0.18s ease, max-width 0.32s cubic-bezier(0.4, 0, 0.2, 1);
+}
+:root[data-sidebar="collapsed"] .brand-text { opacity: 0; max-width: 0; }
 .brand-title { font-family: var(--font-display); font-size: 19px; font-weight: 600; color: var(--parchment); }
 .brand-subtitle { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.22em; color: var(--brass); text-transform: uppercase; }
+
+/* Toggle button: its own control (not the logo), which is why it sits in
+   its own fixed-size square and stays perfectly centered once the brand
+   text/mark collapse away and this becomes the only thing left in the row. */
+.sidebar-toggle-btn {
+  flex: 0 0 32px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-s);
+  color: var(--parchment-dim);
+  cursor: pointer;
+  margin-left: auto;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease, margin 0.32s cubic-bezier(0.4, 0, 0.2, 1);
+}
+:root[data-sidebar="collapsed"] .sidebar-toggle-btn { margin-left: 0; }
+.sidebar-toggle-btn:hover { background: rgba(201,162,75,0.1); color: var(--parchment); border-color: var(--hairline-strong); }
+.sidebar-toggle-btn svg { width: 17px; height: 17px; transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1); }
+:root[data-sidebar="collapsed"] .sidebar-toggle-btn svg { transform: scaleX(-1); }
 
 .sidebar-nav { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
 
@@ -146,9 +193,19 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
   font-size: 14px;
   font-weight: 500;
   position: relative;
-  transition: background 0.15s ease, color 0.15s ease;
+  transition: background 0.15s ease, color 0.15s ease, gap 0.32s cubic-bezier(0.4, 0, 0.2, 1), justify-content 0.32s;
 }
 .nav-tab svg { width: 17px; height: 17px; stroke-width: 1.75; flex-shrink: 0; }
+.nav-tab span {
+  max-width: 160px;
+  overflow: hidden;
+  white-space: nowrap;
+  opacity: 1;
+  transition: opacity 0.18s ease, max-width 0.32s cubic-bezier(0.4, 0, 0.2, 1);
+}
+:root[data-sidebar="collapsed"] .nav-tab { justify-content: center; gap: 0; padding: 11px 0; }
+:root[data-sidebar="collapsed"] .nav-tab span { opacity: 0; max-width: 0; }
+:root[data-sidebar="collapsed"] .nav-tab.active::before { left: -14px; }
 
 .nav-tab:hover { background: rgba(201,162,75,0.08); color: var(--parchment); }
 
@@ -165,13 +222,24 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
   width: 3px;
   background: var(--brass);
   border-radius: 0 3px 3px 0;
+  transition: left 0.32s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .nav-tab.disabled { opacity: 0.35; cursor: default; pointer-events: none; }
 
-.sidebar-foot { margin-top: auto; padding: 0 6px; }
+.sidebar-foot { margin-top: auto; padding: 0 6px; transition: padding 0.32s cubic-bezier(0.4, 0, 0.2, 1); }
+:root[data-sidebar="collapsed"] .sidebar-foot { padding: 0; }
 .foot-line { display: block; height: 1px; background: var(--hairline); margin-bottom: 12px; }
-.foot-label { font-family: var(--font-mono); font-size: 10px; color: var(--parchment-faint); letter-spacing: 0.05em; }
+.foot-label {
+  display: block;
+  font-family: var(--font-mono); font-size: 10px; color: var(--parchment-faint); letter-spacing: 0.05em;
+  overflow: hidden;
+  white-space: nowrap;
+  opacity: 1;
+  max-height: 20px;
+  transition: opacity 0.18s ease, max-height 0.28s ease;
+}
+:root[data-sidebar="collapsed"] .foot-label { opacity: 0; max-height: 0; }
 
 .theme-toggle-btn {
   display: flex;
@@ -214,6 +282,26 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
 .content {
   padding: 40px 48px 64px;
   max-width: 1280px;
+  animation: content-fade-in 0.32s cubic-bezier(0.4, 0, 0.2, 1);
+}
+/* When the sidebar collapses, let the content use the freed-up width
+   instead of staying capped at the same reading width and leaving a
+   blank gap on the right. The grid-template-columns transition above is
+   what makes this resize smoothly; max-width itself doesn't need to
+   animate since it's just raising the ceiling. */
+:root[data-sidebar="collapsed"] .content { max-width: none; }
+@keyframes content-fade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+/* Brief fade-out kicked off by transitions.js just before navigating to a
+   different menu, so switching pages reads as one smooth crossfade rather
+   than an abrupt cut. */
+body.page-leaving .content {
+  opacity: 0;
+  transform: translateY(-6px);
+  transition: opacity 0.16s ease, transform 0.16s ease;
+  animation: none;
 }
 
 /* ==========================================================================
@@ -515,6 +603,33 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
 }
 .chip:hover { border-color: var(--brass); color: var(--parchment); }
 .chip.active { background: var(--brass); border-color: var(--brass); color: #21170a; }
+:root[data-theme="light"] .chip.active { color: #fff; }
+
+/* PC / NPC / All — a single 3-way switch, kept on the same line as the
+   group filter chips (pushed to the far end of that row). */
+.segmented-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--bg-panel-inset);
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  padding: 3px;
+}
+.segmented-switch button {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: none;
+  background: transparent;
+  color: var(--parchment-dim);
+  cursor: pointer;
+  transition: background 0.18s ease, color 0.18s ease;
+}
+.segmented-switch button:hover { color: var(--parchment); }
+.segmented-switch button.active { background: var(--brass); color: #21170a; }
+:root[data-theme="light"] .segmented-switch button.active { color: #fff; }
 
 /* ==========================================================================
    Group banner cards
@@ -1022,6 +1137,23 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
 /* ==========================================================================
    Modals
    ========================================================================== */
+@keyframes overlay-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes panel-pop-in {
+  from { opacity: 0; transform: scale(0.94) translateY(8px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+@keyframes pin-bubble-pop-in {
+  from { opacity: 0; transform: translate(-50%, -100%) scale(0.9); }
+  to { opacity: 1; transform: translate(-50%, -100%) scale(1); }
+}
+@keyframes pin-rename-pop-in {
+  from { opacity: 0; transform: translate(-50%, 0) scale(0.9); }
+  to { opacity: 1; transform: translate(-50%, 0) scale(1); }
+}
+
 .modal-overlay {
   position: fixed;
   inset: 0;
@@ -1032,6 +1164,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
   justify-content: center;
   z-index: 100;
   padding: 24px;
+  animation: overlay-fade-in 0.2s ease;
 }
 .modal-overlay[hidden] { display: none; }
 
@@ -1046,6 +1179,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
   flex-direction: column;
   box-shadow: var(--shadow-deep);
   transition: background-color 0.4s ease, border-color 0.4s ease;
+  animation: panel-pop-in 0.26s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 .modal-header {
@@ -1112,6 +1246,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
   align-items: center;
   justify-content: center;
   padding: 40px;
+  animation: overlay-fade-in 0.22s ease;
 }
 .lightbox-overlay[hidden] { display: none; }
 
@@ -1122,6 +1257,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
   border-radius: var(--radius-m);
   border: 1px solid var(--hairline-strong);
   box-shadow: var(--shadow-deep);
+  animation: panel-pop-in 0.28s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 #lightbox-img {
   display: block;
@@ -1211,7 +1347,15 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
 
 @media (max-width: 880px) {
   .app-shell { grid-template-columns: 1fr; }
+  :root[data-sidebar="collapsed"] .app-shell { grid-template-columns: 1fr; }
   .sidebar { position: static; height: auto; flex-direction: row; align-items: center; padding: 14px 18px; overflow-x: auto; }
+  :root[data-sidebar="collapsed"] .sidebar { padding: 14px 18px; }
+  .sidebar-toggle-btn { width: auto; pointer-events: none; }
+  :root[data-sidebar="collapsed"] .brand-mark img { opacity: 1; }
+  :root[data-sidebar="collapsed"] .brand-collapse-icon { opacity: 0; }
+  :root[data-sidebar="collapsed"] .brand-text,
+  :root[data-sidebar="collapsed"] .nav-tab span { opacity: 1; max-width: 160px; }
+  :root[data-sidebar="collapsed"] .nav-tab { justify-content: flex-start; gap: 12px; padding: 11px 14px; }
   .sidebar-brand { padding: 0 16px 0 0; }
   .sidebar-nav { flex-direction: row; }
   .sidebar-foot { display: none; }
@@ -1743,12 +1887,14 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
   box-shadow: var(--shadow-deep);
   overflow: hidden;
   z-index: 10;
+  animation: pin-bubble-pop-in 0.16s ease;
 }
 .pin-action-bubble[hidden] { display: none; }
 .pin-rename-box {
   position: absolute;
   z-index: 15;
   transform: translate(-50%, 0);
+  animation: pin-rename-pop-in 0.16s ease;
 }
 .pin-rename-box[hidden] { display: none; }
 .pin-rename-box input {
@@ -1797,6 +1943,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
   align-items: center;
   justify-content: center;
   padding: 24px;
+  animation: overlay-fade-in 0.22s ease;
 }
 .map-setup-overlay[hidden] { display: none; }
 .map-setup-stack {
@@ -1806,6 +1953,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
   gap: 12px;
   max-width: 92vw;
   max-height: 92vh;
+  animation: panel-pop-in 0.28s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 .map-setup-preview-box {
   position: relative;

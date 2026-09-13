@@ -34,21 +34,27 @@
   <input type="text" id="character-search" placeholder="Search characters…" autocomplete="off">
 </div>
 
-{% if groups %}
+{% if characters %}
 <div class="filter-bar" id="group-filter">
-  <button class="chip active" data-filter="all">All</button>
+  <div class="segmented-switch" id="type-switch">
+    <button type="button" class="active" data-type-switch="all">All</button>
+    <button type="button" data-type-switch="pc">PC</button>
+    <button type="button" data-type-switch="npc">NPC</button>
+  </div>
+  {% if groups %}
   {% for g in groups %}
   <button class="chip" data-filter="{{ g.id }}">
     <span class="group-dot" style="background:{{ g.color }}"></span>{{ g.name }}
   </button>
   {% endfor %}
+  {% endif %}
 </div>
 {% endif %}
 
 {% if characters %}
 <div class="card-grid" id="character-grid">
   {% for c in characters %}
-  <div class="dossier-card" data-group="{{ c.group_id or '' }}" data-name="{{ c.name|lower }}">
+  <div class="dossier-card" data-group="{{ c.group_id or '' }}" data-name="{{ c.name|lower }}" data-type="{{ 'npc' if c.is_npc else 'pc' }}">
     <span class="dossier-tag {{ 'npc' if c.is_npc else '' }}">{{ 'NPC' if c.is_npc else 'PC' }}</span>
     <div class="dossier-head">
       <div class="avatar-frame">
@@ -109,15 +115,18 @@
 <script>
 document.addEventListener('DOMContentLoaded', () => {
   const filterBar = document.getElementById('group-filter');
+  const typeSwitch = document.getElementById('type-switch');
   const searchInput = document.getElementById('character-search');
   let activeGroupFilter = 'all';
+  let activeTypeFilter = 'all';
   let searchQuery = '';
 
   function applyFilters() {
     document.querySelectorAll('#character-grid .dossier-card').forEach((card) => {
       const groupMatch = activeGroupFilter === 'all' || card.dataset.group === activeGroupFilter;
       const nameMatch = !searchQuery || card.dataset.name.includes(searchQuery);
-      card.style.display = (groupMatch && nameMatch) ? '' : 'none';
+      const typeMatch = activeTypeFilter === 'all' || card.dataset.type === activeTypeFilter;
+      card.style.display = (groupMatch && nameMatch && typeMatch) ? '' : 'none';
     });
   }
 
@@ -125,9 +134,28 @@ document.addEventListener('DOMContentLoaded', () => {
     filterBar.addEventListener('click', (e) => {
       const btn = e.target.closest('.chip');
       if (!btn) return;
+      // No standalone "All" chip anymore — a group chip toggles: click it to
+      // filter to that group, click the active one again to clear back to all.
+      const alreadyActive = btn.classList.contains('active');
       filterBar.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+      if (alreadyActive) {
+        activeGroupFilter = 'all';
+      } else {
+        btn.classList.add('active');
+        activeGroupFilter = btn.dataset.filter;
+      }
+      applyFilters();
+    });
+  }
+
+  // PC/NPC/All: a 3-way switch, one choice active at a time.
+  if (typeSwitch) {
+    typeSwitch.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-type-switch]');
+      if (!btn) return;
+      typeSwitch.querySelectorAll('[data-type-switch]').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
-      activeGroupFilter = btn.dataset.filter;
+      activeTypeFilter = btn.dataset.typeSwitch;
       applyFilters();
     });
   }
