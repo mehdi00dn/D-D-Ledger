@@ -10,6 +10,7 @@
 
   const pinBubble = document.getElementById('pin-action-bubble');
   const pinViewBtn = document.getElementById('pin-view-btn');
+  const pinPcNpcToggle = document.getElementById('pin-pc-npc-toggle');
   const pinRenameBtn = document.getElementById('pin-rename-btn');
   const pinResizeBtn = document.getElementById('pin-resize-btn');
   const pinRotateBtn = document.getElementById('pin-rotate-btn');
@@ -40,6 +41,11 @@
   // own preview — regardless of the persisted/default grid_visible value.
   let suppressMainGrid = !initData.grid_setup_done;
   let linkedToBattle = !!initData.linked_to_battle;
+  let lockedForPlayers = !!initData.locked_for_players;
+  // A Player can't edit a map the DM has locked -- view/pan/zoom only.
+  // The DM is never read-only on their own lock. Server-side enforcement
+  // lives in app.py (map_edit_allowed); this just keeps the UI honest.
+  const readOnly = () => lockedForPlayers && !window.IS_DM;
 
   let bgImage = new Image();
   let bgLoaded = false;
@@ -496,14 +502,14 @@
   // Data loading
   // ---------------------------------------------------------------------
   async function loadDrawings() {
-    const res = await fetch(`/api/maps/${mapId}/drawings`);
+    const res = await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/drawings`);
     drawings = await res.json();
     redraw();
   }
 
   async function loadPins() {
     if (activeDrag && (activeDrag.type === 'move-pin' || activeDrag.type === 'resize-pin' || activeDrag.type === 'rotate-pin')) return;
-    const res = await fetch(`/api/maps/${mapId}/pins`);
+    const res = await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/pins`);
     pins = await res.json();
     renderPins();
   }
@@ -582,8 +588,20 @@
     pinBubble.style.left = `${leftPx}px`;
     pinBubble.style.top = `${topPx - halfHeightPx - 14}px`;
     pinBubble.hidden = false;
-    pinViewBtn.style.display = pin.pin_type === 'character' ? '' : 'none';
+    // A Player never gets a "View details" button on an NPC pin -- the
+    // detail endpoint already 403s them, this just stops the dead-end click.
+    pinViewBtn.style.display = (pin.pin_type === 'character' && (window.IS_DM || !pin.is_npc)) ? '' : 'none';
     pinRenameBtn.style.display = pin.pin_type === 'character' ? 'none' : '';
+    if (pinPcNpcToggle) {
+      const isFamiliar = pin.pin_type === 'prop' && !!pin.participant_id;
+      pinPcNpcToggle.style.display = isFamiliar ? '' : 'none';
+      if (isFamiliar) {
+        pinPcNpcToggle.textContent = pin.is_npc ? 'NPC' : 'PC';
+        pinPcNpcToggle.title = pin.is_npc
+          ? 'Currently an NPC (stats hidden from players) — click to make it a PC'
+          : 'Currently a PC (stats visible to players) — click to make it an NPC';
+      }
+    }
   }
 
   function positionPinRenameBox(pinId) {
@@ -846,7 +864,7 @@
     return { kind: d.kind, data: d.data, cx: d.cx, cy: d.cy, w: d.w, h: d.h, rotation: d.rotation, color: d.color, fill: d.fill, fill_opacity: d.fill_opacity, locked: !!d.locked };
   }
   async function persistShapeFields(d, fields) {
-    await fetch(`/api/maps/${mapId}/drawings/${d.id}/update`, {
+    await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/drawings/${d.id}/update`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(fields),
     });
   }
@@ -863,7 +881,7 @@
     } else if (shapeToSave.kind !== 'angle' && Math.hypot(shapeToSave.w, shapeToSave.h) < 4) {
       return;
     }
-    const res = await fetch(`/api/maps/${mapId}/drawings`, {
+    const res = await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/drawings`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(serializeShapeForCreate(shapeToSave)),
     });
     const json = await res.json();
@@ -877,14 +895,14 @@
     return {
       label: 'add-shape',
       undo: async () => {
-        await fetch(`/api/maps/${mapId}/drawings/${d.id}/delete`, { method: 'POST' });
+        await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/drawings/${d.id}/delete`, { method: 'POST' });
         const idx = drawings.findIndex((s) => s.id === d.id);
         if (idx >= 0) drawings.splice(idx, 1);
         if (selectedShapeId === d.id) deselectShape();
         redraw();
       },
       redo: async () => {
-        const res = await fetch(`/api/maps/${mapId}/drawings`, {
+        const res = await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/drawings`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(serializeShapeForCreate(d)),
         });
         const json = await res.json();
@@ -898,7 +916,7 @@
     return {
       label: 'delete-shape',
       undo: async () => {
-        const res = await fetch(`/api/maps/${mapId}/drawings`, {
+        const res = await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/drawings`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(serializeShapeForCreate(d)),
         });
         const json = await res.json();
@@ -907,7 +925,7 @@
         redraw();
       },
       redo: async () => {
-        await fetch(`/api/maps/${mapId}/drawings/${d.id}/delete`, { method: 'POST' });
+        await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/drawings/${d.id}/delete`, { method: 'POST' });
         const idx = drawings.findIndex((s) => s.id === d.id);
         if (idx >= 0) drawings.splice(idx, 1);
         if (selectedShapeId === d.id) deselectShape();
@@ -917,7 +935,7 @@
   }
   async function deleteShape(d) {
     const index = drawings.findIndex((s) => s.id === d.id);
-    await fetch(`/api/maps/${mapId}/drawings/${d.id}/delete`, { method: 'POST' });
+    await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/drawings/${d.id}/delete`, { method: 'POST' });
     drawings.splice(index, 1);
     if (selectedShapeId === d.id) deselectShape();
     redraw();
@@ -928,7 +946,7 @@
     return { pin_type: p.pin_type, icon_key: p.icon_key, x: p.x, y: p.y, scale: p.scale || 1, rotation: p.rotation || 0, locked: !!p.locked };
   }
   async function persistPinFields(p, fields) {
-    await fetch(`/api/maps/${mapId}/pins/${p.id}/update`, {
+    await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/pins/${p.id}/update`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(fields),
     });
   }
@@ -943,14 +961,14 @@
     return {
       label: 'add-pin',
       undo: async () => {
-        await fetch(`/api/maps/${mapId}/pins/${p.id}/delete`, { method: 'POST' });
+        await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/pins/${p.id}/delete`, { method: 'POST' });
         const idx = pins.findIndex((x) => x.id === p.id);
         if (idx >= 0) pins.splice(idx, 1);
         if (selectedPinId === p.id) deselectPin();
         renderPins();
       },
       redo: async () => {
-        const res = await fetch(`/api/maps/${mapId}/pins`, {
+        const res = await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/pins`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(serializePinForCreate(p)),
         });
         const json = await res.json();
@@ -964,7 +982,7 @@
     return {
       label: 'delete-pin',
       undo: async () => {
-        const res = await fetch(`/api/maps/${mapId}/pins`, {
+        const res = await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/pins`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(serializePinForCreate(p)),
         });
         const json = await res.json();
@@ -973,7 +991,7 @@
         renderPins();
       },
       redo: async () => {
-        await fetch(`/api/maps/${mapId}/pins/${p.id}/delete`, { method: 'POST' });
+        await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/pins/${p.id}/delete`, { method: 'POST' });
         const idx = pins.findIndex((x) => x.id === p.id);
         if (idx >= 0) pins.splice(idx, 1);
         if (selectedPinId === p.id) deselectPin();
@@ -983,7 +1001,7 @@
   }
   async function deletePinObj(pin) {
     const index = pins.findIndex((p) => p.id === pin.id);
-    await fetch(`/api/maps/${mapId}/pins/${pin.id}/delete`, { method: 'POST' });
+    await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/pins/${pin.id}/delete`, { method: 'POST' });
     pins.splice(index, 1);
     if (selectedPinId === pin.id) deselectPin();
     renderPins();
@@ -1075,6 +1093,7 @@
     if (unlockBtn) {
       e.preventDefault();
       e.stopPropagation();
+      if (readOnly()) return;
       const pinId = Number(unlockBtn.dataset.unlockPin);
       const pin = pins.find((p) => p.id === pinId);
       if (pin) unlockPin(pin);
@@ -1084,6 +1103,9 @@
     if (!el) return;
     const pin = pins.find((p) => String(p.id) === el.dataset.pinId);
     if (!pin) return;
+    // A Player on a locked map can still click a pin to view it (subject
+    // to the server's own NPC-detail redaction) -- just not drag/erase it.
+    if (readOnly()) { e.preventDefault(); selectPin(pin.id); return; }
     if (pin.locked) return; // locked pins can't be selected, dragged, or erased
     if (currentTool === 'eraser') { e.preventDefault(); deletePinObj(pin); return; }
     if (currentTool !== 'select') return;
@@ -1139,6 +1161,20 @@
     if (pin && pin.character_id) openDetailModal(pin.character_id);
   });
 
+  if (pinPcNpcToggle) {
+    pinPcNpcToggle.addEventListener('click', async () => {
+      const pin = pins.find((p) => p.id === selectedPinId);
+      if (!pin) return;
+      const nextIsNpc = !pin.is_npc;
+      await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/pins/${pin.id}/update`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_npc: nextIsNpc }),
+      });
+      pin.is_npc = nextIsNpc;
+      positionPinBubble(pin.id);
+    });
+  }
+
   // ---------------------------------------------------------------------
   // Detail modal (mirrors the battle screen's character viewer)
   // ---------------------------------------------------------------------
@@ -1147,11 +1183,12 @@
   const detailBody = document.getElementById('detail-modal-body');
 
   async function openDetailModal(characterId) {
-    const res = await fetch(`/api/characters/${characterId}/detail`);
+    const res = await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/characters/${characterId}/detail`);
     const c = await res.json();
     detailTitle.textContent = c.name;
+    const canDeleteSheets = window.IS_DM || c.created_by === window.USER_ID;
     const sheetsHtml = c.sheets.length
-      ? `<div class="sheet-thumbs">${c.sheets.map((s) => `<div class="sheet-thumb"><img src="/uploads/${s.image_path}" data-lightbox-src="/uploads/${s.image_path}"></div>`).join('')}</div>`
+      ? `<div class="sheet-thumbs">${c.sheets.map((s) => `<div class="sheet-thumb"><img src="/uploads/${s.image_path}" data-lightbox-src="/uploads/${s.image_path}"${canDeleteSheets ? ` data-delete-url="/campaigns/${window.CAMPAIGN_ID}/characters/${c.id}/sheets/${s.id}/delete"` : ''}></div>`).join('')}</div>`
       : `<p class="hint-text">No sheet images attached.</p>`;
     detailBody.innerHTML = `
       <div class="detail-header">
@@ -1324,7 +1361,7 @@
     const ok = window.confirmAction ? await window.confirmAction('Clear all drawings on this map?') : confirm('Clear all drawings on this map?');
     if (!ok) return;
     const snapshot = drawings.map((d) => ({ ...d }));
-    await fetch(`/api/maps/${mapId}/drawings/clear`, { method: 'POST' });
+    await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/drawings/clear`, { method: 'POST' });
     drawings = [];
     deselectShape();
     redraw();
@@ -1333,7 +1370,7 @@
       undo: async () => {
         const restored = [];
         for (const s of snapshot) {
-          const res = await fetch(`/api/maps/${mapId}/drawings`, {
+          const res = await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/drawings`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(serializeShapeForCreate(s)),
           });
           const json = await res.json();
@@ -1343,7 +1380,7 @@
         redraw();
       },
       redo: async () => {
-        await fetch(`/api/maps/${mapId}/drawings/clear`, { method: 'POST' });
+        await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/drawings/clear`, { method: 'POST' });
         drawings = [];
         deselectShape();
         redraw();
@@ -1351,20 +1388,86 @@
     });
   });
 
-  document.getElementById('link-battle-checkbox').addEventListener('change', async (e) => {
-    linkedToBattle = e.target.checked;
-    await fetch(`/api/maps/${mapId}/settings`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ linked_to_battle: linkedToBattle }),
+  const linkBattleCheckbox = document.getElementById('link-battle-checkbox');
+  if (linkBattleCheckbox) {
+    linkBattleCheckbox.addEventListener('change', async (e) => {
+      linkedToBattle = e.target.checked;
+      await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/settings`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ linked_to_battle: linkedToBattle }),
+      });
+      await loadPins();
+      setupPolling();
     });
-    await loadPins();
-    setupPolling();
-  });
+  }
+
+  const lockMapCheckbox = document.getElementById('lock-map-checkbox');
+  if (lockMapCheckbox) {
+    lockMapCheckbox.addEventListener('change', async (e) => {
+      lockedForPlayers = e.target.checked;
+      await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/settings`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ locked_for_players: lockedForPlayers }),
+      });
+    });
+  }
 
   function setupPolling() {
     if (pollTimer) clearInterval(pollTimer);
     if (linkedToBattle) pollTimer = setInterval(loadPins, 4000);
   }
+
+  function applyMapLockVisuals() {
+    contentArea.classList.toggle('map-readonly', readOnly());
+    if (lockedBanner) lockedBanner.hidden = !lockedForPlayers;
+  }
+
+  // Every open map tab polls this small state endpoint so grid settings,
+  // the lock, and the battle-link toggle all take effect live -- without
+  // this, another viewer's tab only ever picks up a DM's changes on their
+  // next full reload. Skipped while this tab's own grid-settings dialog is
+  // open so it can't clobber someone's in-progress edit there.
+  setInterval(async () => {
+    if (!setupOverlay.hidden) return;
+    try {
+      const res = await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/state`);
+      if (!res.ok) return;
+      const s = await res.json();
+      let gridChanged = false;
+
+      const nowLocked = !!s.locked_for_players;
+      if (nowLocked !== lockedForPlayers) {
+        lockedForPlayers = nowLocked;
+        applyMapLockVisuals();
+        if (lockMapCheckbox) lockMapCheckbox.checked = lockedForPlayers;
+      }
+
+      const nowLinked = !!s.linked_to_battle;
+      if (nowLinked !== linkedToBattle) {
+        linkedToBattle = nowLinked;
+        if (linkBattleCheckbox) linkBattleCheckbox.checked = linkedToBattle;
+        setupPolling();
+        if (linkedToBattle) loadPins();
+      }
+
+      if (s.grid_size !== gridSize) { gridSize = s.grid_size; gridChanged = true; }
+      if (s.grid_color !== gridColor) { gridColor = s.grid_color; gridChanged = true; }
+      if (!!s.grid_visible !== gridVisible) { gridVisible = !!s.grid_visible; gridChanged = true; }
+      if (s.grid_offset_x !== gridOffsetX) { gridOffsetX = s.grid_offset_x; gridChanged = true; }
+      if (s.grid_offset_y !== gridOffsetY) { gridOffsetY = s.grid_offset_y; gridChanged = true; }
+      if (!!s.snap_to_grid !== snapToGrid) { snapToGrid = !!s.snap_to_grid; }
+      if (gridChanged) { renderPins(); redraw(); }
+    } catch (e) { /* transient network hiccup -- try again next tick */ }
+  }, 3000);
+
+  // Drawings/shapes get the same live-sync treatment, polled separately
+  // from the lighter settings check above. Skipped while this tab is
+  // mid-drag or mid-draw so a poll can't tear a shape out from under an
+  // interaction already in progress.
+  setInterval(() => {
+    if (activeDrag || previewShape || !setupOverlay.hidden) return;
+    loadDrawings();
+  }, 3000);
 
   // ---------------------------------------------------------------------
   // Shape geometry helpers for the draw tools (shift = from-center, alt = 1:1 lock)
@@ -1426,6 +1529,7 @@
   let activeDrag = null;  // manipulating an existing shape or pin
 
   canvas.addEventListener('mousedown', (e) => {
+    if (readOnly()) return;
     const pos = eventPos(e);
 
     if (currentTool === 'select') {
@@ -1815,7 +1919,7 @@
 
   async function placeProp(pos, iconKey) {
     const snapped = snapPointToGridCenter(pos.x, pos.y);
-    const res = await fetch(`/api/maps/${mapId}/pins`, {
+    const res = await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/pins`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ pin_type: 'prop', icon_key: iconKey, x: snapped.x, y: snapped.y, scale: 1.0, rotation: 0 }),
     });
@@ -1838,6 +1942,7 @@
   // ---------------------------------------------------------------------
   const setupOverlay = document.getElementById('map-setup-overlay');
   const contentArea = document.getElementById('map-content-area');
+  const lockedBanner = document.getElementById('map-locked-banner');
   const setupVisibleCheckbox = document.getElementById('setup-grid-visible');
   const setupSizeSlider = document.getElementById('setup-grid-size');
   const setupSizeValue = document.getElementById('setup-grid-size-value');
@@ -1957,7 +2062,7 @@
   setupCloseBtn.addEventListener('click', () => closeGridSettings(true));
 
   setupConfirmBtn.addEventListener('click', async () => {
-    await fetch(`/api/maps/${mapId}/settings`, {
+    await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/settings`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         grid_size: gridSize, grid_color: gridColor, grid_visible: gridVisible, grid_setup_done: true,

@@ -1,16 +1,56 @@
 -- D&D Campaign Manager Database Schema
 
+-- Campaigns: top-level container that scopes groups/characters/maps.
+CREATE TABLE IF NOT EXISTS campaigns (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    description TEXT,
+    avatar_path TEXT,
+    setting TEXT,
+    status TEXT DEFAULT 'active',
+    access_mode TEXT DEFAULT 'private',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Users: seam for future auth (Phase F). Not used by the app yet.
+CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT NOT NULL UNIQUE,
+    password_hash TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Campaign membership: which users can access which campaigns.
+-- Not enforced yet (Phase F); schema exists now so auth is never retrofitted.
+CREATE TABLE IF NOT EXISTS campaign_members (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    campaign_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    role TEXT DEFAULT 'owner',
+    status TEXT DEFAULT 'player',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE(campaign_id, user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_campaign_members_campaign ON campaign_members(campaign_id);
+CREATE INDEX IF NOT EXISTS idx_campaign_members_user ON campaign_members(user_id);
+
 CREATE TABLE IF NOT EXISTS groups (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    campaign_id INTEGER,
     name TEXT NOT NULL,
     avatar_path TEXT,
     bio TEXT,
     color TEXT DEFAULT '#c9a24b',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS characters (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    campaign_id INTEGER,
     name TEXT NOT NULL,
     is_npc INTEGER DEFAULT 0,
     level INTEGER DEFAULT 1,
@@ -27,8 +67,11 @@ CREATE TABLE IF NOT EXISTS characters (
     group_id INTEGER,
     is_temp_familiar INTEGER DEFAULT 0,
     familiar_icon_key TEXT,
+    created_by INTEGER,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE SET NULL
+    FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE SET NULL,
+    FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE CASCADE,
+    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
 );
 
 CREATE TABLE IF NOT EXISTS character_sheets (
@@ -60,6 +103,7 @@ CREATE INDEX IF NOT EXISTS idx_battle_character ON battle_participants(character
 -- Maps
 CREATE TABLE IF NOT EXISTS maps (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    campaign_id INTEGER,
     name TEXT NOT NULL,
     image_path TEXT NOT NULL,
     image_width INTEGER DEFAULT 0,
@@ -72,7 +116,9 @@ CREATE TABLE IF NOT EXISTS maps (
     grid_setup_done INTEGER DEFAULT 0,
     snap_to_grid INTEGER DEFAULT 0,
     linked_to_battle INTEGER DEFAULT 0,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    locked_for_players INTEGER DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE CASCADE
 );
 
 -- Freeform drawings (lines, rects, ovals, pen strokes) on a map, all

@@ -92,11 +92,13 @@
     <div class="dossier-notes">{{ c.notes | notes_preview }}</div>
 
     <div class="dossier-actions">
-      <a href="{{ url_for('character_edit', char_id=c.id) }}" class="btn btn-ghost btn-sm">{{ icon('pencil') }} Edit</a>
+      <a href="{{ url_for('character_detail', char_id=c.id) }}" class="btn btn-ghost btn-sm">{{ icon('eye') }} Details</a>
+      {% if g.is_dm or c.created_by == session.user_id %}
       <a href="{{ url_for('character_export', char_id=c.id) }}" class="btn-icon" title="Export this character">{{ icon('upload') }}</a>
       <form method="POST" action="{{ url_for('character_delete', char_id=c.id) }}" data-confirm="Remove {{ c.name }} from the ledger permanently?">
         <button type="submit" class="btn btn-danger btn-sm">{{ icon('trash-2') }} Delete</button>
       </form>
+      {% endif %}
     </div>
   </div>
   {% endfor %}

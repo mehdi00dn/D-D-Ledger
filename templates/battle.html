@@ -10,19 +10,25 @@
     <h1 class="page-title">Battle</h1>
     <p class="page-sub">Track initiative, HP, and casualties for the current encounter.</p>
   </div>
+  {% if g.is_dm %}
   <div style="display:flex; gap:10px; flex-wrap:wrap;">
     <a href="{{ url_for('character_new', **{'from': 'battle'}) }}" class="btn btn-ghost">{{ icon('plus') }} Create Character</a>
     <button type="button" class="btn btn-ghost" id="open-add-modal">{{ icon('user') }} Add Character</button>
     <button type="button" class="btn btn-danger" id="clear-battle-btn">{{ icon('trash-2') }} Clear Battle</button>
   </div>
+  {% endif %}
 </div>
 
 <div class="battle-toolbar">
+  {% if g.is_dm %}
   <span class="hint-text" style="margin:0;">Sort by</span>
   <div class="sort-toggle" id="sort-toggle">
     <button type="button" class="sort-option active" data-sort="initiative">Initiative</button>
     <button type="button" class="sort-option" data-sort="group">Group</button>
   </div>
+  {% else %}
+  <span class="hint-text" style="margin:0;">Sorted by group</span>
+  {% endif %}
 </div>
 
 <div id="battle-root" data-added-id="{{ added_id or '' }}"></div>

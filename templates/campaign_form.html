@@ -1,0 +1,213 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}{{ 'Edit' if campaign else 'New' }} Campaign — Campaign Ledger{% endblock %}
+
+{% block content %}
+{% set is_owner = (not campaign) or g.campaign_role == 'owner' %}
+{% set cur_status = campaign.status if campaign and campaign.status else 'active' %}
+{% set cur_access = campaign.access_mode if campaign and campaign.access_mode else 'private' %}
+<div class="page-header">
+  <div>
+    <p class="page-eyebrow">{{ 'Amend Campaign' if campaign else 'New Campaign' }}</p>
+    <h1 class="page-title">{{ campaign.name if campaign else 'New Campaign' }}</h1>
+  </div>
+  <a href="{{ url_for('campaigns_list') }}" class="btn btn-ghost">{{ icon('arrow-left') }} Back to list</a>
+</div>
+
+<div class="campaign-edit-layout">
+<form class="form-panel" method="POST" enctype="multipart/form-data" id="campaign-form">
+  <div class="form-section">
+    <p class="form-section-title">Campaign Identity</p>
+    <div class="field" style="margin-bottom:14px;">
+      <label for="name">Name</label>
+      <input type="text" id="name" name="name" value="{{ campaign.name if campaign else '' }}" placeholder="e.g. The Ashfall Chronicles" required {{ 'disabled' if not is_owner }}>
+    </div>
+
+    <div class="field" style="margin-bottom:14px;">
+      <label>Campaign Image</label>
+      <div class="avatar-preview-row">
+        <div class="avatar-frame-wrap">
+          <div class="avatar-frame avatar-frame--banner">
+            {% if campaign and campaign.avatar_path %}
+              <img id="campaign-avatar-preview" src="{{ url_for('uploaded_file', filename=campaign.avatar_path) }}" alt="avatar preview">
+            {% else %}
+              <img id="campaign-avatar-preview" style="display:none;" alt="avatar preview">
+              {{ icon('scroll', 'avatar-placeholder-icon') }}
+            {% endif %}
+          </div>
+          {% if is_owner %}
+          <button type="button" class="avatar-remove-btn" id="campaign-avatar-remove-btn" title="Remove avatar" {{ '' if campaign and campaign.avatar_path else 'hidden' }}>{{ icon('x') }}</button>
+          {% endif %}
+        </div>
+        {% if is_owner %}
+        <div class="file-drop">
+          {{ icon('upload') }}
+          <div>Click or drop an image</div>
+          <span class="file-name"></span>
+          <input type="file" name="avatar" accept="image/*" data-avatar-input="#campaign-avatar-preview" data-remove-btn="#campaign-avatar-remove-btn" data-remove-input="#campaign-remove-avatar-input" data-crop-shape="banner">
+        </div>
+        {% endif %}
+      </div>
+      <input type="hidden" name="remove_avatar" id="campaign-remove-avatar-input" value="">
+    </div>
+
+    <div class="field">
+      <label for="description">Description</label>
+      <textarea id="description" name="description" placeholder="What this campaign is about, its setting, tone..." {{ 'disabled' if not is_owner }}>{{ campaign.description if campaign else '' }}</textarea>
+    </div>
+  </div>
+
+  <div class="form-section">
+    <p class="form-section-title">Campaign Details</p>
+    <div class="field-row-2">
+      <div class="field" id="setting-field">
+        <label for="setting-preset">Setting / World <span class="field-optional">optional</span></label>
+        <select id="setting-preset" name="setting_preset" {{ 'disabled' if not is_owner }}>
+          <option value="" {{ 'selected' if setting_preset == '' else '' }}>Not set</option>
+          {% for preset in ('Forgotten Realms', 'Eberron', 'Homebrew') %}
+          <option value="{{ preset }}" {{ 'selected' if setting_preset == preset else '' }}>{{ preset }}</option>
+          {% endfor %}
+          <option value="__custom__" {{ 'selected' if setting_preset == '__custom__' else '' }}>Custom&hellip;</option>
+        </select>
+        <input type="text" id="setting-custom" name="setting_custom" value="{{ setting_custom }}"
+               placeholder="Name your setting..." style="margin-top:8px;{{ '' if setting_preset == '__custom__' else ' display:none;' }}"
+               {{ 'disabled' if not is_owner }}>
+      </div>
+
+      <div class="field">
+        <label for="status">Campaign Status <span class="field-optional">optional</span></label>
+        <div class="status-field">
+          <span class="status-dot" id="status-dot" data-status="{{ cur_status }}"></span>
+          <select id="status" name="status" {{ 'disabled' if not is_owner }}>
+            <option value="active" {{ 'selected' if cur_status == 'active' else '' }}>Active</option>
+            <option value="on_hold" {{ 'selected' if cur_status == 'on_hold' else '' }}>On Hold</option>
+            <option value="completed" {{ 'selected' if cur_status == 'completed' else '' }}>Completed</option>
+            <option value="archived" {{ 'selected' if cur_status == 'archived' else '' }}>Archived</option>
+          </select>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="form-section">
+    <p class="form-section-title">Access &amp; Privacy</p>
+    <div class="access-options">
+      <label class="access-option">
+        <input type="radio" name="access_mode" value="private" {{ 'checked' if cur_access == 'private' else '' }} {{ 'disabled' if not is_owner }}>
+        <span class="access-option-card">
+          <span class="access-option-card-header">
+            <span class="access-option-card-title">{{ icon('lock') }} Private</span>
+            <span class="access-option-card-check">{{ icon('check') }}</span>
+          </span>
+          <p class="access-option-card-desc">Only invited players can join the campaign.</p>
+        </span>
+      </label>
+      <label class="access-option">
+        <input type="radio" name="access_mode" value="invite_link" {{ 'checked' if cur_access == 'invite_link' else '' }} {{ 'disabled' if not is_owner }}>
+        <span class="access-option-card">
+          <span class="access-option-card-header">
+            <span class="access-option-card-title">{{ icon('globe') }} Invite Link</span>
+            <span class="access-option-card-check">{{ icon('check') }}</span>
+          </span>
+          <p class="access-option-card-desc">Anyone with the invitation link can request to join.</p>
+        </span>
+      </label>
+    </div>
+  </div>
+
+  {% if is_owner %}
+  <div class="form-actions">
+    <a href="{{ url_for('campaigns_list') }}" class="btn btn-ghost">Cancel</a>
+    <button type="submit" class="btn btn-primary">{{ icon('check') }} {{ 'Save Changes' if campaign else 'Create Campaign' }}</button>
+  </div>
+  {% endif %}
+</form>
+
+{% if campaign %}
+{% set owner_count = members|selectattr('role', 'equalto', 'owner')|list|length %}
+{% set can_leave_freely = not is_owner or owner_count > 1 %}
+<div class="form-panel members-panel">
+  <div class="form-section" style="margin-bottom:0;">
+    <p class="form-section-title">Members</p>
+    <div class="member-list">
+      {% for m in members %}
+      <div class="member-row">
+        <span class="member-name">
+          {{ icon('user') }} {{ m.username }}
+          {% if m.role == 'owner' %}<span class="role-badge role-badge-owner">Owner</span>{% endif %}
+        </span>
+        <span class="member-actions">
+          {% if is_owner %}
+          <form method="POST" action="{{ url_for('campaign_member_status', campaign_id=campaign.id, user_id=m.id) }}">
+            <select name="status" class="status-select status-select-{{ m.status }}" title="Dungeon Master / Player" onchange="this.form.submit()">
+              <option value="dm" {{ 'selected' if m.status == 'dm' else '' }}>DM</option>
+              <option value="player" {{ 'selected' if m.status == 'player' else '' }}>Player</option>
+            </select>
+          </form>
+          {% else %}
+          <span class="role-badge role-badge-{{ m.status }}">{{ 'DM' if m.status == 'dm' else 'Player' }}</span>
+          {% endif %}
+
+          {% if is_owner and m.role != 'owner' %}
+          <form method="POST" action="{{ url_for('campaign_member_make_owner', campaign_id=campaign.id, user_id=m.id) }}" data-confirm="Make {{ m.username }} an owner of this campaign?">
+            <button type="submit" class="btn-icon" title="Make owner">{{ icon('crown') }}</button>
+          </form>
+          {% endif %}
+
+          {% if is_owner and m.id != session['user_id'] %}
+          <form method="POST" action="{{ url_for('campaign_member_remove', campaign_id=campaign.id, user_id=m.id) }}" data-confirm="Remove {{ m.username }} from this campaign?">
+            <button type="submit" class="btn-icon" title="Remove member">{{ icon('x') }}</button>
+          </form>
+          {% endif %}
+        </span>
+      </div>
+      {% endfor %}
+    </div>
+
+    {% if is_owner %}
+    <form method="POST" action="{{ url_for('campaign_member_add', campaign_id=campaign.id) }}" class="member-add-form">
+      <input type="text" name="username" placeholder="Username to invite" required>
+      <select name="status" title="Starting status">
+        <option value="player">Player</option>
+        <option value="dm">DM</option>
+      </select>
+      <button type="submit" class="btn btn-primary btn-sm">{{ icon('plus') }} Add</button>
+    </form>
+    {% endif %}
+
+    <div class="leave-campaign-row">
+      {% if can_leave_freely %}
+      <form method="POST" action="{{ url_for('campaign_leave', campaign_id=campaign.id) }}" data-confirm="Leave '{{ campaign.name }}'? You'll need a new invite to get back in.">
+        <button type="submit" class="btn btn-ghost btn-sm">{{ icon('arrow-left') }} Leave Campaign</button>
+      </form>
+      {% elif members|length > 1 %}
+      <p class="hint-text">You're the only owner — promote another member to Owner before you can leave.</p>
+      {% else %}
+      <p class="hint-text">You're the only member — delete the campaign instead if you want to stop using it.</p>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endif %}
+</div>
+
+<script>
+(function () {
+  var presetSelect = document.getElementById('setting-preset');
+  var customInput = document.getElementById('setting-custom');
+  if (presetSelect && customInput) {
+    presetSelect.addEventListener('change', function () {
+      customInput.style.display = presetSelect.value === '__custom__' ? '' : 'none';
+    });
+  }
+  var statusSelect = document.getElementById('status');
+  var statusDot = document.getElementById('status-dot');
+  if (statusSelect && statusDot) {
+    statusSelect.addEventListener('change', function () {
+      statusDot.dataset.status = statusSelect.value;
+    });
+  }
+})();
+</script>
+{% endblock %}
+

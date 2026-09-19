@@ -227,8 +227,159 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
 
 .nav-tab.disabled { opacity: 0.35; cursor: default; pointer-events: none; }
 
+.campaign-switcher {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 14px;
+  margin-bottom: 10px;
+  border-radius: var(--radius-s);
+  border: 1px solid var(--hairline);
+  color: var(--parchment-dim);
+  font-size: 13px;
+  font-weight: 500;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease,
+              gap 0.32s cubic-bezier(0.4, 0, 0.2, 1), justify-content 0.32s, padding 0.32s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.campaign-switcher svg { width: 15px; height: 15px; stroke-width: 1.75; flex-shrink: 0; }
+.campaign-switcher-avatar { width: 18px; height: 18px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
+
+.auth-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.auth-card { width: 100%; max-width: 380px; }
+.auth-brand { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; }
+.auth-title { font-family: var(--font-display); font-size: 22px; font-weight: 600; margin: 0 0 16px; color: var(--parchment); }
+.auth-error {
+  background: rgba(196, 84, 84, 0.12);
+  border: 1px solid rgba(196, 84, 84, 0.35);
+  color: #d98080;
+  border-radius: var(--radius-s);
+  padding: 9px 12px;
+  font-size: 13px;
+  margin: 0 0 16px;
+}
+.auth-submit { width: 100%; justify-content: center; margin-top: 6px; }
+.auth-switch { text-align: center; margin: 18px 0 0; font-size: 13px; color: var(--parchment-dim); }
+.auth-switch a { color: var(--brass); font-weight: 500; }
+.auth-switch a:hover { text-decoration: underline; }
+
+.role-badge {
+  display: inline-block;
+  vertical-align: middle;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-weight: 600;
+  margin-left: 6px;
+}
+.role-badge-owner { background: rgba(201,162,75,0.14); color: var(--brass-bright); }
+.role-badge-member { background: rgba(95,145,116,0.14); color: var(--moss-bright); }
+.role-badge-dm { background: rgba(155,110,220,0.16); color: #c9a6ec; }
+.role-badge-player { background: rgba(150,150,160,0.16); color: var(--parchment-dim); }
+:root[data-theme="light"] .role-badge-dm, :root[data-theme="light"] .status-select-dm { background-color: rgba(124,58,196,0.16); color: #7c3ac4; }
+
+.member-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
+.member-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  row-gap: 6px;
+  padding: 9px 12px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-s);
+  background: var(--bg-panel-inset);
+}
+.member-name { display: flex; align-items: center; gap: 8px; font-size: 13.5px; }
+.member-name svg { width: 14px; height: 14px; color: var(--parchment-dim); }
+.member-actions { display: flex; align-items: center; gap: 6px; }
+.status-select {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+.status-select-dm { background-color: rgba(155,110,220,0.18); color: #c9a6ec; }
+.status-select-player { background-color: rgba(150,150,160,0.18); color: var(--parchment-dim); }
+.member-add-form { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.member-add-form input[type="text"] {
+  flex: 1;
+  min-width: 140px;
+  background: var(--bg-panel-inset);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-s);
+  padding: 9px 11px;
+  color: var(--parchment);
+  font-family: var(--font-body);
+  font-size: 13.5px;
+}
+.member-add-form select {
+  background: var(--bg-panel-inset);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-s);
+  padding: 9px 11px;
+  color: var(--parchment);
+  font-family: var(--font-body);
+  font-size: 13.5px;
+}
+.leave-campaign-row { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--hairline); }
+.leave-campaign-row .hint-text { margin: 0; }
+.leave-campaign-row .btn { width: 100%; justify-content: center; }
+
+/* Campaign edit page: Identity on the left, Members alongside it on the
+   right instead of stacked below -- makes use of the space that would
+   otherwise sit empty next to the (narrower) Identity panel. Wraps to a
+   single column once there isn't room for both. */
+.campaign-edit-layout { display: flex; align-items: flex-start; gap: 24px; flex-wrap: wrap; }
+.campaign-edit-layout > .form-panel { flex: 1 1 480px; max-width: 640px; margin-top: 0; }
+.campaign-edit-layout > .members-panel { flex: 1 1 320px; max-width: 380px; }
+.campaign-switcher:hover { background: rgba(201,162,75,0.08); color: var(--parchment); border-color: var(--hairline-strong); }
+.campaign-switcher-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 140px;
+  opacity: 1;
+  transition: opacity 0.18s ease, max-width 0.32s cubic-bezier(0.4, 0, 0.2, 1);
+}
+:root[data-sidebar="collapsed"] .campaign-switcher { justify-content: center; gap: 0; padding: 9px 0; }
+:root[data-sidebar="collapsed"] .campaign-switcher-name,
+:root[data-sidebar="collapsed"] .campaign-switcher svg:last-child { opacity: 0; max-width: 0; }
+
 .sidebar-foot { margin-top: auto; padding: 0 6px; transition: padding 0.32s cubic-bezier(0.4, 0, 0.2, 1); }
 :root[data-sidebar="collapsed"] .sidebar-foot { padding: 0; }
+
+.user-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  margin-bottom: 10px;
+  border-radius: var(--radius-s);
+  border: 1px solid var(--hairline);
+}
+.user-name { display: flex; align-items: center; gap: 8px; overflow: hidden; font-size: 12.5px; color: var(--parchment-dim); }
+.user-name svg { width: 14px; height: 14px; flex-shrink: 0; }
+.user-name span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: 1; max-width: 110px; transition: opacity 0.18s ease, max-width 0.32s cubic-bezier(0.4, 0, 0.2, 1); }
+.user-row form { flex-shrink: 0; }
+:root[data-sidebar="collapsed"] .user-row { justify-content: center; padding: 8px 0; border-color: transparent; }
+:root[data-sidebar="collapsed"] .user-name span { opacity: 0; max-width: 0; }
+:root[data-sidebar="collapsed"] .user-row form { display: none; }
 .foot-line { display: block; height: 1px; background: var(--hairline); margin-bottom: 12px; }
 .foot-label {
   display: block;
@@ -388,6 +539,13 @@ body.page-leaving .content {
 }
 .btn-icon svg { width: 15px; height: 15px; flex-shrink: 0; }
 .btn-icon:hover { color: var(--parchment); border-color: var(--brass); }
+.pin-pc-npc-toggle {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 8px 10px;
+}
 
 .btn-sm { padding: 6px 12px; font-size: 12.5px; }
 
@@ -733,6 +891,7 @@ body.page-leaving .content {
 }
 
 .field input[type="text"],
+.field input[type="password"],
 .field input[type="number"],
 .field textarea,
 .field select {
@@ -752,6 +911,10 @@ body.page-leaving .content {
   outline: none;
 }
 .field textarea { resize: vertical; min-height: 90px; line-height: 1.5; }
+.field input:disabled, .field textarea:disabled, .field select:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
 
 /* Notes: multi-box rich text editor (character form) */
 .note-blocks { display: flex; flex-direction: column; gap: 12px; margin-bottom: 10px; }
@@ -820,8 +983,19 @@ body.page-leaving .content {
 .file-drop input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
 .file-drop .file-name { color: var(--brass-bright); font-weight: 600; margin-top: 4px; display: block; }
 
-.avatar-preview-row { display: flex; align-items: center; gap: 16px; margin-bottom: 10px; }
-.avatar-preview-row .avatar-frame { width: 64px; height: 64px; }
+.avatar-preview-row { display: flex; align-items: flex-start; gap: 18px; margin-bottom: 10px; flex-wrap: wrap; }
+.avatar-preview-row .avatar-frame { width: 104px; height: 104px; }
+.avatar-preview-row .file-drop { flex: 0 1 200px; padding: 12px 10px; align-self: center; }
+.avatar-preview-row .file-drop svg { width: 15px; height: 15px; margin-bottom: 4px; }
+.avatar-preview-row .file-drop div { font-size: 11.5px; }
+
+/* Group/campaign avatars render as a wide banner card, not a circle — the
+   crop preview should look like the real thing, not a small round icon. */
+.avatar-preview-row .avatar-frame--banner {
+  width: 280px;
+  height: 168px;
+  border-radius: var(--radius-m);
+}
 .avatar-frame-wrap { position: relative; display: inline-block; }
 .avatar-remove-btn {
   position: absolute;
@@ -851,6 +1025,76 @@ body.page-leaving .content {
 .sheet-thumb .btn-icon { padding: 4px; background: rgba(16,18,26,0.75); border: none; }
 .sheet-thumb .btn-icon svg { width: 12px; height: 12px; }
 
+/* ---- Campaign settings page: compact identity, side-by-side details,
+   and the Access & Privacy selectable cards ---- */
+.field-optional {
+  text-transform: none;
+  font-weight: 400;
+  color: var(--parchment-faint);
+  letter-spacing: 0;
+  margin-left: 4px;
+}
+.field-row-2 { display: flex; gap: 16px; flex-wrap: wrap; }
+.field-row-2 > .field { flex: 1 1 200px; min-width: 0; }
+
+/* Scoped to the campaign form only -- the shared banner-avatar picker used
+   by groups/characters elsewhere in the app keeps its original size. */
+.campaign-edit-layout .avatar-preview-row { align-items: center; margin-bottom: 0; }
+.campaign-edit-layout .avatar-preview-row .avatar-frame--banner { width: 108px; height: 108px; border-radius: var(--radius-m); }
+.campaign-edit-layout .avatar-preview-row .file-drop { flex: 1 1 200px; align-self: stretch; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+
+.status-field { display: flex; align-items: center; gap: 8px; }
+.status-field select { flex: 1; }
+.status-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; background: var(--parchment-faint); }
+.status-dot[data-status="active"] { background: var(--moss-bright); }
+.status-dot[data-status="on_hold"] { background: var(--brass); }
+.status-dot[data-status="completed"] { background: var(--blue); }
+.status-dot[data-status="archived"] { background: var(--parchment-faint); }
+
+.access-options { display: flex; gap: 14px; flex-wrap: wrap; }
+.access-option { flex: 1 1 220px; min-width: 0; display: block; cursor: pointer; }
+.access-option input { position: absolute; opacity: 0; width: 0; height: 0; }
+.access-option-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  height: 100%;
+  padding: 14px 16px;
+  background: var(--bg-panel-inset);
+  border: 1.5px solid var(--hairline);
+  border-radius: var(--radius-m);
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+.access-option-card-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.access-option-card-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 14.5px;
+  color: var(--brass-bright);
+}
+.access-option-card-title svg { width: 16px; height: 16px; color: var(--brass); flex-shrink: 0; }
+.access-option-card-check {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1.5px solid var(--hairline-strong);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: transparent;
+}
+.access-option-card-check svg { width: 10px; height: 10px; }
+.access-option-card-desc { font-size: 12px; color: var(--parchment-dim); line-height: 1.45; margin: 0; }
+.access-option input:checked + .access-option-card { border-color: var(--brass); background: rgba(201, 162, 75, 0.09); }
+.access-option input:checked + .access-option-card .access-option-card-check { border-color: var(--brass); background: var(--brass); color: #21170a; }
+.access-option input:focus-visible + .access-option-card { outline: 2px solid var(--brass); outline-offset: 2px; }
+.access-option input:disabled + .access-option-card { opacity: 0.55; cursor: not-allowed; }
+
+
 .form-actions {
   display: flex;
   justify-content: flex-end;
@@ -867,15 +1111,53 @@ body.page-leaving .content {
 }
 .color-swatch:hover { transform: scale(1.1); }
 .color-swatch.selected { border-color: var(--parchment); }
-.color-swatch-custom {
-  width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--hairline);
-  padding: 0; overflow: hidden; cursor: pointer; background: none;
+
+/* Custom color swatch: always shows a fixed rainbow gradient (not the
+   currently-picked color) so it reads clearly as "pick any color", distinct
+   from the fixed preset swatches. The native <input type=color> sits on top,
+   fully transparent, so clicking the circle still opens the OS picker. */
+.color-swatch-custom-wrap {
+  position: relative;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg, #ff3b30, #ff9500, #ffcc00, #34c759, #32ade6, #5856d6, #ff2d95, #ff3b30);
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: transform 0.1s ease, border-color 0.1s ease;
 }
+.color-swatch-custom-wrap:hover { transform: scale(1.1); }
+.color-swatch-custom-wrap.selected { border-color: var(--parchment); }
+.color-swatch-custom {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: none;
+  opacity: 0;
+  cursor: pointer;
+}
+/* Hide the native swatch chrome so only our gradient circle shows through. */
+.color-swatch-custom::-webkit-color-swatch-wrapper { padding: 0; }
+.color-swatch-custom::-webkit-color-swatch { border: none; border-radius: 50%; }
+.color-swatch-custom::-moz-color-swatch { border: none; border-radius: 50%; }
 
 /* ==========================================================================
    Misc
    ========================================================================== */
 .hint-text { font-size: 11.5px; color: var(--parchment-faint); margin-top: 6px; }
+.dossier-readonly-note {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 6px 0;
+}
+.dossier-readonly-note svg { width: 13px; height: 13px; flex-shrink: 0; }
 
 /* ==========================================================================
    Import label / status banners
@@ -1048,6 +1330,7 @@ body.page-leaving .content {
   position: relative;
   cursor: ew-resize;
 }
+.hp-bar-track-static { cursor: default; }
 .hp-bar-track.is-scrubbing { box-shadow: 0 0 0 2px var(--brass); }
 .hp-bar-fill {
   height: 100%;
@@ -1093,6 +1376,34 @@ body.page-leaving .content {
   white-space: nowrap;
 }
 .temp-hp-badge { color: #7ec8ff; font-weight: 600; }
+
+/* Concealed NPC stats for a Player (server never sends the real numbers).
+   One compact "hidden" badge instead of disabled-looking inputs/bars — it
+   should read as deliberately withheld information, not a broken control. */
+.stats-hidden-badge {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 14px;
+  background: var(--bg-panel-inset);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-s);
+  color: var(--parchment-faint);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+.stats-hidden-badge svg { width: 14px; height: 14px; flex-shrink: 0; opacity: 0.8; }
+.stats-hidden-badge-dead {
+  color: var(--parchment-dim);
+  border-color: var(--hairline-strong);
+}
+.stats-hidden-badge-downed {
+  color: #e0a35c;
+  border-color: rgba(224, 163, 92, 0.35);
+}
 
 .hp-controls { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
 .hp-amount-input {
@@ -1437,6 +1748,7 @@ body.page-leaving .content {
   border: 2px solid var(--bg-panel);
   z-index: 2;
 }
+:root[data-theme="light"] .die-count-badge { color: var(--bg-panel); }
 .die-count-badge[hidden] { display: none; }
 .die-count-badge:not([hidden]) { display: flex; }
 .die-count-badge:hover { filter: brightness(1.15); transform: scale(1.08); }
@@ -1688,6 +2000,37 @@ body.page-leaving .content {
 }
 
 .map-toolbar-sentinel { height: 0; }
+
+.map-locked-inline {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  background: var(--bg-panel-inset);
+  border: 1px solid var(--hairline-strong);
+  color: var(--parchment-dim);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 13px;
+}
+.map-locked-inline svg { width: 14px; height: 14px; flex-shrink: 0; }
+.map-locked-inline[hidden] { display: none; }
+
+/* Read-only mode for a Player on a map the DM has locked: hide every
+   editing affordance but leave panning/zooming and pin viewing alone. */
+.map-readonly #shape-action-bubble,
+.map-readonly #pin-rename-box { display: none !important; }
+/* The toolbar itself stays (so a locked Player can still reset zoom), but
+   every group except the zoom controls and the lock notice is hidden --
+   drawing tools, undo/redo, grid settings, clear drawings all require an
+   unlocked map. The lock notice sits on the left, zoom controls on the
+   right, sharing the one row instead of a separate banner above it. */
+.map-readonly #map-toolbar > *:not(.map-tool-group-persistent):not(#map-locked-banner) { display: none !important; }
+.map-readonly #map-toolbar { justify-content: space-between; }
+.map-readonly #pin-action-bubble #pin-resize-btn,
+.map-readonly #pin-action-bubble #pin-rotate-btn,
+.map-readonly #pin-action-bubble #pin-rename-btn,
+.map-readonly #pin-action-bubble #pin-lock-btn,
+.map-readonly #pin-action-bubble #pin-delete-btn { display: none !important; }
 
 .map-toolbar {
   display: flex;

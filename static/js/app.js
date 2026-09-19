@@ -20,13 +20,19 @@ document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('[data-color-group]').forEach((group) => {
     const hiddenInput = document.querySelector(group.dataset.colorGroup);
     const swatches = group.querySelectorAll('.color-swatch');
+    const customWrap = group.querySelector('.color-swatch-custom-wrap');
+    const currentValue = (hiddenInput?.value || '').toLowerCase();
+    const matchesPreset = Array.from(swatches).some((sw) => sw.dataset.color.toLowerCase() === currentValue);
+    if (!matchesPreset && customWrap) customWrap.classList.add('selected');
+
     swatches.forEach((sw) => {
-      if (hiddenInput && sw.dataset.color.toLowerCase() === (hiddenInput.value || '').toLowerCase()) {
+      if (hiddenInput && sw.dataset.color.toLowerCase() === currentValue) {
         sw.classList.add('selected');
       }
       sw.addEventListener('click', () => {
         swatches.forEach((s) => s.classList.remove('selected'));
         sw.classList.add('selected');
+        if (customWrap) customWrap.classList.remove('selected');
         if (hiddenInput) hiddenInput.value = sw.dataset.color;
         const customPicker = group.parentElement.querySelector('.color-swatch-custom');
         if (customPicker) customPicker.value = sw.dataset.color;
@@ -43,6 +49,8 @@ document.addEventListener('DOMContentLoaded', () => {
       if (groupWrap) {
         groupWrap.querySelectorAll('.color-swatch').forEach((s) => s.classList.remove('selected'));
       }
+      const wrap = picker.closest('.color-swatch-custom-wrap');
+      if (wrap) wrap.classList.add('selected');
     });
   });
 

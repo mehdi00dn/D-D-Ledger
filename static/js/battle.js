@@ -3,8 +3,11 @@
 (function () {
   const root = document.getElementById('battle-root');
   const allCharacters = JSON.parse(document.getElementById('characters-data').textContent || '[]');
+  const isDM = !!window.IS_DM;
   let participants = [];
-  let sortMode = 'initiative';
+  // Players can't sort by initiative -- they can't see the numbers anyway,
+  // and the DM-only toggle for it isn't even rendered for them.
+  let sortMode = isDM ? 'initiative' : 'group';
 
   const emptyTemplate = document.getElementById('empty-battle-template');
 
@@ -36,13 +39,75 @@
   }
 
   function rowMarkup(p) {
-    const pct = hpPercent(p);
+    const hidden = !!p.hidden_stats; // enemy stats redacted server-side for Players
+    const pct = hidden ? 0 : hpPercent(p);
     const dead = !!p.is_dead;
-    const showDiedBtn = p.current_hp <= 0 && !dead;
+    const showDiedBtn = isDM && !hidden && p.current_hp <= 0 && !dead;
     const groupDot = p.group_color ? `<span class="group-dot" style="background:${p.group_color}"></span>` : '';
     const tempHp = p.temp_hp || 0;
     const tempPct = p.char_max_hp ? (tempHp / p.char_max_hp) * 100 : 0;
     const tempBarWidth = Math.max(0, Math.min(100 - pct, tempPct));
+    // A Member can view their own party's dossier but not an enemy's.
+    const canViewDetails = isDM || !p.is_npc;
+
+    // A DM-concealed NPC gets one compact badge in place of the INIT/AC/HP
+    // controls -- not a trio of individually-disabled-looking fields. It
+    // sits in the same part of the row so the layout doesn't jump when the
+    // DM later reveals the creature. Downed/dead still comes through even
+    // while hidden -- a Player should see an enemy drop without learning
+    // its exact numbers.
+    const downed = !!p.is_downed;
+    let statsArea;
+    if (hidden && dead) {
+      statsArea = `
+      <div class="stats-hidden-badge stats-hidden-badge-dead" title="This creature has died">
+        ${ICONS.skull}<span>Dead</span>
+      </div>`;
+    } else if (hidden && downed) {
+      statsArea = `
+      <div class="stats-hidden-badge stats-hidden-badge-downed" title="This creature is down">
+        ${ICONS.skull}<span>Downed</span>
+      </div>`;
+    } else if (hidden) {
+      statsArea = `
+      <div class="stats-hidden-badge" title="The DM hasn't revealed this creature's stats">
+        ${ICONS.lock}<span>Stats Hidden</span>
+      </div>`;
+    } else {
+      statsArea = `
+      <div class="stat-chip">
+        <label>INIT</label>
+        <input type="number" class="stat-chip-input" data-action="initiative" value="${p.initiative}" ${dead || !isDM ? 'disabled' : ''}>
+      </div>
+      <div class="stat-chip">
+        <label>AC</label>
+        <input type="number" class="stat-chip-input" data-action="ac" value="${p.effective_ac}" ${dead || !isDM ? 'disabled' : ''}>
+      </div>
+      <div class="hp-block">
+        <div class="hp-bar-track${isDM ? '' : ' hp-bar-track-static'}" ${isDM ? `data-hp-scrub="${p.id}"` : ''} data-max="${p.char_max_hp}" title="${isDM ? 'Hold and drag to set HP' : ''}">
+          <div class="hp-bar-fill ${hpColorClass(pct)}" style="width:${pct}%"></div>
+          ${tempBarWidth > 0 ? `<div class="hp-bar-temp" style="left:${pct}%; width:${tempBarWidth}%;"></div>` : ''}
+        </div>
+        <span class="hp-readout">${p.current_hp} / ${p.char_max_hp}${tempHp > 0 ? ` <span class="temp-hp-badge">+${tempHp}</span>` : ''}</span>
+      </div>`;
+    }
+
+    const hpControls = (isDM && !hidden) ? `
+      <div class="hp-controls">
+        <input type="number" class="hp-amount-input" min="0" placeholder="1" value="" ${dead ? 'disabled' : ''}>
+        <button type="button" class="hp-btn heal-btn" data-action="heal" title="Heal" ${dead ? 'disabled' : ''}>${ICONS.heart}</button>
+        <button type="button" class="hp-btn damage-btn" data-action="damage" title="Damage" ${dead ? 'disabled' : ''}>${ICONS.swords}</button>
+        <button type="button" class="hp-btn temphp-btn" data-action="temphp" title="Temporary HP" ${dead ? 'disabled' : ''}>${ICONS.shieldPlus}</button>
+      </div>` : '';
+
+    let detailControl = '';
+    if (p.is_temp_familiar) {
+      if (isDM) {
+        detailControl = `<div class="stat-chip"><label>MAX HP</label><input type="number" class="stat-chip-input" data-action="max-hp" min="1" value="${p.char_max_hp}" ${dead ? 'disabled' : ''}></div>`;
+      }
+    } else if (canViewDetails) {
+      detailControl = `<button type="button" class="btn-icon" data-action="view" title="View details">${ICONS.images}</button>`;
+    }
 
     return `
     <div class="battle-row ${dead ? 'is-dead' : ''}" data-pid="${p.id}">
@@ -53,39 +118,14 @@
         <div class="battle-meta">${groupDot}${p.group_name ? escapeHtml(p.group_name) : 'Ungrouped'} &middot; ${p.is_npc ? 'NPC' : 'PC'}</div>
       </div>
 
-      <div class="stat-chip">
-        <label>INIT</label>
-        <input type="number" class="stat-chip-input" data-action="initiative" value="${p.initiative}" ${dead ? 'disabled' : ''}>
-      </div>
-
-      <div class="stat-chip">
-        <label>AC</label>
-        <input type="number" class="stat-chip-input" data-action="ac" value="${p.effective_ac}" ${dead ? 'disabled' : ''}>
-      </div>
-
-      <div class="hp-block">
-        <div class="hp-bar-track" data-hp-scrub="${p.id}" data-max="${p.char_max_hp}" title="Hold and drag to set HP">
-          <div class="hp-bar-fill ${hpColorClass(pct)}" style="width:${pct}%"></div>
-          ${tempBarWidth > 0 ? `<div class="hp-bar-temp" style="left:${pct}%; width:${tempBarWidth}%;"></div>` : ''}
-        </div>
-        <span class="hp-readout">${p.current_hp} / ${p.char_max_hp}${tempHp > 0 ? ` <span class="temp-hp-badge">+${tempHp}</span>` : ''}</span>
-      </div>
-
-      <div class="hp-controls">
-        <input type="number" class="hp-amount-input" min="0" placeholder="1" value="" ${dead ? 'disabled' : ''}>
-        <button type="button" class="hp-btn heal-btn" data-action="heal" title="Heal" ${dead ? 'disabled' : ''}>${ICONS.heart}</button>
-        <button type="button" class="hp-btn damage-btn" data-action="damage" title="Damage" ${dead ? 'disabled' : ''}>${ICONS.swords}</button>
-        <button type="button" class="hp-btn temphp-btn" data-action="temphp" title="Temporary HP" ${dead ? 'disabled' : ''}>${ICONS.shieldPlus}</button>
-      </div>
-
-      ${p.is_temp_familiar
-        ? `<div class="stat-chip"><label>MAX HP</label><input type="number" class="stat-chip-input" data-action="max-hp" min="1" value="${p.char_max_hp}" ${dead ? 'disabled' : ''}></div>`
-        : `<button type="button" class="btn-icon" data-action="view" title="View details">${ICONS.images}</button>`}
+      ${statsArea}
+      ${hpControls}
+      ${detailControl}
 
       ${showDiedBtn ? `<button type="button" class="btn btn-danger btn-sm" data-action="die">${ICONS.skull} Died?</button>` : ''}
-      ${dead ? `<button type="button" class="btn btn-ghost btn-sm" data-action="revive">Revive</button>` : ''}
+      ${isDM && dead ? `<button type="button" class="btn btn-ghost btn-sm" data-action="revive">Revive</button>` : ''}
 
-      <button type="button" class="btn-icon battle-remove" data-action="remove" title="Remove from battle">${ICONS.x}</button>
+      ${isDM ? `<button type="button" class="btn-icon battle-remove" data-action="remove" title="Remove from battle">${ICONS.x}</button>` : ''}
     </div>`;
   }
 
@@ -97,7 +137,8 @@
     x: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>',
     user: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.5"/><path d="M4.5 20c1.2-4 4-6 7.5-6s6.3 2 7.5 6"/></svg>',
     shield: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z"/></svg>',
-    shieldPlus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z"/><path d="M12 8.5v5M9.5 11h5"/></svg>'
+    shieldPlus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z"/><path d="M12 8.5v5M9.5 11h5"/></svg>',
+    lock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="9" rx="1.75"/><path d="M8 11V7.5a4 4 0 0 1 8 0V11"/></svg>'
   };
 
   function sortedParticipants() {
@@ -141,8 +182,8 @@
     root.innerHTML = html;
   }
 
-  async function apiCall(url, body) {
-    const res = await fetch(url, {
+  async function apiCall(path, body) {
+    const res = await fetch(`/campaigns/${window.CAMPAIGN_ID}${path}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body || {}),
@@ -152,7 +193,7 @@
   }
 
   async function loadBattle() {
-    const res = await fetch('/api/battle');
+    const res = await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/battle`);
     participants = await res.json();
     render();
   }
@@ -207,25 +248,31 @@
     render();
   });
 
-  // ---- Sort toggle ----
-  document.getElementById('sort-toggle').addEventListener('click', (e) => {
-    const btn = e.target.closest('.sort-option');
-    if (!btn) return;
-    document.querySelectorAll('.sort-option').forEach((b) => b.classList.remove('active'));
-    btn.classList.add('active');
-    sortMode = btn.dataset.sort;
-    render();
-  });
+  // ---- Sort toggle (DM-only -- the toggle isn't even rendered for Players) ----
+  const sortToggleEl = document.getElementById('sort-toggle');
+  if (sortToggleEl) {
+    sortToggleEl.addEventListener('click', (e) => {
+      const btn = e.target.closest('.sort-option');
+      if (!btn) return;
+      document.querySelectorAll('.sort-option').forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active');
+      sortMode = btn.dataset.sort;
+      render();
+    });
+  }
 
-  // ---- Clear battle ----
-  document.getElementById('clear-battle-btn').addEventListener('click', async () => {
-    const confirmed = await window.confirmAction('Clear the entire battle? This removes everyone from the field.');
-    if (!confirmed) return;
-    participants = await apiCall('/api/battle/clear', {});
-    render();
-  });
+  // ---- Clear battle (DM-only) ----
+  const clearBattleBtn = document.getElementById('clear-battle-btn');
+  if (clearBattleBtn) {
+    clearBattleBtn.addEventListener('click', async () => {
+      const confirmed = await window.confirmAction('Clear the entire battle? This removes everyone from the field.');
+      if (!confirmed) return;
+      participants = await apiCall('/api/battle/clear', {});
+      render();
+    });
+  }
 
-  // ---- Add Character modal ----
+  // ---- Add Character modal (DM-only) ----
   const addModal = document.getElementById('add-modal');
   const addModalList = document.getElementById('add-modal-list');
   const addModalGroups = document.getElementById('add-modal-groups');
@@ -286,13 +333,16 @@
     `).join('');
   }
 
-  document.getElementById('open-add-modal').addEventListener('click', () => {
-    addModalSearch.value = '';
-    renderAddModalGroups();
-    renderAddModalList('');
-    addModal.hidden = false;
-    addModalSearch.focus();
-  });
+  const openAddModalBtn = document.getElementById('open-add-modal');
+  if (openAddModalBtn) {
+    openAddModalBtn.addEventListener('click', () => {
+      addModalSearch.value = '';
+      renderAddModalGroups();
+      renderAddModalList('');
+      addModal.hidden = false;
+      addModalSearch.focus();
+    });
+  }
   document.getElementById('close-add-modal').addEventListener('click', () => { addModal.hidden = true; });
   addModal.addEventListener('click', (e) => { if (e.target === addModal) addModal.hidden = true; });
 
@@ -317,11 +367,12 @@
   const detailBody = document.getElementById('detail-modal-body');
 
   async function openDetailModal(characterId) {
-    const res = await fetch(`/api/characters/${characterId}/detail`);
+    const res = await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/characters/${characterId}/detail`);
     const c = await res.json();
     detailTitle.textContent = c.name;
+    const canDeleteSheets = window.IS_DM || c.created_by === window.USER_ID;
     const sheetsHtml = c.sheets.length
-      ? `<div class="sheet-thumbs">${c.sheets.map((s) => `<div class="sheet-thumb"><img src="/uploads/${s.image_path}" data-lightbox-src="/uploads/${s.image_path}" data-delete-url="/characters/${c.id}/sheets/${s.id}/delete"></div>`).join('')}</div>`
+      ? `<div class="sheet-thumbs">${c.sheets.map((s) => `<div class="sheet-thumb"><img src="/uploads/${s.image_path}" data-lightbox-src="/uploads/${s.image_path}"${canDeleteSheets ? ` data-delete-url="/campaigns/${window.CAMPAIGN_ID}/characters/${c.id}/sheets/${s.id}/delete"` : ''}></div>`).join('')}</div>`
       : `<p class="hint-text">No sheet images attached.</p>`;
     detailBody.innerHTML = `
       <div class="detail-header">
@@ -449,4 +500,21 @@
       window.history.replaceState({}, '', url);
     }
   })();
+
+  // Without this, anyone who isn't the one making changes (a Player
+  // watching the DM run the fight, or the DM's own second tab) only sees
+  // heals/damage/initiative/new arrivals after a manual reload. Skipped
+  // mid-HP-scrub or while an amount/search input has focus so a poll can't
+  // wipe out something half-typed.
+  setInterval(async () => {
+    if (scrubbing) return;
+    const active = document.activeElement;
+    if (active && active.tagName === 'INPUT' && (root.contains(active) || (addModal && addModal.contains(active)))) return;
+    try {
+      const res = await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/battle`);
+      if (!res.ok) return;
+      participants = await res.json();
+      render();
+    } catch (e) { /* transient network hiccup -- try again next tick */ }
+  }, 3000);
 })();

@@ -46,6 +46,16 @@
     </div>
 
     <nav class="sidebar-nav">
+      {% if g.campaign_id %}
+      <a href="{{ url_for('campaigns_list') }}" class="campaign-switcher" title="Switch campaign">
+        {% if g.campaign.avatar_path %}
+          <img src="{{ url_for('uploaded_file', filename=g.campaign.avatar_path) }}" alt="" class="campaign-switcher-avatar">
+        {% else %}
+          {{ icon('scroll') }}
+        {% endif %}
+        <span class="campaign-switcher-name">{{ g.campaign.name }}</span>
+        {{ icon('chevron-down') }}
+      </a>
       <a href="{{ url_for('characters_list') }}" class="nav-tab {{ 'active' if active_page == 'characters' else '' }}" title="Characters">
         {{ icon('scroll-text') }}<span>Characters</span>
       </a>
@@ -61,9 +71,18 @@
       <a href="{{ url_for('dice_view') }}" class="nav-tab {{ 'active' if active_page == 'dice' else '' }}" title="Dice">
         {{ icon('dices') }}<span>Dice</span>
       </a>
+      {% endif %}
     </nav>
 
     <div class="sidebar-foot">
+      {% if session.username %}
+      <div class="user-row">
+        <span class="user-name">{{ icon('user') }}<span>{{ session.username }}</span></span>
+        <form method="POST" action="{{ url_for('logout') }}">
+          <button type="submit" class="btn-icon" title="Log out">{{ icon('unlock') }}</button>
+        </form>
+      </div>
+      {% endif %}
       <button type="button" class="theme-toggle-btn" id="theme-toggle" title="Toggle light/dark mode">
         <span class="theme-icon theme-icon-sun">{{ icon('sun') }}</span>
         <span class="theme-icon theme-icon-moon">{{ icon('moon') }}</span>
@@ -102,13 +121,13 @@
 <div class="modal-overlay" id="crop-modal" hidden>
   <div class="modal-panel crop-modal-panel">
     <div class="modal-header">
-      <h3>Position Avatar</h3>
+      <h3 id="crop-modal-title">Position Avatar</h3>
       <button type="button" class="btn-icon" id="crop-cancel-btn">{{ icon('x') }}</button>
     </div>
     <div class="modal-body">
-      <div class="crop-stage-wrap">
+      <div class="crop-stage-wrap" id="crop-stage-wrap">
         <canvas id="crop-canvas" width="480" height="480"></canvas>
-        <div class="crop-circle-guide"></div>
+        <div class="crop-circle-guide" id="crop-circle-guide"></div>
       </div>
       <p class="hint-text" style="text-align:center; margin-top:10px;">Drag to reposition &middot; use the slider to zoom</p>
       <div class="crop-zoom-row">
@@ -123,6 +142,7 @@
   </div>
 </div>
 
+{% if g.campaign_id %}<script>window.CAMPAIGN_ID = {{ g.campaign_id | tojson }}; window.IS_DM = {{ g.is_dm | default(false) | tojson }}; window.USER_ID = {{ session.user_id | tojson }};</script>{% endif %}
 <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
 <script src="{{ url_for('static', filename='js/sidebar.js') }}"></script>
 <script src="{{ url_for('static', filename='js/transitions.js') }}"></script>

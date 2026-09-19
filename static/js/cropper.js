@@ -1,19 +1,34 @@
-// Avatar cropper: intercepts avatar file inputs, lets the user pan/zoom a
-// square crop before it's attached to the form. Pure canvas + vanilla JS,
-// no external libraries.
+// Avatar/banner cropper: intercepts avatar file inputs, lets the user pan/zoom
+// a crop before it's attached to the form. Pure canvas + vanilla JS, no
+// external libraries. The crop shape/aspect ratio is read per-input from
+// data-crop-shape, so it matches what the image actually looks like once
+// saved: a circular avatar for characters, or a wide banner for group and
+// campaign cards.
 
 (function () {
   const modal = document.getElementById('crop-modal');
   if (!modal) return; // page has no crop modal (shouldn't happen, base.html always includes it)
 
+  const modalPanel = modal.querySelector('.crop-modal-panel');
+  const modalTitle = document.getElementById('crop-modal-title');
+  const stageWrap = document.getElementById('crop-stage-wrap');
   const canvas = document.getElementById('crop-canvas');
   const ctx = canvas.getContext('2d');
+  const circleGuide = document.getElementById('crop-circle-guide');
   const zoomSlider = document.getElementById('crop-zoom-slider');
   const applyBtn = document.getElementById('crop-apply-btn');
   const cancelBtn = document.getElementById('crop-cancel-btn');
   const cancelBtn2 = document.getElementById('crop-cancel-btn-2');
 
-  const CANVAS_SIZE = canvas.width; // internal resolution (also output resolution)
+  // Output/internal resolution and on-screen display size per shape. Circle
+  // keeps the original square avatar crop; banner matches the actual
+  // 5:3-ish aspect ratio group/campaign cards render their image at.
+  const SHAPES = {
+    circle: { w: 480, h: 480, displayW: 300, displayH: 300, guide: true, panelMax: 420, title: 'Position Avatar' },
+    banner: { w: 640, h: 384, displayW: 420, displayH: 252, guide: false, panelMax: 500, title: 'Position Banner Image' },
+  };
+  let shape = SHAPES.circle;
+
   const MAX_ZOOM_MULT = 3; // slider goes from "fills the frame" up to 3x that
 
   let img = null;
@@ -31,29 +46,43 @@
   function clampOffsets() {
     const scaledW = img.naturalWidth * scale;
     const scaledH = img.naturalHeight * scale;
-    const minX = CANVAS_SIZE - scaledW;
-    const minY = CANVAS_SIZE - scaledH;
+    const minX = shape.w - scaledW;
+    const minY = shape.h - scaledH;
     offsetX = Math.min(0, Math.max(minX, offsetX));
     offsetY = Math.min(0, Math.max(minY, offsetY));
   }
 
   function draw() {
-    ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+    ctx.clearRect(0, 0, shape.w, shape.h);
     ctx.drawImage(img, offsetX, offsetY, img.naturalWidth * scale, img.naturalHeight * scale);
+  }
+
+  function applyShape(newShape) {
+    shape = newShape;
+    canvas.width = shape.w;
+    canvas.height = shape.h;
+    canvas.style.width = shape.displayW + 'px';
+    canvas.style.height = shape.displayH + 'px';
+    stageWrap.style.width = shape.displayW + 'px';
+    stageWrap.style.height = shape.displayH + 'px';
+    if (circleGuide) circleGuide.hidden = !shape.guide;
+    if (modalPanel) modalPanel.style.maxWidth = shape.panelMax + 'px';
+    if (modalTitle) modalTitle.textContent = shape.title;
   }
 
   function openCropper(file, inputEl, previewSelector) {
     activeInput = inputEl;
     activePreviewSelector = previewSelector;
+    applyShape(SHAPES[inputEl.dataset.cropShape] || SHAPES.circle);
     if (currentObjectUrl) URL.revokeObjectURL(currentObjectUrl);
     currentObjectUrl = URL.createObjectURL(file);
 
     img = new Image();
     img.onload = () => {
-      baseScale = Math.max(CANVAS_SIZE / img.naturalWidth, CANVAS_SIZE / img.naturalHeight);
+      baseScale = Math.max(shape.w / img.naturalWidth, shape.h / img.naturalHeight);
       scale = baseScale;
-      offsetX = (CANVAS_SIZE - img.naturalWidth * scale) / 2;
-      offsetY = (CANVAS_SIZE - img.naturalHeight * scale) / 2;
+      offsetX = (shape.w - img.naturalWidth * scale) / 2;
+      offsetY = (shape.h - img.naturalHeight * scale) / 2;
       zoomSlider.value = 0;
       draw();
       modal.hidden = false;
@@ -73,8 +102,8 @@
     const rect = canvas.getBoundingClientRect();
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
     const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-    const scaleX = CANVAS_SIZE / rect.width;
-    const scaleY = CANVAS_SIZE / rect.height;
+    const scaleX = shape.w / rect.width;
+    const scaleY = shape.h / rect.height;
     return { x: (clientX - rect.left) * scaleX, y: (clientY - rect.top) * scaleY };
   }
 

@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Create Account — Campaign Ledger</title>
+<script>
+  (function () {
+    var saved = localStorage.getItem('ledger-theme');
+    if (saved === 'light' || saved === 'dark') {
+      document.documentElement.setAttribute('data-theme', saved);
+    }
+  })();
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;0,9..144,700;1,9..144,500&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="icon" href="{{ url_for('static', filename='logo/favicon.ico') }}" sizes="any">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+<div class="auth-page">
+  <div class="form-panel auth-card">
+    <div class="auth-brand">
+      <span class="brand-mark"><img src="{{ url_for('static', filename='logo/logo-128.png') }}" alt=""></span>
+      <span class="brand-text">
+        <span class="brand-title">Campaign</span>
+        <span class="brand-subtitle">Ledger</span>
+      </span>
+    </div>
+    <h1 class="auth-title">Create your account</h1>
+    {% if error %}<p class="auth-error">{{ error }}</p>{% endif %}
+    <form method="POST" class="auth-form">
+      <div class="field" style="margin-bottom:14px;">
+        <label for="username">Username</label>
+        <input type="text" id="username" name="username" value="{{ username }}" required autofocus>
+      </div>
+      <div class="field" style="margin-bottom:14px;">
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" required minlength="6">
+      </div>
+      <div class="field">
+        <label for="confirm">Confirm Password</label>
+        <input type="password" id="confirm" name="confirm" required minlength="6">
+      </div>
+      <button type="submit" class="btn btn-primary auth-submit">Create Account</button>
+    </form>
+    <p class="auth-switch">Already have an account? <a href="{{ url_for('login') }}">Log in</a></p>
+  </div>
+</div>
+</body>
+</html>

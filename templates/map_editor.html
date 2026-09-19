@@ -10,18 +10,30 @@
     <h1 class="page-title">{{ map.name }}</h1>
   </div>
   <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+    {% if g.is_dm %}
+    <label class="toggle-switch">
+      <input type="checkbox" id="lock-map-checkbox" {{ 'checked' if map.locked_for_players else '' }}>
+      <span class="toggle-switch-track"></span>
+      <span class="toggle-switch-label">Lock map for players</span>
+    </label>
+    {% endif %}
+    {% if g.is_dm %}
     <label class="toggle-switch">
       <input type="checkbox" id="link-battle-checkbox" {{ 'checked' if map.linked_to_battle else '' }}>
       <span class="toggle-switch-track"></span>
       <span class="toggle-switch-label">Link to current battle</span>
     </label>
-    <a href="{{ url_for('maps_list') }}" class="btn btn-ghost">{{ icon('arrow-left') }} Back to maps</a>
+    {% endif %}
+    <a href="{{ url_for('maps_list', browse=1) }}" class="btn btn-ghost">{{ icon('arrow-left') }} Back to maps</a>
   </div>
 </div>
 
-<div class="map-content-area" id="map-content-area">
+<div class="map-content-area {{ 'map-readonly' if map.locked_for_players and not g.is_dm else '' }}" id="map-content-area">
 <div class="map-toolbar-sentinel" id="map-toolbar-sentinel"></div>
 <div class="map-toolbar" id="map-toolbar">
+  {% if not g.is_dm %}
+  <div class="map-locked-inline" id="map-locked-banner" {{ '' if map.locked_for_players else 'hidden' }}>{{ icon('lock') }} The DM has locked this map — you can look, but not edit.</div>
+  {% endif %}
   <div class="map-tool-group">
     <button type="button" class="map-tool-btn active" data-tool="select" title="Select / drag pins (V)">{{ icon('cursor') }}</button>
 
@@ -91,6 +103,9 @@
 
   <div class="map-tool-group">
     <button type="button" class="btn-icon" id="grid-settings-btn" title="Grid &amp; canvas settings">{{ icon('settings') }}</button>
+  </div>
+
+  <div class="map-tool-group map-tool-group-persistent">
     <button type="button" class="btn btn-ghost btn-sm" id="zoom-reset-btn" title="Reset zoom to 100%">Reset Zoom</button>
     <span class="map-setup-value" id="zoom-level-label">100%</span>
     <span class="hint-text" id="hold-space-hint" style="margin:0;">Hold Space to pan</span>
@@ -109,6 +124,9 @@
 
     <div class="pin-action-bubble" id="pin-action-bubble" hidden>
       <button type="button" class="btn-icon" id="pin-view-btn" title="View details">{{ icon('images') }}</button>
+      {% if g.is_dm %}
+      <button type="button" class="btn-icon pin-pc-npc-toggle" id="pin-pc-npc-toggle" title="Toggle between PC and NPC">PC</button>
+      {% endif %}
       <button type="button" class="btn-icon" id="pin-rename-btn" title="Rename">{{ icon('pencil') }}</button>
       <button type="button" class="btn-icon" id="pin-resize-btn" title="Hold and drag to resize">{{ icon('resize') }}</button>
       <button type="button" class="btn-icon" id="pin-rotate-btn" title="Hold and drag to rotate">{{ icon('rotate') }}</button>
