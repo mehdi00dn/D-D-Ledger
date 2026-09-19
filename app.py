@@ -13,7 +13,7 @@ from flask import (
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
 from PIL import Image
-from database import get_db, init_db
+from database import get_db, init_db, init_app as init_database_app, UniqueViolation
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 UPLOAD_DIR = os.environ.get(
@@ -27,6 +27,7 @@ OPTIMIZE_MAX_DIMENSION = 2000  # px, on the longest edge
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'dnd-campaign-manager-dev-key')
+init_database_app(app)   # one DB connection per request, always released in teardown
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB uploads
 
 CAMPAIGN_SETTING_PRESETS = ('Forgotten Realms', 'Eberron', 'Homebrew')
@@ -121,8 +122,13 @@ def register():
             return render_template('register.html', error=error, username=username)
 
         is_first_user = db.execute('SELECT COUNT(*) AS n FROM users').fetchone()['n'] == 0
-        cur = db.execute('INSERT INTO users (username, password_hash) VALUES (?, ?)',
-                          (username, generate_password_hash(password)))
+        try:
+            cur = db.execute('INSERT INTO users (username, password_hash) VALUES (?, ?)',
+                              (username, generate_password_hash(password)))
+        except UniqueViolation:      # two people registering the same name at once
+            db.rollback()
+            db.close()
+            return render_template('register.html', error='That username is already taken.', username=username)
         user_id = cur.lastrowid
         if is_first_user:
             _claim_orphaned_campaigns(db, user_id)
@@ -314,7 +320,7 @@ def campaign_edit():
         SELECT u.id, u.username, cm.role, cm.status
         FROM campaign_members cm JOIN users u ON cm.user_id = u.id
         WHERE cm.campaign_id = ?
-        ORDER BY cm.role DESC, u.username COLLATE NOCASE ASC
+        ORDER BY cm.role DESC, lower(u.username) ASC
     ''', (g.campaign_id,)).fetchall()
     db.close()
     setting_preset, setting_custom = _split_campaign_setting(campaign['setting'])
@@ -428,11 +434,9 @@ def campaign_delete():
     db = get_db()
 
     # Collect every uploaded file this campaign owns before touching any
-    # rows. The cascade below is done by hand rather than relying on the
-    # DB's FK cascade: databases that went through the Phase A column
-    # migration don't actually carry that constraint, since SQLite can't
-    # attach an enforced FOREIGN KEY via ALTER TABLE ADD COLUMN -- only a
-    # brand-new install's schema.sql-created tables have it.
+    # rows (once the rows are gone we could no longer find the files). The
+    # explicit deletes below are kept even though Postgres enforces the same
+    # ON DELETE CASCADE constraints -- belt and braces.
     avatar_paths = [r['avatar_path'] for r in db.execute(
         'SELECT avatar_path FROM characters WHERE campaign_id = ? AND avatar_path IS NOT NULL', (g.campaign_id,)
     )]
@@ -670,9 +674,9 @@ def characters_list():
         FROM characters c
         LEFT JOIN groups g ON c.group_id = g.id
         WHERE c.is_temp_familiar = 0 AND c.campaign_id = ?
-        ORDER BY c.name COLLATE NOCASE ASC
+        ORDER BY lower(c.name) ASC
     ''', (g.campaign_id,)).fetchall()
-    groups = db.execute('SELECT * FROM groups WHERE campaign_id = ? ORDER BY name COLLATE NOCASE ASC', (g.campaign_id,)).fetchall()
+    groups = db.execute('SELECT * FROM groups WHERE campaign_id = ? ORDER BY lower(name) ASC', (g.campaign_id,)).fetchall()
     db.close()
     return render_template('characters_list.html', characters=characters, groups=groups)
 
@@ -687,7 +691,7 @@ def character_new():
         if request.form.get('from_battle') == '1':
             return redirect(url_for('battle_view', added=new_id))
         return redirect(url_for('characters_list'))
-    groups = db.execute('SELECT * FROM groups WHERE campaign_id = ? ORDER BY name COLLATE NOCASE ASC', (g.campaign_id,)).fetchall()
+    groups = db.execute('SELECT * FROM groups WHERE campaign_id = ? ORDER BY lower(name) ASC', (g.campaign_id,)).fetchall()
     db.close()
     from_battle = request.args.get('from') == 'battle'
     return render_template('character_form.html', character=None, sheets=[], groups=groups, from_battle=from_battle, notes_blocks=[''])
@@ -732,7 +736,7 @@ def character_edit(char_id):
         return redirect(url_for('characters_list'))
     character = db.execute('SELECT * FROM characters WHERE id = ? AND campaign_id = ?', (char_id, g.campaign_id)).fetchone()
     sheets = db.execute('SELECT * FROM character_sheets WHERE character_id = ? ORDER BY sort_order', (char_id,)).fetchall()
-    groups = db.execute('SELECT * FROM groups WHERE campaign_id = ? ORDER BY name COLLATE NOCASE ASC', (g.campaign_id,)).fetchall()
+    groups = db.execute('SELECT * FROM groups WHERE campaign_id = ? ORDER BY lower(name) ASC', (g.campaign_id,)).fetchall()
     db.close()
     if character is None:
         return redirect(url_for('characters_list'))
@@ -847,7 +851,7 @@ def groups_list():
     db = get_db()
     groups = db.execute('''
         SELECT g.*, (SELECT COUNT(*) FROM characters c WHERE c.group_id = g.id) AS member_count
-        FROM groups g WHERE g.campaign_id = ? ORDER BY g.name COLLATE NOCASE ASC
+        FROM groups g WHERE g.campaign_id = ? ORDER BY lower(g.name) ASC
     ''', (g.campaign_id,)).fetchall()
     db.close()
     return render_template('groups_list.html', groups=groups)
@@ -930,7 +934,7 @@ def api_characters():
         SELECT c.*, g.name AS group_name, g.color AS group_color
         FROM characters c LEFT JOIN groups g ON c.group_id = g.id
         WHERE c.is_temp_familiar = 0 AND c.campaign_id = ?
-        ORDER BY c.name COLLATE NOCASE ASC
+        ORDER BY lower(c.name) ASC
     ''', (g.campaign_id,)).fetchall()
     db.close()
     return jsonify([dict(r) for r in rows])
@@ -972,7 +976,7 @@ def battle_view():
         SELECT c.*, g.name AS group_name, g.color AS group_color
         FROM characters c LEFT JOIN groups g ON c.group_id = g.id
         WHERE c.is_temp_familiar = 0 AND c.campaign_id = ?
-        ORDER BY c.name COLLATE NOCASE ASC
+        ORDER BY lower(c.name) ASC
     ''', (g.campaign_id,)).fetchall()
     db.close()
     characters = [dict(c) for c in characters]
@@ -1136,16 +1140,20 @@ def api_battle_heal(pid):
     data = request.get_json(force=True)
     amount = max(0, int(data.get('amount', 0)))
     db = get_db()
-    row = db.execute('''
-        SELECT bp.current_hp, c.max_hp FROM battle_participants bp
-        JOIN characters c ON bp.character_id = c.id WHERE bp.id = ?
-    ''', (pid,)).fetchone()
-    if row is None:
+    # One atomic statement (no read-then-write), so two people healing/damaging
+    # the same creature at the same moment can never overwrite each other.
+    cur = db.execute('''
+        UPDATE battle_participants SET
+            current_hp = LEAST(c.max_hp, battle_participants.current_hp + ?),
+            is_dead = CASE WHEN LEAST(c.max_hp, battle_participants.current_hp + ?) > 0
+                           THEN 0 ELSE battle_participants.is_dead END
+        FROM characters c
+        WHERE battle_participants.id = ? AND battle_participants.character_id = c.id
+    ''', (amount, amount, pid))
+    if cur.rowcount == 0:
+        db.rollback()
         db.close()
         return jsonify({'error': 'not found'}), 404
-    new_hp = min(row['max_hp'], row['current_hp'] + amount)
-    is_dead = 0 if new_hp > 0 else db.execute('SELECT is_dead FROM battle_participants WHERE id=?', (pid,)).fetchone()['is_dead']
-    db.execute('UPDATE battle_participants SET current_hp = ?, is_dead = ? WHERE id = ?', (new_hp, is_dead, pid))
     db.commit()
     rows = _battle_rows(db)
     db.close()
@@ -1159,17 +1167,19 @@ def api_battle_damage(pid):
     data = request.get_json(force=True)
     amount = max(0, int(data.get('amount', 0)))
     db = get_db()
-    row = db.execute('SELECT current_hp, temp_hp FROM battle_participants WHERE id = ?', (pid,)).fetchone()
-    if row is None:
+    # Temporary HP absorbs damage first (standard D&D rule); any leftover spills
+    # onto real HP.  Done as ONE atomic statement (all right-hand sides see the
+    # row's pre-update values) so concurrent hits are never lost.
+    cur = db.execute('''
+        UPDATE battle_participants SET
+            temp_hp    = COALESCE(temp_hp, 0) - LEAST(COALESCE(temp_hp, 0), ?),
+            current_hp = GREATEST(0, current_hp - (? - LEAST(COALESCE(temp_hp, 0), ?)))
+        WHERE id = ?
+    ''', (amount, amount, amount, pid))
+    if cur.rowcount == 0:
+        db.rollback()
         db.close()
         return jsonify({'error': 'not found'}), 404
-    temp_hp = row['temp_hp'] or 0
-    # Temporary HP absorbs damage first (standard D&D rule); any leftover spills onto real HP
-    absorbed = min(temp_hp, amount)
-    new_temp = temp_hp - absorbed
-    remaining = amount - absorbed
-    new_hp = max(0, row['current_hp'] - remaining)
-    db.execute('UPDATE battle_participants SET current_hp = ?, temp_hp = ? WHERE id = ?', (new_hp, new_temp, pid))
     db.commit()
     rows = _battle_rows(db)
     db.close()
@@ -1196,16 +1206,19 @@ def api_battle_temphp(pid):
 def api_battle_set_hp(pid):
     data = request.get_json(force=True)
     db = get_db()
-    row = db.execute('''
-        SELECT bp.is_dead, c.max_hp FROM battle_participants bp
-        JOIN characters c ON bp.character_id = c.id WHERE bp.id = ?
-    ''', (pid,)).fetchone()
-    if row is None:
+    wanted = int(data.get('value', 0))
+    cur = db.execute('''
+        UPDATE battle_participants SET
+            current_hp = GREATEST(0, LEAST(c.max_hp, ?)),
+            is_dead = CASE WHEN GREATEST(0, LEAST(c.max_hp, ?)) > 0
+                           THEN 0 ELSE battle_participants.is_dead END
+        FROM characters c
+        WHERE battle_participants.id = ? AND battle_participants.character_id = c.id
+    ''', (wanted, wanted, pid))
+    if cur.rowcount == 0:
+        db.rollback()
         db.close()
         return jsonify({'error': 'not found'}), 404
-    value = max(0, min(row['max_hp'], int(data.get('value', 0))))
-    is_dead = 0 if value > 0 else row['is_dead']
-    db.execute('UPDATE battle_participants SET current_hp = ?, is_dead = ? WHERE id = ?', (value, is_dead, pid))
     db.commit()
     rows = _battle_rows(db)
     db.close()

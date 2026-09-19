@@ -1,157 +1,170 @@
+"""Postgres data layer for Campaign Ledger.
+
+A thin compatibility wrapper over psycopg 3 that lets the application keep its
+existing call style, so ~160 query call sites did not have to be rewritten:
+
+    db = get_db()
+    row  = db.execute('SELECT * FROM users WHERE id = ?', (uid,)).fetchone()
+    cur  = db.execute('INSERT INTO groups (name) VALUES (?)', (name,))
+    new_id = cur.lastrowid
+    db.commit(); db.close()
+
+What the wrapper does for the app:
+  * translates `?` placeholders to psycopg's `%s` (ignoring quoted literals)
+  * returns rows as plain dicts (row['col'], dict(row) both work)
+  * supplies `cursor.lastrowid` by appending `RETURNING id` to INSERTs
+  * returns TIMESTAMP columns as 'YYYY-MM-DD HH:MM:SS' strings, like SQLite did
+  * inside a request, get_db() hands out ONE connection per request; close() is
+    a no-op there and Flask's teardown always releases it (rolling back anything
+    uncommitted), so an error path can never leak a connection
+  * outside a request (scripts, tests) get_db() opens a private connection and
+    close() really closes it
+
+Connection settings are serverless-friendly: point DATABASE_URL at Supabase's
+*transaction pooler*, which does not support prepared statements, so they are
+disabled (prepare_threshold=None).
+"""
 import os
-import sqlite3
-import shutil
-from datetime import datetime
+import re
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+import psycopg
+from psycopg.rows import dict_row
+from psycopg.types.string import TextLoader
+from flask import g, has_app_context
 
-# Vercel instances have an ephemeral writable filesystem.  Keep the bundled
-# SQLite database as a read-only seed and work on a writable copy in /tmp.
-# For production, set DATABASE_PATH to a persistent database and do not use
-# SQLite on Vercel.
-if os.environ.get('VERCEL'):
-    RUNTIME_DIR = os.environ.get('DND_RUNTIME_DIR', '/tmp/dnd-ledger')
-    os.makedirs(RUNTIME_DIR, exist_ok=True)
-    DB_PATH = os.environ.get('DATABASE_PATH', os.path.join(RUNTIME_DIR, 'dnd.db'))
-else:
-    RUNTIME_DIR = BASE_DIR
-    DB_PATH = os.environ.get('DATABASE_PATH', os.path.join(BASE_DIR, 'dnd.db'))
+IntegrityError = psycopg.errors.IntegrityError
+UniqueViolation = psycopg.errors.UniqueViolation
 
-SCHEMA_PATH = os.path.join(BASE_DIR, 'schema.sql')
+_INSERT_RE = re.compile(r'^\s*INSERT\s+INTO\b', re.IGNORECASE)
+_RETURNING_RE = re.compile(r'\bRETURNING\b', re.IGNORECASE)
 
 
-def _ensure_runtime_db():
-    """Create the writable runtime DB from the bundled DB on Vercel."""
-    if not os.environ.get('VERCEL'):
-        return
-    if os.path.exists(DB_PATH):
-        return
+def _dsn():
+    dsn = os.environ.get('DATABASE_URL')
+    if not dsn:
+        raise RuntimeError(
+            'DATABASE_URL is not set. Point it at your Postgres/Supabase database '
+            '(use the transaction-pooler connection string on Vercel).')
+    return dsn
 
-    seed_path = os.path.join(BASE_DIR, 'dnd.db')
-    if os.path.exists(seed_path):
-        os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-        shutil.copy2(seed_path, DB_PATH)
+
+def _translate(sql):
+    """`?` -> `%s` outside single-quoted literals; literal `%` -> `%%`."""
+    out, in_str, i = [], False, 0
+    while i < len(sql):
+        ch = sql[i]
+        if ch == "'":
+            if in_str and i + 1 < len(sql) and sql[i + 1] == "'":   # escaped '' inside a literal
+                out.append("''"); i += 2; continue
+            in_str = not in_str
+            out.append(ch)
+        elif in_str:
+            out.append('%%' if ch == '%' else ch)
+        elif ch == '?':
+            out.append('%s')
+        elif ch == '%':
+            out.append('%%')
+        else:
+            out.append(ch)
+        i += 1
+    return ''.join(out)
+
+
+def _clean(params):
+    """Postgres text cannot hold NUL (0x00), which SQLite silently allowed; a stray
+    one in a pasted form field would otherwise turn into a 500.  Drop them."""
+    if not params:
+        return ()
+    return tuple(p.replace('\x00', '') if isinstance(p, str) and '\x00' in p else p for p in params)
+
+
+class Cursor:
+    def __init__(self, raw, lastrowid=None):
+        self._raw = raw
+        self.lastrowid = lastrowid
+
+    @property
+    def rowcount(self):
+        return self._raw.rowcount
+
+    def fetchone(self):
+        return self._raw.fetchone()
+
+    def fetchall(self):
+        return self._raw.fetchall()
+
+    def __iter__(self):
+        return iter(self._raw.fetchall())
+
+
+class Connection:
+    def __init__(self, raw, shared=False):
+        self._raw = raw
+        self._shared = shared
+
+    @property
+    def closed(self):
+        return self._raw.closed
+
+    def execute(self, sql, params=()):
+        is_insert = bool(_INSERT_RE.match(sql)) and not _RETURNING_RE.search(sql)
+        q = _translate(sql)
+        if is_insert:
+            q = q.rstrip().rstrip(';') + ' RETURNING id'
+        cur = self._raw.execute(q, _clean(params))
+        if is_insert:
+            row = cur.fetchone()
+            return Cursor(cur, lastrowid=row['id'] if row else None)
+        return Cursor(cur)
+
+    def commit(self):
+        self._raw.commit()
+
+    def rollback(self):
+        self._raw.rollback()
+
+    def close(self):
+        """No-op for the request-scoped connection (teardown releases it)."""
+        if not self._shared:
+            self.release()
+
+    def release(self):
+        if not self._raw.closed:
+            try:
+                self._raw.rollback()        # discard anything left uncommitted
+            except Exception:
+                pass
+            self._raw.close()
+
+
+def _connect():
+    raw = psycopg.connect(_dsn(), row_factory=dict_row, prepare_threshold=None,
+                          autocommit=False, connect_timeout=10)
+    # keep TIMESTAMP columns as strings ('2026-09-19 07:49:21'), as SQLite returned them
+    raw.adapters.register_loader('timestamp', TextLoader)
+    return raw
 
 
 def get_db():
-    _ensure_runtime_db()
-    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    conn.execute('PRAGMA foreign_keys = ON')
-    return conn
+    if has_app_context():
+        conn = g.get('_db')
+        if conn is None or conn.closed:
+            conn = g._db = Connection(_connect(), shared=True)
+        return conn
+    return Connection(_connect(), shared=False)
+
+
+def init_app(app):
+    @app.teardown_appcontext
+    def _release(_exc):
+        conn = g.pop('_db', None)
+        if conn is not None:
+            conn.release()
 
 
 def init_db():
-    conn = get_db()
-    with open(SCHEMA_PATH, 'r', encoding='utf-8') as f:
-        conn.executescript(f.read())
-    _migrate(conn)
-    conn.commit()
-    conn.close()
-
-
-def _migrate(conn):
-    """Add columns to existing databases that predate them."""
-    existing_cols = {row['name'] for row in conn.execute('PRAGMA table_info(battle_participants)')}
-    if 'temp_hp' not in existing_cols:
-        conn.execute('ALTER TABLE battle_participants ADD COLUMN temp_hp INTEGER DEFAULT 0')
-
-    char_cols = {row['name'] for row in conn.execute('PRAGMA table_info(characters)')}
-    for col, ddl in (('is_temp_familiar', 'INTEGER DEFAULT 0'), ('familiar_icon_key', 'TEXT'),
-                     ('created_by', 'INTEGER')):
-        if col not in char_cols:
-            conn.execute(f'ALTER TABLE characters ADD COLUMN {col} {ddl}')
-            if col == 'created_by':
-                conn.execute('''
-                    UPDATE characters SET created_by = (
-                        SELECT cm.user_id FROM campaign_members cm
-                        WHERE cm.campaign_id = characters.campaign_id AND cm.role = 'owner'
-                        LIMIT 1
-                    ) WHERE created_by IS NULL
-                ''')
-
-    drawing_cols = {row['name'] for row in conn.execute('PRAGMA table_info(map_drawings)')}
-    for col, ddl in (('cx', 'REAL DEFAULT 0'), ('cy', 'REAL DEFAULT 0'),
-                     ('w', 'REAL DEFAULT 0'), ('h', 'REAL DEFAULT 0'),
-                     ('rotation', 'REAL DEFAULT 0'), ('locked', 'INTEGER DEFAULT 0')):
-        if col not in drawing_cols:
-            conn.execute(f'ALTER TABLE map_drawings ADD COLUMN {col} {ddl}')
-
-    pin_cols = {row['name'] for row in conn.execute('PRAGMA table_info(map_pins)')}
-    for col, ddl in (('rotation', 'REAL DEFAULT 0'), ('locked', 'INTEGER DEFAULT 0'), ('custom_name', 'TEXT')):
-        if col not in pin_cols:
-            conn.execute(f'ALTER TABLE map_pins ADD COLUMN {col} {ddl}')
-
-    map_cols = {row['name'] for row in conn.execute('PRAGMA table_info(maps)')}
-    for col, ddl in (('grid_color', "TEXT DEFAULT 'gray'"), ('grid_visible', 'INTEGER DEFAULT 1'),
-                     ('grid_setup_done', 'INTEGER DEFAULT 0'), ('snap_to_grid', 'INTEGER DEFAULT 0'),
-                     ('locked_for_players', 'INTEGER DEFAULT 0')):
-        if col not in map_cols:
-            conn.execute(f'ALTER TABLE maps ADD COLUMN {col} {ddl}')
-
-    campaign_cols = {row['name'] for row in conn.execute('PRAGMA table_info(campaigns)')}
-    if 'avatar_path' not in campaign_cols:
-        conn.execute('ALTER TABLE campaigns ADD COLUMN avatar_path TEXT')
-    for col, ddl in (('setting', 'TEXT'), ('status', "TEXT DEFAULT 'active'"), ('access_mode', "TEXT DEFAULT 'private'")):
-        if col not in campaign_cols:
-            conn.execute(f'ALTER TABLE campaigns ADD COLUMN {col} {ddl}')
-
-    member_cols = {row['name'] for row in conn.execute('PRAGMA table_info(campaign_members)')}
-    if 'status' not in member_cols:
-        conn.execute("ALTER TABLE campaign_members ADD COLUMN status TEXT DEFAULT 'player'")
-        conn.execute("UPDATE campaign_members SET status = 'dm' WHERE role = 'owner'")
-
-    _migrate_campaigns(conn)
-
-    if conn.execute('PRAGMA user_version').fetchone()[0] < 1:
-        conn.execute('UPDATE characters SET is_npc = 0 WHERE is_temp_familiar = 1 AND is_npc = 1')
-        conn.execute('PRAGMA user_version = 1')
-
-
-def _migrate_campaigns(conn):
-    char_cols = {row['name'] for row in conn.execute('PRAGMA table_info(characters)')}
-    needs_migration = 'campaign_id' not in char_cols
-    if needs_migration:
-        _backup_db()
-
-    for table in ('groups', 'characters', 'maps'):
-        cols = {row['name'] for row in conn.execute(f'PRAGMA table_info({table})')}
-        if 'campaign_id' not in cols:
-            conn.execute(f'ALTER TABLE {table} ADD COLUMN campaign_id INTEGER')
-
-    conn.execute('CREATE INDEX IF NOT EXISTS idx_groups_campaign ON groups(campaign_id)')
-    conn.execute('CREATE INDEX IF NOT EXISTS idx_characters_campaign ON characters(campaign_id)')
-    conn.execute('CREATE INDEX IF NOT EXISTS idx_maps_campaign ON maps(campaign_id)')
-
-    unassigned = conn.execute(
-        'SELECT COUNT(*) AS n FROM ('
-        '  SELECT campaign_id FROM groups WHERE campaign_id IS NULL'
-        '  UNION ALL SELECT campaign_id FROM characters WHERE campaign_id IS NULL'
-        '  UNION ALL SELECT campaign_id FROM maps WHERE campaign_id IS NULL'
-        ')'
-    ).fetchone()['n']
-    if unassigned == 0:
-        return
-
-    existing = conn.execute('SELECT id FROM campaigns ORDER BY id LIMIT 1').fetchone()
-    if existing:
-        default_id = existing['id']
-    else:
-        cur = conn.execute(
-            "INSERT INTO campaigns (name, description) VALUES (?, ?)",
-            ('Default Campaign', 'Automatically created to hold your existing data.')
-        )
-        default_id = cur.lastrowid
-
-    conn.execute('UPDATE groups SET campaign_id = ? WHERE campaign_id IS NULL', (default_id,))
-    conn.execute('UPDATE characters SET campaign_id = ? WHERE campaign_id IS NULL', (default_id,))
-    conn.execute('UPDATE maps SET campaign_id = ? WHERE campaign_id IS NULL', (default_id,))
-
-
-def _backup_db():
-    if not os.path.exists(DB_PATH):
-        return
-    stamp = datetime.now().strftime('%Y%m%d-%H%M%S')
-    backup_path = os.path.join(os.path.dirname(DB_PATH), f'dnd.db.bak-{stamp}')
-    shutil.copy2(DB_PATH, backup_path)
+    """Schema changes are applied explicitly (see migrate.py), never on a cold
+    start.  For local development only, AUTO_MIGRATE=1 applies pending ones."""
+    if os.environ.get('AUTO_MIGRATE') == '1':
+        import migrate
+        migrate.run(_dsn())

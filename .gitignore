@@ -4,9 +4,15 @@ __pycache__/
 venv/
 .env
 .env.*
+!.env.example
 .vscode/
 .idea/
 .DS_Store
+# Never commit databases or user uploads (data lives in Postgres / object storage)
+*.db
 *.db-wal
 *.db-shm
 *.db.bak-*
+uploads/*
+!uploads/.gitkeep
+.pytest_cache/

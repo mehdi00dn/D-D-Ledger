@@ -14,26 +14,28 @@ pip install -r requirements.txt
 
 ## Running the app
 
+The app stores everything in **Postgres** (`DATABASE_URL`). See
+`VERCEL_DEPLOY.md` for the full setup (Supabase + Vercel, and local dev).
+For a quick local run:
+
 ```
-python app.py
+pip install -r requirements.txt
+cp .env.example .env                 # edit DATABASE_URL / SECRET_KEY
+python app.py                        # AUTO_MIGRATE=1 creates the tables
 ```
 
-Then open **http://127.0.0.1:5000** in your browser. Leave the terminal
-window open while you use the app — closing it stops the server.
-
-To stop the server, go back to the terminal and press `Ctrl+C`.
+Then open **http://127.0.0.1:5000** in your browser. To stop the server press
+`Ctrl+C` in the terminal.
 
 ## Where your data lives
 
-- `dnd.db` — a SQLite database file that's created automatically the first
-  time you run the app. This holds all your characters, groups, and battle
-  state. **Back this file up** if you want to keep your campaign data safe —
-  just copy it elsewhere, or use the in-app Export feature.
-- `uploads/avatars/` and `uploads/sheets/` — every image you upload (avatars,
-  character sheets) is stored here as a plain file, referenced by the
-  database. If you back up `dnd.db` manually, back up this folder too.
-
-Deleting `dnd.db` (with the app stopped) gives you a completely fresh start.
+- **Postgres** (the database `DATABASE_URL` points to) holds all your
+  characters, groups, maps and battle state. Schema changes are versioned in
+  `migrations/` and applied with `python migrate.py`. Back the database up with
+  your provider's tools, or use the in-app Export feature.
+- `uploads/avatars/`, `uploads/maps/` and `uploads/sheets/` — uploaded images
+  are still stored as plain files for now (object storage is the next
+  migration phase), referenced by the database.
 
 ## What's included
 
