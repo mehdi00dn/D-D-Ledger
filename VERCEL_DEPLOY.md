@@ -26,7 +26,9 @@ try to apply `0001` again.
 
 ## 3. Configure Vercel
 Project -> Settings -> Environment Variables (Production + Preview):
-* `DATABASE_URL`  the pooler string from step 1
+* `DATABASE_URL`  the pooler string from step 1. Make sure it contains your
+    real Supabase project reference; do not leave a template such as
+    `postgres.PROJECT_REF` in the username.
 * `SECRET_KEY`    `python -c "import secrets; print(secrets.token_hex(32))"`
 
 `vercel.json` pins the function to `fra1`, matching a Frankfurt database. If

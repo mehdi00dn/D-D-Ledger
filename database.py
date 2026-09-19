@@ -45,6 +45,11 @@ def _dsn():
         raise RuntimeError(
             'DATABASE_URL is not set. Point it at your Postgres/Supabase database '
             '(use the transaction-pooler connection string on Vercel).')
+    if 'PROJECT_REF' in dsn:
+        raise RuntimeError(
+            'DATABASE_URL still contains the Supabase PROJECT_REF placeholder. '
+            'Replace it with your real project reference in the transaction-pooler '
+            'URL from Supabase, then redeploy Vercel.')
     return dsn
 
 
