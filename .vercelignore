@@ -1,0 +1,12 @@
+.git
+.github
+.pytest_cache
+.venv
+tests
+*.db
+*.db-*
+uploads/*
+!uploads/.gitkeep
+README.md
+VERCEL_DEPLOY.md
+requirements-dev.txt

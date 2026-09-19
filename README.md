@@ -1,8 +1,8 @@
 # Campaign Ledger — D&D Battle Manager
 
-A local desktop-style app for managing your D&D campaign: characters, groups,
-live battles, and a dice roller. Runs entirely on your machine and opens in
-your browser — no internet required after setup (aside from loading fonts).
+A browser-based app for managing your D&D campaign: characters, groups, live
+battles, maps, and a dice roller. It runs locally or as a Vercel deployment
+with Postgres.
 
 ## Setup (one-time)
 
@@ -34,8 +34,9 @@ Then open **http://127.0.0.1:5000** in your browser. To stop the server press
   `migrations/` and applied with `python migrate.py`. Back the database up with
   your provider's tools, or use the in-app Export feature.
 - `uploads/avatars/`, `uploads/maps/` and `uploads/sheets/` — uploaded images
-  are still stored as plain files for now (object storage is the next
-  migration phase), referenced by the database.
+  are stored as files locally. On Vercel they use temporary function storage,
+  so they can disappear or be unavailable from another instance. Postgres
+  stores the references, not the image bytes.
 
 ## What's included
 
@@ -107,9 +108,9 @@ Everything is plain HTML/CSS/JS, so it's fully editable by hand:
 
 No build step — just edit and refresh your browser.
 
-## A note on scale
+## Vercel deployment
 
-This was built for a single DM's use on their own machine — the database is
-a single file, there's no login system, and only one battle is tracked at a
-time (starting a new one clears the last). That's intentional for how it's
-meant to be used, but worth knowing if you ever want to extend it.
+See [VERCEL_DEPLOY.md](VERCEL_DEPLOY.md) for Supabase setup, environment
+variables, migrations, region selection, and the current upload-storage
+limitation. Never commit `.env` or production credentials. The GitHub Actions
+workflow runs the Postgres-backed test suite for pushes and pull requests.

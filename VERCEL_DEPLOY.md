@@ -1,8 +1,10 @@
 # Deploying Campaign Ledger (Vercel + Supabase Postgres)
 
-State now lives in Postgres, so every serverless instance sees the same data.
-(Uploaded images still use instance-local disk until Phase 2 -- expect broken
-images on Vercel until then; everything else is persistent.)
+Campaign data lives in Postgres, so every serverless instance sees the same
+records. Uploaded images currently use the function's temporary filesystem;
+they are not durable across instance replacement or guaranteed to be visible
+from another instance. Use local development for image-heavy work until object
+storage is added, or treat Vercel uploads as disposable.
 
 ## 1. Create the database (Supabase)
 1. New project. **Region:** pick the EU region nearest your players (Frankfurt,
@@ -27,9 +29,10 @@ Project -> Settings -> Environment Variables (Production + Preview):
 * `DATABASE_URL`  the pooler string from step 1
 * `SECRET_KEY`    `python -c "import secrets; print(secrets.token_hex(32))"`
 
-Project -> Settings -> Functions -> **Function Region**: set it to the region
-closest to the database (Frankfurt `fra1` for a Frankfurt database).  A function
-far from its database adds latency to every query.
+`vercel.json` pins the function to `fra1`, matching a Frankfurt database. If
+your database is elsewhere, change the `regions` value in that file and in the
+Vercel project settings. A function far from its database adds latency to every
+query.
 
 Redeploy.  Nothing runs at cold start except importing the app.
 
@@ -43,3 +46,7 @@ Redeploy.  Nothing runs at cold start except importing the app.
     LEDGER_TEST_BACKEND=postgres pytest tests
 The suite creates and drops its own throw-away database; set `TEST_PG_ADMIN`
 (libpq string) if your local Postgres is not the default one.
+
+GitHub Actions runs the same Postgres-backed suite on pushes and pull requests.
+It does not run migrations against a deployment database. Run `python migrate.py`
+from a trusted machine before deploying a schema change.

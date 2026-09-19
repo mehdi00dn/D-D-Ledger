@@ -6,6 +6,12 @@
       "use": "@vercel/python"
     }
   ],
+  "functions": {
+    "api/index.py": {
+      "maxDuration": 10,
+      "regions": ["fra1"]
+    }
+  },
   "routes": [
     {
       "src": "/(.*)",
