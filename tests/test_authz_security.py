@@ -4,7 +4,7 @@ import json, io
 import pytest
 from conftest import q
 
-IDOR = pytest.mark.xfail(reason='Phase 3: per-ID routes are not scoped to the URL campaign', strict=True)
+IDOR = lambda f: f          # fixed: campaign scoping is now enforced centrally
 
 
 @pytest.fixture
@@ -67,13 +67,11 @@ def test_scoped_routes_already_hold(two_campaigns):
 
 UNTERMINATED = '<img src=x onerror=alert(1)//'
 
-@pytest.mark.xfail(reason='Phase 3: regex sanitizer lets an unterminated tag through', strict=True)
 def test_notes_sanitizer_blocks_unterminated_tag(camp):
     u, cid = camp
     ch = u.new_character(cid, name='X', notes=json.dumps([UNTERMINATED]))
     assert 'onerror' not in (q('SELECT notes FROM characters WHERE id = ?', ch)[0]['notes'] or '')
 
-@pytest.mark.xfail(reason='Phase 3: imported notes are stored unsanitised', strict=True)
 def test_import_sanitizes_notes(camp):
     import zipfile
     u, cid = camp

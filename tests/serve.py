@@ -2,7 +2,8 @@ import os, sys
 sys.path.insert(0, os.getcwd())
 import database
 if os.environ.get('DATABASE_URL'):
-    import migrate; migrate.run(os.environ['DATABASE_URL'])
+    if not os.environ.get('LEDGER_SKIP_MIGRATE'):
+        import migrate; migrate.run(os.environ['DATABASE_URL'])
 else:
     database.init_db()
 import app

@@ -4,31 +4,65 @@ import uuid
 import io
 import json
 import zipfile
-from datetime import datetime
+import hmac
+import secrets
+from urllib.parse import urlparse
+from datetime import datetime, timedelta
 from functools import wraps
 from flask import (
     Flask, render_template, request, redirect, url_for,
-    send_from_directory, jsonify, flash, send_file, g, abort, session
+    jsonify, flash, send_file, g, abort, session
 )
-from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
-from PIL import Image
+import nh3
+import psycopg.errors as pgerr
+from markupsafe import Markup
+import security
+from concurrent.futures import ThreadPoolExecutor
+from flask import Response
+import images
+import importer
+from storage import get_storage, StorageError, UPLOADS, TEMP
 from database import get_db, init_db, init_app as init_database_app, UniqueViolation
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-UPLOAD_DIR = os.environ.get(
-    'UPLOAD_DIR',
-    os.path.join(os.environ.get('DND_RUNTIME_DIR', '/tmp/dnd-ledger'), 'uploads')
-    if os.environ.get('VERCEL') else os.path.join(BASE_DIR, 'uploads')
-)
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
-OPTIMIZE_THRESHOLD_BYTES = 1 * 1024 * 1024  # 1MB
-OPTIMIZE_MAX_DIMENSION = 2000  # px, on the longest edge
 
 app = Flask(__name__)
-app.secret_key = os.environ.get('SECRET_KEY', 'dnd-campaign-manager-dev-key')
+
+
+# ---------------- SECURITY CONFIGURATION ----------------
+def _is_production():
+    return bool(os.environ.get('VERCEL') or os.environ.get('FLASK_ENV') == 'production'
+                or os.environ.get('REQUIRE_SECRET_KEY') == '1')
+
+
+def _load_secret_key():
+    """The key that signs login cookies.  In production it MUST be configured: a missing,
+    short or well-known key would let anyone forge a login cookie, so we refuse to start."""
+    key = os.environ.get('SECRET_KEY', '')
+    if _is_production():
+        if len(key) < 32 or key in ('dnd-campaign-manager-dev-key', 'change-me', 'secret', 'dev'):
+            raise RuntimeError('SECRET_KEY is missing or too weak. Set it to a random string of at least 32 '
+                               "characters: python -c \"import secrets; print(secrets.token_hex(32))\"")
+        return key
+    if not key:
+        key = secrets.token_hex(32)          # local development: random per run (logins reset on restart)
+        print('WARNING: SECRET_KEY is not set - using a random one for this run.')
+    return key
+
+
+app.secret_key = _load_secret_key()
+_SECURE_COOKIES = _is_production() or os.environ.get('SECURE_COOKIES') == '1'
+app.config.update(
+    MAX_CONTENT_LENGTH=16 * 1024 * 1024,                    # 16MB per form post
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE='Lax',
+    SESSION_COOKIE_SECURE=_SECURE_COOKIES,
+    SESSION_COOKIE_NAME='__Host-ledger' if _SECURE_COOKIES else 'ledger_session',
+    PERMANENT_SESSION_LIFETIME=timedelta(days=30),
+    # Header holding the real client IP when behind a trusted proxy (Vercel sets x-vercel-forwarded-for).
+    CLIENT_IP_HEADER=os.environ.get('CLIENT_IP_HEADER') or ('x-vercel-forwarded-for' if os.environ.get('VERCEL') else None),
+)
 init_database_app(app)   # one DB connection per request, always released in teardown
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB uploads
 
 CAMPAIGN_SETTING_PRESETS = ('Forgotten Realms', 'Eberron', 'Homebrew')
 CAMPAIGN_STATUS_CHOICES = ('active', 'on_hold', 'completed', 'archived')
@@ -65,15 +99,99 @@ def _campaign_access_field(form):
     return val if val in CAMPAIGN_ACCESS_CHOICES else 'private'
 
 
-def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
-
-
 # ---------------- AUTH (Phase F) ----------------
 # Full accounts: anyone can self-register, and every route requires a
 # logged-in session except the handful that must stay reachable to get one.
 
-PUBLIC_ENDPOINTS = {'login', 'register', 'static', 'uploaded_file'}
+PUBLIC_ENDPOINTS = {'login', 'register', 'static', 'healthz'}
+
+
+# Which classification of connection failure gets which fixed, secret-free hint.
+_CONNECT_HINTS = (
+    ('tenant or user not found', 'The pooler does not recognise the username/host. Copy the Transaction-pooler '
+                                 'string from the Supabase dashboard exactly (user is postgres.<project-ref>).'),
+    ('password authentication failed', 'Wrong database password - or it contains characters such as @ / # % : '
+                                       'that must be URL-encoded inside DATABASE_URL.'),
+    ('could not translate host name', 'The host name in DATABASE_URL is wrong or malformed.'),
+    ('invalid', 'DATABASE_URL is malformed (special characters in the password need URL-encoding).'),
+    ('timeout', 'The database did not answer in time (wrong host/port, or the Supabase project is paused).'),
+    ('connection refused', 'Nothing is listening at that host/port (use the pooler on port 6543).'),
+)
+
+
+@app.route('/healthz')
+def healthz():
+    """Deployment diagnostic: is the database reachable, and is the schema applied?
+    Public, but returns only fixed hints - never connection strings or raw errors
+    (those go to the server log)."""
+    def reply(payload, code):
+        resp = jsonify(payload)
+        resp.status_code = code
+        resp.headers['Cache-Control'] = 'no-store'
+        return resp
+
+    try:
+        db = get_db()
+        db.execute('SELECT 1').fetchone()
+    except Exception as exc:                                  # noqa: BLE001 - diagnostic
+        app.logger.error('healthz: database connection failed: %s: %s', type(exc).__name__, exc)
+        text = str(exc).lower()
+        hint = next((h for needle, h in _CONNECT_HINTS if needle in text),
+                    'Could not connect. Check DATABASE_URL (Supabase Transaction-pooler string, port 6543) '
+                    'and the Vercel logs.')
+        return reply({'ok': False, 'stage': 'connect', 'error': type(exc).__name__, 'hint': hint}, 503)
+    try:
+        has_users = db.execute("SELECT to_regclass('public.users') IS NOT NULL AS ok").fetchone()['ok']
+        if not has_users:
+            return reply({'ok': False, 'stage': 'schema',
+                          'hint': 'Connected, but the tables do not exist yet. Run "python migrate.py" '
+                                  '(or paste supabase_setup.sql into the Supabase SQL editor).'}, 503)
+        applied = [r['version'] for r in db.execute('SELECT version FROM schema_migrations ORDER BY version')] \
+            if db.execute("SELECT to_regclass('public.schema_migrations') IS NOT NULL AS ok").fetchone()['ok'] else []
+        storage_ok, storage_hint = get_storage().check()
+        if not storage_ok:
+            return reply({'ok': False, 'stage': 'storage', 'migrations': applied, 'hint': storage_hint}, 503)
+        return reply({'ok': True, 'stage': 'ready', 'migrations': applied, 'storage': get_storage().name}, 200)
+    except Exception as exc:                                  # noqa: BLE001 - diagnostic
+        app.logger.error('healthz: schema check failed: %s: %s', type(exc).__name__, exc)
+        return reply({'ok': False, 'stage': 'schema', 'error': type(exc).__name__,
+                      'hint': 'Connected, but the schema check failed - see the Vercel logs.'}, 503)
+
+
+def _csrf_token():
+    token = session.get('csrf_token')
+    if not token:
+        token = session['csrf_token'] = secrets.token_urlsafe(32)
+    return token
+
+
+app.jinja_env.globals['csrf_token'] = _csrf_token
+app.jinja_env.globals['csrf_field'] = lambda: Markup('<input type="hidden" name="csrf_token" value="%s">' % _csrf_token())
+
+
+@app.before_request
+def csrf_protect():
+    """Every state-changing request must prove it came from one of our own pages:
+    a per-session token (form field or X-CSRF-Token header), plus a same-origin check."""
+    if request.method in ('GET', 'HEAD', 'OPTIONS'):
+        return
+    origin = request.headers.get('Origin')
+    if (origin and urlparse(origin).netloc != request.host) or request.headers.get('Sec-Fetch-Site') == 'cross-site':
+        return _reject_request('Cross-site requests are not allowed.', 403)
+    sent = request.headers.get('X-CSRF-Token') or request.form.get('csrf_token', '')
+    expected = session.get('csrf_token', '')
+    if not expected or not sent or not hmac.compare_digest(str(sent), expected):
+        return _reject_request('Your session expired or the form was not valid. Reload the page and try again.', 403)
+
+
+def _wants_json():
+    return request.is_json or '/api/' in request.path or request.path.startswith('/uploads/sign')
+
+
+def _reject_request(message, status):
+    if _wants_json():
+        return jsonify({'error': message}), status
+    return Response(message, status=status, mimetype='text/plain')
 
 
 @app.before_request
@@ -82,6 +200,45 @@ def require_login():
         return
     if not session.get('user_id'):
         return redirect(url_for('login', next=request.path))
+
+
+# Every ID in a URL must belong to the campaign in that URL (and children to their parent).
+# Enforced here, once, for ALL routes -- a route cannot forget it.  A resource that does not
+# exist at all is left to the route's own handling (stale links keep redirecting gracefully);
+# one that exists in ANOTHER campaign is a hard 404.
+_SCOPE_OWNER_SQL = {
+    'map_id': 'SELECT campaign_id AS owner FROM maps WHERE id = ?',
+    'char_id': 'SELECT campaign_id AS owner FROM characters WHERE id = ?',
+    'group_id': 'SELECT campaign_id AS owner FROM groups WHERE id = ?',
+    'pid': 'SELECT c.campaign_id AS owner FROM battle_participants bp JOIN characters c ON c.id = bp.character_id WHERE bp.id = ?',
+}
+_SCOPE_PARENT_SQL = {            # arg -> (SQL returning the parent id, name of the parent arg)
+    'drawing_id': ('SELECT map_id AS parent FROM map_drawings WHERE id = ?', 'map_id'),
+    'pin_id': ('SELECT map_id AS parent FROM map_pins WHERE id = ?', 'map_id'),
+    'sheet_id': ('SELECT character_id AS parent FROM character_sheets WHERE id = ?', 'char_id'),
+}
+# URL arguments the policy knows about.  tests/test_authorization_matrix.py fails if a route
+# introduces an argument that is not listed here (so a new kind of ID cannot slip through).
+SCOPED_URL_ARGS = {'campaign_id', 'user_id', 'filename', 'token'} | set(_SCOPE_OWNER_SQL) | set(_SCOPE_PARENT_SQL)
+
+
+@app.before_request
+def enforce_resource_scope():
+    args = request.view_args or {}
+    campaign_id = getattr(g, 'campaign_id', None)     # set (and popped from view_args) by the URL preprocessor
+    if campaign_id is None:
+        return
+    db = get_db()
+    for name, sql in _SCOPE_OWNER_SQL.items():
+        if name in args:
+            row = db.execute(sql, (args[name],)).fetchone()
+            if row is not None and row['owner'] != campaign_id:
+                abort(404)
+    for name, (sql, parent_name) in _SCOPE_PARENT_SQL.items():
+        if name in args:
+            row = db.execute(sql, (args[name],)).fetchone()
+            if row is not None and row['parent'] != args.get(parent_name):
+                abort(404)
 
 
 def _claim_orphaned_campaigns(db, user_id):
@@ -100,21 +257,76 @@ def _claim_orphaned_campaigns(db, user_id):
                    (row['id'], user_id, 'owner', 'dm'))
 
 
+DUMMY_PASSWORD_HASH = generate_password_hash('not-a-real-password')   # equalises login timing for unknown users
+
+
+def client_ip():
+    header = app.config.get('CLIENT_IP_HEADER')
+    raw = request.headers.get(header, '') if header else ''
+    ip = raw.split(',')[0].strip()[:45]
+    return ip or request.remote_addr or 'unknown'
+
+
+def _wait_message(seconds):
+    minutes = max(1, (seconds + 59) // 60)
+    return 'Too many attempts. Please try again in %d minute%s.' % (minutes, '' if minutes == 1 else 's')
+
+
+def _safe_next(path):
+    """Only ever redirect to a path on this site (blocks //host, /\\host, scheme URLs, control chars)."""
+    if not path or not isinstance(path, str) or len(path) > 2000 or '\\' in path or any(ord(c) < 32 for c in path):
+        return None
+    parts = urlparse(path)
+    if parts.scheme or parts.netloc or not path.startswith('/') or path.startswith('//'):
+        return None
+    return path
+
+
+def _start_session(user_id, username):
+    """Fresh session on login: drops anything an earlier visitor of this browser left behind."""
+    session.clear()
+    session['user_id'] = user_id
+    session['username'] = username
+    session['csrf_token'] = secrets.token_urlsafe(32)
+    session.permanent = True
+
+
+def _username_error(username):
+    if not username:
+        return 'Username and password are required.'
+    if not (3 <= len(username) <= 32) or username != username.strip() or not username.isprintable() or any(c in username for c in '<>'):
+        return 'Username must be 3-32 characters (letters, numbers, spaces and symbols; no < or >).'
+    return None
+
+
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
         username = request.form.get('username', '').strip()
         password = request.form.get('password', '')
         confirm = request.form.get('confirm', '')
+        ip = client_ip()
+
+        db = get_db()
+        wait = security.register_blocked_for(db, app.secret_key, ip)
+        if wait:
+            db.close()
+            return render_template('register.html', error=_wait_message(wait), username=username), 429
+        security.record_registration(db, app.secret_key, ip)
+        db.commit()
+
         error = None
         if not username or not password:
             error = 'Username and password are required.'
+        elif _username_error(username):
+            error = _username_error(username)
         elif password != confirm:
             error = 'Passwords do not match.'
-        elif len(password) < 6:
-            error = 'Password must be at least 6 characters.'
+        elif len(password) < 8:
+            error = 'Password must be at least 8 characters.'
+        elif len(password) > 128:
+            error = 'Password must be at most 128 characters.'
 
-        db = get_db()
         if error is None and db.execute('SELECT id FROM users WHERE username = ?', (username,)).fetchone():
             error = 'That username is already taken.'
         if error:
@@ -135,8 +347,7 @@ def register():
         db.commit()
         db.close()
 
-        session['user_id'] = user_id
-        session['username'] = username
+        _start_session(user_id, username)
         return redirect(url_for('campaigns_list'))
     return render_template('register.html', error=None, username='')
 
@@ -144,20 +355,31 @@ def register():
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        username = request.form.get('username', '').strip()
-        password = request.form.get('password', '')
+        username = request.form.get('username', '').strip()[:200]
+        password = request.form.get('password', '')[:1024]
+        next_value = request.form.get('next', '')
+        ip = client_ip()
         db = get_db()
+
+        wait = security.login_blocked_for(db, app.secret_key, username, ip)
+        if wait:
+            db.close()
+            return render_template('login.html', error=_wait_message(wait), username=username, next=next_value), 429
+
         user = db.execute('SELECT * FROM users WHERE username = ?', (username,)).fetchone()
+        stored_hash = (user['password_hash'] if user else None) or DUMMY_PASSWORD_HASH     # always do one hash check
+        password_ok = check_password_hash(stored_hash, password)
+        if user is None or not user['password_hash'] or not password_ok:
+            security.record_login_failure(db, app.secret_key, username, ip)
+            db.commit()
+            db.close()
+            return render_template('login.html', error='Incorrect username or password.', username=username, next=next_value)
+
+        security.clear_login_failures(db, app.secret_key, username, ip)
+        db.commit()
         db.close()
-        if user is None or not check_password_hash(user['password_hash'] or '', password):
-            return render_template('login.html', error='Incorrect username or password.', username=username,
-                                    next=request.form.get('next', ''))
-        session['user_id'] = user['id']
-        session['username'] = user['username']
-        next_path = request.form.get('next') or request.args.get('next')
-        if next_path and next_path.startswith('/') and not next_path.startswith('//'):
-            return redirect(next_path)
-        return redirect(url_for('campaigns_list'))
+        _start_session(user['id'], user['username'])
+        return redirect(_safe_next(next_value or request.args.get('next')) or url_for('campaigns_list'))
     return render_template('login.html', error=None, username='', next=request.args.get('next', ''))
 
 
@@ -263,7 +485,7 @@ def campaign_new():
     if request.method == 'POST':
         name = request.form.get('name', '').strip() or 'Untitled Campaign'
         description = request.form.get('description', '').strip()
-        avatar_path = save_upload(request.files.get('avatar'), 'avatars')
+        avatar_path = save_upload_field('avatar', 'avatars')
         setting = _resolve_campaign_setting(request.form)
         status = _campaign_status_field(request.form)
         access_mode = _campaign_access_field(request.form)
@@ -293,7 +515,7 @@ def campaign_edit():
             abort(403)
         name = request.form.get('name', '').strip() or 'Untitled Campaign'
         description = request.form.get('description', '').strip()
-        avatar_path = save_upload(request.files.get('avatar'), 'avatars')
+        avatar_path = save_upload_field('avatar', 'avatars')
         remove_avatar = request.form.get('remove_avatar') == '1'
         if avatar_path:
             old = db.execute('SELECT avatar_path FROM campaigns WHERE id = ?', (g.campaign_id,)).fetchone()
@@ -466,8 +688,7 @@ def campaign_delete():
     db.commit()
     db.close()
 
-    for p in avatar_paths + sheet_paths + map_paths:
-        delete_upload(p)
+    delete_uploads(avatar_paths + sheet_paths + map_paths)
 
     if session.get('last_campaign_id') == g.campaign_id:
         session.pop('last_campaign_id', None)
@@ -482,31 +703,30 @@ def campaign_delete():
 # which is treated as a single legacy block wherever notes are read back.
 
 _NOTE_ALLOWED_TAGS = {'b', 'strong', 'i', 'em', 'ul', 'li', 'br', 'div'}
-_NOTE_TAG_RE = re.compile(r'<(/?)([a-zA-Z0-9]+)[^>]*>')
 _NOTE_STRIP_TAGS_RE = re.compile(r'<[^>]+>')
 
 
 def _sanitize_note_fragment(fragment):
-    """Strip a note fragment down to a small safe-tag whitelist and drop all
-    attributes, so a hand-crafted POST can't smuggle in scripts or styles."""
-    def repl(m):
-        closing, tag = m.group(1), m.group(2).lower()
-        if tag not in _NOTE_ALLOWED_TAGS:
-            return ''
-        if tag == 'br':
-            return '<br>'
-        return f'</{tag}>' if closing else f'<{tag}>'
-    return _NOTE_TAG_RE.sub(repl, fragment or '')
+    """Reduce one note box to a tiny whitelist of formatting tags with NO attributes.
+    Uses a real HTML parser (nh3/ammonia) - the old regex let an unterminated tag such
+    as '<img src=x onerror=...' through."""
+    return nh3.clean(fragment or '', tags=_NOTE_ALLOWED_TAGS, attributes={}, strip_comments=True, link_rel=None)
+
+
+def _escape_text(text):
+    return text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
 
 
 def sanitize_notes_payload(raw):
-    """Sanitize the notes field submitted by the note editor before storing it."""
+    """Sanitize the notes field (from the editor OR an imported file) before storing it."""
     if not raw:
         return ''
+    raw = raw.replace('\x00', '') if isinstance(raw, str) else str(raw)
     try:
         blocks = json.loads(raw)
     except (ValueError, TypeError):
-        return raw  # not JSON (shouldn't happen via the UI) - leave as-is
+        # Plain text (legacy / hand-made): store it as one escaped block, never raw.
+        return json.dumps([_escape_text(raw).replace('\n', '<br>')])
     if not isinstance(blocks, list):
         return ''
     cleaned = [_sanitize_note_fragment(b) for b in blocks if isinstance(b, str)]
@@ -522,7 +742,7 @@ def notes_parse_blocks(raw):
     try:
         blocks = json.loads(raw)
         if isinstance(blocks, list):
-            return [b for b in blocks if isinstance(b, str) and b]
+            return [c for c in (_sanitize_note_fragment(b) for b in blocks if isinstance(b, str)) if c]
     except (ValueError, TypeError):
         pass
     # Legacy plain-text notes: escape and turn line breaks into <br> so each
@@ -553,93 +773,241 @@ def notes_plain_preview(raw):
 app.jinja_env.filters['notes_preview'] = notes_plain_preview
 
 
-def optimize_image_if_needed(full_path, max_bytes=OPTIMIZE_THRESHOLD_BYTES, max_dimension=OPTIMIZE_MAX_DIMENSION):
-    """Downscale and recompress an image in place if it's over max_bytes.
-    Never raises: a failure here just leaves the original upload as-is."""
+# ---------------- UPLOADS ----------------
+# Every image goes through images.process_image (validate + re-encode) and is stored
+# through the storage layer (local disk in development, Supabase Storage in the cloud).
+# The database keeps the same relative keys as always (e.g. 'avatars/<uuid>.png').
+
+_DIRECT_KEY_RE = re.compile(r'^tmp/(\d+)/([0-9a-f]{32})$')
+_UPLOAD_KEY_RE = re.compile(r'^(avatars|sheets|maps)/[0-9A-Za-z_\-]{1,80}\.(png|jpe?g|gif|webp)$')
+DIRECT_INLINE_LIMIT = 3_400_000      # bytes of files a form may carry itself (Vercel body cap is 4.5 MB)
+UPLOAD_PURPOSES = {                  # purpose -> (max bytes, allowed content types)
+    'avatar': (images.KIND_MAX_BYTES['avatars'], images.ALLOWED_CONTENT_TYPES),
+    'sheet': (images.KIND_MAX_BYTES['sheets'], images.ALLOWED_CONTENT_TYPES),
+    'map': (images.KIND_MAX_BYTES['maps'], images.ALLOWED_CONTENT_TYPES),
+    'import': (importer.MAX_ZIP_BYTES, {'application/zip', 'application/x-zip-compressed', 'application/octet-stream'}),
+}
+
+
+class Stored:
+    def __init__(self, path, width, height):
+        self.path, self.width, self.height = path, width, height
+
+
+def _direct_key_ok(key):
+    m = _DIRECT_KEY_RE.match(key or '')
+    return bool(m) and int(m.group(1)) == session.get('user_id')
+
+
+def _read_upload_source(file_storage=None, direct_key=None):
+    """Bytes of an upload that either came with the form or was staged by the browser
+    straight into storage.  Returns (data, temp_key_to_delete)."""
+    if direct_key:
+        if not _direct_key_ok(direct_key):
+            return None, None
+        return get_storage().get(TEMP, direct_key), direct_key
+    if not file_storage or not file_storage.filename:
+        return None, None
+    return file_storage.read(), None
+
+
+def _store_image(data, subfolder, cap_dimension=None):
+    """Validate + store; returns Stored or None when the file is not an acceptable image."""
     try:
-        if os.path.getsize(full_path) <= max_bytes:
-            return
-        img = Image.open(full_path)
-        fmt = img.format
-
-        if max(img.size) > max_dimension:
-            img.thumbnail((max_dimension, max_dimension), Image.LANCZOS)
-
-        if fmt == 'JPEG':
-            img = img.convert('RGB')
-            quality = 85
-            while True:
-                img.save(full_path, format='JPEG', quality=quality, optimize=True)
-                if os.path.getsize(full_path) <= max_bytes or quality <= 40:
-                    break
-                quality -= 10
-        elif fmt == 'WEBP':
-            quality = 85
-            while True:
-                img.save(full_path, format='WEBP', quality=quality)
-                if os.path.getsize(full_path) <= max_bytes or quality <= 40:
-                    break
-                quality -= 10
-        elif fmt == 'PNG':
-            img.save(full_path, format='PNG', optimize=True)
-            if os.path.getsize(full_path) > max_bytes:
-                # Drastic fallback: reduce to a 256-color adaptive palette
-                palette_img = img.convert('RGBA').convert('P', palette=Image.ADAPTIVE, colors=256)
-                palette_img.save(full_path, format='PNG', optimize=True)
-        else:
-            img.save(full_path, format=fmt)
-    except Exception:
-        pass
-
-
-def enforce_map_image_max_dimension(full_path, max_dimension=OPTIMIZE_MAX_DIMENSION):
-    """Map background images are always capped at max_dimension on their
-    longest edge, regardless of file size (unlike the generic byte-size
-    optimizer above). Returns the resulting (width, height)."""
-    with Image.open(full_path) as img:
-        width, height = img.size
-        if max(width, height) <= max_dimension:
-            return width, height
-        fmt = img.format or 'PNG'
-        img_copy = img.copy()
-        img_copy.thumbnail((max_dimension, max_dimension), Image.LANCZOS)
-        if fmt == 'JPEG':
-            img_copy = img_copy.convert('RGB')
-            img_copy.save(full_path, format='JPEG', quality=90, optimize=True)
-        else:
-            img_copy.save(full_path, format=fmt)
-        return img_copy.size
-
-
-def save_upload(file_storage, subfolder):
-    if not file_storage or file_storage.filename == '':
+        p = images.process_image(data, subfolder, cap_dimension)
+    except images.ImageError:
         return None
-    if not allowed_file(file_storage.filename):
-        return None
-    ext = secure_filename(file_storage.filename).rsplit('.', 1)[1].lower()
-    fname = f"{uuid.uuid4().hex}.{ext}"
-    folder = os.path.join(UPLOAD_DIR, subfolder)
-    os.makedirs(folder, exist_ok=True)
-    full_path = os.path.join(folder, fname)
-    file_storage.save(full_path)
-    optimize_image_if_needed(full_path)
-    return f"{subfolder}/{fname}"
+    key = f"{subfolder}/{uuid.uuid4().hex}.{p.ext}"
+    get_storage().put(UPLOADS, key, p.data, p.content_type)
+    return Stored(key, p.width, p.height)
+
+
+def store_upload(field, subfolder, cap_dimension=None):
+    """One image from form field `field` (a normal file part, or `<field>__key` when the
+    browser uploaded it directly to storage)."""
+    data, temp = _read_upload_source(request.files.get(field), request.form.get(field + '__key'))
+    try:
+        return _store_image(data, subfolder, cap_dimension) if data else None
+    finally:
+        if temp:
+            get_storage().delete(TEMP, temp)
+
+
+def store_uploads(field, subfolder):
+    """Every image submitted under `field` (multi-file input), in order."""
+    sources = [(f, None) for f in request.files.getlist(field) if f and f.filename]
+    sources += [(None, k) for k in request.form.getlist(field + '__key')]
+    out = []
+    for f, key in sources:
+        data, temp = _read_upload_source(f, key)
+        try:
+            if data:
+                stored = _store_image(data, subfolder)
+                if stored:
+                    out.append(stored)
+        finally:
+            if temp:
+                get_storage().delete(TEMP, temp)
+    return out
+
+
+def save_upload_field(field, subfolder):
+    stored = store_upload(field, subfolder)
+    return stored.path if stored else None
 
 
 def delete_upload(rel_path):
-    if not rel_path:
-        return
-    full = os.path.join(UPLOAD_DIR, rel_path)
-    if os.path.exists(full):
+    if rel_path:
         try:
-            os.remove(full)
-        except OSError:
+            get_storage().delete(UPLOADS, rel_path)
+        except StorageError:
+            pass                       # an orphaned file is better than a failed delete
+
+
+def delete_uploads(paths):
+    paths = [p for p in paths if p]
+    if paths:
+        try:
+            get_storage().delete_many(UPLOADS, paths)
+        except StorageError:
             pass
+
+
+def _generate_blank_canvas(width, height):
+    """Create a plain white PNG for maps without a background image; returns its key."""
+    p = images.blank_canvas(width, height)
+    key = f"maps/{uuid.uuid4().hex}.png"
+    get_storage().put(UPLOADS, key, p.data, p.content_type)
+    return key
 
 
 @app.route('/uploads/<path:filename>')
 def uploaded_file(filename):
-    return send_from_directory(UPLOAD_DIR, filename)
+    """Serve a stored image.  Login required (images are no longer world-readable);
+    keys are random, immutable, so browsers may cache them forever."""
+    m = _UPLOAD_KEY_RE.match(filename)
+    if not m:
+        abort(404)
+    data = get_storage().get(UPLOADS, filename)
+    if data is None:
+        abort(404)
+    resp = Response(data, mimetype=images.EXT_TO_CONTENT_TYPE[m.group(2).lower()])
+    resp.headers['Cache-Control'] = 'private, max-age=31536000, immutable'
+    resp.headers['X-Content-Type-Options'] = 'nosniff'
+    return resp
+
+
+@app.route('/uploads/sign', methods=['POST'])
+def upload_sign():
+    """Hand the browser a one-off URL to upload a large file straight to storage
+    (bypassing the app server's request-size limit).  The server chooses the object
+    key, so the browser can only ever write to its own private staging area."""
+    data = request.get_json(silent=True) or {}
+    purpose = data.get('purpose')
+    if purpose not in UPLOAD_PURPOSES:
+        return jsonify({'error': 'unknown upload type'}), 400
+    max_bytes, allowed_types = UPLOAD_PURPOSES[purpose]
+    try:
+        size = int(data.get('size', 0))
+    except (TypeError, ValueError):
+        return jsonify({'error': 'invalid size'}), 400
+    if size <= 0:
+        return jsonify({'error': 'empty file'}), 400
+    if size > max_bytes:
+        return jsonify({'error': 'file too large (limit %d MB)' % (max_bytes // (1024 * 1024))}), 413
+    if (data.get('content_type') or 'application/octet-stream') not in allowed_types:
+        return jsonify({'error': 'unsupported file type'}), 415
+    key = f"tmp/{session['user_id']}/{uuid.uuid4().hex}"
+    target = get_storage().create_upload_target(TEMP, key, data.get('content_type'), max_bytes)
+    return jsonify({'key': key, 'upload': target})
+
+
+@app.route('/_direct-upload/<token>', methods=['PUT'])
+def local_direct_upload(token):
+    """Same-origin stand-in for a storage signed-upload URL (local backend only)."""
+    st = get_storage()
+    info = st.read_upload_token(token) if hasattr(st, 'read_upload_token') else None
+    if not info:
+        abort(404)
+    request.max_content_length = int(info['max']) + 1        # this route's own cap, not the app-wide form cap
+    body = request.get_data(cache=False)
+    if len(body) > int(info['max']):
+        abort(413)
+    st.put(info['b'], info['k'], body)
+    return jsonify({'ok': True})
+
+
+@app.route('/_download/<token>')
+def local_download(token):
+    st = get_storage()
+    info = st.read_download_token(token) if hasattr(st, 'read_download_token') else None
+    data = st.get(info['b'], info['k']) if info else None
+    if data is None:
+        abort(404)
+    resp = Response(data, mimetype='application/zip')
+    resp.headers['Content-Disposition'] = 'attachment; filename="%s"' % (info.get('n') or 'download.zip')
+    resp.headers['Cache-Control'] = 'no-store'
+    return resp
+
+
+def _csp():
+    connect = ["'self'"]
+    supa = os.environ.get('SUPABASE_URL', '')
+    if supa and os.environ.get('STORAGE_BACKEND', 'supabase') == 'supabase':
+        p = urlparse(supa)
+        if p.scheme and p.netloc:
+            connect.append('%s://%s' % (p.scheme, p.netloc))      # browsers upload big files straight to storage
+    return '; '.join([
+        "default-src 'self'",
+        "img-src 'self' data: blob:",
+        "media-src 'self' data: blob:",
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+        "font-src 'self' data: https://fonts.gstatic.com",
+        "script-src 'self' 'unsafe-inline'",
+        "connect-src " + ' '.join(connect),
+        "worker-src 'self' blob:",
+        "object-src 'none'",
+        "base-uri 'self'",
+        "form-action 'self'",
+        "frame-ancestors 'none'",
+    ])
+
+
+@app.after_request
+def security_headers(resp):
+    h = resp.headers
+    h.setdefault('X-Content-Type-Options', 'nosniff')
+    h.setdefault('X-Frame-Options', 'DENY')
+    h.setdefault('Referrer-Policy', 'same-origin')
+    h.setdefault('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=(), usb=()')
+    h.setdefault('Cross-Origin-Opener-Policy', 'same-origin')
+    if resp.mimetype in ('text/html', 'application/json'):
+        h.setdefault('Content-Security-Policy', _csp())
+        h.setdefault('Cache-Control', 'no-store')                  # logged-in pages never linger in caches / back button
+    if _SECURE_COOKIES:
+        h.setdefault('Strict-Transport-Security', 'max-age=31536000; includeSubDomains')
+    return resp
+
+
+# Malformed input (text where a number belongs, absurd sizes, wrong JSON shape) is the
+# CLIENT's mistake: answer 400, never a 500.  Details go to the log, not to the user.
+@app.errorhandler(ValueError)
+@app.errorhandler(TypeError)
+@app.errorhandler(AttributeError)
+@app.errorhandler(KeyError)
+@app.errorhandler(pgerr.DataError)
+def bad_input(exc):
+    app.logger.warning('rejected malformed input on %s %s: %s: %s', request.method, request.path, type(exc).__name__, exc)
+    return _reject_request('The submitted data was not valid.', 400)
+
+
+@app.errorhandler(StorageError)
+def storage_unavailable(exc):
+    app.logger.error('storage error: %s', exc)
+    if request.is_json or '/api/' in request.path or request.path.startswith('/uploads/sign'):
+        return jsonify({'error': 'file storage is temporarily unavailable'}), 503
+    return Response('File storage is temporarily unavailable. Please try again in a moment.', status=503,
+                    mimetype='text/plain')
 
 
 @app.route('/')
@@ -758,10 +1126,9 @@ def _save_character(db, char_id):
     cha_score = int(form.get('cha_score') or 10)
     armor_class = int(form.get('armor_class') or 10)
     notes = sanitize_notes_payload(form.get('notes', ''))
-    group_id = form.get('group_id') or None
+    group_id = _campaign_group_id(db, form.get('group_id'))
 
-    avatar_file = request.files.get('avatar')
-    avatar_path = save_upload(avatar_file, 'avatars')
+    avatar_path = save_upload_field('avatar', 'avatars')
     remove_avatar = form.get('remove_avatar') == '1'
 
     if char_id is None:
@@ -792,14 +1159,11 @@ def _save_character(db, char_id):
               wis_score, cha_score, armor_class, notes, group_id, char_id))
 
     # multiple sheet images
-    sheet_files = request.files.getlist('sheets')
     max_order = db.execute('SELECT COALESCE(MAX(sort_order), -1) AS m FROM character_sheets WHERE character_id = ?', (char_id,)).fetchone()['m']
-    for i, sf in enumerate(sheet_files):
-        path = save_upload(sf, 'sheets')
-        if path:
-            max_order += 1
-            db.execute('INSERT INTO character_sheets (character_id, image_path, sort_order) VALUES (?, ?, ?)',
-                       (char_id, path, max_order))
+    for stored in store_uploads('sheets', 'sheets'):
+        max_order += 1
+        db.execute('INSERT INTO character_sheets (character_id, image_path, sort_order) VALUES (?, ?, ?)',
+                   (char_id, stored.path, max_order))
 
     db.commit()
     return char_id
@@ -884,13 +1248,27 @@ def group_edit(group_id):
     return render_template('group_form.html', group=group)
 
 
+_COLOR_RE = re.compile(r'^#[0-9a-fA-F]{6}$')
+
+
+def _campaign_group_id(db, raw):
+    """A character may only join a group of ITS OWN campaign; anything else becomes 'no group'."""
+    try:
+        gid = int(raw)
+    except (TypeError, ValueError):
+        return None
+    ok = db.execute('SELECT 1 FROM groups WHERE id = ? AND campaign_id = ?', (gid, g.campaign_id)).fetchone()
+    return gid if ok else None
+
+
 def _save_group(db, group_id):
     form = request.form
     name = form.get('name', '').strip() or 'Unnamed Group'
     bio = form.get('bio', '')
     color = form.get('color') or '#c9a24b'
-    avatar_file = request.files.get('avatar')
-    avatar_path = save_upload(avatar_file, 'avatars')
+    if not _COLOR_RE.match(color):
+        color = '#c9a24b'
+    avatar_path = save_upload_field('avatar', 'avatars')
     remove_avatar = form.get('remove_avatar') == '1'
 
     if group_id is None:
@@ -1424,15 +1802,24 @@ def _build_export_zip(campaign_id, group_ids=None, character_ids=None, download_
                 referenced_paths.add(c['avatar_file'])
             for sp in c['sheet_files']:
                 referenced_paths.add(sp)
-        for rel_path in referenced_paths:
-            full = os.path.join(UPLOAD_DIR, rel_path)
-            if os.path.exists(full) and rel_path not in seen:
-                zf.write(full, arcname=f'images/{rel_path}')
+        st = get_storage()
+        wanted = sorted(p for p in referenced_paths if _UPLOAD_KEY_RE.match(p))
+        with ThreadPoolExecutor(8) as pool:                    # fetch the images concurrently
+            blobs = list(pool.map(lambda rel: (rel, st.get(UPLOADS, rel)), wanted))
+        for rel_path, blob in blobs:
+            if blob is not None and rel_path not in seen:
+                zf.writestr(f'images/{rel_path}', blob)
                 seen.add(rel_path)
 
-    buf.seek(0)
-    return send_file(buf, mimetype='application/zip', as_attachment=True,
-                      download_name=_dated_filename(download_name))
+    filename = _dated_filename(download_name)
+    payload = buf.getvalue()
+    if len(payload) <= DIRECT_INLINE_LIMIT:
+        return send_file(io.BytesIO(payload), mimetype='application/zip', as_attachment=True, download_name=filename)
+    # Too big to return through a serverless function (4.5 MB response cap): park it in
+    # private temp storage and send the browser to a short-lived signed download link.
+    key = f"exports/{session['user_id']}/{uuid.uuid4().hex}.zip"
+    st.put(TEMP, key, payload, 'application/zip')
+    return redirect(st.signed_download_url(TEMP, key, filename, 120))
 
 
 def _dated_filename(base_name):
@@ -1481,33 +1868,36 @@ def group_export(group_id):
 @app.route('/campaigns/<int:campaign_id>/import/data', methods=['POST'])
 @campaign_access_required
 def import_data():
-    file = request.files.get('import_file')
-    if not file or file.filename == '':
-        return redirect(request.referrer or url_for('characters_list'))
-
+    dest = 'groups_list' if 'groups' in (request.referrer or '') else 'characters_list'
+    data, temp_key = _read_upload_source(request.files.get('import_file'), request.form.get('import_file__key'))
     try:
-        zf = zipfile.ZipFile(io.BytesIO(file.read()))
-        manifest = json.loads(zf.read('manifest.json'))
-    except (zipfile.BadZipFile, KeyError, json.JSONDecodeError):
-        dest = 'groups_list' if 'groups' in (request.referrer or '') else 'characters_list'
-        return redirect(url_for(dest, import_error=1))
+        if not data:
+            return redirect(request.referrer or url_for('characters_list'))
+        try:
+            zf, raw_manifest = importer.open_zip(data)
+            manifest = importer.normalize_manifest(raw_manifest, sanitize_notes_payload)
+        except importer.ImportRejected:
+            return redirect(url_for(dest, import_error=1))
+    finally:
+        if temp_key:
+            get_storage().delete(TEMP, temp_key)
+
+    pending = []                                   # (key, Processed) uploaded just before commit
 
     def extract_image(rel_path, subfolder):
-        """Pull an image out of the zip and save it under a fresh filename."""
+        """Validate an image from the zip and queue it under a fresh key."""
         if not rel_path:
             return None
-        arcname = f'images/{rel_path}'
-        if arcname not in zf.namelist():
+        try:
+            blob = importer.read_member(zf, f'images/{rel_path}', images.KIND_MAX_BYTES['maps'])
+            processed = images.process_image(blob, subfolder) if blob else None
+        except (importer.ImportRejected, images.ImageError):
+            return None                            # a bad image never blocks the rest of the import
+        if processed is None:
             return None
-        ext = rel_path.rsplit('.', 1)[-1].lower() if '.' in rel_path else 'png'
-        if ext not in ALLOWED_EXTENSIONS:
-            ext = 'png'
-        new_name = f"{uuid.uuid4().hex}.{ext}"
-        folder = os.path.join(UPLOAD_DIR, subfolder)
-        os.makedirs(folder, exist_ok=True)
-        with open(os.path.join(folder, new_name), 'wb') as out:
-            out.write(zf.read(arcname))
-        return f"{subfolder}/{new_name}"
+        key = f"{subfolder}/{uuid.uuid4().hex}.{processed.ext}"
+        pending.append((key, processed))
+        return key
 
     db = get_db()
 
@@ -1520,40 +1910,53 @@ def import_data():
     }
     group_name_to_id = dict(existing_groups)
 
-    for grp in manifest.get('groups', []):
-        key = (grp.get('name') or '').lower()
+    for grp in manifest['groups']:
+        key = grp['name'].lower()
         if key in group_name_to_id:
             continue
-        avatar_path = extract_image(grp.get('avatar_file'), 'avatars')
+        avatar_path = extract_image(grp['avatar_file'], 'avatars')
         cur = db.execute('INSERT INTO groups (name, avatar_path, bio, color, campaign_id) VALUES (?, ?, ?, ?, ?)',
-                          (grp.get('name') or 'Unnamed Group', avatar_path, grp.get('bio', ''), grp.get('color', '#c9a24b'), g.campaign_id))
+                          (grp['name'], avatar_path, grp['bio'], grp['color'], g.campaign_id))
         group_name_to_id[key] = cur.lastrowid
 
     # Characters: always inserted as new records (never merged/overwritten)
-    for c in manifest.get('characters', []):
-        group_id = group_name_to_id.get((c.get('group_name') or '').lower())
-        avatar_path = extract_image(c.get('avatar_file'), 'avatars')
+    for c in manifest['characters']:
+        group_id = group_name_to_id.get((c['group_name'] or '').lower())
+        avatar_path = extract_image(c['avatar_file'], 'avatars')
         cur = db.execute('''
             INSERT INTO characters
             (name, is_npc, level, max_hp, str_score, dex_score, con_score, int_score,
              wis_score, cha_score, armor_class, avatar_path, notes, group_id, campaign_id, created_by)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (c.get('name', 'Unnamed'), c.get('is_npc', 0), c.get('level', 1), c.get('max_hp', 10),
-              c.get('str_score', 10), c.get('dex_score', 10), c.get('con_score', 10), c.get('int_score', 10),
-              c.get('wis_score', 10), c.get('cha_score', 10), c.get('armor_class', 10),
-              avatar_path, c.get('notes', ''), group_id, g.campaign_id, session['user_id']))
+        ''', (c['name'], c['is_npc'], c['level'], c['max_hp'],
+              c['str_score'], c['dex_score'], c['con_score'], c['int_score'],
+              c['wis_score'], c['cha_score'], c['armor_class'],
+              avatar_path, c['notes'], group_id, g.campaign_id, session['user_id']))
         new_char_id = cur.lastrowid
 
-        for i, sheet_rel_path in enumerate(c.get('sheet_files', [])):
+        for i, sheet_rel_path in enumerate(c['sheet_files']):
             sheet_path = extract_image(sheet_rel_path, 'sheets')
             if sheet_path:
                 db.execute('INSERT INTO character_sheets (character_id, image_path, sort_order) VALUES (?, ?, ?)',
                            (new_char_id, sheet_path, i))
 
+    # Upload every queued image (in parallel) BEFORE committing, so a storage failure
+    # rolls the whole import back instead of leaving rows that point at missing files.
+    st = get_storage()
+    try:
+        with ThreadPoolExecutor(6) as pool:
+            list(pool.map(lambda item: st.put(UPLOADS, item[0], item[1].data, item[1].content_type), pending))
+    except Exception:
+        db.rollback()
+        db.close()
+        try:
+            st.delete_many(UPLOADS, [k for k, _ in pending])
+        except StorageError:
+            pass
+        raise
     db.commit()
     db.close()
 
-    dest = 'groups_list' if 'groups' in (request.referrer or '') else 'characters_list'
     return redirect(url_for(dest, imported=1))
 
 
@@ -1588,15 +1991,11 @@ def map_new():
     name = request.form.get('name', '').strip() or 'Untitled Map'
     image_file = request.files.get('image')
 
-    if image_file and image_file.filename != '':
-        image_path = save_upload(image_file, 'maps')
-        if not image_path:
+    if (image_file and image_file.filename) or request.form.get('image__key'):
+        stored = store_upload('image', 'maps', cap_dimension=images.OPTIMIZE_MAX_DIM)
+        if not stored:
             return redirect(url_for('maps_list'))
-        full_path = os.path.join(UPLOAD_DIR, image_path)
-        try:
-            width, height = enforce_map_image_max_dimension(full_path)
-        except Exception:
-            width, height = 1500, 1000
+        image_path, width, height = stored.path, stored.width, stored.height
     else:
         # No image provided: start with a blank white canvas at the requested size
         width = max(200, min(2000, int(request.form.get('blank_width', 1500) or 1500)))
@@ -1675,15 +2074,20 @@ def api_map_state(map_id):
     only the drawings/pins themselves are fetched separately (they already
     have their own endpoints)."""
     db = get_db()
+    state = _map_state_payload(db, map_id)
+    db.close()
+    if state is None:
+        abort(404)
+    return jsonify(state)
+
+
+def _map_state_payload(db, map_id):
     row = db.execute('''
         SELECT grid_size, grid_color, grid_visible, grid_offset_x, grid_offset_y,
                snap_to_grid, grid_setup_done, locked_for_players, linked_to_battle
         FROM maps WHERE id = ? AND campaign_id = ?
     ''', (map_id, g.campaign_id)).fetchone()
-    db.close()
-    if row is None:
-        abort(404)
-    return jsonify(dict(row))
+    return dict(row) if row is not None else None
 
 
 @app.route('/campaigns/<int:campaign_id>/api/maps/<int:map_id>/settings', methods=['POST'])
@@ -1745,30 +2149,25 @@ def api_map_settings(map_id):
     return jsonify(dict(m) if m else {})
 
 
-def _generate_blank_canvas(width, height):
-    """Create a plain white PNG in the maps upload folder and return its relative path."""
-    img = Image.new('RGB', (width, height), color=(255, 255, 255))
-    fname = f"{uuid.uuid4().hex}.png"
-    folder = os.path.join(UPLOAD_DIR, 'maps')
-    os.makedirs(folder, exist_ok=True)
-    img.save(os.path.join(folder, fname), format='PNG')
-    return f"maps/{fname}"
-
-
 # ---- Drawings ----
 
 @app.route('/campaigns/<int:campaign_id>/api/maps/<int:map_id>/drawings')
 @campaign_access_required
 def api_map_drawings_list(map_id):
     db = get_db()
-    rows = db.execute('SELECT * FROM map_drawings WHERE map_id = ? ORDER BY sort_order, id', (map_id,)).fetchall()
+    result = _map_drawings_payload(db, map_id)
     db.close()
+    return jsonify(result)
+
+
+def _map_drawings_payload(db, map_id):
+    rows = db.execute('SELECT * FROM map_drawings WHERE map_id = ? ORDER BY sort_order, id', (map_id,)).fetchall()
     result = []
     for r in rows:
         d = dict(r)
         d['data'] = json.loads(d['data'])
         result.append(d)
-    return jsonify(result)
+    return result
 
 
 @app.route('/campaigns/<int:campaign_id>/api/maps/<int:map_id>/drawings', methods=['POST'])
@@ -1853,14 +2252,10 @@ def api_map_drawings_clear(map_id):
 
 # ---- Pins ----
 
-@app.route('/campaigns/<int:campaign_id>/api/maps/<int:map_id>/pins')
-@campaign_access_required
-def api_map_pins_list(map_id):
-    db = get_db()
+def _map_pins_payload(db, map_id):
     m = db.execute('SELECT * FROM maps WHERE id = ? AND campaign_id = ?', (map_id, g.campaign_id)).fetchone()
     if m is None:
-        db.close()
-        return jsonify([])
+        return []
 
     if m['linked_to_battle']:
         # Auto-place a pin for any battle participant that doesn't have one
@@ -1928,8 +2323,34 @@ def api_map_pins_list(map_id):
                 p['current_hp'] = None
                 p['char_max_hp'] = None
         result.append(p)
+    return result
+
+
+@app.route('/campaigns/<int:campaign_id>/api/maps/<int:map_id>/pins')
+@campaign_access_required
+def api_map_pins_list(map_id):
+    db = get_db()
+    result = _map_pins_payload(db, map_id)
     db.close()
     return jsonify(result)
+
+
+@app.route('/campaigns/<int:campaign_id>/api/maps/<int:map_id>/sync')
+@campaign_access_required
+def api_map_sync(map_id):
+    """One request instead of three: the map editor's live refresh needs the grid/lock
+    state, the drawings and (only while the map is linked to the battle) the pins.
+    Serving them together means one serverless invocation and one database connection
+    per refresh instead of three."""
+    db = get_db()
+    state = _map_state_payload(db, map_id)
+    if state is None:
+        db.close()
+        abort(404)
+    drawings = _map_drawings_payload(db, map_id)
+    pins = _map_pins_payload(db, map_id) if state['linked_to_battle'] else None
+    db.close()
+    return jsonify({'state': state, 'drawings': drawings, 'pins': pins})
 
 
 @app.route('/campaigns/<int:campaign_id>/api/maps/<int:map_id>/pins', methods=['POST'])

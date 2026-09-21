@@ -4,14 +4,14 @@ shared database, not inside an instance."""
 import re, io
 import pytest
 import requests
-from conftest import BACKEND, png_bytes
+from conftest import BACKEND, png_bytes, CsrfSession
 
 LEGACY_BUG = pytest.mark.xfail(BACKEND == 'sqlite', strict=True,
                                reason='legacy build keeps SQLite + uploads inside each instance (reproduces the Vercel bug)')
 
 
 def _login_on_a(a):
-    s = requests.Session()
+    s = CsrfSession(a.url)
     name = f'x{abs(hash(a.url))%10**7}{__import__("uuid").uuid4().hex[:5]}'
     r = s.post(a.url + '/register', data={'username': name, 'password': 'secret12', 'confirm': 'secret12'}, allow_redirects=False)
     assert r.status_code == 302
@@ -46,7 +46,12 @@ def test_delete_then_redirect_across_instances_never_404s(two_instances):
     assert s.get(b.url + d.headers['Location']).status_code == 200          # redirect served by the OTHER instance
 
 
-@pytest.mark.xfail(strict=True, reason='Phase 2: uploads still live on each instance\'s local disk (sqlite AND postgres builds)')
+from conftest import STORAGE
+UPLOAD_XFAIL = pytest.mark.xfail(BACKEND == 'sqlite' or STORAGE == 'local', strict=True,
+                                 reason='uploads live on each instance\'s local disk unless shared object storage is used')
+
+
+@UPLOAD_XFAIL
 def test_upload_on_one_instance_loads_on_the_other(two_instances):
     a, b = two_instances
     s = _login_on_a(a)

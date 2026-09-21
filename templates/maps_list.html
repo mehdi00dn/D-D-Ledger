@@ -25,7 +25,7 @@
     </a>
     <div class="map-card-body">
       <a href="{{ url_for('map_editor', map_id=m.id) }}" class="map-card-name">{{ m.name }}</a>
-      <form method="POST" action="{{ url_for('map_delete', map_id=m.id) }}" data-confirm="Delete map '{{ m.name }}'? This removes its drawings and pins too.">
+      <form method="POST" action="{{ url_for('map_delete', map_id=m.id) }}" data-confirm="Delete map '{{ m.name }}'? This removes its drawings and pins too.">{{ csrf_field() }}
         <button type="submit" class="btn-icon" title="Delete map">{{ icon('trash-2') }}</button>
       </form>
     </div>
@@ -47,7 +47,7 @@
       <h3>Import Map</h3>
       <button type="button" class="btn-icon" id="close-new-map-modal">{{ icon('x') }}</button>
     </div>
-    <form class="modal-body" method="POST" action="{{ url_for('map_new') }}" enctype="multipart/form-data">
+    <form class="modal-body" method="POST" action="{{ url_for('map_new') }}" enctype="multipart/form-data">{{ csrf_field() }}
       <div class="form-row cols-2" style="margin-bottom:14px; align-items: end;">
         <div class="field">
           <label for="map-name">Map name</label>

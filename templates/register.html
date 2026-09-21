@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="csrf-token" content="{{ csrf_token() }}">
 <title>Create Account — Campaign Ledger</title>
 <script>
   (function () {
@@ -30,7 +31,7 @@
     </div>
     <h1 class="auth-title">Create your account</h1>
     {% if error %}<p class="auth-error">{{ error }}</p>{% endif %}
-    <form method="POST" class="auth-form">
+    <form method="POST" class="auth-form">{{ csrf_field() }}
       <div class="field" style="margin-bottom:14px;">
         <label for="username">Username</label>
         <input type="text" id="username" name="username" value="{{ username }}" required autofocus>

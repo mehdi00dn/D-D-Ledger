@@ -76,11 +76,22 @@ def _translate(sql):
 
 
 def _clean(params):
-    """Postgres text cannot hold NUL (0x00), which SQLite silently allowed; a stray
-    one in a pasted form field would otherwise turn into a 500.  Drop them."""
+    """Prepare query parameters.
+
+    * Postgres text cannot hold NUL (0x00), which SQLite silently allowed; a stray one in
+      a pasted form field would otherwise become a 500.  Drop them.
+    * Only scalar values may reach a query.  A JSON list/dict smuggled into a parameter
+      (e.g. {"group_id": [1]}) would be sent as an array / fail to adapt and surface as a
+      500; refuse it here so every route answers 400 instead.
+    """
     if not params:
         return ()
-    return tuple(p.replace('\x00', '') if isinstance(p, str) and '\x00' in p else p for p in params)
+    out = []
+    for p in params:
+        if isinstance(p, (list, dict, set, tuple, bytes, bytearray)):
+            raise ValueError('unsupported query parameter type: %s' % type(p).__name__)
+        out.append(p.replace('\x00', '') if isinstance(p, str) and '\x00' in p else p)
+    return tuple(out)
 
 
 class Cursor:

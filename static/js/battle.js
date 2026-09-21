@@ -506,15 +506,25 @@
   // heals/damage/initiative/new arrivals after a manual reload. Skipped
   // mid-HP-scrub or while an amount/search input has focus so a poll can't
   // wipe out something half-typed.
-  setInterval(async () => {
-    if (scrubbing) return;
+  // Live refresh runs through the shared LedgerPoll scheduler: it pauses while this tab is
+  // hidden, backs off while nothing changes, and snaps back to full speed on any change.
+  // The server snapshot is compared with what is ON SCREEN (not just the previous
+  // snapshot), so an optimistic local edit that never reached the server is still corrected.
+  let lastBattleSig = null;
+  LedgerPoll.every(async () => {
+    if (scrubbing) return 'skip';
     const active = document.activeElement;
-    if (active && active.tagName === 'INPUT' && (root.contains(active) || (addModal && addModal.contains(active)))) return;
-    try {
-      const res = await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/battle`);
-      if (!res.ok) return;
-      participants = await res.json();
+    if (active && active.tagName === 'INPUT' && (root.contains(active) || (addModal && addModal.contains(active)))) return 'skip';
+    const res = await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/battle`);
+    if (!res.ok) return false;
+    const rows = await res.json();
+    const sig = JSON.stringify(rows);
+    const serverChanged = sig !== lastBattleSig;
+    lastBattleSig = sig;
+    if (sig !== JSON.stringify(participants)) {
+      participants = rows;
       render();
-    } catch (e) { /* transient network hiccup -- try again next tick */ }
-  }, 3000);
+    }
+    return serverChanged;
+  }, { base: 3000, max: 12000 });
 })();

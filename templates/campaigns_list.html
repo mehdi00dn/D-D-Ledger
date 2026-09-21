@@ -31,7 +31,7 @@
         <a href="{{ url_for('characters_list', campaign_id=c.id) }}" class="btn btn-primary btn-sm">{{ icon('scroll') }} Enter</a>
         {% if c.my_role == 'owner' %}
         <a href="{{ url_for('campaign_edit', campaign_id=c.id) }}" class="btn-icon" title="Edit campaign">{{ icon('pencil') }}</a>
-        <form method="POST" action="{{ url_for('campaign_delete', campaign_id=c.id) }}" data-confirm="Delete campaign '{{ c.name }}'? This permanently deletes all its characters, groups, and maps. This cannot be undone.">
+        <form method="POST" action="{{ url_for('campaign_delete', campaign_id=c.id) }}" data-confirm="Delete campaign '{{ c.name }}'? This permanently deletes all its characters, groups, and maps. This cannot be undone.">{{ csrf_field() }}
           <button type="submit" class="btn btn-danger btn-sm">{{ icon('trash-2') }} Delete</button>
         </form>
         {% endif %}

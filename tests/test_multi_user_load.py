@@ -3,13 +3,13 @@ instances) sharing one database.  Nothing may be lost, duplicated or 404."""
 import re, uuid, threading, itertools
 import concurrent.futures as cf
 import pytest, requests
-from conftest import BACKEND
+from conftest import BACKEND, CsrfSession
 
 pytestmark = pytest.mark.skipif(BACKEND != 'postgres', reason='needs a shared database')
 
 
 def _user(inst_a):
-    s = requests.Session(); name = f'l{uuid.uuid4().hex[:9]}'
+    s = CsrfSession(inst_a.url); name = f'l{uuid.uuid4().hex[:9]}'
     assert s.post(inst_a.url + '/register', data={'username': name, 'password': 'secret12', 'confirm': 'secret12'}, allow_redirects=False).status_code == 302
     return s, name
 
@@ -49,7 +49,7 @@ def test_damage_from_both_instances_never_loses_a_hit(two_instances):
     pid = dm.post(f'{a.url}/campaigns/{cid}/api/battle/add', json={'character_id': chid}).json()[0]['id']
     T, HITS = 8, 10
     def hitter(t):
-        s = requests.Session(); s.cookies.update(dm.cookies)
+        s = CsrfSession(a.url); s.cookies.update(dm.cookies)
         for k in range(HITS):
             r = s.post(f'{insts[(t + k) % 2].url}/campaigns/{cid}/api/battle/{pid}/damage', json={'amount': 1})
             assert r.status_code == 200

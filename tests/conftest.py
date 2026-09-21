@@ -15,19 +15,32 @@ sys.path.insert(0, APP_DIR)
 BACKEND = os.environ.get('LEDGER_TEST_BACKEND', 'sqlite')
 SECRET = 'test-secret-key-not-for-production'
 os.environ['SECRET_KEY'] = SECRET
+# The suite registers/logs in hundreds of times from one address; production limits would trip.
+# (tests/test_login_throttle.py lowers them explicitly to prove they work.)
+os.environ.update(REGISTER_LIMIT_IP='1000000', LOGIN_LIMIT_PAIR='1000000', LOGIN_LIMIT_USER='1000000', LOGIN_LIMIT_IP='1000000')
 os.environ.pop('VERCEL', None)
 
 _TMP = tempfile.mkdtemp(prefix='ledger-tests-')
 atexit.register(lambda: shutil.rmtree(_TMP, ignore_errors=True))
 
 PG_ADMIN = os.environ.get('TEST_PG_ADMIN', 'host=/tmp port=5433 user=postgres dbname=postgres')
+STORAGE = os.environ.get('LEDGER_TEST_STORAGE', 'supabase')     # 'supabase' (fake server) | 'local'
+PG_APP = os.environ.get('TEST_PG_APP', PG_ADMIN)   # how the APP connects (set to a pooler DSN to test through it)
 PG_DBNAME = f'ledger_test_{os.getpid()}'
 
 
 def _pg_url(dbname):
-    base = PG_ADMIN.replace('dbname=postgres', f'dbname={dbname}')
-    return base  # libpq key/value DSN
+    return PG_APP.replace('dbname=postgres', f'dbname={dbname}')  # libpq key/value DSN
 
+
+FAKE = None
+if BACKEND != 'sqlite' and STORAGE == 'supabase':
+    from fake_supabase import FakeSupabase
+    FAKE = FakeSupabase().start()
+    atexit.register(FAKE.stop)
+    os.environ.update(SUPABASE_URL=FAKE.url, SUPABASE_SECRET_KEY=FAKE.key, STORAGE_BACKEND='supabase')
+elif BACKEND != 'sqlite':
+    os.environ['STORAGE_BACKEND'] = 'local'
 
 if BACKEND == 'sqlite':
     os.environ['DATABASE_PATH'] = os.path.join(_TMP, 'main.db')
@@ -60,7 +73,59 @@ def appmod():
     flask_app = appmod.app
     flask_app.config['TESTING'] = False           # real 500s, not re-raised exceptions
     flask_app.config['PROPAGATE_EXCEPTIONS'] = False
+    flask_app.test_client_class = CsrfClient
     return appmod
+
+
+from flask.testing import FlaskClient
+import requests as _requests
+
+SESSION_COOKIE = 'ledger_session'
+
+
+class CsrfClient(FlaskClient):
+    """Flask test client that behaves like a browser page: it sends the session's CSRF token
+    with every state-changing request.  Set client.csrf_enabled = False to send none."""
+    csrf_enabled = True
+
+    def _csrf(self):
+        with self.session_transaction() as sess:
+            token = sess.get('csrf_token')
+        if not token:
+            self.get('/login')
+            with self.session_transaction() as sess:
+                token = sess.get('csrf_token')
+        return token
+
+    def open(self, *args, **kwargs):
+        method = (kwargs.get('method') or 'GET').upper()
+        if self.csrf_enabled and method not in ('GET', 'HEAD', 'OPTIONS'):
+            headers = dict(kwargs.get('headers') or {})
+            headers.setdefault('X-CSRF-Token', self._csrf())
+            kwargs['headers'] = headers
+        return super().open(*args, **kwargs)
+
+
+class CsrfSession(_requests.Session):
+    """requests.Session that adds the CSRF token to state-changing calls (like the fetch wrapper does)."""
+    def __init__(self, base):
+        super().__init__(); self.base = base; self._csrf = None
+
+    def _token(self):
+        if not self._csrf:
+            r = super().request('GET', self.base + '/login')
+            m = re.search(r'name="csrf-token" content="([^"]+)"', r.text)
+            self._csrf = m.group(1) if m else ''
+        return self._csrf
+
+    def request(self, method, url, **kw):
+        unsafe = method.upper() not in ('GET', 'HEAD', 'OPTIONS')
+        if unsafe:
+            h = dict(kw.pop('headers', None) or {}); h.setdefault('X-CSRF-Token', self._token()); kw['headers'] = h
+        resp = super().request(method, url, **kw)
+        if unsafe and url.rstrip('/').endswith(('/login', '/register', '/logout')):
+            self._csrf = None                              # session was reset: fetch a fresh token next time
+        return resp
 
 
 def q(sql, *params):
@@ -85,7 +150,9 @@ class User:
         self.name = name or f'u{uuid.uuid4().hex[:10]}'
         self.password = password
         self.c = self.app.test_client()
-        r = self.c.post('/register', data={'username': self.name, 'password': password, 'confirm': password})
+        # every test user 'connects' from its own address, so per-IP throttles never couple tests together
+        self.ip = '10.%d.%d.%d' % tuple(os.urandom(3))
+        r = self.c.post('/register', data={'username': self.name, 'password': password, 'confirm': password}, headers={'X-Test-IP': self.ip})
         assert r.status_code == 302, f'register failed: {r.status_code}'
 
     def fresh_client(self):
@@ -194,7 +261,7 @@ def two_instances(appmod):
     else:
         # shared database, but -- like Vercel's /tmp -- a PRIVATE uploads folder per instance,
         # so anything still stored on local disk shows up as a failure until Phase 2.
-        envs = [{'UPLOAD_DIR': os.path.join(_TMP, f'up{i}')} for i in (1, 2)]
+        envs = [{'UPLOAD_DIR': os.path.join(_TMP, f'up{i}')} for i in (1, 2)]      # only matters for the local backend
     a, b = Server(envs[0]), Server(envs[1])
     yield a, b
     a.stop(); b.stop()

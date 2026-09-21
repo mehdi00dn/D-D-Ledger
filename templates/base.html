@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="csrf-token" content="{{ csrf_token() }}">
 <title>{% block title %}Campaign Ledger{% endblock %}</title>
 <script>
   (function () {
@@ -78,7 +79,7 @@
       {% if session.username %}
       <div class="user-row">
         <span class="user-name">{{ icon('user') }}<span>{{ session.username }}</span></span>
-        <form method="POST" action="{{ url_for('logout') }}">
+        <form method="POST" action="{{ url_for('logout') }}">{{ csrf_field() }}
           <button type="submit" class="btn-icon" title="Log out">{{ icon('unlock') }}</button>
         </form>
       </div>
@@ -143,11 +144,14 @@
 </div>
 
 {% if g.campaign_id %}<script>window.CAMPAIGN_ID = {{ g.campaign_id | tojson }}; window.IS_DM = {{ g.is_dm | default(false) | tojson }}; window.USER_ID = {{ session.user_id | tojson }};</script>{% endif %}
+<script src="{{ url_for('static', filename='js/csrf.js') }}"></script>
+<script src="{{ url_for('static', filename='js/poller.js') }}"></script>
 <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
 <script src="{{ url_for('static', filename='js/sidebar.js') }}"></script>
 <script src="{{ url_for('static', filename='js/transitions.js') }}"></script>
 <script src="{{ url_for('static', filename='js/app.js') }}"></script>
 <script src="{{ url_for('static', filename='js/cropper.js') }}"></script>
+<script src="{{ url_for('static', filename='js/direct-upload.js') }}"></script>
 <script src="{{ url_for('static', filename='js/lightbox.js') }}"></script>
 <script src="{{ url_for('static', filename='js/confirm.js') }}"></script>
 {% block extra_scripts %}{% endblock %}

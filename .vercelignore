@@ -3,6 +3,9 @@
 .pytest_cache
 .venv
 tests
+scripts
+supabase_setup.sql
+supabase_storage_setup.sql
 *.db
 *.db-*
 uploads/*

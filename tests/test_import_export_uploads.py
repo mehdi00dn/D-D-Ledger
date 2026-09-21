@@ -39,7 +39,6 @@ def test_disallowed_extension_is_ignored(camp):
     assert q('SELECT avatar_path FROM characters WHERE campaign_id = ? AND name = ?', cid, 'Evil')[0]['avatar_path'] is None
 
 
-@pytest.mark.xfail(reason='Phase 2: a non-ASCII filename crashes the upload helper (IndexError -> 500)', strict=True)
 def test_persian_filename_upload(camp):
     u, cid = camp
     r = u.post(f'/campaigns/{cid}/characters/new',

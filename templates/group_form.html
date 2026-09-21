@@ -12,7 +12,7 @@
   <a href="{{ url_for('groups_list') }}" class="btn btn-ghost">{{ icon('arrow-left') }} Back to list</a>
 </div>
 
-<form class="form-panel" method="POST" enctype="multipart/form-data">
+<form class="form-panel" method="POST" enctype="multipart/form-data">{{ csrf_field() }}
 
   <div class="form-section">
     <p class="form-section-title">Identity</p>

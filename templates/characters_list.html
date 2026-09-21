@@ -12,10 +12,10 @@
   </div>
   <div style="display:flex; gap:10px; flex-wrap:wrap;">
     <a href="{{ url_for('export_data') }}" class="btn btn-ghost">{{ icon('upload') }} Export</a>
-    <form method="POST" action="{{ url_for('import_data') }}" enctype="multipart/form-data">
+    <form method="POST" action="{{ url_for('import_data') }}" enctype="multipart/form-data">{{ csrf_field() }}
       <label class="btn btn-ghost import-label">
         {{ icon('images') }} Import
-        <input type="file" name="import_file" accept=".zip" onchange="this.form.submit()">
+        <input type="file" name="import_file" accept=".zip" onchange="this.form.requestSubmit()">
       </label>
     </form>
     <a href="{{ url_for('character_new') }}" class="btn btn-primary">{{ icon('plus') }} New Character</a>
@@ -95,7 +95,7 @@
       <a href="{{ url_for('character_detail', char_id=c.id) }}" class="btn btn-ghost btn-sm">{{ icon('eye') }} Details</a>
       {% if g.is_dm or c.created_by == session.user_id %}
       <a href="{{ url_for('character_export', char_id=c.id) }}" class="btn-icon" title="Export this character">{{ icon('upload') }}</a>
-      <form method="POST" action="{{ url_for('character_delete', char_id=c.id) }}" data-confirm="Remove {{ c.name }} from the ledger permanently?">
+      <form method="POST" action="{{ url_for('character_delete', char_id=c.id) }}" data-confirm="Remove {{ c.name }} from the ledger permanently?">{{ csrf_field() }}
         <button type="submit" class="btn btn-danger btn-sm">{{ icon('trash-2') }} Delete</button>
       </form>
       {% endif %}

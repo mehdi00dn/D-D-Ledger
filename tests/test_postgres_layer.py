@@ -74,6 +74,7 @@ def test_nul_bytes_in_text_do_not_crash(camp):
     assert r.status_code == 302
 
 
+@pytest.mark.skipif(bool(os.environ.get('TEST_PG_APP')), reason='a pooler keeps idle server connections, so pg_stat_activity is not a leak signal there')
 def test_no_connection_leak_across_error_paths(appmod, make_user):
     import psycopg
     u = make_user(); cid = u.new_campaign()
@@ -108,7 +109,8 @@ def test_migrations_are_idempotent_and_race_safe():
         results = []
         ts = [threading.Thread(target=lambda: results.append(migrate.run(dsn))) for _ in range(4)]
         [t.start() for t in ts]; [t.join() for t in ts]
-        assert sorted(len(r) for r in results) == [0, 0, 0, 1], results        # exactly one run applied it
+        applied_now = sorted(v for r in results for v in r)
+        assert applied_now == sorted(os.path.basename(f) for f in migrate._files()), results   # each migration applied exactly once, no matter who won the race
         assert migrate.run(dsn) == []
         assert all(ok for _, ok in migrate.status(dsn))
         with psycopg.connect(dsn) as c:
@@ -118,3 +120,11 @@ def test_migrations_are_idempotent_and_race_safe():
     finally:
         with psycopg.connect(PG_ADMIN, autocommit=True) as c:
             c.execute(f'DROP DATABASE {name} WITH (FORCE)')
+
+
+def test_every_table_has_row_level_security_enabled(appmod):
+    """Supabase exposes public tables to its REST API unless RLS is on.  Every future
+    migration that adds a table must enable RLS too -- this test enforces it."""
+    rows = q("SELECT c.relname AS t FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace "
+             "WHERE n.nspname = 'public' AND c.relkind = 'r' AND NOT c.relrowsecurity")
+    assert rows == [], f'tables without RLS: {[r["t"] for r in rows]}'

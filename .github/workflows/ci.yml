@@ -43,7 +43,7 @@ jobs:
         run: python -m playwright install --with-deps chromium
 
       - name: Compile Python modules
-        run: python -m compileall -q app.py api database.py migrate.py
+        run: python -m compileall -q app.py api database.py migrate.py security.py storage.py images.py importer.py scripts
 
       - name: Run test suite
         env:

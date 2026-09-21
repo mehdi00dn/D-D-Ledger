@@ -57,7 +57,7 @@
   let selectedPinId = null;
   let shapeHandleMode = null; // null | 'resize' | 'rotate'
   let hoveredLockedShapeId = null; // shape under the cursor that's locked (shows the unlock icon)
-  let pollTimer = null;
+  let syncPoll = null;   // live-refresh scheduler (see poller.js)
 
   const UNLOCK_ICON_PATH = 'M7 11h10a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-6a2 2 0 0 1 2-2z M8 11V7a4 4 0 0 1 7.75-1.5';
   const UNLOCK_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M7 11h10a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-6a2 2 0 0 1 2-2z"/><path d="M8 11V7a4 4 0 0 1 7.75-1.5"/></svg>';
@@ -1412,9 +1412,10 @@
     });
   }
 
+  // Live refresh is ONE visibility-aware poller (state + drawings + pins in a single
+  // request). Callers that used to restart the pin timer now just ask for a refresh.
   function setupPolling() {
-    if (pollTimer) clearInterval(pollTimer);
-    if (linkedToBattle) pollTimer = setInterval(loadPins, 4000);
+    if (syncPoll) syncPoll.poke();
   }
 
   function applyMapLockVisuals() {
@@ -1422,52 +1423,62 @@
     if (lockedBanner) lockedBanner.hidden = !lockedForPlayers;
   }
 
-  // Every open map tab polls this small state endpoint so grid settings,
-  // the lock, and the battle-link toggle all take effect live -- without
-  // this, another viewer's tab only ever picks up a DM's changes on their
-  // next full reload. Skipped while this tab's own grid-settings dialog is
-  // open so it can't clobber someone's in-progress edit there.
-  setInterval(async () => {
-    if (!setupOverlay.hidden) return;
-    try {
-      const res = await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/state`);
-      if (!res.ok) return;
-      const s = await res.json();
-      let gridChanged = false;
+  // Every open map tab refreshes through ONE request to /sync (grid/lock state, drawings and,
+  // while linked to the battle, pins) so grid settings, the lock, the battle-link toggle,
+  // shapes and pins all take effect live. It runs through the shared LedgerPoll scheduler:
+  // paused while the tab is hidden, slower while nothing changes, instant on activity.
+  // Skipped while this tab's own grid-settings dialog is open so it can't clobber an
+  // in-progress edit, and shapes/pins are left alone mid-drag or mid-draw.
+  // Server data is compared with what is ON SCREEN, so a local edit that never reached
+  // the server is still corrected (the client edits optimistically and relies on this).
+  function applyMapState(s) {
+    let gridChanged = false;
 
-      const nowLocked = !!s.locked_for_players;
-      if (nowLocked !== lockedForPlayers) {
-        lockedForPlayers = nowLocked;
-        applyMapLockVisuals();
-        if (lockMapCheckbox) lockMapCheckbox.checked = lockedForPlayers;
-      }
+    const nowLocked = !!s.locked_for_players;
+    if (nowLocked !== lockedForPlayers) {
+      lockedForPlayers = nowLocked;
+      applyMapLockVisuals();
+      if (lockMapCheckbox) lockMapCheckbox.checked = lockedForPlayers;
+    }
 
-      const nowLinked = !!s.linked_to_battle;
-      if (nowLinked !== linkedToBattle) {
-        linkedToBattle = nowLinked;
-        if (linkBattleCheckbox) linkBattleCheckbox.checked = linkedToBattle;
-        setupPolling();
-        if (linkedToBattle) loadPins();
-      }
+    const nowLinked = !!s.linked_to_battle;
+    if (nowLinked !== linkedToBattle) {
+      linkedToBattle = nowLinked;
+      if (linkBattleCheckbox) linkBattleCheckbox.checked = linkedToBattle;
+    }
 
-      if (s.grid_size !== gridSize) { gridSize = s.grid_size; gridChanged = true; }
-      if (s.grid_color !== gridColor) { gridColor = s.grid_color; gridChanged = true; }
-      if (!!s.grid_visible !== gridVisible) { gridVisible = !!s.grid_visible; gridChanged = true; }
-      if (s.grid_offset_x !== gridOffsetX) { gridOffsetX = s.grid_offset_x; gridChanged = true; }
-      if (s.grid_offset_y !== gridOffsetY) { gridOffsetY = s.grid_offset_y; gridChanged = true; }
-      if (!!s.snap_to_grid !== snapToGrid) { snapToGrid = !!s.snap_to_grid; }
-      if (gridChanged) { renderPins(); redraw(); }
-    } catch (e) { /* transient network hiccup -- try again next tick */ }
-  }, 3000);
+    if (s.grid_size !== gridSize) { gridSize = s.grid_size; gridChanged = true; }
+    if (s.grid_color !== gridColor) { gridColor = s.grid_color; gridChanged = true; }
+    if (!!s.grid_visible !== gridVisible) { gridVisible = !!s.grid_visible; gridChanged = true; }
+    if (s.grid_offset_x !== gridOffsetX) { gridOffsetX = s.grid_offset_x; gridChanged = true; }
+    if (s.grid_offset_y !== gridOffsetY) { gridOffsetY = s.grid_offset_y; gridChanged = true; }
+    if (!!s.snap_to_grid !== snapToGrid) { snapToGrid = !!s.snap_to_grid; }
+    if (gridChanged) { renderPins(); redraw(); }
+  }
 
-  // Drawings/shapes get the same live-sync treatment, polled separately
-  // from the lighter settings check above. Skipped while this tab is
-  // mid-drag or mid-draw so a poll can't tear a shape out from under an
-  // interaction already in progress.
-  setInterval(() => {
-    if (activeDrag || previewShape || !setupOverlay.hidden) return;
-    loadDrawings();
-  }, 3000);
+  let lastSyncSig = '';
+  syncPoll = LedgerPoll.every(async () => {
+    if (!setupOverlay.hidden) return 'skip';
+    const res = await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/sync`);
+    if (!res.ok) return false;
+    const d = await res.json();
+    const sig = JSON.stringify(d);
+    const serverChanged = sig !== lastSyncSig;
+    lastSyncSig = sig;
+
+    applyMapState(d.state);
+
+    if (!(activeDrag || previewShape) && JSON.stringify(d.drawings) !== JSON.stringify(drawings)) {
+      drawings = d.drawings;
+      redraw();
+    }
+    const draggingPin = activeDrag && (activeDrag.type === 'move-pin' || activeDrag.type === 'resize-pin' || activeDrag.type === 'rotate-pin');
+    if (d.pins && !draggingPin && JSON.stringify(d.pins) !== JSON.stringify(pins)) {
+      pins = d.pins;
+      renderPins();
+    }
+    return serverChanged;
+  }, { base: 3000, max: 12000 });
 
   // ---------------------------------------------------------------------
   // Shape geometry helpers for the draw tools (shift = from-center, alt = 1:1 lock)

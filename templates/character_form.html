@@ -23,7 +23,7 @@
   <a href="{{ url_for('battle_view') if from_battle else url_for('characters_list') }}" class="btn btn-ghost">{{ icon('arrow-left') }} {{ 'Back to battle' if from_battle else 'Back to list' }}</a>
 </div>
 
-<form class="form-panel" method="POST" enctype="multipart/form-data">
+<form class="form-panel" method="POST" enctype="multipart/form-data">{{ csrf_field() }}
   <input type="hidden" name="from_battle" value="{{ '1' if from_battle else '' }}">
 
   <div class="form-section">

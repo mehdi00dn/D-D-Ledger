@@ -15,7 +15,7 @@
 </div>
 
 <div class="campaign-edit-layout">
-<form class="form-panel" method="POST" enctype="multipart/form-data" id="campaign-form">
+<form class="form-panel" method="POST" enctype="multipart/form-data" id="campaign-form">{{ csrf_field() }}
   <div class="form-section">
     <p class="form-section-title">Campaign Identity</p>
     <div class="field" style="margin-bottom:14px;">
@@ -138,7 +138,7 @@
         </span>
         <span class="member-actions">
           {% if is_owner %}
-          <form method="POST" action="{{ url_for('campaign_member_status', campaign_id=campaign.id, user_id=m.id) }}">
+          <form method="POST" action="{{ url_for('campaign_member_status', campaign_id=campaign.id, user_id=m.id) }}">{{ csrf_field() }}
             <select name="status" class="status-select status-select-{{ m.status }}" title="Dungeon Master / Player" onchange="this.form.submit()">
               <option value="dm" {{ 'selected' if m.status == 'dm' else '' }}>DM</option>
               <option value="player" {{ 'selected' if m.status == 'player' else '' }}>Player</option>
@@ -149,13 +149,13 @@
           {% endif %}
 
           {% if is_owner and m.role != 'owner' %}
-          <form method="POST" action="{{ url_for('campaign_member_make_owner', campaign_id=campaign.id, user_id=m.id) }}" data-confirm="Make {{ m.username }} an owner of this campaign?">
+          <form method="POST" action="{{ url_for('campaign_member_make_owner', campaign_id=campaign.id, user_id=m.id) }}" data-confirm="Make {{ m.username }} an owner of this campaign?">{{ csrf_field() }}
             <button type="submit" class="btn-icon" title="Make owner">{{ icon('crown') }}</button>
           </form>
           {% endif %}
 
           {% if is_owner and m.id != session['user_id'] %}
-          <form method="POST" action="{{ url_for('campaign_member_remove', campaign_id=campaign.id, user_id=m.id) }}" data-confirm="Remove {{ m.username }} from this campaign?">
+          <form method="POST" action="{{ url_for('campaign_member_remove', campaign_id=campaign.id, user_id=m.id) }}" data-confirm="Remove {{ m.username }} from this campaign?">{{ csrf_field() }}
             <button type="submit" class="btn-icon" title="Remove member">{{ icon('x') }}</button>
           </form>
           {% endif %}
@@ -165,7 +165,7 @@
     </div>
 
     {% if is_owner %}
-    <form method="POST" action="{{ url_for('campaign_member_add', campaign_id=campaign.id) }}" class="member-add-form">
+    <form method="POST" action="{{ url_for('campaign_member_add', campaign_id=campaign.id) }}" class="member-add-form">{{ csrf_field() }}
       <input type="text" name="username" placeholder="Username to invite" required>
       <select name="status" title="Starting status">
         <option value="player">Player</option>
@@ -177,7 +177,7 @@
 
     <div class="leave-campaign-row">
       {% if can_leave_freely %}
-      <form method="POST" action="{{ url_for('campaign_leave', campaign_id=campaign.id) }}" data-confirm="Leave '{{ campaign.name }}'? You'll need a new invite to get back in.">
+      <form method="POST" action="{{ url_for('campaign_leave', campaign_id=campaign.id) }}" data-confirm="Leave '{{ campaign.name }}'? You'll need a new invite to get back in.">{{ csrf_field() }}
         <button type="submit" class="btn btn-ghost btn-sm">{{ icon('arrow-left') }} Leave Campaign</button>
       </form>
       {% elif members|length > 1 %}

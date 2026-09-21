@@ -2,9 +2,10 @@
 import os, re, uuid, time
 import pytest
 import requests
-os.environ.setdefault('PLAYWRIGHT_BROWSERS_PATH', '/opt/pw-browsers')
+if os.path.isdir('/opt/pw-browsers'):                       # pre-installed browsers (some sandboxes); CI installs its own
+    os.environ.setdefault('PLAYWRIGHT_BROWSERS_PATH', '/opt/pw-browsers')
 playwright = pytest.importorskip('playwright.sync_api')
-from conftest import png_bytes
+from conftest import png_bytes, CsrfSession, SESSION_COOKIE
 
 
 @pytest.fixture(scope='module')
@@ -16,7 +17,7 @@ def pw():
 class Api:
     """requests-based helper hitting the live server, for fast setup."""
     def __init__(self, base):
-        self.base = base; self.s = requests.Session()
+        self.base = base; self.s = CsrfSession(base)
         self.name = f'e{uuid.uuid4().hex[:9]}'
         r = self.s.post(base + '/register', data={'username': self.name, 'password': 'secret12', 'confirm': 'secret12'}, allow_redirects=False)
         assert r.status_code == 302
@@ -29,8 +30,20 @@ class Api:
         return next(c['id'] for c in self.get(f'/campaigns/{cid}/api/characters').json() if c['name'] == name)
     def context(self, browser, base):
         ctx = browser.new_context(viewport={'width': 1400, 'height': 900})
-        ctx.add_cookies([{'name': 'session', 'value': self.s.cookies.get('session'), 'url': base}])
+        ctx.add_cookies([{'name': SESSION_COOKIE, 'value': self.s.cookies.get(SESSION_COOKIE), 'url': base}])
         return ctx
+
+
+def wait_text(page, needles, timeout=12.0):
+    """Poll the page text from Python (page-side eval is blocked by the app's CSP, as it should be)."""
+    import time
+    end = time.time() + timeout
+    while time.time() < end:
+        text = page.inner_text('body')
+        if all(n in text for n in needles):
+            return
+        page.wait_for_timeout(300)
+    raise AssertionError(f'{needles} never appeared; page said: {text[:300]!r}')
 
 
 def _collect(page):
@@ -92,8 +105,7 @@ def test_two_users_see_each_others_changes_without_reload(pw, shared_server):
     dpage.goto(base + f'/campaigns/{cid}/battle'); ppage.goto(base + f'/campaigns/{cid}/battle')
     dm.s.post(f'{base}/campaigns/{cid}/api/battle/add', json={'character_id': hero})
     dm.s.post(f'{base}/campaigns/{cid}/api/battle/add', json={'character_id': ogre})
-    ppage.wait_for_function("document.body.innerText.includes('Hero') && document.body.innerText.includes('Ogre')", timeout=12000)
-    dpage.wait_for_function("document.body.innerText.includes('Hero')", timeout=12000)
+    wait_text(ppage, ['Hero', 'Ogre']); wait_text(dpage, ['Hero'])
     body = ppage.inner_text('body')
     assert '59' not in body                     # the player never sees the ogre's HP
     assert not [b for b in dbad + pbad if b[0] >= 400], (dbad, pbad)
