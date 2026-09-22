@@ -48,6 +48,31 @@
     return new Promise(function (resolve) { canvas.toBlob(resolve, type, quality); });
   }
 
+  // --- Progress bar (currently only the import forms carry the markup for
+  // this; any other form just silently skips these since progressEl is null) ---
+  function progressEl(form) { return form.querySelector('.upload-progress'); }
+
+  function showProgress(form, indeterminate) {
+    var el = progressEl(form);
+    if (!el) return;
+    el.hidden = false;
+    el.classList.toggle('is-indeterminate', !!indeterminate);
+    el.querySelector('.upload-progress-bar').style.width = indeterminate ? '' : '0%';
+  }
+
+  function setProgress(form, fraction) {
+    var el = progressEl(form);
+    if (!el || el.classList.contains('is-indeterminate')) return;
+    el.querySelector('.upload-progress-bar').style.width = Math.max(0, Math.min(100, fraction * 100)) + '%';
+  }
+
+  function hideProgress(form) {
+    var el = progressEl(form);
+    if (!el) return;
+    el.hidden = true;
+    el.classList.remove('is-indeterminate');
+  }
+
   function renamed(blob, file, ext) {
     var base = (file.name || 'image').replace(/\.[^.]+$/, '');
     return new File([blob], base + '.' + ext, { type: blob.type, lastModified: Date.now() });
@@ -78,7 +103,21 @@
     return file;
   }
 
-  async function stage(file, purpose) {
+  function xhrUpload(url, method, headers, body, onProgress) {
+    return new Promise(function (resolve, reject) {
+      var xhr = new XMLHttpRequest();
+      xhr.open(method || 'PUT', url);
+      Object.keys(headers || {}).forEach(function (k) { xhr.setRequestHeader(k, headers[k]); });
+      if (xhr.upload && onProgress) {
+        xhr.upload.onprogress = function (e) { if (e.lengthComputable) onProgress(e.loaded, e.total); };
+      }
+      xhr.onload = function () { resolve({ ok: xhr.status >= 200 && xhr.status < 300, status: xhr.status }); };
+      xhr.onerror = function () { reject(new Error('network error')); };
+      xhr.send(body);
+    });
+  }
+
+  async function stage(file, purpose, onProgress) {
     var res = await fetch('/uploads/sign', {
       method: 'POST', credentials: 'same-origin',
       headers: Object.assign({ 'Content-Type': 'application/json' }, csrfHeaders()),
@@ -100,8 +139,7 @@
     }
     var up;
     try {
-      up = await fetch(t.url, { method: t.method || 'PUT', headers: headers, body: body,
-                                credentials: sameOrigin ? 'same-origin' : 'omit' });
+      up = await xhrUpload(t.url, t.method || 'PUT', headers, body, onProgress);
     } catch (e) {
       throw new Error('The file could not reach the storage server. Check your connection and try again.');
     }
@@ -152,12 +190,26 @@
           }));
           setFiles(inputs[a], list);
         }
-        if (totalSize(inputs) <= INLINE_LIMIT) { setBusy(form, submitter, false); resubmit(form, submitter); return; }
+        if (totalSize(inputs) <= INLINE_LIMIT) {
+          setBusy(form, submitter, false);
+          showProgress(form, true);                            // no separate upload phase to measure -- the
+          resubmit(form, submitter);                            // browser's own nav spinner covers what's left
+          return;
+        }
       }
       setBusy(form, submitter, true, 'Uploading\u2026');       // 2. straight to storage
+      var grandTotal = totalSize(inputs), sent = 0;
+      showProgress(form, false);
       for (var b = 0; b < inputs.length; b++) {
         var input = inputs[b], files = Array.prototype.slice.call(input.files), keys = [];
-        for (var c = 0; c < files.length; c++) keys.push(await stage(files[c], PURPOSE[input.name]));
+        for (var c = 0; c < files.length; c++) {
+          var fileStartSent = sent;
+          keys.push(await stage(files[c], PURPOSE[input.name], function (loaded, total) {
+            setProgress(form, grandTotal ? (fileStartSent + loaded) / grandTotal : 0);
+          }));
+          sent = fileStartSent + files[c].size;
+          setProgress(form, grandTotal ? sent / grandTotal : 1);
+        }
         keys.forEach(function (k) {
           var h = document.createElement('input');
           h.type = 'hidden'; h.name = input.name + '__key'; h.value = k;
@@ -166,9 +218,11 @@
         input.value = '';                                      // never send the bytes twice
       }
       setBusy(form, submitter, false);
+      showProgress(form, true);                                // upload's done; server still has to process it
       resubmit(form, submitter);
     } catch (err) {
       setBusy(form, submitter, false);
+      hideProgress(form);
       Array.prototype.forEach.call(form.querySelectorAll('input[type="hidden"][name$="__key"]'), function (n) { n.remove(); });
       window.alert((err && err.message) || 'The upload failed. Please try again.');
     }
@@ -180,6 +234,7 @@
     Array.prototype.forEach.call(document.forms, function (f) {
       delete f.dataset.uploadsReady;
       Array.prototype.forEach.call(f.querySelectorAll('input[type="hidden"][name$="__key"]'), function (n) { n.remove(); });
+      hideProgress(f);
     });
     document.body.style.cursor = '';
   });

@@ -41,6 +41,12 @@
         <label for="password">Password</label>
         <input type="password" id="password" name="password" required>
       </div>
+      <div class="field" style="margin-top:14px;">
+        <label class="field-checkbox">
+          <input type="checkbox" name="remember" checked>
+          Remember me
+        </label>
+      </div>
       <button type="submit" class="btn btn-primary auth-submit">Log In</button>
     </form>
     <p class="auth-switch">New here? <a href="{{ url_for('register') }}">Create an account</a></p>

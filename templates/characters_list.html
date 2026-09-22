@@ -12,11 +12,12 @@
   </div>
   <div style="display:flex; gap:10px; flex-wrap:wrap;">
     <a href="{{ url_for('export_data') }}" class="btn btn-ghost">{{ icon('upload') }} Export</a>
-    <form method="POST" action="{{ url_for('import_data') }}" enctype="multipart/form-data">{{ csrf_field() }}
+    <form method="POST" action="{{ url_for('import_data') }}" enctype="multipart/form-data" class="import-form">{{ csrf_field() }}
       <label class="btn btn-ghost import-label">
         {{ icon('images') }} Import
         <input type="file" name="import_file" accept=".zip" onchange="this.form.requestSubmit()">
       </label>
+      <div class="upload-progress" hidden><div class="upload-progress-bar"></div></div>
     </form>
     <a href="{{ url_for('character_new') }}" class="btn btn-primary">{{ icon('plus') }} New Character</a>
   </div>

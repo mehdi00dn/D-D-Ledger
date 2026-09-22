@@ -282,13 +282,15 @@ def _safe_next(path):
     return path
 
 
-def _start_session(user_id, username):
-    """Fresh session on login: drops anything an earlier visitor of this browser left behind."""
+def _start_session(user_id, username, remember=True):
+    """Fresh session on login: drops anything an earlier visitor of this browser left behind.
+    remember=True issues a persistent cookie (PERMANENT_SESSION_LIFETIME); False makes it a
+    plain session cookie that the browser drops when it's closed."""
     session.clear()
     session['user_id'] = user_id
     session['username'] = username
     session['csrf_token'] = secrets.token_urlsafe(32)
-    session.permanent = True
+    session.permanent = remember
 
 
 def _username_error(username):
@@ -378,7 +380,7 @@ def login():
         security.clear_login_failures(db, app.secret_key, username, ip)
         db.commit()
         db.close()
-        _start_session(user['id'], user['username'])
+        _start_session(user['id'], user['username'], remember=bool(request.form.get('remember')))
         return redirect(_safe_next(next_value or request.args.get('next')) or url_for('campaigns_list'))
     return render_template('login.html', error=None, username='', next=request.args.get('next', ''))
 
