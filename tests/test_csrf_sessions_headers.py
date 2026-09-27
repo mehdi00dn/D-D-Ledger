@@ -128,7 +128,8 @@ def test_session_cookie_flags_when_secure(appmod, make_user):
         name = 'cookieuser' + os.urandom(3).hex()
         c.post('/register', data={'username': name, 'password': 'secret12', 'confirm': 'secret12', 'csrf_token': tok})
         r = c.post('/logout', data={'csrf_token': token_of(c, '/campaigns')})
-        r = c.post('/login', data={'username': name, 'password': 'secret12', 'csrf_token': token_of(c)})
+        # 'remember' is checked by default on the real login page -- a real browser sends it unless unchecked.
+        r = c.post('/login', data={'username': name, 'password': 'secret12', 'remember': 'on', 'csrf_token': token_of(c)})
         cookie = ' '.join(r.headers.getlist('Set-Cookie')).lower()
     assert 'httponly' in cookie and 'secure' in cookie and 'samesite=lax' in cookie and 'expires=' in cookie      # persistent, not session-only
 
@@ -184,9 +185,21 @@ def test_session_is_reset_on_login(appmod, make_user):
     with u.c.session_transaction() as s:
         s['leftover'] = 'from-a-previous-visitor'
     u.post('/logout')
-    u.post('/login', data={'username': u.name, 'password': u.password})
+    # 'remember' is checked by default on the real login page -- match that here.
+    u.post('/login', data={'username': u.name, 'password': u.password, 'remember': 'on'})
     with u.c.session_transaction() as s:
         assert 'leftover' not in s and s.get('user_id') and s.permanent
+
+
+def test_unchecking_remember_makes_a_session_only_cookie(appmod, make_user):
+    """The checkbox defaults to checked (covered above); this is the other half --
+    explicitly unchecking it (i.e. not sending 'remember' at all) should make the
+    login session-only, dropped when the browser closes rather than persisted."""
+    u = make_user()
+    u.post('/logout')
+    u.post('/login', data={'username': u.name, 'password': u.password})   # no 'remember' field at all
+    with u.c.session_transaction() as s:
+        assert s.get('user_id') and not s.permanent
 
 
 @pytest.mark.parametrize('username, password, fragment', [
