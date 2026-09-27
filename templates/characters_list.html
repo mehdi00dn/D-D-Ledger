@@ -55,6 +55,7 @@
 {% if characters %}
 <div class="card-grid" id="character-grid">
   {% for c in characters %}
+  {% set npc_hidden = c.is_npc and not g.is_dm %}
   <div class="dossier-card" data-group="{{ c.group_id or '' }}" data-name="{{ c.name|lower }}" data-type="{{ 'npc' if c.is_npc else 'pc' }}">
     <span class="dossier-tag {{ 'npc' if c.is_npc else '' }}">{{ 'NPC' if c.is_npc else 'PC' }}</span>
     <div class="dossier-head">
@@ -76,6 +77,11 @@
       </div>
     </div>
 
+    {% if npc_hidden %}
+    <div class="stats-hidden-badge" title="The DM hasn't revealed this creature's stats" style="margin-top:12px;">
+      {{ icon('lock') }}<span>Stats Hidden</span>
+    </div>
+    {% else %}
     <div class="dossier-stats">
       <div class="stat-pill"><span class="val">{{ c.str_score }}</span><span class="lbl">STR</span></div>
       <div class="stat-pill"><span class="val">{{ c.dex_score }}</span><span class="lbl">DEX</span></div>
@@ -89,11 +95,14 @@
       <span class="badge-hp">{{ icon('heart') }}{{ c.max_hp }} HP</span>
       <span class="badge-ac">{{ icon('shield') }}{{ c.armor_class }} AC</span>
     </div>
+    {% endif %}
 
     <div class="dossier-notes">{{ c.notes | notes_preview }}</div>
 
     <div class="dossier-actions">
+      {% if not npc_hidden %}
       <a href="{{ url_for('character_detail', char_id=c.id) }}" class="btn btn-ghost btn-sm">{{ icon('eye') }} Details</a>
+      {% endif %}
       {% if g.is_dm or c.created_by == session.user_id %}
       <a href="{{ url_for('character_export', char_id=c.id) }}" class="btn-icon" title="Export this character">{{ icon('upload') }}</a>
       <form method="POST" action="{{ url_for('character_delete', char_id=c.id) }}" data-confirm="Remove {{ c.name }} from the ledger permanently?">{{ csrf_field() }}

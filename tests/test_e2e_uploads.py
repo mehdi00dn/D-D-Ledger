@@ -1,6 +1,6 @@
 """Real-browser upload flows.  With the fake Supabase running, storage lives on a DIFFERENT
 origin than the app, so direct uploads exercise real cross-origin fetch + CORS preflight."""
-import io, os, re, uuid
+import io, os, re, time, uuid
 import numpy as np
 import pytest
 from PIL import Image
@@ -107,6 +107,42 @@ def test_zip_import_too_big_for_the_form_goes_direct_then_imports(pw, shared_ser
     ch = q('SELECT avatar_path FROM characters WHERE campaign_id = ? AND name = ?', cid, 'Bulky')[0]
     assert ch['avatar_path'] and api.get('/uploads/' + ch['avatar_path']).status_code == 200
     ctx.close()
+
+
+def test_upload_progress_actually_fills_not_just_spins(pw, shared_server):
+    """Regression test that upload progress reports real intermediate values."""
+    base = shared_server.url; api = Api(base); cid = api.campaign('Progress')
+    ctx, page, seen, bad, errs = new_page(pw, api, base)
+    cdp = ctx.new_cdp_session(page)
+    cdp.send('Network.enable')
+    cdp.send('Network.emulateNetworkConditions',
+             {'offline': False, 'latency': 20, 'downloadThroughput': 5_000_000,
+              'uploadThroughput': 250_000})
+    page.goto(f'{base}/campaigns/{cid}/characters/new'); page.wait_for_load_state('networkidle')
+    page.fill('input[name=name]', 'Progress Test')
+    page.set_input_files('input[name=sheets]', payload('p.png', photo_like_png(1600, 1600)))
+    page.click('main.content button[type=submit]')
+
+    samples, indeterminate_before_fill = [], False
+    end = time.time() + 8
+    while time.time() < end:
+        try:
+            pct = page.eval_on_selector('.upload-progress-circle',
+                                         "el => getComputedStyle(el).getPropertyValue('--pct')")
+            cls = page.eval_on_selector('.upload-progress-circle', "el => el.className")
+        except Exception:
+            break
+        if pct and pct.strip():
+            samples.append(float(pct.strip()))
+            if 'is-indeterminate' in cls and len(samples) < 2:
+                indeterminate_before_fill = True
+        page.wait_for_timeout(50)
+    ctx.close()
+
+    assert len(samples) >= 3, f'never observed enough progress samples during the upload: {samples}'
+    assert not indeterminate_before_fill, 'switched to the indeterminate spinner before real progress was shown'
+    assert any(0 < sample < 95 for sample in samples), f'no genuine mid-transfer fill percentage observed: {samples}'
+    assert samples[-1] > samples[0], f'progress never increased: {samples}'
 
 
 def test_small_uploads_still_use_the_ordinary_form_post(pw, shared_server):

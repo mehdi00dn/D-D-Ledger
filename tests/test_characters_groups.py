@@ -2,6 +2,58 @@ import json, uuid
 import pytest
 from conftest import q
 
+
+def _add_player(dm, player, cid):
+    r = dm.post(f'/campaigns/{cid}/members/add', data={'username': player.name, 'status': 'player'})
+    assert r.status_code == 302
+
+
+def test_only_dm_manages_groups(make_user):
+    dm, player = make_user(), make_user()
+    cid = dm.new_campaign()
+    _add_player(dm, player, cid)
+    gid = dm.new_group(cid, name='Guild')
+
+    assert player.post(f'/campaigns/{cid}/groups/new', data={'name': 'Hax Guild'},
+                        content_type='multipart/form-data').status_code == 403
+    assert player.post(f'/campaigns/{cid}/groups/{gid}/edit', data={'name': 'Hax'},
+                        content_type='multipart/form-data').status_code == 403
+    assert player.post(f'/campaigns/{cid}/groups/{gid}/delete').status_code == 403
+    assert q('SELECT name FROM groups WHERE id = ?', gid)[0]['name'] == 'Guild'   # unchanged
+
+    # A Player cannot even reach the New/Edit forms via GET.
+    assert player.get(f'/campaigns/{cid}/groups/new').status_code == 403
+    assert player.get(f'/campaigns/{cid}/groups/{gid}/edit').status_code == 403
+    # Neither control renders on the list page for a Player.
+    listing = player.get(f'/campaigns/{cid}/groups').data
+    assert b'New Group' not in listing and b'>Edit<' not in listing
+
+    # The DM can still do all of it.
+    assert dm.post(f'/campaigns/{cid}/groups/{gid}/edit', data={'name': 'Renamed'},
+                    content_type='multipart/form-data').status_code == 302
+    assert q('SELECT name FROM groups WHERE id = ?', gid)[0]['name'] == 'Renamed'
+
+
+def test_npc_stats_hidden_from_players(make_user):
+    dm, player = make_user(), make_user()
+    cid = dm.new_campaign()
+    _add_player(dm, player, cid)
+    npc = dm.new_character(cid, name='Goblin Scout', is_npc='on', str_score=17)
+    pc = dm.new_character(cid, name='Hero', str_score=12)
+
+    # Server-rendered dossier page: 403 for a Player on the NPC, 200 for the DM.
+    assert player.get(f'/campaigns/{cid}/characters/{npc}').status_code == 403
+    assert dm.get(f'/campaigns/{cid}/characters/{npc}').status_code == 200
+    assert player.get(f'/campaigns/{cid}/characters/{pc}').status_code == 200   # own party's PC still visible
+
+    # Roster page: the Player sees a hidden-stats badge instead of real numbers for the NPC.
+    player_list = player.get(f'/campaigns/{cid}/characters').data.decode()
+    assert 'Goblin Scout' in player_list                # the NPC still shows up in the roster
+    assert 'Stats Hidden' in player_list
+    assert '<span class="val">17</span>' not in player_list   # the redacted STR score never reaches the page
+    dm_list = dm.get(f'/campaigns/{cid}/characters').data.decode()
+    assert '<span class="val">17</span>' in dm_list and 'Stats Hidden' not in dm_list
+
 PERSIAN = 'کاراکتر آزمایشی'
 PERSIAN_NOTES = json.dumps(['یادداشت‌های مهم: <b>مرد</b> در تاریکی', 'خط دوم'])
 

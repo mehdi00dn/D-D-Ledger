@@ -1079,6 +1079,11 @@ def character_detail(char_id):
     if character is None:
         db.close()
         return redirect(url_for('characters_list'))
+    # A Member can view their own party's dossier but not an enemy's -- same rule
+    # the battle screen and map pin bubble already enforce for NPCs.
+    if character['is_npc'] and not g.is_dm:
+        db.close()
+        abort(403)
     sheets = db.execute('SELECT * FROM character_sheets WHERE character_id = ? ORDER BY sort_order', (char_id,)).fetchall()
     db.close()
     can_edit = g.is_dm or character['created_by'] == session['user_id']
@@ -1225,6 +1230,7 @@ def groups_list():
 
 @app.route('/campaigns/<int:campaign_id>/groups/new', methods=['GET', 'POST'])
 @campaign_access_required
+@dm_required
 def group_new():
     db = get_db()
     if request.method == 'POST':
@@ -1237,6 +1243,7 @@ def group_new():
 
 @app.route('/campaigns/<int:campaign_id>/groups/<int:group_id>/edit', methods=['GET', 'POST'])
 @campaign_access_required
+@dm_required
 def group_edit(group_id):
     db = get_db()
     if request.method == 'POST':
@@ -1293,6 +1300,7 @@ def _save_group(db, group_id):
 
 @app.route('/campaigns/<int:campaign_id>/groups/<int:group_id>/delete', methods=['POST'])
 @campaign_access_required
+@dm_required
 def group_delete(group_id):
     db = get_db()
     group = db.execute('SELECT avatar_path FROM groups WHERE id = ? AND campaign_id = ?', (group_id, g.campaign_id)).fetchone()

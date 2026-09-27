@@ -4,6 +4,7 @@
 {% block title %}Groups — Campaign Ledger{% endblock %}
 
 {% block content %}
+{% set is_dm = g.is_dm %}
 <div class="page-header">
   <div>
     <p class="page-eyebrow">Factions &amp; Parties</p>
@@ -19,7 +20,9 @@
       </label>
       <div class="upload-progress" hidden><div class="upload-progress-bar"></div></div>
     </form>
+    {% if is_dm %}
     <a href="{{ url_for('group_new') }}" class="btn btn-primary">{{ icon('plus') }} New Group</a>
+    {% endif %}
   </div>
 </div>
 
@@ -51,11 +54,15 @@
       <p class="group-count">{{ g.member_count }} member{{ '' if g.member_count == 1 else 's' }}</p>
       <p class="group-bio">{{ g.bio }}</p>
       <div class="group-actions">
+        {% if is_dm %}
         <a href="{{ url_for('group_edit', group_id=g.id) }}" class="btn btn-ghost btn-sm">{{ icon('pencil') }} Edit</a>
+        {% endif %}
         <a href="{{ url_for('group_export', group_id=g.id) }}" class="btn-icon" title="Export this group">{{ icon('upload') }}</a>
+        {% if is_dm %}
         <form method="POST" action="{{ url_for('group_delete', group_id=g.id) }}" data-confirm="Delete group '{{ g.name }}'? Members will become ungrouped.">{{ csrf_field() }}
           <button type="submit" class="btn btn-danger btn-sm">{{ icon('trash-2') }} Delete</button>
         </form>
+        {% endif %}
       </div>
     </div>
   </div>
@@ -66,7 +73,9 @@
   {{ icon('shield') }}
   <h3>No groups yet</h3>
   <p>Create a party or faction to organize your characters.</p>
+  {% if is_dm %}
   <a href="{{ url_for('group_new') }}" class="btn btn-primary">{{ icon('plus') }} New Group</a>
+  {% endif %}
 </div>
 {% endif %}
 {% endblock %}
