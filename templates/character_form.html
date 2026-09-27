@@ -99,6 +99,7 @@
               {% endif %}
             </div>
             <button type="button" class="avatar-remove-btn" id="avatar-remove-btn" title="Remove avatar" {{ '' if character and character.avatar_path else 'hidden' }}>{{ icon('x') }}</button>
+            <div class="upload-progress upload-progress-circle" hidden></div>
           </div>
           <div class="file-drop" style="flex:1;">
             {{ icon('upload') }}

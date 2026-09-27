@@ -57,13 +57,22 @@
     if (!el) return;
     el.hidden = false;
     el.classList.toggle('is-indeterminate', !!indeterminate);
-    el.querySelector('.upload-progress-bar').style.width = indeterminate ? '' : '0%';
+    if (el.classList.contains('upload-progress-circle')) {
+      if (!indeterminate) el.style.setProperty('--pct', 0);
+    } else {
+      el.querySelector('.upload-progress-bar').style.width = indeterminate ? '' : '0%';
+    }
   }
 
   function setProgress(form, fraction) {
     var el = progressEl(form);
     if (!el || el.classList.contains('is-indeterminate')) return;
-    el.querySelector('.upload-progress-bar').style.width = Math.max(0, Math.min(100, fraction * 100)) + '%';
+    var pct = Math.max(0, Math.min(100, fraction * 100));
+    if (el.classList.contains('upload-progress-circle')) {
+      el.style.setProperty('--pct', pct);
+    } else {
+      el.querySelector('.upload-progress-bar').style.width = pct + '%';
+    }
   }
 
   function hideProgress(form) {
@@ -175,7 +184,10 @@
     var inputs = inputsWithFiles(form);
     if (!inputs.length) return;
     var mode = window.LEDGER_UPLOAD_MODE;
-    if (mode === 'inline' || (mode !== 'direct' && totalSize(inputs) <= INLINE_LIMIT)) return;   // ordinary submit
+    if (mode === 'inline' || (mode !== 'direct' && totalSize(inputs) <= INLINE_LIMIT)) {
+      showProgress(form, true);   // small enough to submit natively -- still show *something* while the
+      return;                     // browser sends it and the server processes it, so it doesn't look frozen
+    }
 
     ev.preventDefault();
     ev.stopPropagation();                                      // other submit handlers run on the re-submit below

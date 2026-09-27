@@ -38,6 +38,7 @@
           {% if is_owner %}
           <button type="button" class="avatar-remove-btn" id="campaign-avatar-remove-btn" title="Remove avatar" {{ '' if campaign and campaign.avatar_path else 'hidden' }}>{{ icon('x') }}</button>
           {% endif %}
+          <div class="upload-progress upload-progress-circle" hidden></div>
         </div>
         {% if is_owner %}
         <div class="file-drop">
