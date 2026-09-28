@@ -6,7 +6,6 @@
 {% block content %}
 <div class="page-header">
   <div>
-    <p class="page-eyebrow">The Field</p>
     <h1 class="page-title">Battle</h1>
     <p class="page-sub">Track initiative, HP, and casualties for the current encounter.</p>
   </div>
@@ -24,10 +23,10 @@
   <span class="hint-text" style="margin:0;">Sort by</span>
   <div class="sort-toggle" id="sort-toggle">
     <button type="button" class="sort-option active" data-sort="initiative">Initiative</button>
-    <button type="button" class="sort-option" data-sort="group">Group</button>
+    <button type="button" class="sort-option" data-sort="group">Faction</button>
   </div>
   {% else %}
-  <span class="hint-text" style="margin:0;">Sorted by group</span>
+  <span class="hint-text" style="margin:0;">Sorted by faction</span>
   {% endif %}
 </div>
 
