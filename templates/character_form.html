@@ -17,7 +17,6 @@
 {% block content %}
 <div class="page-header">
   <div>
-    <p class="page-eyebrow">{{ 'Amend Dossier' if character else 'New Dossier' }}</p>
     <h1 class="page-title">{{ character.name if character else 'New Character' }}</h1>
   </div>
   <a href="{{ url_for('battle_view') if from_battle else url_for('characters_list') }}" class="btn btn-ghost">{{ icon('arrow-left') }} {{ 'Back to battle' if from_battle else 'Back to list' }}</a>
@@ -34,7 +33,7 @@
         <input type="text" id="name" name="name" value="{{ character.name if character else '' }}" placeholder="e.g. Sylas Thorne" required>
       </div>
       <div class="field">
-        <label for="group_id">Group</label>
+        <label for="group_id">Faction</label>
         <select id="group_id" name="group_id">
           <option value="">— None —</option>
           {% for g in groups %}
