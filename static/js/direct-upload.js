@@ -107,20 +107,33 @@
   // Bytes are out and the server is working: ease toward the ceiling.
   function startProcessing(form) {
     var el = progressEl(form);
-    if (!el || el._creep) return;
-    var from = Math.max(el._pct || 0, UPLOAD_SHARE), t0 = Date.now();
-    paint(el, from);
-    el._creep = setInterval(function () {
+    var target = el || form;
+    if (target._creep) return;
+    var from = Math.max(el ? (el._pct || 0) : (form._uploadPct || 0), UPLOAD_SHARE);
+    var t0 = Date.now();
+    if (el) paint(el, from);
+    else if (form._onProgress) form._onProgress(from);
+    target._creep = setInterval(function () {
       var t = (Date.now() - t0) / 1000;
-      paint(el, from + (CREEP_CEILING - from) * (1 - Math.exp(-t / CREEP_TAU_SECONDS)));
+      var pct = from + (CREEP_CEILING - from) * (1 - Math.exp(-t / CREEP_TAU_SECONDS));
+      if (el) paint(el, pct);
+      else {
+        form._uploadPct = pct;
+        if (form._onProgress) form._onProgress(pct);
+      }
     }, 80);
   }
 
   function finishProgress(form) {
     var el = progressEl(form);
-    if (!el) return;
-    stopCreep(el);
-    paint(el, 100);
+    if (el) {
+      stopCreep(el);
+      paint(el, 100);
+    } else {
+      stopCreep(form);
+      form._uploadPct = 100;
+      if (form._onProgress) form._onProgress(100);
+    }
   }
 
   function hideProgress(form) {
