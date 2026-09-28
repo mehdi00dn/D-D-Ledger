@@ -26,7 +26,7 @@
 </div>
 
 {% if request.args.get('imported') %}
-<div class="banner-notice banner-success">Import complete — new characters and groups have been added.</div>
+<div class="banner-notice banner-success">Import complete — new characters and factions have been added.</div>
 {% endif %}
 {% if request.args.get('import_error') %}
 <div class="banner-notice banner-error">That file couldn't be read as a Campaign Ledger export. Make sure you're uploading a .zip created by the Export button.</div>
@@ -73,7 +73,7 @@
   <h3>No factions yet</h3>
   <p>Create a faction or party to organize your characters.</p>
   {% if is_dm %}
-  <a href="{{ url_for('group_new') }}" class="btn btn-primary">{{ icon('plus') }} New Group</a>
+  <a href="{{ url_for('group_new') }}" class="btn btn-primary">{{ icon('plus') }} New Faction</a>
   {% endif %}
 </div>
 {% endif %}
