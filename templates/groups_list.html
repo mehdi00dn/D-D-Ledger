@@ -1,15 +1,14 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon %}
 {% set active_page = 'groups' %}
-{% block title %}Groups — Campaign Ledger{% endblock %}
+{% block title %}Factions — Campaign Ledger{% endblock %}
 
 {% block content %}
 {% set is_dm = g.is_dm %}
 <div class="page-header">
   <div>
-    <p class="page-eyebrow">Factions &amp; Parties</p>
-    <h1 class="page-title">Groups</h1>
-    <p class="page-sub">{{ groups|length }} {{ 'group' if groups|length == 1 else 'groups' }} defined. Used to sort battles and mark sides.</p>
+    <h1 class="page-title">Factions</h1>
+    <p class="page-sub">{{ groups|length }} {{ 'faction' if groups|length == 1 else 'factions' }} defined. Used to sort battles and mark sides.</p>
   </div>
   <div style="display:flex; gap:10px; flex-wrap:wrap;">
     <a href="{{ url_for('export_data') }}" class="btn btn-ghost">{{ icon('upload') }} Export</a>
@@ -21,7 +20,7 @@
       <div class="upload-progress" hidden><div class="upload-progress-bar"></div></div>
     </form>
     {% if is_dm %}
-    <a href="{{ url_for('group_new') }}" class="btn btn-primary">{{ icon('plus') }} New Group</a>
+    <a href="{{ url_for('group_new') }}" class="btn btn-primary">{{ icon('plus') }} New Faction</a>
     {% endif %}
   </div>
 </div>
@@ -35,7 +34,7 @@
 
 <div class="search-bar">
   {{ icon('search') }}
-  <input type="text" id="group-search" placeholder="Search groups…" autocomplete="off">
+  <input type="text" id="group-search" placeholder="Search factions…" autocomplete="off">
 </div>
 
 {% if groups %}
@@ -57,9 +56,9 @@
         {% if is_dm %}
         <a href="{{ url_for('group_edit', group_id=g.id) }}" class="btn btn-ghost btn-sm">{{ icon('pencil') }} Edit</a>
         {% endif %}
-        <a href="{{ url_for('group_export', group_id=g.id) }}" class="btn-icon" title="Export this group">{{ icon('upload') }}</a>
+        <a href="{{ url_for('group_export', group_id=g.id) }}" class="btn-icon" title="Export this faction">{{ icon('upload') }}</a>
         {% if is_dm %}
-        <form method="POST" action="{{ url_for('group_delete', group_id=g.id) }}" data-confirm="Delete group '{{ g.name }}'? Members will become ungrouped.">{{ csrf_field() }}
+        <form method="POST" action="{{ url_for('group_delete', group_id=g.id) }}" data-confirm="Delete faction '{{ g.name }}'? Members will become ungrouped.">{{ csrf_field() }}
           <button type="submit" class="btn btn-danger btn-sm">{{ icon('trash-2') }} Delete</button>
         </form>
         {% endif %}
@@ -71,8 +70,8 @@
 {% else %}
 <div class="empty-state">
   {{ icon('shield') }}
-  <h3>No groups yet</h3>
-  <p>Create a party or faction to organize your characters.</p>
+  <h3>No factions yet</h3>
+  <p>Create a faction or party to organize your characters.</p>
   {% if is_dm %}
   <a href="{{ url_for('group_new') }}" class="btn btn-primary">{{ icon('plus') }} New Group</a>
   {% endif %}
