@@ -115,7 +115,7 @@
 
       <div class="battle-name-block">
         <div class="battle-name">${escapeHtml(p.display_name)}</div>
-        <div class="battle-meta">${groupDot}${p.group_name ? escapeHtml(p.group_name) : 'Ungrouped'} &middot; ${p.is_npc ? 'NPC' : 'PC'}</div>
+        <div class="battle-meta">${groupDot}${p.group_name ? escapeHtml(p.group_name) : 'No Faction'} &middot; ${p.is_npc ? 'NPC' : 'PC'}</div>
       </div>
 
       ${statsArea}
@@ -151,7 +151,7 @@
     const groups = new Map();
     arr.forEach((p) => {
       const key = p.gid || 'none';
-      if (!groups.has(key)) groups.set(key, { name: p.group_name || 'Ungrouped', color: p.group_color, items: [] });
+      if (!groups.has(key)) groups.set(key, { name: p.group_name || 'No Faction', color: p.group_color, items: [] });
       groups.get(key).items.push(p);
     });
     groups.forEach((g) => g.items.sort((a, b) => b.initiative - a.initiative || a.sort_order - b.sort_order));
@@ -295,7 +295,7 @@
       return;
     }
     addModalGroups.innerHTML = `
-      <p class="hint-text" style="margin:0 0 8px;">Add a whole group at once</p>
+      <p class="hint-text" style="margin:0 0 8px;">Add a whole faction at once</p>
       <div class="add-modal-groups-row">
         ${groups.map((g) => `
           <button type="button" class="chip add-whole-group-chip" data-add-group="${g.id}" style="border-color:${g.color};">
@@ -326,7 +326,7 @@
         <div class="battle-avatar" style="width:36px;height:36px;border-color:${c.group_color || 'var(--brass)'};">${c.avatar_path ? `<img src="/uploads/${c.avatar_path}" alt="">` : ICONS.user}</div>
         <div class="battle-name-block">
           <div class="battle-name" style="font-size:14px;">${escapeHtml(c.name)}</div>
-          <div class="battle-meta">${c.group_name ? escapeHtml(c.group_name) : 'Ungrouped'}</div>
+          <div class="battle-meta">${c.group_name ? escapeHtml(c.group_name) : 'No Faction'}</div>
         </div>
         <button type="button" class="btn btn-primary btn-sm" data-add-char="${c.id}">Add</button>
       </div>
@@ -379,7 +379,7 @@
         <div class="avatar-frame" style="width:72px;height:72px;">${c.avatar_path ? `<img src="/uploads/${c.avatar_path}">` : ICONS.user}</div>
         <div>
           <div class="dossier-name">${escapeHtml(c.name)}</div>
-          <div class="dossier-meta">Lvl ${c.level} &middot; ${c.group_name || 'Ungrouped'}</div>
+          <div class="dossier-meta">Lvl ${c.level} &middot; ${c.group_name || 'No Faction'}</div>
         </div>
       </div>
       <div class="dossier-stats" style="margin-top:16px;">
