@@ -49,13 +49,8 @@
     <nav class="sidebar-nav">
       {% if g.campaign_id %}
       <a href="{{ url_for('campaigns_list') }}" class="campaign-switcher" title="Switch campaign">
-        {% if g.campaign.avatar_path %}
-          <img src="{{ url_for('uploaded_file', filename=g.campaign.avatar_path) }}" alt="" class="campaign-switcher-avatar">
-        {% else %}
-          {{ icon('scroll') }}
-        {% endif %}
+        {{ icon('scroll') }}
         <span class="campaign-switcher-name">{{ g.campaign.name }}</span>
-        {{ icon('chevron-down') }}
       </a>
       <a href="{{ url_for('characters_list') }}" class="nav-tab {{ 'active' if active_page == 'characters' else '' }}" title="Characters">
         {{ icon('scroll-text') }}<span>Characters</span>
