@@ -1,13 +1,12 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon %}
 {% set active_page = 'groups' %}
-{% block title %}{{ 'Edit' if group else 'New' }} Group — Campaign Ledger{% endblock %}
+{% block title %}{{ 'Edit' if group else 'New' }} Faction — Campaign Ledger{% endblock %}
 
 {% block content %}
 <div class="page-header">
   <div>
-    <p class="page-eyebrow">{{ 'Amend Faction' if group else 'New Faction' }}</p>
-    <h1 class="page-title">{{ group.name if group else 'New Group' }}</h1>
+    <h1 class="page-title">{{ group.name if group else 'New Faction' }}</h1>
   </div>
   <a href="{{ url_for('groups_list') }}" class="btn btn-ghost">{{ icon('arrow-left') }} Back to list</a>
 </div>
@@ -50,7 +49,7 @@
   <div class="form-section">
     <p class="form-section-title">Color</p>
     <div class="field">
-      <label>Used to mark this group's side in battle</label>
+      <label>Used to mark this faction's side in battle</label>
       <div class="color-swatch-row" data-color-group="#color_input">
         {% for c in ['#c9a24b', '#b3453f', '#5f9174', '#4d7ea8', '#8e6bb0', '#c76f3f', '#607080', '#a3a3a3'] %}
         <button type="button" class="color-swatch" data-color="{{ c }}" style="background:{{ c }};"></button>
@@ -72,7 +71,7 @@
 
   <div class="form-actions">
     <a href="{{ url_for('groups_list') }}" class="btn btn-ghost">Cancel</a>
-    <button type="submit" class="btn btn-primary">{{ icon('check') }} {{ 'Save Changes' if group else 'Add Group' }}</button>
+    <button type="submit" class="btn btn-primary">{{ icon('check') }} {{ 'Save Changes' if group else 'Add Faction' }}</button>
   </div>
 </form>
 {% endblock %}
