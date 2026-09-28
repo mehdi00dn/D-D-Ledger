@@ -1220,8 +1220,10 @@ body.page-leaving .content {
   border: none;
   border-radius: 50%;
   overflow: visible;
-  background: transparent;
-  box-shadow: none;
+  background: rgba(11, 13, 19, 0.78);
+  box-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.45),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.06);
   counter-reset: upct var(--pct-int, 0);
 }
 .upload-progress.upload-progress-circle[hidden] { display: none; }
@@ -1230,7 +1232,10 @@ body.page-leaving .content {
   position: absolute;
   inset: 1px;
   border-radius: 50%;
-  background: conic-gradient(var(--brass-bright) calc(var(--pct, 0) * 1%), rgba(236, 227, 201, 0.24) 0);
+  background: conic-gradient(
+    var(--brass-bright) calc(var(--pct, 0) * 1%),
+    rgba(236, 227, 201, 0.18) 0
+  );
   -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 3px));
           mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 3px));
 }
