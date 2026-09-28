@@ -6,7 +6,6 @@
 {% block content %}
 <div class="page-header">
   <div>
-    <p class="page-eyebrow">Dramatis Personae</p>
     <h1 class="page-title">Characters</h1>
     <p class="page-sub">{{ characters|length }} recorded {{ 'entry' if characters|length == 1 else 'entries' }} in the ledger.</p>
   </div>
@@ -24,7 +23,7 @@
 </div>
 
 {% if request.args.get('imported') %}
-<div class="banner-notice banner-success">Import complete — new characters and groups have been added.</div>
+<div class="banner-notice banner-success">Import complete — new characters and factions have been added.</div>
 {% endif %}
 {% if request.args.get('import_error') %}
 <div class="banner-notice banner-error">That file couldn't be read as a Campaign Ledger export. Make sure you're uploading a .zip created by the Export button.</div>
