@@ -11,6 +11,8 @@
   const img = document.getElementById('lightbox-img');
   const closeBtn = document.getElementById('lightbox-close-btn');
   const deleteBtn = document.getElementById('lightbox-delete-btn');
+  const prevBtn = document.getElementById('lightbox-prev-btn');
+  const nextBtn = document.getElementById('lightbox-next-btn');
   const stage = overlay.querySelector('.lightbox-stage');
 
   const ZOOM_SCALE = 2.4;
@@ -24,6 +26,8 @@
   let panStart = { x: 0, y: 0 };
   let movedDistance = 0;
   let currentDeleteUrl = null;
+  let currentImages = [];
+  let currentIndex = -1;
   let baseRect = null; // the image's unscaled rect, captured at zoom-in time
 
   function applyTransform() {
@@ -43,18 +47,47 @@
     applyTransform();
   }
 
-  function open(src, deleteUrl) {
+  function updateNavigation() {
+    const hasPrev = currentIndex > 0;
+    const hasNext = currentIndex >= 0 && currentIndex < currentImages.length - 1;
+    prevBtn.hidden = !hasPrev;
+    nextBtn.hidden = !hasNext;
+  }
+
+  function open(src, deleteUrl, images) {
+    currentImages = Array.isArray(images) ? images : [];
+    currentIndex = currentImages.findIndex(item => item.src === src);
+    if (currentIndex < 0 && src) {
+      currentImages = [{ src, deleteUrl: deleteUrl || null }];
+      currentIndex = 0;
+    }
     img.src = src;
     currentDeleteUrl = deleteUrl || null;
     deleteBtn.hidden = !currentDeleteUrl;
+    updateNavigation();
     reset();
     overlay.hidden = false;
+  }
+
+  function navigate(direction) {
+    const nextIndex = currentIndex + direction;
+    if (nextIndex < 0 || nextIndex >= currentImages.length) return;
+    const item = currentImages[nextIndex];
+    currentIndex = nextIndex;
+    img.src = item.src;
+    currentDeleteUrl = item.deleteUrl || null;
+    deleteBtn.hidden = !currentDeleteUrl;
+    updateNavigation();
+    reset();
   }
 
   function close() {
     overlay.hidden = true;
     img.src = '';
     currentDeleteUrl = null;
+    currentImages = [];
+    currentIndex = -1;
+    updateNavigation();
     reset();
   }
 
@@ -73,7 +106,14 @@
   document.addEventListener('click', (e) => {
     const trigger = e.target.closest('[data-lightbox-src]');
     if (!trigger) return;
-    open(trigger.dataset.lightboxSrc, trigger.dataset.deleteUrl);
+    const group = trigger.closest('.sheet-thumbs');
+    const images = group
+      ? Array.from(group.querySelectorAll('[data-lightbox-src]')).map(el => ({
+          src: el.dataset.lightboxSrc,
+          deleteUrl: el.dataset.deleteUrl || null
+        }))
+      : [{ src: trigger.dataset.lightboxSrc, deleteUrl: trigger.dataset.deleteUrl || null }];
+    open(trigger.dataset.lightboxSrc, trigger.dataset.deleteUrl, images);
   });
 
   // ---- Click to zoom, drag to pan (unified via mousedown/move/up) ----
@@ -167,6 +207,10 @@
     applyTransform();
   });
 
+
+  prevBtn.addEventListener('click', (e) => { e.stopPropagation(); navigate(-1); });
+  nextBtn.addEventListener('click', (e) => { e.stopPropagation(); navigate(1); });
+
   // ---- Delete ----
   deleteBtn.addEventListener('click', async () => {
     if (!currentDeleteUrl) return;
@@ -188,7 +232,10 @@
     if (e.target === overlay) close();
   });
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && !overlay.hidden) close();
+    if (overlay.hidden) return;
+    if (e.key === 'Escape') close();
+    else if (e.key === 'ArrowLeft') navigate(-1);
+    else if (e.key === 'ArrowRight') navigate(1);
   });
 
   window.openLightbox = open;
