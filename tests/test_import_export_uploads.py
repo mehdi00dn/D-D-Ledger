@@ -69,7 +69,7 @@ def test_export_import_roundtrip_between_campaigns(make_user):
     assert len(q('SELECT id FROM groups WHERE campaign_id = ?', dst)) == 1
 
 
-def test_single_character_and_group_export(camp):
+def test_single_character_and_faction_export(camp):
     u, cid = camp
     ch = _make_source(u, cid)
     r = u.get(f'/campaigns/{cid}/characters/{ch["id"]}/export'); assert r.status_code == 200 and r.data[:2] == b'PK'
