@@ -93,8 +93,14 @@
   // fraction = share of the bytes uploaded so far (0..1); never moves the fill backwards
   function setProgress(form, fraction) {
     var el = progressEl(form);
-    if (!el) return;
     var pct = Math.max(0, Math.min(1, fraction)) * UPLOAD_SHARE;
+    if (!el) {
+      if (pct > (form._uploadPct || 0)) {
+        form._uploadPct = pct;
+        if (form._onProgress) form._onProgress(pct);
+      }
+      return;
+    }
     if (pct > (el._pct || 0)) paint(el, pct);
   }
 
@@ -228,13 +234,16 @@
       (textNode || btn).textContent = btn.dataset.busyLabel;
       // Where the eyes are after clicking (the avatar ring can be scrolled out of view):
       // a fill behind the label plus the percent, driven by the same value as the ring.
-      if (el) el._onPaint = function (pct) {
+      var onProgress = function (pct) {
         btn.classList.add('is-progress');
         btn.style.setProperty('--btn-pct', pct);
         (textNode || btn).textContent = btn.dataset.busyLabel + ' ' + Math.round(pct) + '%';
       };
+      form._onProgress = onProgress;
+      if (el) el._onPaint = onProgress;
     } else {
       restoreButton(btn);
+      form._onProgress = null;
       if (el) el._onPaint = null;
     }
   }
