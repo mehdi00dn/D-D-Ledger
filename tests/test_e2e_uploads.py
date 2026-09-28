@@ -109,40 +109,127 @@ def test_zip_import_too_big_for_the_form_goes_direct_then_imports(pw, shared_ser
     ctx.close()
 
 
-def test_upload_progress_actually_fills_not_just_spins(pw, shared_server):
-    """Regression test that upload progress reports real intermediate values."""
-    base = shared_server.url; api = Api(base); cid = api.campaign('Progress')
-    ctx, page, seen, bad, errs = new_page(pw, api, base)
+def _slow(ctx, page, latency_ms=0, up_bytes_per_s=5_000_000):
+    """Throttle the page's network.  latency_ms delays every response (a slow server);
+    up_bytes_per_s slows the bytes leaving the browser (a slow connection)."""
     cdp = ctx.new_cdp_session(page)
     cdp.send('Network.enable')
-    cdp.send('Network.emulateNetworkConditions',
-             {'offline': False, 'latency': 20, 'downloadThroughput': 5_000_000,
-              'uploadThroughput': 250_000})
-    page.goto(f'{base}/campaigns/{cid}/characters/new'); page.wait_for_load_state('networkidle')
-    page.fill('input[name=name]', 'Progress Test')
-    page.set_input_files('input[name=sheets]', payload('p.png', photo_like_png(1600, 1600)))
-    page.click('main.content button[type=submit]')
+    cdp.send('Network.emulateNetworkConditions', {'offline': False, 'latency': latency_ms,
+             'downloadThroughput': 5_000_000, 'uploadThroughput': up_bytes_per_s})
 
-    samples, indeterminate_before_fill = [], False
-    end = time.time() + 8
+
+def _sample(page, selector, seconds, js):
+    """Poll `js` (evaluated on `selector`) until the page navigates away or time runs out."""
+    out, end = [], time.time() + seconds
     while time.time() < end:
         try:
-            pct = page.eval_on_selector('.upload-progress-circle',
-                                         "el => getComputedStyle(el).getPropertyValue('--pct')")
-            cls = page.eval_on_selector('.upload-progress-circle', "el => el.className")
+            out.append(page.eval_on_selector(selector, js))
         except Exception:
-            break
-        if pct and pct.strip():
-            samples.append(float(pct.strip()))
-            if 'is-indeterminate' in cls and len(samples) < 2:
-                indeterminate_before_fill = True
-        page.wait_for_timeout(50)
-    ctx.close()
+            break                                          # navigated; the old DOM is gone
+        page.wait_for_timeout(60)
+    return out
 
-    assert len(samples) >= 3, f'never observed enough progress samples during the upload: {samples}'
-    assert not indeterminate_before_fill, 'switched to the indeterminate spinner before real progress was shown'
-    assert any(0 < sample < 95 for sample in samples), f'no genuine mid-transfer fill percentage observed: {samples}'
-    assert samples[-1] > samples[0], f'progress never increased: {samples}'
+
+RING = "el => ({pct: parseFloat(getComputedStyle(el).getPropertyValue('--pct') || '0'), " \
+       "shown: !el.hidden && getComputedStyle(el).display !== 'none' && el.getBoundingClientRect().width > 20, " \
+       "cls: el.className})"
+
+
+def test_progress_fills_during_a_slow_upload(pw, shared_server):
+    """Slow CONNECTION: the ring fills with real bytes -- visible the whole time, an increasing
+    fill, never the indeterminate spinner the first version showed -- and the Save button
+    mirrors it as 'Saving… N%'."""
+    base = shared_server.url; api = Api(base); cid = api.campaign('SlowUp')
+    ctx, page, seen, bad, errs = new_page(pw, api, base)
+    _slow(ctx, page, latency_ms=20, up_bytes_per_s=250_000)
+    page.goto(f'{base}/campaigns/{cid}/characters/new'); page.wait_for_load_state('networkidle')
+    page.fill('input[name=name]', 'Slow Up')
+    page.set_input_files('input[name=sheets]', payload('p.png', photo_like_png(1600, 1600)))
+    page.click('main.content button[type=submit]')
+    ring = _sample(page, '.upload-progress-circle', 8, RING)
+    ctx.close()
+    assert len(ring) >= 5, f'never saw the ring during the upload: {ring}'
+    first = next((i for i, r in enumerate(ring) if r['shown']), None)      # a big image is shrunk first ('Preparing…')
+    assert first is not None, 'the ring never appeared'
+    ring = ring[first:]
+    pcts = [r['pct'] for r in ring]
+    assert all(r['shown'] for r in ring), 'the ring disappeared again mid-upload'
+    assert not any('is-indeterminate' in r['cls'] for r in ring), 'fell back to the indeterminate spinner'
+    assert pcts == sorted(pcts), f'the fill went backwards: {pcts}'
+    assert any(5 < p < 80 for p in pcts), f'no genuine mid-upload fill observed: {pcts}'
+
+
+def test_progress_keeps_filling_while_a_slow_server_works(pw, shared_server):
+    """Slow SERVER, tiny file -- what a cropped avatar on Vercel actually looks like: the bytes
+    are out instantly and all that's left is waiting.  That wait must still read as a fill
+    heading toward done (ring number, ring, and Save button), not as a spinner or a frozen page."""
+    base = shared_server.url; api = Api(base); cid = api.campaign('SlowServer')
+    ctx, page, seen, bad, errs = new_page(pw, api, base)
+    page.goto(f'{base}/campaigns/{cid}/characters/new'); page.wait_for_load_state('networkidle')
+    page.fill('input[name=name]', 'Slow Server')
+    page.set_input_files('input[data-avatar-input]', payload('a.png', photo_like_png(600, 600)))
+    page.wait_for_selector('#crop-apply-btn', state='visible'); page.click('#crop-apply-btn'); page.wait_for_timeout(400)
+    _slow(ctx, page, latency_ms=2500)
+    page.click('main.content button[type=submit]')
+    both = _sample(page, 'main.content',  4, """main => {
+        const ring = main.querySelector('.upload-progress-circle'), btn = main.querySelector('button[type=submit]');
+        return {pct: parseFloat(getComputedStyle(ring).getPropertyValue('--pct') || '0'),
+                shown: !ring.hidden && ring.getBoundingClientRect().width > 20, cls: ring.className,
+                num: getComputedStyle(ring).getPropertyValue('--pct-int').trim(), btn: btn.textContent.trim(), disabled: btn.disabled}
+    }""")
+    ctx.close()
+    pcts = [r['pct'] for r in both]
+    assert len(both) >= 8, f'too few samples: {len(both)}'
+    assert all(r['shown'] for r in both) and not any('is-indeterminate' in r['cls'] for r in both)
+    assert pcts == sorted(pcts), f'the fill went backwards: {pcts}'
+    assert pcts[-1] > pcts[0] and 80 <= pcts[-1] < 100, f'should creep toward (never reach) 100 while waiting: {pcts}'
+    assert all(r['disabled'] for r in both), 'the Save button must stay disabled while the request is in flight'
+    assert re.fullmatch(r'Saving\W+\d+%', both[-1]['btn']), both[-1]['btn']
+    assert abs(int(both[-1]['num']) - round(pcts[-1])) <= 1, both[-1]      # the number shown in the ring's middle
+
+
+def test_import_button_shows_progress(pw, shared_server):
+    """The import bar was a 4px sliver nobody noticed; the Import button itself now fills and
+    reads 'Importing… N%' -- without destroying the hidden file input inside it."""
+    import json, zipfile
+    base = shared_server.url; api = Api(base); cid = api.campaign('ImportShows')
+    b = io.BytesIO()
+    with zipfile.ZipFile(b, 'w', zipfile.ZIP_STORED) as z:
+        z.writestr('manifest.json', json.dumps({'groups': [], 'characters': [{'name': 'Tiny', 'avatar_file': 'avatars/a.png'}]}))
+        z.writestr('images/avatars/a.png', photo_like_png(120, 120))
+    ctx, page, seen, bad, errs = new_page(pw, api, base)
+    page.goto(f'{base}/campaigns/{cid}/characters'); page.wait_for_load_state('networkidle')
+    _slow(ctx, page, latency_ms=2500)
+    page.set_input_files('input[name=import_file]', payload('export.zip', b.getvalue(), 'application/zip'))
+    seen_states = _sample(page, '.import-label', 4, """el => ({text: el.textContent.trim().replace(/\\s+/g, ' '),
+        cls: el.className, input: !!el.querySelector('input[type=file]'),
+        pct: parseFloat(el.style.getPropertyValue('--btn-pct') || '0')})""")
+    ctx.close()
+    assert len(seen_states) >= 8
+    assert all(s['input'] for s in seen_states), 'the file input inside the Import label was destroyed'
+    assert all('is-progress' in s['cls'] for s in seen_states[1:])
+    assert re.search(r'Importing\W+\d+%', seen_states[-1]['text']), seen_states[-1]['text']
+    pcts = [s['pct'] for s in seen_states]
+    assert pcts == sorted(pcts) and pcts[-1] > 80, pcts
+
+
+def test_double_click_during_a_slow_save_creates_only_one_character(pw, shared_server):
+    """Now that the save is an XHR that can take seconds, a second click / Enter must not
+    start a second request (the old native re-submit navigated away too fast to matter)."""
+    base = shared_server.url; api = Api(base); cid = api.campaign('Dupes')
+    ctx, page, seen, bad, errs = new_page(pw, api, base)
+    page.goto(f'{base}/campaigns/{cid}/characters/new'); page.wait_for_load_state('networkidle')
+    page.fill('input[name=name]', 'Only Once')
+    page.set_input_files('input[name=sheets]', payload('s.png', photo_like_png(200, 200)))
+    _slow(ctx, page, latency_ms=1500)
+    page.click('main.content button[type=submit]')
+    page.wait_for_timeout(300)
+    page.evaluate("document.querySelector('main.content form').requestSubmit()")     # what Enter would do
+    page.evaluate("document.querySelector('main.content form').requestSubmit()")
+    with page.expect_navigation():
+        pass
+    page.wait_for_load_state('networkidle'); ctx.close()
+    assert q('SELECT count(*) AS n FROM characters WHERE campaign_id = ? AND name = ?', cid, 'Only Once')[0]['n'] == 1
 
 
 def test_small_uploads_still_use_the_ordinary_form_post(pw, shared_server):

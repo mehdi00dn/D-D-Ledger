@@ -48,36 +48,74 @@
     return new Promise(function (resolve) { canvas.toBlob(resolve, type, quality); });
   }
 
-  // --- Progress bar (currently only the import forms carry the markup for
-  // this; any other form just silently skips these since progressEl is null) ---
+  // --- Progress indicator: a ring over image previews, a bar on the import forms. ---
+  // One continuous 0..100 fill, never a spinner:
+  //   * real bytes leaving the browser fill the first UPLOAD_SHARE percent;
+  //   * once they're out, the server still has to re-encode / store / redirect, and it can't
+  //     report progress -- so the fill eases toward CREEP_CEILING instead of sitting still or
+  //     spinning, and only reaches 100 when the server actually answers.
+  // A form with no .upload-progress element just skips all of this (progressEl is null).
+  var UPLOAD_SHARE = 85;
+  var CREEP_CEILING = 98;
+  var CREEP_TAU_SECONDS = 2.5;
+
   function progressEl(form) { return form.querySelector('.upload-progress'); }
 
-  function showProgress(form, indeterminate) {
-    var el = progressEl(form);
-    if (!el) return;
-    el.hidden = false;
-    el.classList.toggle('is-indeterminate', !!indeterminate);
+  function paint(el, pct) {
+    el._pct = pct;
     if (el.classList.contains('upload-progress-circle')) {
-      if (!indeterminate) el.style.setProperty('--pct', 0);
-    } else {
-      el.querySelector('.upload-progress-bar').style.width = indeterminate ? '' : '0%';
-    }
-  }
-
-  function setProgress(form, fraction) {
-    var el = progressEl(form);
-    if (!el || el.classList.contains('is-indeterminate')) return;
-    var pct = Math.max(0, Math.min(100, fraction * 100));
-    if (el.classList.contains('upload-progress-circle')) {
-      el.style.setProperty('--pct', pct);
+      el.style.setProperty('--pct', pct);                       // the ring
+      el.style.setProperty('--pct-int', Math.round(pct));       // the number in its middle
     } else {
       el.querySelector('.upload-progress-bar').style.width = pct + '%';
     }
+    if (el._onPaint) el._onPaint(pct);                          // mirror it on the Save button
+  }
+
+  function stopCreep(el) {
+    if (el._creep) { clearInterval(el._creep); el._creep = null; }
+  }
+
+  function showProgress(form) {
+    var el = progressEl(form);
+    if (!el) return;
+    stopCreep(el);
+    el.classList.remove('is-indeterminate');
+    paint(el, 0);
+    el.hidden = false;
+  }
+
+  // fraction = share of the bytes uploaded so far (0..1); never moves the fill backwards
+  function setProgress(form, fraction) {
+    var el = progressEl(form);
+    if (!el) return;
+    var pct = Math.max(0, Math.min(1, fraction)) * UPLOAD_SHARE;
+    if (pct > (el._pct || 0)) paint(el, pct);
+  }
+
+  // Bytes are out and the server is working: ease toward the ceiling.
+  function startProcessing(form) {
+    var el = progressEl(form);
+    if (!el || el._creep) return;
+    var from = Math.max(el._pct || 0, UPLOAD_SHARE), t0 = Date.now();
+    paint(el, from);
+    el._creep = setInterval(function () {
+      var t = (Date.now() - t0) / 1000;
+      paint(el, from + (CREEP_CEILING - from) * (1 - Math.exp(-t / CREEP_TAU_SECONDS)));
+    }, 80);
+  }
+
+  function finishProgress(form) {
+    var el = progressEl(form);
+    if (!el) return;
+    stopCreep(el);
+    paint(el, 100);
   }
 
   function hideProgress(form) {
     var el = progressEl(form);
     if (!el) return;
+    stopCreep(el);
     el.hidden = true;
     el.classList.remove('is-indeterminate');
   }
@@ -156,44 +194,94 @@
     return info.key;
   }
 
+  // The button that carries the progress: the Save/Create button that was clicked, or -- on the
+  // import forms, where the file picker auto-submits -- the Import label itself.
+  function progressButton(form, submitter) { return submitter || form.querySelector('.import-label'); }
+
+  function restoreButton(btn) {
+    var textNode = btn.querySelector('.btn-label');            // the Import label: swap only its text, never its file input
+    if (btn.dataset.origHtml !== undefined) {
+      if (textNode) textNode.textContent = btn.dataset.origHtml; else btn.innerHTML = btn.dataset.origHtml;
+    }
+    if ('disabled' in btn) btn.disabled = false; else btn.style.pointerEvents = '';
+    btn.classList.remove('is-progress');
+    btn.style.removeProperty('--btn-pct');
+    delete btn.dataset.origHtml;
+    delete btn.dataset.busyLabel;
+  }
+
   function setBusy(form, submitter, busy, label) {
     form.classList.toggle('is-uploading', busy);
     document.body.style.cursor = busy ? 'progress' : '';
-    if (submitter) {
-      if (busy) {
-        submitter.dataset.origHtml = submitter.innerHTML;
-        submitter.disabled = true;
-        submitter.textContent = label || 'Uploading\u2026';
-      } else if (submitter.dataset.origHtml !== undefined) {
-        submitter.innerHTML = submitter.dataset.origHtml;
-        submitter.disabled = false;
-        delete submitter.dataset.origHtml;
-      }
+    var el = progressEl(form), btn = progressButton(form, submitter);
+    if (!btn) return;
+    var textNode = btn.querySelector('.btn-label');
+    if (busy) {
+      if (btn.dataset.origHtml === undefined) btn.dataset.origHtml = textNode ? textNode.textContent : btn.innerHTML;
+      btn.dataset.busyLabel = label || 'Uploading\u2026';
+      if ('disabled' in btn) btn.disabled = true; else btn.style.pointerEvents = 'none';
+      (textNode || btn).textContent = btn.dataset.busyLabel;
+      // Where the eyes are after clicking (the avatar ring can be scrolled out of view):
+      // a fill behind the label plus the percent, driven by the same value as the ring.
+      if (el) el._onPaint = function (pct) {
+        btn.classList.add('is-progress');
+        btn.style.setProperty('--btn-pct', pct);
+        (textNode || btn).textContent = btn.dataset.busyLabel + ' ' + Math.round(pct) + '%';
+      };
+    } else {
+      restoreButton(btn);
+      if (el) el._onPaint = null;
     }
   }
 
-  function resubmit(form, submitter) {
-    form.dataset.uploadsReady = '1';
-    if (form.requestSubmit) { submitter && submitter.form === form ? form.requestSubmit(submitter) : form.requestSubmit(); }
-    else { form.submit(); }
+  // Submits the form ourselves via XHR instead of letting the browser do it natively.
+  // This is the only way to get real upload-progress events -- a native form submission
+  // exposes none.  These routes always redirect (success or failure -- see app.py), so
+  // following the redirect chain and navigating to wherever it ends is equivalent to what
+  // a native submission would have done either way.
+  // continueProgress: the direct-to-storage path has already filled the indicator with the
+  // real file bytes; this final POST only carries the object keys, so don't reset it.
+  function submitFormWithProgress(form, continueProgress) {
+    return new Promise(function (resolve, reject) {
+      var xhr = new XMLHttpRequest();
+      xhr.open(form.method || 'POST', form.action);
+      if (!continueProgress) showProgress(form);
+      xhr.upload.onprogress = function (e) { if (e.lengthComputable && !continueProgress) setProgress(form, e.loaded / e.total); };
+      xhr.upload.onload = function () { if (!continueProgress) setProgress(form, 1); startProcessing(form); };
+      xhr.onload = function () {
+        if (xhr.status >= 400) { reject(new Error('The upload failed. Please try again.')); return; }
+        finishProgress(form);
+        setTimeout(function () { window.location.href = xhr.responseURL || form.action; }, 150);   // let the full ring be seen
+        resolve();
+      };
+      xhr.onerror = function () { reject(new Error('The upload failed. Please try again.')); };
+      xhr.send(new FormData(form));
+    });
   }
 
+  // Bubble phase on purpose: the form's own submit listeners (e.g. app.js serializing the
+  // note editors into their hidden field) have to run BEFORE we read the form's data.
+  // Running in the capture phase and stopping propagation would skip them and silently
+  // drop those edits.  If one of them already cancelled the submit, respect that.
   document.addEventListener('submit', async function (ev) {
     var form = ev.target;
-    if (!(form instanceof HTMLFormElement) || form.dataset.uploadsReady) return;
+    if (ev.defaultPrevented || !(form instanceof HTMLFormElement) || form.dataset.uploadsReady) return;
     var inputs = inputsWithFiles(form);
     if (!inputs.length) return;
-    var mode = window.LEDGER_UPLOAD_MODE;
-    if (mode === 'inline' || (mode !== 'direct' && totalSize(inputs) <= INLINE_LIMIT)) {
-      showProgress(form, true);   // small enough to submit natively -- still show *something* while the
-      return;                     // browser sends it and the server processes it, so it doesn't look frozen
-    }
-
     ev.preventDefault();
-    ev.stopPropagation();                                      // other submit handlers run on the re-submit below
+    if (form.dataset.uploading) return;                        // already on its way: a second click must not create a duplicate
+    form.dataset.uploading = '1';
     var submitter = ev.submitter || null;
-    setBusy(form, submitter, true, 'Preparing\u2026');
+    var mode = window.LEDGER_UPLOAD_MODE;
+    var saving = Array.prototype.some.call(inputs, function (i) { return i.name === 'import_file'; }) ? 'Importing\u2026' : 'Saving\u2026';
     try {
+      if (mode === 'inline' || (mode !== 'direct' && totalSize(inputs) <= INLINE_LIMIT)) {
+        setBusy(form, submitter, true, saving);
+        await submitFormWithProgress(form, false);              // small enough to post as-is
+        return;
+      }
+
+      setBusy(form, submitter, true, 'Preparing\u2026');
       if (mode !== 'direct') {                                 // 1. try to stay on our own domain
         for (var a = 0; a < inputs.length; a++) {
           if (inputs[a].name === 'import_file') continue;
@@ -203,15 +291,14 @@
           setFiles(inputs[a], list);
         }
         if (totalSize(inputs) <= INLINE_LIMIT) {
-          setBusy(form, submitter, false);
-          showProgress(form, true);                            // no separate upload phase to measure -- the
-          resubmit(form, submitter);                            // browser's own nav spinner covers what's left
+          setBusy(form, submitter, true, saving);
+          await submitFormWithProgress(form, false);             // shrunk down enough to post as-is
           return;
         }
       }
       setBusy(form, submitter, true, 'Uploading\u2026');       // 2. straight to storage
       var grandTotal = totalSize(inputs), sent = 0;
-      showProgress(form, false);
+      showProgress(form);
       for (var b = 0; b < inputs.length; b++) {
         var input = inputs[b], files = Array.prototype.slice.call(input.files), keys = [];
         for (var c = 0; c < files.length; c++) {
@@ -229,22 +316,25 @@
         });
         input.value = '';                                      // never send the bytes twice
       }
-      setBusy(form, submitter, false);
-      showProgress(form, true);                                // upload's done; server still has to process it
-      resubmit(form, submitter);
+      setBusy(form, submitter, true, saving);
+      await submitFormWithProgress(form, true);               // final, small POST: just the __key refs
     } catch (err) {
+      delete form.dataset.uploading;
       setBusy(form, submitter, false);
       hideProgress(form);
       Array.prototype.forEach.call(form.querySelectorAll('input[type="hidden"][name$="__key"]'), function (n) { n.remove(); });
       window.alert((err && err.message) || 'The upload failed. Please try again.');
     }
-  }, true);
+  }, false);
 
   // Coming back via the browser's back button: forget half-finished upload state.
   window.addEventListener('pageshow', function (e) {
     if (!e.persisted) return;
     Array.prototype.forEach.call(document.forms, function (f) {
       delete f.dataset.uploadsReady;
+      delete f.dataset.uploading;
+      f.classList.remove('is-uploading');
+      Array.prototype.forEach.call(f.querySelectorAll('[data-orig-html]'), restoreButton);
       Array.prototype.forEach.call(f.querySelectorAll('input[type="hidden"][name$="__key"]'), function (n) { n.remove(); });
       hideProgress(f);
     });

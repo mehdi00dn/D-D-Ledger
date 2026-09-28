@@ -228,8 +228,12 @@ class Server:
     def __init__(self, env_extra):
         self.port = _free_port()
         env = dict(os.environ, **env_extra, PYTHONPATH=APP_DIR, LEDGER_PORT=str(self.port))
+        # Output goes to a file, NOT a pipe: nothing ever reads a pipe, and once ~64 KB of request-log
+        # lines pile up in it the server blocks on its next write and every later request hangs.
+        self.log_path = os.path.join(_TMP, f'server-{self.port}.log')
+        self._log = open(self.log_path, 'wb')
         self.proc = subprocess.Popen([sys.executable, os.path.join(APP_DIR, 'tests', 'serve.py')],
-                                     cwd=APP_DIR, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+                                     cwd=APP_DIR, env=env, stdout=self._log, stderr=subprocess.STDOUT)
         self.url = f'http://127.0.0.1:{self.port}'
         import requests
         for _ in range(80):
@@ -241,6 +245,7 @@ class Server:
         self.proc.terminate()
         try: self.proc.wait(5)
         except Exception: self.proc.kill()
+        self._log.close()
 
 
 @pytest.fixture(scope='session')

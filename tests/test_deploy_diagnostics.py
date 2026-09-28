@@ -113,3 +113,20 @@ def test_healthz_reports_storage_problems_without_leaking_the_key(appmod):
             assert 'LEAKME123' not in body and FAKE.key not in body, label
     finally:
         storage_mod._instance = real
+
+
+def test_static_urls_carry_a_content_version(appmod, make_user):
+    """?v=<content hash> on every static asset, so a deploy can't be masked by a stale cached copy."""
+    import re
+    login = appmod.app.test_client().get('/login').get_data(as_text=True)
+    assert re.search(r'/static/css/style\.css\?v=[0-9a-f]{10}"', login)
+    page = make_user().get('/campaigns').data.decode()                     # a logged-in page loads the scripts
+    m = re.search(r'/static/js/direct-upload\.js\?v=([0-9a-f]{10})"', page)
+    assert m, 'static script URLs should carry a ?v= content hash'
+    assert re.search(r'/static/js/csrf\.js\?v=[0-9a-f]{10}"', page)
+    assert appmod.app.test_client().get(f'/static/js/direct-upload.js?v={m.group(1)}').status_code == 200   # still served normally
+    # the hash follows the CONTENT, and is stable across recomputation
+    a = appmod._static_version('js/direct-upload.js')
+    appmod._static_hashes.clear()
+    assert appmod._static_version('js/direct-upload.js') == a == m.group(1)
+    assert appmod._static_version('../app.py') is None                     # never escapes the static folder

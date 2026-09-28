@@ -4,6 +4,7 @@ import uuid
 import io
 import json
 import zipfile
+import hashlib
 import hmac
 import secrets
 from urllib.parse import urlparse
@@ -13,7 +14,7 @@ from flask import (
     Flask, render_template, request, redirect, url_for,
     jsonify, flash, send_file, g, abort, session
 )
-from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.security import generate_password_hash, check_password_hash, safe_join
 import nh3
 import psycopg.errors as pgerr
 from markupsafe import Markup
@@ -973,6 +974,36 @@ def _csp():
         "form-action 'self'",
         "frame-ancestors 'none'",
     ])
+
+
+_static_hashes = {}
+
+
+def _static_version(filename):
+    """Short content hash of a static file.  Appended as ?v= so a deploy that changes a script
+    or stylesheet can never be masked by an older copy cached in the browser or a CDN --
+    content-based (not mtime) because a serverless deploy may stamp every file identically."""
+    path = safe_join(app.static_folder, filename)
+    try:
+        st = os.stat(path)
+    except (OSError, TypeError):
+        return None
+    key = (st.st_mtime_ns, st.st_size)
+    hit = _static_hashes.get(filename)
+    if hit and hit[0] == key:
+        return hit[1]
+    with open(path, 'rb') as f:
+        digest = hashlib.md5(f.read(), usedforsecurity=False).hexdigest()[:10]
+    _static_hashes[filename] = (key, digest)
+    return digest
+
+
+@app.url_defaults
+def _version_static_urls(endpoint, values):
+    if endpoint == 'static' and 'v' not in values and values.get('filename'):
+        v = _static_version(values['filename'])
+        if v:
+            values['v'] = v
 
 
 @app.after_request

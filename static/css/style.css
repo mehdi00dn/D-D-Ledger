@@ -1201,11 +1201,11 @@ body.page-leaving .content {
   100% { transform: translateX(250%); }
 }
 
-/* Circular variant -- used over avatar/map-image previews, where a thin bar
-   below the frame doesn't read as "this image" the way a ring on top of it
-   does. Same .upload-progress element/JS, just a different look: a compound
-   selector (.upload-progress.upload-progress-circle) so it wins over the
-   linear rules above regardless of source order. */
+/* Circular variant -- used over avatar/map-image previews.  A dark backing disc keeps it
+   legible on any picture, the ring fills clockwise, and the live percentage sits in the
+   middle.  JS drives it through two custom properties: --pct (0-100, fractional, for the
+   ring) and --pct-int (whole number, for the label).  A compound selector so it wins over
+   the linear-bar rules above regardless of source order. */
 .upload-progress.upload-progress-circle {
   position: absolute;
   left: 50%;
@@ -1213,19 +1213,47 @@ body.page-leaving .content {
   right: auto;
   bottom: auto;
   transform: translate(-50%, -50%);
-  width: 34px;
-  height: 34px;
+  width: 64px;
+  height: 64px;
+  display: grid;
+  place-items: center;
   border: none;
   border-radius: 50%;
-  background: conic-gradient(var(--brass) calc(var(--pct, 0) * 1%), rgba(11, 13, 19, 0.65) 0);
-  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 4px));
-          mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 4px));
+  overflow: visible;
+  background: rgba(11, 13, 19, 0.82);
+  box-shadow: 0 0 0 1px var(--hairline-strong), 0 8px 22px rgba(0, 0, 0, 0.55);
+  counter-reset: upct var(--pct-int, 0);
 }
-.upload-progress.upload-progress-circle.is-indeterminate {
-  background: conic-gradient(var(--brass) 0 25%, rgba(11, 13, 19, 0.65) 0);
-  animation: upload-ring-spin 0.9s linear infinite;
+.upload-progress.upload-progress-circle[hidden] { display: none; }   /* display:grid above would otherwise beat [hidden] */
+.upload-progress.upload-progress-circle::before {                     /* the ring */
+  content: '';
+  position: absolute;
+  inset: 5px;
+  border-radius: 50%;
+  background: conic-gradient(var(--brass-bright) calc(var(--pct, 0) * 1%), rgba(236, 227, 201, 0.16) 0);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 6px), #000 calc(100% - 6px));
+          mask: radial-gradient(farthest-side, transparent calc(100% - 6px), #000 calc(100% - 6px));
 }
-@keyframes upload-ring-spin { to { transform: rotate(360deg); } }
+.upload-progress.upload-progress-circle::after {                      /* the percentage */
+  content: counter(upct) '%';
+  position: relative;
+  font: 600 13px/1 var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--parchment);
+}
+
+/* The Save / Create button doubles as a progress bar while an upload is in flight -- that's
+   where the eyes are after clicking, and the avatar ring can be scrolled out of view. */
+.btn.is-progress { position: relative; overflow: hidden; font-variant-numeric: tabular-nums; }
+.btn.is-progress::after {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: calc(var(--btn-pct, 0) * 1%);
+  background: rgba(255, 255, 255, 0.3);
+  pointer-events: none;
+  transition: width 0.12s linear;
+}
 
 .banner-notice {
   padding: 12px 16px;
