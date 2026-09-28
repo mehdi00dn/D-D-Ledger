@@ -59,7 +59,12 @@
   var CREEP_CEILING = 98;
   var CREEP_TAU_SECONDS = 2.5;
 
-  function progressEl(form) { return form.querySelector('.upload-progress'); }
+  function progressEl(form) {
+    var avatarProgress = form.querySelector('.upload-progress-circle');
+    var avatarInput = form.querySelector('input[type="file"][name="avatar"]');
+    if (avatarProgress && avatarInput && avatarInput.files && avatarInput.files.length) return avatarProgress;
+    return form.querySelector('.upload-progress:not(.upload-progress-circle)');
+  }
 
   function paint(el, pct) {
     el._pct = pct;
