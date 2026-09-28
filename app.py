@@ -1164,7 +1164,7 @@ def _save_character(db, char_id):
     cha_score = int(form.get('cha_score') or 10)
     armor_class = int(form.get('armor_class') or 10)
     notes = sanitize_notes_payload(form.get('notes', ''))
-    group_id = _campaign_group_id(db, form.get('group_id'))
+    group_id = _campaign_faction_id(db, form.get('group_id'))
 
     avatar_path = save_upload_field('avatar', 'avatars')
     remove_avatar = form.get('remove_avatar') == '1'
@@ -1265,7 +1265,7 @@ def factions_list():
 def faction_new():
     db = get_db()
     if request.method == 'POST':
-        _save_group(db, None)
+        _save_faction(db, None)
         db.close()
         return redirect(url_for('factions_list'))
     db.close()
@@ -1278,7 +1278,7 @@ def faction_new():
 def faction_edit(group_id):
     db = get_db()
     if request.method == 'POST':
-        _save_group(db, group_id)
+        _save_faction(db, group_id)
         db.close()
         return redirect(url_for('factions_list'))
     group = db.execute('SELECT * FROM groups WHERE id = ? AND campaign_id = ?', (group_id, g.campaign_id)).fetchone()
@@ -1291,7 +1291,7 @@ def faction_edit(group_id):
 _COLOR_RE = re.compile(r'^#[0-9a-fA-F]{6}$')
 
 
-def _campaign_group_id(db, raw):
+def _campaign_faction_id(db, raw):
     """A character may only join a group of ITS OWN campaign; anything else becomes 'no group'."""
     try:
         gid = int(raw)
@@ -1301,9 +1301,9 @@ def _campaign_group_id(db, raw):
     return gid if ok else None
 
 
-def _save_group(db, group_id):
+def _save_faction(db, group_id):
     form = request.form
-    name = form.get('name', '').strip() or 'Unnamed Group'
+    name = form.get('name', '').strip() or 'Unnamed Faction'
     bio = form.get('bio', '')
     color = form.get('color') or '#c9a24b'
     if not _COLOR_RE.match(color):
