@@ -1256,7 +1256,7 @@ def factions_list():
         FROM groups g WHERE g.campaign_id = ? ORDER BY lower(g.name) ASC
     ''', (g.campaign_id,)).fetchall()
     db.close()
-    return render_template('factions_list.html', groups=groups)
+    return render_template('groups_list.html', groups=groups)
 
 
 @app.route('/campaigns/<int:campaign_id>/factions/new', methods=['GET', 'POST'])
@@ -1269,7 +1269,7 @@ def faction_new():
         db.close()
         return redirect(url_for('factions_list'))
     db.close()
-    return render_template('faction_form.html', group=None)
+    return render_template('group_form.html', group=None)
 
 
 @app.route('/campaigns/<int:campaign_id>/factions/<int:group_id>/edit', methods=['GET', 'POST'])
@@ -1285,7 +1285,7 @@ def faction_edit(group_id):
     db.close()
     if group is None:
         return redirect(url_for('factions_list'))
-    return render_template('faction_form.html', group=group)
+    return render_template('group_form.html', group=group)
 
 
 _COLOR_RE = re.compile(r'^#[0-9a-fA-F]{6}$')
