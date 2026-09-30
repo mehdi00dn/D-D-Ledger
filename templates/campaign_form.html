@@ -1,6 +1,28 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon %}
-{% block title %}{{ 'Edit' if campaign else 'New' }} Campaign — Campaign Ledger{% endblock %}
+{% block title %}{{ 'Edit' if campaign else 'New' }} Campaign — Campaign Ledger
+<style>
+.member-search{position:relative;flex:1;min-width:140px}.member-search input[type="text"]{width:100%;min-width:0}.member-search-results{position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:20;margin:0;padding:4px;list-style:none;background:var(--bg-panel-raised);border:1px solid var(--hairline-strong);border-radius:var(--radius-s);box-shadow:var(--shadow-deep);max-height:220px;overflow-y:auto}.member-search-results[hidden]{display:none}.member-search-results li{padding:7px 10px;border-radius:var(--radius-s);font-size:13.5px;cursor:pointer;color:var(--parchment)}.member-search-results li:hover,.member-search-results li.is-active{background:rgba(201,162,75,.16)}.member-search-results li.is-empty{cursor:default;color:var(--parchment-dim);font-size:12.5px}.member-add-feedback{margin-top:10px;padding:8px 12px;border-radius:var(--radius-s);font-size:13px;border:1px solid transparent}.member-add-feedback[hidden]{display:none}.member-add-feedback.is-success{background:rgba(30,154,82,.12);border-color:rgba(30,154,82,.35);color:var(--moss-bright)}.member-add-feedback.is-error{background:rgba(226,80,72,.12);border-color:rgba(226,80,72,.35);color:var(--blood-bright)}
+</style>
+
+<script>
+(function(){
+ var form=document.getElementById('member-add-form'); if(!form)return;
+ var input=document.getElementById('member-username-input'),list=document.getElementById('member-search-results'),feedback=document.getElementById('member-add-feedback');
+ var memberList=document.getElementById('member-list'),statusSel=form.querySelector('select[name="status"]'),timer=null;
+ var campaignId={{ campaign.id|tojson }};
+ function esc(s){return s.replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+ function close(){list.hidden=true;list.innerHTML='';}
+ function msg(ok,text){feedback.textContent=text;feedback.className='member-add-feedback '+(ok?'is-success':'is-error');feedback.hidden=false;}
+ function csrf(){var x=form.querySelector('input[name="csrf_token"]');return x?x.value:'';}
+ function render(items){if(!items.length){list.innerHTML='<li class="is-empty">No matching users</li>';list.hidden=false;return;}list.innerHTML=items.map(function(n){return '<li role="option" data-name="'+esc(n)+'">'+esc(n)+'</li>';}).join('');list.hidden=false;}
+ input.addEventListener('input',function(){var q=input.value.trim();if(timer)clearTimeout(timer);if(q.length<2){close();return;}timer=setTimeout(function(){fetch('/campaigns/'+campaignId+'/api/members/search?q='+encodeURIComponent(q),{credentials:'same-origin'}).then(function(r){return r.json().then(function(j){return{r:r,j:j};});}).then(function(x){if(x.r.status===429){msg(false,x.j.error||'Searching too fast.');close();return;}render(x.j.results||[]);}).catch(close);},180);});
+ list.addEventListener('mousedown',function(e){var li=e.target.closest('li[role="option"]');if(li){input.value=li.dataset.name;close();input.focus();}});
+ document.addEventListener('click',function(e){if(!form.contains(e.target))close();});
+ form.addEventListener('submit',function(e){e.preventDefault();close();var username=input.value.trim();if(!username)return;var btn=form.querySelector('button[type="submit"]');btn.disabled=true;fetch(form.action,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf(),'Accept':'application/json'},body:JSON.stringify({username:username,status:statusSel.value})}).then(function(r){return r.json().then(function(j){return{r:r,j:j};});}).then(function(x){btn.disabled=false;if(!x.r.ok){msg(false,x.j.error||'Could not add that member.');return;}msg(true,'Added '+x.j.username+' as '+(x.j.status==='dm'?'DM':'Player')+'.');var row=document.createElement('div');row.className='member-row';row.innerHTML='<span class="member-name">'+esc(x.j.username)+'</span><span class="role-badge">'+(x.j.status==='dm'?'DM':'Player')+'</span>';memberList.appendChild(row);form.reset();}).catch(function(){btn.disabled=false;msg(false,'Something went wrong. Please try again.');});});
+})();
+</script>
+{% endblock %}
 
 {% block content %}
 {% set is_owner = (not campaign) or g.campaign_role == 'owner' %}
@@ -130,11 +152,11 @@
 <div class="form-panel members-panel">
   <div class="form-section" style="margin-bottom:0;">
     <p class="form-section-title">Members</p>
-    <div class="member-list">
+    <div class="member-list" id="member-list">
       {% for m in members %}
       <div class="member-row">
         <span class="member-name">
-          {{ icon('user') }} {{ m.username }}
+          {{ icon('user') }} <span class="member-name-text">{{ m.username }}</span>
           {% if m.role == 'owner' %}<span class="role-badge role-badge-owner">Owner</span>{% endif %}
         </span>
         <span class="member-actions">
@@ -166,14 +188,18 @@
     </div>
 
     {% if is_owner %}
-    <form method="POST" action="{{ url_for('campaign_member_add', campaign_id=campaign.id) }}" class="member-add-form">{{ csrf_field() }}
-      <input type="text" name="username" placeholder="Username to invite" required>
+    <form method="POST" action="{{ url_for('campaign_member_add', campaign_id=campaign.id) }}" class="member-add-form" id="member-add-form" autocomplete="off">{{ csrf_field() }}
+      <div class="member-search">
+        <input type="text" name="username" id="member-username-input" placeholder="Username to invite" required autocomplete="off">
+        <ul class="member-search-results" id="member-search-results" hidden></ul>
+      </div>
       <select name="status" title="Starting status">
         <option value="player">Player</option>
         <option value="dm">DM</option>
       </select>
       <button type="submit" class="btn btn-primary btn-sm">{{ icon('plus') }} Add</button>
     </form>
+    <div class="member-add-feedback" id="member-add-feedback" hidden></div>
     {% endif %}
 
     <div class="leave-campaign-row">
