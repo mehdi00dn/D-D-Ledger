@@ -3,8 +3,6 @@ name: Apply staged session patch
 on:
   push:
     branches: [apply-session-changes-20261001]
-  pull_request:
-    branches: [vercel]
 
 permissions:
   contents: write
@@ -19,21 +17,14 @@ jobs:
           fetch-depth: 0
           ref: apply-session-changes-20261001
 
-      - name: Assemble and apply patch
-        shell: bash
-        run: |
-          set -euo pipefail
-          cat .tmp/session-changes.patch.part{1,2,3,4,5,6,7,8} > .tmp/session-changes.patch
-          git apply --recount --check --whitespace=fix .tmp/session-changes.patch
-          git apply --recount --whitespace=fix .tmp/session-changes.patch
+      - name: Apply changes
+        run: python .tmp/apply_changes.py
 
       - name: Commit final changes
-        shell: bash
         run: |
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          rm -f .tmp/session-changes.patch .tmp/session-changes.patch.part{1,2,3,4,5,6,7,8} .github/workflows/apply-session-changes.yml
           git add -A
           git commit -m 'Improve campaign member invites and username handling'
           git push origin HEAD:apply-session-changes-20261001
