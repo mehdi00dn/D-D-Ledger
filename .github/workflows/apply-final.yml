@@ -12,6 +12,7 @@ jobs:
         with:
           fetch-depth: 0
           ref: apply-session-changes-20261001
+      - run: python .tmp/fix_script.py
       - run: python .tmp/apply_changes.py
       - run: |
           set -euo pipefail
