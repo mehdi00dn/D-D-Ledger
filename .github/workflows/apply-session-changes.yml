@@ -3,6 +3,8 @@ name: Apply staged session patch
 on:
   push:
     branches: [apply-session-changes-20261001]
+  pull_request:
+    branches: [vercel]
 
 permissions:
   contents: write
@@ -15,14 +17,13 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: apply-session-changes-20261001
 
       - name: Assemble and apply patch
         shell: bash
         run: |
           set -euo pipefail
           cat .tmp/session-changes.patch.part{1,2,3,4,5,6,7,8} > .tmp/session-changes.patch
-          # The uploaded patch's original hunk headers are authoritative; normalize the two
-          # headers that were split across staged chunks before applying.
           sed -i 's/@@ -335,6 +335,40 @@/@@ -335,6 +335,46 @@/' .tmp/session-changes.patch
           sed -i 's/@@ -52,6 +70,63 @@/@@ -52,6 +70,69 @@/' .tmp/session-changes.patch
           git apply --check --whitespace=fix .tmp/session-changes.patch
