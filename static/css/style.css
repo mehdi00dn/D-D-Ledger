@@ -326,6 +326,46 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
   font-family: var(--font-body);
   font-size: 13.5px;
 }
+.member-search { position: relative; flex: 1; min-width: 140px; }
+.member-search input[type="text"] { width: 100%; min-width: 0; }
+.member-search-results {
+  position: absolute;
+  left: 0; right: 0; top: calc(100% + 4px);
+  z-index: 20;
+  margin: 0; padding: 4px;
+  list-style: none;
+  background: var(--bg-panel-raised);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-s);
+  box-shadow: var(--shadow-deep);
+  max-height: 220px;
+  overflow-y: auto;
+}
+.member-search-results[hidden] { display: none; }
+.member-search-results li {
+  padding: 7px 10px;
+  border-radius: var(--radius-s);
+  font-size: 13.5px;
+  cursor: pointer;
+  color: var(--parchment);
+}
+.member-search-results li:hover, .member-search-results li.is-active { background: rgba(201, 162, 75, 0.16); }
+.member-search-results li.is-empty, .member-search-results li.is-note {
+  cursor: default;
+  color: var(--parchment-dim);
+  font-size: 12.5px;
+}
+.member-search-results li.is-empty:hover, .member-search-results li.is-note:hover { background: none; }
+.member-add-feedback {
+  margin-top: 10px;
+  padding: 8px 12px;
+  border-radius: var(--radius-s);
+  font-size: 13px;
+  border: 1px solid transparent;
+}
+.member-add-feedback[hidden] { display: none; }
+.member-add-feedback.is-success { background: rgba(30, 154, 82, 0.12); border-color: rgba(30, 154, 82, 0.35); color: var(--moss-bright); }
+.member-add-feedback.is-error { background: rgba(226, 80, 72, 0.12); border-color: rgba(226, 80, 72, 0.35); color: var(--blood-bright); }
 .member-add-form select {
   background: var(--bg-panel-inset);
   border: 1px solid var(--hairline);

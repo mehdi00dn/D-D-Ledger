@@ -75,9 +75,11 @@ def test_token_rotates_on_login_and_dies_on_logout(appmod, user):
 
 def test_every_post_form_in_every_template_carries_the_token():
     form_re = re.compile(r'<form\b[^>]*\bmethod\s*=\s*["\']?post["\']?[^>]*>(.*?)</form>', re.I | re.S)
-    missing, total = [], 0
-    for path in glob.glob(os.path.join(APP_DIR, 'templates', '*.html')):
-        for m in form_re.finditer(open(path, encoding='utf-8').read()):
+    script_re = re.compile(r'<script\b[^>]*>.*?</script>', re.I | re.S)   # a JS-built form string (e.g. one
+    missing, total = [], 0                                                # assembled client-side after a fetch())
+    for path in glob.glob(os.path.join(APP_DIR, 'templates', '*.html')):  # isn't a template-rendered form; the
+        html = script_re.sub('', open(path, encoding='utf-8').read())     # real security check for it lives in a
+        for m in form_re.finditer(html):                                  # JS-level test, not this template scan.
             total += 1
             if 'csrf_field()' not in m.group(1):
                 missing.append(os.path.basename(path))

@@ -22,6 +22,9 @@ WINDOWS = {
     'login-user': (int(os.environ.get('LOGIN_LIMIT_USER', 40)), 60 * 60),
     'login-ip': (int(os.environ.get('LOGIN_LIMIT_IP', 60)), 15 * 60),
     'register-ip': (int(os.environ.get('REGISTER_LIMIT_IP', 20)), 60 * 60),
+    # Per (user, campaign): generous enough for genuine autocomplete-while-typing, tight enough
+    # that it can't be used to enumerate every username on the platform.
+    'member-search': (int(os.environ.get('MEMBER_SEARCH_LIMIT', 30)), 60),
 }
 _NOW = "(CURRENT_TIMESTAMP AT TIME ZONE 'UTC')"
 
@@ -79,3 +82,13 @@ def record_registration(db, secret, ip):
 def _maybe_cleanup(db):
     if random.random() < 0.05:                      # keep the table small without a cron job
         db.execute("DELETE FROM login_attempts WHERE created_at < %s - make_interval(secs => ?)" % _NOW, (24 * 3600,))
+
+
+def member_search_blocked_for(db, secret, user_id, campaign_id):
+    return _retry_after(db, 'member-search', _key(secret, 'msearch', '%s|%s' % (user_id, campaign_id)))
+
+
+def record_member_search(db, secret, user_id, campaign_id):
+    db.execute('INSERT INTO login_attempts (kind, key) VALUES (?, ?)',
+               ('member-search', _key(secret, 'msearch', '%s|%s' % (user_id, campaign_id))))
+    _maybe_cleanup(db)

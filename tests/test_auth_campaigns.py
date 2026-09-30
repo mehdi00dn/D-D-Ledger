@@ -1,5 +1,7 @@
-import re, uuid
+import os, re, uuid
+from unittest import mock
 import pytest
+import security
 from conftest import q, User
 
 
@@ -23,6 +25,22 @@ def test_duplicate_username_rejected(appmod, make_user):
     c = appmod.app.test_client()
     r = c.post('/register', data={'username': u.name, 'password': 'secret12', 'confirm': 'secret12'})
     assert r.status_code == 200          # form re-rendered with an error, no crash
+
+
+def test_duplicate_username_rejected_case_insensitively(appmod, make_user):
+    u = make_user()
+    c = appmod.app.test_client()
+    variant = u.name.upper() if u.name != u.name.upper() else u.name.lower()
+    r = c.post('/register', data={'username': variant, 'password': 'secret12', 'confirm': 'secret12'})
+    assert r.status_code == 200 and 'already taken' in r.get_data(as_text=True)
+
+
+def test_login_is_case_insensitive(appmod, make_user):
+    u = make_user()
+    variant = u.name.upper() if u.name != u.name.upper() else u.name.lower()
+    c = appmod.app.test_client()
+    r = c.post('/login', data={'username': variant, 'password': u.password})
+    assert r.status_code == 302 and c.get('/campaigns').status_code == 200
 
 
 def test_campaign_crud_and_redirects(camp):
@@ -50,6 +68,69 @@ def test_campaign_delete_cascades_everything(camp):
         assert q(f'SELECT COUNT(*) AS n FROM {table} WHERE campaign_id = ?', cid)[0]['n'] == 0, table
     assert q('SELECT COUNT(*) AS n FROM map_drawings WHERE map_id = ?', mid)[0]['n'] == 0
     assert q('SELECT COUNT(*) AS n FROM battle_participants WHERE character_id = ?', ch)[0]['n'] == 0
+
+
+def test_invite_by_username_is_case_insensitive(make_user):
+    dm, player = make_user(), make_user()
+    cid = dm.new_campaign()
+    variant = player.name.upper() if player.name != player.name.upper() else player.name.lower()
+    r = dm.post(f'/campaigns/{cid}/members/add', data={'username': variant, 'status': 'player'})
+    assert r.status_code == 302
+    assert player.get(f'/campaigns/{cid}/characters').status_code == 200
+
+
+def test_invite_gives_inline_json_feedback_not_a_redirect(make_user):
+    dm, player, other_dm = make_user(), make_user(), make_user()
+    cid = dm.new_campaign()
+
+    r = dm.json(f'/campaigns/{cid}/members/add', {'username': 'no-such-user-' + player.name, 'status': 'player'})
+    assert r.status_code == 404 and 'No user found' in r.get_json()['error']
+
+    r = dm.json(f'/campaigns/{cid}/members/add', {'username': player.name, 'status': 'dm'})
+    assert r.status_code == 200
+    body = r.get_json()
+    player_id = q('SELECT id FROM users WHERE username = ?', player.name)[0]['id']
+    assert body == {'ok': True, 'username': player.name, 'status': 'dm', 'user_id': player_id}
+    assert player.get(f'/campaigns/{cid}/characters').status_code == 200
+
+    r = dm.json(f'/campaigns/{cid}/members/add', {'username': player.name, 'status': 'player'})
+    assert r.status_code == 400 and 'already a member' in r.get_json()['error']
+
+    r = dm.json(f'/campaigns/{cid}/members/add', {'username': dm.name, 'status': 'player'})
+    assert r.status_code == 400 and 'already the owner' in r.get_json()['error']
+
+    assert player.json(f'/campaigns/{cid}/members/add', {'username': other_dm.name}).status_code == 403   # owner-only
+
+
+def test_member_search_autocomplete(make_user):
+    dm, player = make_user('findme_alpha'), make_user('findme_beta')
+    make_user('unrelated_person')                                  # a non-matching account must never surface
+    cid = dm.new_campaign()
+    dm.post(f'/campaigns/{cid}/members/add', data={'username': player.name, 'status': 'player'})
+
+    assert dm.get(f'/campaigns/{cid}/api/members/search?q=f').get_json() == {'results': []}   # below minimum length
+
+    r = dm.get(f'/campaigns/{cid}/api/members/search?q=FINDME')     # case-insensitive prefix match
+    results = r.get_json()['results']
+    assert 'findme_alpha' not in results                            # excludes: is the owner (self)
+    assert player.name not in results                               # excludes: already a member
+    assert 'unrelated_person' not in results                        # excludes: doesn't match the query
+
+    third = make_user('findme_gamma')
+    results = dm.get(f'/campaigns/{cid}/api/members/search?q=findme').get_json()['results']
+    assert results == ['findme_gamma']
+
+    assert player.get(f'/campaigns/{cid}/api/members/search?q=findme').status_code == 403   # owner-only
+
+
+def test_member_search_is_rate_limited(make_user):
+    with mock.patch.dict(security.WINDOWS, {'member-search': (3, 60)}):
+        dm = make_user()
+        cid = dm.new_campaign()
+        for _ in range(3):
+            assert dm.get(f'/campaigns/{cid}/api/members/search?q=xy').status_code == 200
+        r = dm.get(f'/campaigns/{cid}/api/members/search?q=xy')
+        assert r.status_code == 429 and 'error' in r.get_json()
 
 
 def test_membership_roles(make_user):

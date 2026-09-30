@@ -20,11 +20,31 @@ def _drop(name):
         c.execute(f'DROP DATABASE IF EXISTS {name} WITH (FORCE)')
 
 
+def test_case_insensitive_username_migration_guards_existing_collisions():
+    """0005 must refuse to run -- with a clear, actionable error -- if two accounts already
+    differ only by case, rather than let CREATE UNIQUE INDEX fail opaquely or silently drop one."""
+    import psycopg, migrate
+    name, dsn = _fresh_db()
+    try:
+        migrate.run(dsn)
+        with psycopg.connect(dsn, autocommit=True) as c:
+            # Undo 0005 and recreate the situation it's meant to guard against: two accounts
+            # that already differ only by case (impossible today only because the plain,
+            # case-sensitive UNIQUE constraint this migration replaces has always been there).
+            c.execute("DROP INDEX idx_users_username_ci")
+            c.execute("DELETE FROM schema_migrations WHERE version = '0005_case_insensitive_usernames.sql'")
+            c.execute("INSERT INTO users (username, password_hash) VALUES ('Bob', 'x'), ('bob', 'x')")
+        with pytest.raises(Exception, match='(?i)bob'):
+            migrate.run(dsn)
+    finally:
+        _drop(name)
+
+
 def test_healthz_ready(appmod):
     r = appmod.app.test_client().get('/healthz')
     assert r.status_code == 200 and r.get_json()['ok'] is True
     assert r.get_json()['migrations'] == ['0001_initial.sql', '0002_lock_down_data_api.sql', '0003_auth_throttle.sql',
-                                           '0004_public_ids.sql']
+                                           '0004_public_ids.sql', '0005_case_insensitive_usernames.sql']
     assert r.headers['Cache-Control'] == 'no-store'
 
 

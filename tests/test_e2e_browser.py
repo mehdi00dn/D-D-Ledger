@@ -112,7 +112,48 @@ def test_two_users_see_each_others_changes_without_reload(pw, shared_server):
     dctx.close(); pctx.close()
 
 
-def test_map_draw_and_pin_survive_reload(pw, shared_server):
+def test_invite_autocomplete_and_inline_feedback(pw, shared_server):
+    base = shared_server.url; dm = Api(base); player = Api(base)
+    cid = dm.campaign('Invite')
+    ctx = dm.context(pw, base); page = ctx.new_page(); bad, errs = _collect(page)
+    page.goto(base + f'/campaigns/{cid}/edit'); page.wait_for_load_state('networkidle')
+
+    # Typing a prefix of a real username surfaces it in the dropdown; clicking it fills the box.
+    page.fill('#member-username-input', player.name[:len(player.name) - 2])
+    page.wait_for_selector('#member-search-results li[role="option"]')
+    assert player.name in page.inner_text('#member-search-results')
+    page.click(f'#member-search-results >> text="{player.name}"')
+    assert page.input_value('#member-username-input') == player.name
+    assert page.is_hidden('#member-search-results')
+
+    # Submitting adds the member inline: green feedback, a new row, no navigation away from /edit.
+    page.click('#member-add-form button[type=submit]')
+    page.wait_for_selector('#member-add-feedback.is-success')
+    assert player.name in page.inner_text('#member-add-feedback')
+    page.wait_for_selector(f'.member-row:has-text("{player.name}")')
+    assert '/edit' in page.url                                  # never a full-page reload/redirect
+
+    # The dynamically-inserted row's own forms (status / make-owner / remove) must carry a real
+    # CSRF token too -- they're built in JS, so the template-source scan can't check this one.
+    real_token = page.get_attribute('#member-add-form input[name=csrf_token]', 'value')
+    new_row = page.locator('.member-row', has_text=player.name)
+    tokens = new_row.locator('input[name=csrf_token]').all()
+    assert len(tokens) == 3, 'expected a token on the status, make-owner and remove forms'
+    assert all(t.get_attribute('value') == real_token for t in tokens)
+
+    # Inviting an unknown username shows an inline error instead -- still no navigation.
+    page.fill('#member-username-input', 'no-such-user-ghost')
+    page.click('#member-add-form button[type=submit]')
+    page.wait_for_selector('#member-add-feedback.is-error')
+    assert 'No user found' in page.inner_text('#member-add-feedback')
+    assert '/edit' in page.url
+
+    assert not errs, errs
+    assert not [b for b in bad if b[0] >= 400 and b[0] != 404], bad   # the 404 above is the point of the test
+    ctx.close()
+
+
+def test_drawing_persists_after_reload(pw, shared_server):
     base = shared_server.url; api = Api(base); cid = api.campaign('Map')
     r = api.post(f'/campaigns/{cid}/maps/new', data={'name': 'Draw', 'blank_width': '800', 'blank_height': '600'})
     mid = int(re.search(r'/maps/(\d+)', r.headers['Location']).group(1))

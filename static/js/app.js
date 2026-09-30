@@ -54,13 +54,14 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  // Confirm before destructive deletes
-  document.querySelectorAll('[data-confirm]').forEach((form) => {
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const confirmed = await window.confirmAction(form.dataset.confirm);
-      if (confirmed) form.submit();
-    });
+  // Confirm before destructive deletes. Delegated (not bound per-element at load) so it also
+  // covers forms added to the page later -- e.g. a member row inserted after a successful invite.
+  document.addEventListener('submit', async (e) => {
+    const form = e.target;
+    if (!(form instanceof HTMLFormElement) || !form.dataset.confirm || form.dataset.confirmed) return;
+    e.preventDefault();
+    const confirmed = await window.confirmAction(form.dataset.confirm);
+    if (confirmed) { form.dataset.confirmed = '1'; form.requestSubmit ? form.requestSubmit() : form.submit(); }
   });
 
   // Sheet-image delete buttons: plain buttons (not nested forms) that POST via fetch,
