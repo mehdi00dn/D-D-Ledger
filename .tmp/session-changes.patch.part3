@@ -1,0 +1,253 @@
+-color: rgba(226, 80, 72, 0.35); color: var(--blood-bright); }
+ .leave-campaign-row { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--hairline); }
+ .leave-campaign-row .hint-text { margin: 0; }
+ .leave-campaign-row .btn { width: 100%; justify-content: center; }
+diff --git a/static/js/app.js b/static/js/app.js
+index d7d16c0..764f1d4 100644
+--- a/static/js/app.js
++++ b/static/js/app.js
+@@ -54,13 +54,14 @@ document.addEventListener('DOMContentLoaded', () => {
+     });
+   });
+ 
+-  // Confirm before destructive deletes
+-  document.querySelectorAll('[data-confirm]').forEach((form) => {
+-    form.addEventListener('submit', async (e) => {
+-      e.preventDefault();
+-      const confirmed = await window.confirmAction(form.dataset.confirm);
+-      if (confirmed) form.submit();
+-    });
++  // Confirm before destructive deletes. Delegated (not bound per-element at load) so it also
++  // covers forms added to the page later -- e.g. a member row inserted after a successful invite.
++  document.addEventListener('submit', async (e) => {
++    const form = e.target;
++    if (!(form instanceof HTMLFormElement) || !form.dataset.confirm || form.dataset.confirmed) return;
++    e.preventDefault();
++    const confirmed = await window.confirmAction(form.dataset.confirm);
++    if (confirmed) { form.dataset.confirmed = '1'; form.requestSubmit ? form.requestSubmit() : form.submit(); }
+   });
+ 
+   // Sheet-image delete buttons: plain buttons (not nested forms) that POST via fetch,
+diff --git a/supabase_setup.sql b/supabase_setup.sql
+index ae25a11..cd4f09d 100644
+--- a/supabase_setup.sql
++++ b/supabase_setup.sql
+@@ -263,4 +263,36 @@ CREATE UNIQUE INDEX idx_maps_public_id       ON maps(public_id);
+ 
+ INSERT INTO schema_migrations (version) VALUES ('0004_public_ids.sql');
+ 
++-- ---- 0005_case_insensitive_usernames.sql ----
++
++-- Usernames become case-insensitive: 'Bob' and 'bob' are the same account from here on.
++-- Display case is preserved (we don't rewrite anyone's stored username) -- only lookups and
++-- the uniqueness check become case-insensitive.
++--
++-- Guard first: if two existing accounts already differ only by case (not possible today since
++-- the column has always been case-sensitive-unique, but this migration must still be safe to
++-- run against any real, possibly-messy production data), refuse to proceed with a clear error
++-- naming them, rather than let CREATE UNIQUE INDEX fail with an opaque constraint violation or
++-- -- worse -- silently pick one arbitrarily. Whoever runs this fixes the conflict by renaming
++-- one of the accounts, then re-runs.
++DO $$
++DECLARE
++    conflict RECORD;
++BEGIN
++    SELECT lower(username) AS lu, array_agg(username ORDER BY id) AS variants
++      INTO conflict
++      FROM users
++      GROUP BY lower(username)
++      HAVING count(*) > 1
++      LIMIT 1;
++    IF FOUND THEN
++        RAISE EXCEPTION 'Cannot make usernames case-insensitive: % already exist as %. Rename one of them, then re-run this migration.',
++            array_length(conflict.variants, 1), conflict.variants;
++    END IF;
++END $$;
++
++CREATE UNIQUE INDEX idx_users_username_ci ON users (lower(username));
++
++INSERT INTO schema_migrations (version) VALUES ('0005_case_insensitive_usernames.sql');
++
++COMMIT;
+diff --git a/templates/campaign_form.html b/templates/campaign_form.html
+index 8c9ef98..e463f78 100644
+--- a/templates/campaign_form.html
++++ b/templates/campaign_form.html
+@@ -130,11 +130,11 @@
+ <div class="form-panel members-panel">
+   <div class="form-section" style="margin-bottom:0;">
+     <p class="form-section-title">Members</p>
+-    <div class="member-list">
++    <div class="member-list" id="member-list">
+       {% for m in members %}
+-      <div class="member-row">
++      <div class="member-row" data-member-row data-user-id="{{ m.id }}">
+         <span class="member-name">
+-          {{ icon('user') }} {{ m.username }}
++          {{ icon('user') }} <span class="member-name-text">{{ m.username }}</span>
+           {% if m.role == 'owner' %}<span class="role-badge role-badge-owner">Owner</span>{% endif %}
+         </span>
+         <span class="member-actions">
+@@ -166,14 +166,18 @@
+     </div>
+ 
+     {% if is_owner %}
+-    <form method="POST" action="{{ url_for('campaign_member_add', campaign_id=campaign.id) }}" class="member-add-form">{{ csrf_field() }}
+-      <input type="text" name="username" placeholder="Username to invite" required>
++    <form method="POST" action="{{ url_for('campaign_member_add', campaign_id=campaign.id) }}" class="member-add-form" id="member-add-form" autocomplete="off">{{ csrf_field() }}
++      <div class="member-search">
++        <input type="text" name="username" id="member-username-input" placeholder="Username to invite" required autocomplete="off">
++        <ul class="member-search-results" id="member-search-results" hidden></ul>
++      </div>
+       <select name="status" title="Starting status">
+         <option value="player">Player</option>
+         <option value="dm">DM</option>
+       </select>
+       <button type="submit" class="btn btn-primary btn-sm">{{ icon('plus') }} Add</button>
+     </form>
++    <div class="member-add-feedback" id="member-add-feedback" hidden></div>
+     {% endif %}
+ 
+     <div class="leave-campaign-row">
+@@ -209,6 +213,142 @@
+     });
+   }
+ })();
++
++// Invite-by-username: autocomplete while typing, and inline success/error feedback --
++// the form never causes a full page reload either way.
++(function () {
++  var form = document.getElementById('member-add-form');
++  if (!form) return;                                          // not the owner; the panel isn't rendered
++  var input = document.getElementById('member-username-input');
++  var list = document.getElementById('member-search-results');
++  var feedback = document.getElementById('member-add-feedback');
++  var memberList = document.getElementById('member-list');
++  var statusSel = form.querySelector('select[name="status"]');
++  var searchTimer = null, activeIndex = -1, lastQuery = '';
++
++  var ICON_USER = '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.5"/><path d="M4.5 20c1.2-4 4-6 7.5-6s6.3 2 7.5 6"/></svg>';
++  var ICON_CROWN = '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m3 7 4.5 4L12 5l4.5 6L21 7l-1.6 10.5a1 1 0 0 1-1 .85H5.6a1 1 0 0 1-1-.85z"/><path d="M7 21h10"/></svg>';
++  var ICON_X = '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>';
++
++  function esc(s) { return s.replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
++
++  function closeResults() { list.hidden = true; list.innerHTML = ''; activeIndex = -1; }
++
++  function renderResults(items, note) {
++    activeIndex = -1;
++    if (note) { list.innerHTML = '<li class="is-note">' + esc(note) + '</li>'; list.hidden = false; return; }
++    if (!items.length) { list.innerHTML = '<li class="is-empty">No matching users</li>'; list.hidden = false; return; }
++    list.innerHTML = items.map(function (name) { return '<li role="option">' + esc(name) + '</li>'; }).join('');
++    list.hidden = false;
++  }
++
++  function highlight(delta) {
++    var items = list.querySelectorAll('li[role="option"]');
++    if (!items.length) return;
++    activeIndex = (activeIndex + delta + items.length) % items.length;
++    items.forEach(function (li, i) { li.classList.toggle('is-active', i === activeIndex); });
++    items[activeIndex].scrollIntoView({ block: 'nearest' });
++  }
++
++  input.addEventListener('input', function () {
++    var q = input.value.trim();
++    clearTimeout(searchTimer);
++    if (q.length < 2) { closeResults(); return; }
++    searchTimer = setTimeout(function () {
++      lastQuery = q;
++      fetch('/campaigns/' + window.CAMPAIGN_ID + '/api/members/search?q=' + encodeURIComponent(q))
++        .then(function (r) { return r.json().then(function (j) { return { status: r.status, body: j }; }); })
++        .then(function (res) {
++          if (q !== lastQuery || input.value.trim() !== q) return;   // stale response; a newer query is in flight
++          if (res.status === 429) { renderResults([], res.body.error); return; }
++          renderResults(res.body.results || []);
++        })
++        .catch(function () { closeResults(); });
++    }, 200);
++  });
++
++  list.addEventListener('mousedown', function (ev) {              // mousedown fires before the input's blur
++    var li = ev.target.closest('li[role="option"]');
++    if (!li) return;
++    input.value = li.textContent;
++    closeResults();
++    input.focus();
++  });
++
++  input.addEventListener('keydown', function (ev) {
++    if (list.hidden) return;
++    if (ev.key === 'ArrowDown') { ev.preventDefault(); highlight(1); }
++    else if (ev.key === 'ArrowUp') { ev.preventDefault(); highlight(-1); }
++    else if (ev.key === 'Escape') { closeResults(); }
++    else if (ev.key === 'Enter' && activeIndex >= 0) {
++      ev.preventDefault();
++      var items = list.querySelectorAll('li[role="option"]');
++      input.value = items[activeIndex].textContent;
++      closeResults();
++    }
++  });
++
++  document.addEventListener('click', function (ev) {
++    if (!form.contains(ev.target)) closeResults();
++  });
++
++  function showFeedback(ok, message) {
++    feedback.textContent = message;
++    feedback.className = 'member-add-feedback ' + (ok ? 'is-success' : 'is-error');
++    feedback.hidden = false;
++  }
++
++  function addRow(userId, username, status) {
++    var row = document.createElement('div');
++    row.className = 'member-row';
++    row.dataset.memberRow = ''; row.dataset.userId = userId;
++    row.innerHTML =
++      '<span class="member-name">' + ICON_USER + ' <span class="member-name-text">' + esc(username) + '</span></span>' +
++      '<span class="member-actions">' +
++        '<form method="POST" action="/campaigns/' + window.CAMPAIGN_ID + '/members/' + userId + '/status">' +
++          '<select name="status" class="status-select status-select-' + status + '" title="Dungeon Master / Player" onchange="this.form.submit()">' +
++            '<option value="dm"' + (status === 'dm' ? ' selected' : '') + '>DM</option>' +
++            '<option value="player"' + (status === 'player' ? ' selected' : '') + '>Player</option>' +
++          '</select>' +
++        '</form>' +
++        '<form method="POST" action="/campaigns/' + window.CAMPAIGN_ID + '/members/' + userId + '/make-owner" data-confirm="Make ' + esc(username) + ' an owner of this campaign?">' +
++          '<button type="submit" class="btn-icon" title="Make owner">' + ICON_CROWN + '</button>' +
++        '</form>' +
++        '<form method="POST" action="/campaigns/' + window.CAMPAIGN_ID + '/members/' + userId + '/remove" data-confirm="Remove ' + esc(username) + ' from this campaign?">' +
++          '<button type="submit" class="btn-icon" title="Remove member">' + ICON_X + '</button>' +
++        '</form>' +
++      '</span>';
++    Array.prototype.forEach.call(row.querySelectorAll('form'), function (f) {
++      var t = document.createElement('input');
++      t.type = 'hidden'; t.name = 'csrf_token'; t.value = form.querySelector('input[name=csrf_token]').value;
++      f.appendChild(t);
++    });
++    memberList.appendChild(row);
++  }
++
++  form.addEventListener('submit', function (ev) {
++    ev.preventDefault();
++    closeResults();
++    var username = input.value.trim();
++    if (!username) return;
++    var btn = form.querySelector('button[type=submit]');
++    btn.disabled = true;
++    fetch(form.action, {
++      method: 'POST',
++      headers: { 'Content-Type': 'application/json' },
++      body: JSON.stringify({ username: username, status: statusSel.value })
++    })
++      .then(function (r) { return r.json().then(function (j) { return { status: r.status, body: j }; }); })
++      .then(function (res) {
++        btn.disabled = false;
++        if (res.status >= 400) { showFeedback(false, res.body.error || 'Could not add that member.'); return; }
++        showFeedback(true, 'Added ' + res.body.username + ' as ' + (res.body.status === 'dm' ? 'DM' : 'Player') + '.');
++        addRow(res.body.user_id, res.body.username, res.body.status);
++        form.reset();
++      })
++      .catch(function () { btn.disabled = false; showFeedback(false, 'Something went wrong. Please try again.'); });
++  });
++})();
+ </script>
+ {% endblock %}
