@@ -1,0 +1,40 @@
+name: Apply staged session patch
+
+on:
+  push:
+    branches: [apply-session-changes-20261001]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Assemble and apply patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .tmp/session-changes.patch.part{1,2,3,4,5,6,7,8} > .tmp/session-changes.patch
+          # The uploaded patch's original hunk headers are authoritative; normalize the two
+          # headers that were split across staged chunks before applying.
+          sed -i 's/@@ -335,6 +335,40 @@/@@ -335,6 +335,46 @@/' .tmp/session-changes.patch
+          sed -i 's/@@ -52,6 +70,63 @@/@@ -52,6 +70,69 @@/' .tmp/session-changes.patch
+          git apply --check --whitespace=fix .tmp/session-changes.patch
+          git apply --whitespace=fix .tmp/session-changes.patch
+
+      - name: Commit final changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          rm -f .tmp/session-changes.patch .tmp/session-changes.patch.part{1,2,3,4,5,6,7,8} .github/workflows/apply-session-changes.yml
+          git add -A
+          git commit -m 'Improve campaign member invites and username handling'
+          git push origin HEAD:apply-session-changes-20261001
