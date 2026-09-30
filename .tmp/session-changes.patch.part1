@@ -79,24 +79,13 @@ index 0f35a4f..31278e5 100644
 +        return jsonify({'results': []})
 +    db = get_db()
 +    secret = app.config['SECRET_KEY']
-+    retry = security.member_search_blocked_for(db, secret, session['user_id'], g.campaign_id)
-+    if retry:
-+        db.close()
-+        return jsonify({'error': 'Searching too fast -- try again in a moment.'}), 429
-+    security.record_member_search(db, secret, session['user_id'], g.campaign_id)
-+    db.commit()
-+    like = q.replace('\\', '\\\\').replace('%', r'\%').replace('_', r'\_') + '%'
-+    rows = db.execute('''
-+        SELECT username FROM users
-+        WHERE username ILIKE ? ESCAPE '\\'
-+          AND id != ?
-+          AND id NOT IN (SELECT user_id FROM campaign_members WHERE campaign_id = ?)
-+        ORDER BY username ASC LIMIT 8
-+    ''', (like, session['user_id'], g.campaign_id)).fetchall()
-+    db.close()
-+    return jsonify({'results': [r['username'] for r in rows]})
-+
-+
- @app.route('/campaigns/<int:campaign_id>/members/<int:user_id>/status', methods=['POST'])
- @campaign_access_required
- def campaign_member_status(user_id):
+    retry = security.member_search_blocked_for(db, secret, session['user_id'], g.campaign_id)
+    if retry:
+        db.close()
+        return jsonify({'error': 'Searching too fast -- try again in a moment.'}), 429
+    security.record_member_search(db, secret, session['user_id'], g.campaign_id)
+    db.commit()
+    like = q.replace('\\', '\\\\').replace('%', r'\%').replace('_', r'\_') + '%'
+    rows = db.execute('''
+        SELECT username FROM users
+        WHERE username ILIKE ? ESCAPE '\\'
