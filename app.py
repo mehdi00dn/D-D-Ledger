@@ -776,39 +776,85 @@ def sanitize_notes_payload(raw):
         return json.dumps([_escape_text(raw).replace('\n', '<br>')])
     if not isinstance(blocks, list):
         return ''
-    cleaned = [_sanitize_note_fragment(b) for b in blocks if isinstance(b, str)]
-    cleaned = [b for b in cleaned if b and b not in ('<br>', '<div><br></div>')]
+    # An entry is a plain string (visible to everyone) or {"t": html, "h": 1}
+    # (hidden from Players). Anything else is dropped.
+    cleaned = []
+    for b in blocks:
+        if isinstance(b, str):
+            fragment, hidden = _sanitize_note_fragment(b), False
+        elif isinstance(b, dict) and isinstance(b.get('t'), str):
+            fragment, hidden = _sanitize_note_fragment(b['t']), b.get('h') in (1, True)
+        else:
+            continue
+        if not fragment or fragment in ('<br>', '<div><br></div>'):
+            continue
+        cleaned.append({'t': fragment, 'h': 1} if hidden else fragment)
     return json.dumps(cleaned)
 
 
-def notes_parse_blocks(raw):
-    """Parse characters.notes into a list of trusted HTML fragments, one per
-    note box (used to prefill the note editor when editing a character)."""
+def notes_parse_entries(raw):
+    """Parse characters.notes into [{'t': trusted html, 'h': bool hidden-from-Players}, ...],
+    one per note box. Plain-string entries (and every note saved before this flag
+    existed) are visible; {"t", "h": 1} entries are hidden from Players."""
     if not raw:
         return []
     try:
         blocks = json.loads(raw)
         if isinstance(blocks, list):
-            return [c for c in (_sanitize_note_fragment(b) for b in blocks if isinstance(b, str)) if c]
+            entries = []
+            for b in blocks:
+                if isinstance(b, str):
+                    text, hidden = b, False
+                elif isinstance(b, dict) and isinstance(b.get('t'), str):
+                    text, hidden = b['t'], b.get('h') in (1, True)
+                else:
+                    continue
+                text = _sanitize_note_fragment(text)
+                if text:
+                    entries.append({'t': text, 'h': hidden})
+            return entries
     except (ValueError, TypeError):
         pass
     # Legacy plain-text notes: escape and turn line breaks into <br> so each
     # line the user typed still shows up as its own line.
     escaped = raw.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
-    return [escaped.replace('\n', '<br>')]
+    return [{'t': escaped.replace('\n', '<br>'), 'h': False}]
 
 
-def notes_to_html(raw):
-    """Render stored notes as HTML for detail views (battle/map popups)."""
-    blocks = notes_parse_blocks(raw)
-    if not blocks:
+def notes_parse_blocks(raw):
+    """All note boxes as html strings (hidden ones included -- DM/owner use only)."""
+    return [e['t'] for e in notes_parse_entries(raw)]
+
+
+def can_see_hidden_notes(character):
+    """The DM and the character's own creator see every note; other members
+    never receive a note flagged hidden. Single source of truth for the rule."""
+    return bool(g.is_dm or character['created_by'] == session.get('user_id'))
+
+
+def notes_for_viewer(raw, can_see_hidden):
+    """Raw notes value safe to send to this viewer (hidden entries removed unless allowed)."""
+    if can_see_hidden or not raw:
+        return raw
+    visible = [e['t'] for e in notes_parse_entries(raw) if not e['h']]
+    return json.dumps(visible) if visible else ''
+
+
+def notes_to_html(raw, show_hidden=False):
+    """Render stored notes as HTML for detail views. Hidden notes are left out
+    unless show_hidden is set (then they carry a visible marker)."""
+    entries = [e for e in notes_parse_entries(raw) if show_hidden or not e['h']]
+    if not entries:
         return ''
-    return ''.join(f'<div class="note-block-text">{b}</div>' for b in blocks)
+    return ''.join(
+        f'<div class="note-block-text note-block-hidden"><span class="note-hidden-label">Hidden from players</span>{e["t"]}</div>'
+        if e['h'] else f'<div class="note-block-text">{e["t"]}</div>'
+        for e in entries)
 
 
-def notes_plain_preview(raw):
+def notes_plain_preview(raw, show_hidden=False):
     """Flatten stored notes to plain text for compact card previews."""
-    blocks = notes_parse_blocks(raw)
+    blocks = [e['t'] for e in notes_parse_entries(raw) if show_hidden or not e['h']]
     if not blocks:
         return ''
     joined = re.sub(r'<(br|/div|/li|/p)\s*/?>', ' ', ' '.join(blocks), flags=re.I)
@@ -1139,7 +1185,7 @@ def character_new():
     groups = db.execute('SELECT * FROM groups WHERE campaign_id = ? ORDER BY lower(name) ASC', (g.campaign_id,)).fetchall()
     db.close()
     from_battle = request.args.get('from') == 'battle'
-    return render_template('character_form.html', character=None, sheets=[], groups=groups, from_battle=from_battle, notes_blocks=[''])
+    return render_template('character_form.html', character=None, sheets=[], groups=groups, from_battle=from_battle, notes_entries=[{'t': '', 'h': False}])
 
 
 @app.route('/campaigns/<int:campaign_id>/characters/<int:char_id>')
@@ -1163,7 +1209,7 @@ def character_detail(char_id):
     db.close()
     can_edit = g.is_dm or character['created_by'] == session['user_id']
     return render_template('character_detail.html', character=character, sheets=sheets,
-                            notes_html=notes_to_html(character['notes']), can_edit=can_edit,
+                            notes_html=notes_to_html(character['notes'], show_hidden=can_see_hidden_notes(character)), can_edit=can_edit,
                             stats_hidden=stats_hidden)
 
 
@@ -1191,8 +1237,8 @@ def character_edit(char_id):
     db.close()
     if character is None:
         return redirect(url_for('characters_list'))
-    notes_blocks = notes_parse_blocks(character['notes']) or ['']
-    return render_template('character_form.html', character=character, sheets=sheets, groups=groups, from_battle=False, notes_blocks=notes_blocks)
+    notes_entries = notes_parse_entries(character['notes']) or [{'t': '', 'h': False}]
+    return render_template('character_form.html', character=character, sheets=sheets, groups=groups, from_battle=False, notes_entries=notes_entries)
 
 
 def _save_character(db, char_id):
@@ -1401,7 +1447,19 @@ def api_characters():
         ORDER BY lower(c.name) ASC
     ''', (g.campaign_id,)).fetchall()
     db.close()
-    return jsonify([dict(r) for r in rows])
+    out = []
+    for r in rows:
+        d = dict(r)
+        if not g.is_dm:
+            if d['is_npc']:
+                # Players never receive an NPC's numbers (same allow-list as the detail API).
+                d = {k: d[k] for k in ('id', 'name', 'avatar_path', 'level', 'is_npc',
+                                       'group_id', 'group_name', 'group_color')}
+                d['hidden_stats'] = True
+            else:
+                d['notes'] = notes_for_viewer(d['notes'], can_see_hidden_notes(d))
+        out.append(d)
+    return jsonify(out)
 
 
 @app.route('/campaigns/<int:campaign_id>/api/characters/<int:char_id>/detail')
@@ -1430,15 +1488,17 @@ def api_character_detail(char_id):
             'is_npc': character['is_npc'],
             'group_name': character['group_name'],
             'group_color': character['group_color'],
-            'notes_html': notes_to_html(character['notes']),
+            'notes_html': notes_to_html(character['notes'], show_hidden=can_see_hidden_notes(character)),
             'sheets': [],
             'hidden_stats': True,
         })
     sheets = db.execute('SELECT * FROM character_sheets WHERE character_id = ? ORDER BY sort_order', (char_id,)).fetchall()
     db.close()
     data = dict(character)
+    can_see_hidden = can_see_hidden_notes(character)
+    data['notes'] = notes_for_viewer(character['notes'], can_see_hidden)   # raw JSON must not carry hidden notes
     data['sheets'] = [dict(s) for s in sheets]
-    data['notes_html'] = notes_to_html(character['notes'])
+    data['notes_html'] = notes_to_html(character['notes'], show_hidden=can_see_hidden)
     return jsonify(data)
 
 
@@ -1834,6 +1894,11 @@ def _build_export_zip(campaign_id, group_ids=None, character_ids=None, download_
     else:
         characters = []
 
+    if not g.is_dm:
+        # Same boundary as the detail API: a Player's export never carries
+        # someone else's NPC (stat block + notes).
+        characters = [c for c in characters if not c['is_npc'] or c['created_by'] == session.get('user_id')]
+
     # Pull in any group referenced by an exported character but not already included
     existing_group_ids = {g['id'] for g in groups}
     referenced_group_ids = {c['group_id'] for c in characters if c['group_id']} - existing_group_ids
@@ -1878,7 +1943,7 @@ def _build_export_zip(campaign_id, group_ids=None, character_ids=None, download_
                 'wis_score': c['wis_score'],
                 'cha_score': c['cha_score'],
                 'armor_class': c['armor_class'],
-                'notes': c['notes'],
+                'notes': notes_for_viewer(c['notes'], can_see_hidden_notes(c)),
                 'group_name': group_id_to_name.get(c['group_id']),
                 'avatar_file': c['avatar_path'],
                 'sheet_files': sheets_by_char.get(c['id'], []),
@@ -1945,10 +2010,12 @@ def export_data():
 @campaign_access_required
 def character_export(char_id):
     db = get_db()
-    row = db.execute('SELECT name FROM characters WHERE id = ? AND campaign_id = ?', (char_id, g.campaign_id)).fetchone()
+    row = db.execute('SELECT name, is_npc, created_by FROM characters WHERE id = ? AND campaign_id = ?', (char_id, g.campaign_id)).fetchone()
     db.close()
     if row is None:
         return redirect(url_for('characters_list'))
+    if row['is_npc'] and not g.is_dm and row['created_by'] != session['user_id']:
+        abort(403)   # an NPC's stat block + notes are not a Player's to export
     return _build_export_zip(g.campaign_id, character_ids=[char_id], download_name=f'{_slugify(row["name"])}.zip')
 
 

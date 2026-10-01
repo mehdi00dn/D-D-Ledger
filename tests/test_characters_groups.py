@@ -153,3 +153,84 @@ def test_character_detail_api(camp):
     ch = u.new_character(cid, name='Api Guy', max_hp=21)
     d = u.get(f'/campaigns/{cid}/api/characters/{ch}/detail')
     assert d.status_code == 200 and d.get_json()['name'] == 'Api Guy'
+
+
+# ---------------- DL-62: per-note "hidden from players" ----------------
+
+def _notes(*entries):
+    return json.dumps(list(entries))
+
+
+def test_hidden_notes_never_reach_other_members(make_user):
+    """A note flagged hidden is visible to the DM and the character's creator only -- on every
+    surface that sends notes (dossier page, detail API, roster preview, list API, exports)."""
+    import io, zipfile
+    dm, p1, p2 = make_user(), make_user(), make_user()
+    cid = dm.new_campaign()
+    _add_player(dm, p1, cid); _add_player(dm, p2, cid)
+    SECRET, SHARED, LEGACY = 'dm-only-secret-xyz', 'shared-lore-abc', 'legacy-plain-note'
+
+    # p1 creates a PC with one shared and one hidden note (checkbox -> {"t","h":1}).
+    pc = p1.new_character(cid, name='Hero', notes=_notes(SHARED, {'t': SECRET, 'h': 1}))
+    # The DM makes an NPC with a hidden note, plus a legacy plain-string note.
+    npc = dm.new_character(cid, name='Ogre', is_npc='on', max_hp=99, str_score=21,
+                           notes=_notes(SHARED, {'t': SECRET, 'h': 1}))
+    legacy = dm.new_character(cid, name='Old', notes=LEGACY)             # pre-flag plain-text notes
+
+    def surfaces(user, char):
+        page = user.get(f'/campaigns/{cid}/characters/{char}').data.decode()
+        api = user.get(f'/campaigns/{cid}/api/characters/{char}/detail')
+        listing = user.get(f'/campaigns/{cid}/api/characters').data.decode()
+        roster = user.get(f'/campaigns/{cid}/characters').data.decode()
+        return page, api.data.decode(), listing, roster
+
+    # DM and the PC's creator see the hidden note, clearly marked.
+    for viewer in (dm, p1):
+        page, api, _, roster = surfaces(viewer, pc)
+        assert SECRET in page and 'Hidden from players' in page and SHARED in page
+        assert SECRET in api and SECRET in roster
+    # Another Player (p2) never receives it anywhere, but still sees the shared note.
+    page, api, listing, roster = surfaces(p2, pc)
+    assert SHARED in page and SHARED in api
+    for blob in (page, api, listing, roster):
+        assert SECRET not in blob, 'hidden note leaked'
+    assert 'Hidden from players' not in page
+    # ... including the NPC, whose notes are the only thing a Player may read.
+    page, api, listing, roster = surfaces(p2, npc)
+    assert SHARED in page and SHARED in api
+    for blob in (page, api, listing, roster):
+        assert SECRET not in blob and '"max_hp": 99' not in blob.replace('"max_hp":99', '"max_hp": 99')
+    assert '99' not in listing.split('Ogre')[1].split('}')[0]            # list API row carries no numbers
+    # Legacy plain-text notes stay visible to everyone.
+    assert LEGACY in surfaces(p2, legacy)[0]
+
+    # Exports (campaign-wide and per-character) for a Player: no hidden note, no foreign NPC.
+    def manifest(resp):
+        assert resp.status_code == 200
+        return json.loads(zipfile.ZipFile(io.BytesIO(resp.data)).read('manifest.json'))
+    m = manifest(p2.get(f'/campaigns/{cid}/export/data'))
+    names = {c['name'] for c in m['characters']}
+    assert 'Ogre' not in names and 'Hero' in names
+    assert SECRET not in json.dumps(m) and SHARED in json.dumps(m)
+    assert p2.get(f'/campaigns/{cid}/characters/{npc}/export').status_code == 403
+    assert SECRET not in json.dumps(manifest(p2.get(f'/campaigns/{cid}/characters/{pc}/export')))
+    # The DM's and the creator's exports keep everything.
+    assert SECRET in json.dumps(manifest(dm.get(f'/campaigns/{cid}/export/data')))
+    assert SECRET in json.dumps(manifest(p1.get(f'/campaigns/{cid}/characters/{pc}/export')))
+    assert dm.get(f'/campaigns/{cid}/characters/{npc}/export').status_code == 200
+
+
+def test_hidden_flag_round_trips_through_the_editor(make_user):
+    dm = make_user(); cid = dm.new_campaign()
+    ch = dm.new_character(cid, name='Rogue', notes=_notes('open', {'t': 'closed', 'h': 1}, {'t': '<script>x</script>kept', 'h': 'no'},
+                                                         {'t': '', 'h': 1}, 42, {'h': 1}))
+    stored = json.loads(q('SELECT notes FROM characters WHERE id = ?', ch)[0]['notes'])
+    # visible -> plain string; hidden -> {"t","h":1}; junk/empty entries dropped; 'no' is not a truthy flag
+    assert stored[0] == 'open' and stored[1] == {'t': 'closed', 'h': 1} and stored[2] == 'kept' and len(stored) == 3
+    form = dm.get(f'/campaigns/{cid}/characters/{ch}/edit').data.decode()
+    # 3 stored notes + the empty <template> used by "Add Note"; only the hidden one is pre-checked
+    assert form.count('data-note-hidden') == 4 and form.count('data-note-hidden checked') == 1
+    # Saving the form back unchanged keeps the flag.
+    dm.post(f'/campaigns/{cid}/characters/{ch}/edit', data={'name': 'Rogue', 'notes': json.dumps(stored)},
+            content_type='multipart/form-data')
+    assert json.loads(q('SELECT notes FROM characters WHERE id = ?', ch)[0]['notes']) == stored

@@ -104,7 +104,7 @@
     </div>
     {% endif %}
 
-    <div class="dossier-notes">{{ c.notes | notes_preview }}</div>
+    <div class="dossier-notes">{{ c.notes | notes_preview(g.is_dm or c.created_by == session.user_id) }}</div>
 
     <div class="dossier-actions">
       <a href="{{ url_for('character_detail', char_id=c.id) }}" class="btn btn-ghost btn-sm">{{ icon('eye') }} Details</a>

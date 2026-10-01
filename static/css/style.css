@@ -739,6 +739,12 @@ body.page-leaving .content {
 .detail-notes { font-size: 13px; color: var(--parchment-dim); line-height: 1.6; margin-top: 14px; }
 .detail-notes .note-block-text { margin-bottom: 8px; }
 .detail-notes .note-block-text:last-child { margin-bottom: 0; }
+/* A note only the DM / creator can see (Players never receive it). */
+.note-block-hidden { border-left: 2px dashed var(--brass-dim); padding-left: 10px; }
+.note-hidden-label {
+  display: block; margin-bottom: 2px; font-family: var(--font-mono); font-size: 10px;
+  letter-spacing: 0.06em; text-transform: uppercase; color: var(--brass-dim);
+}
 .detail-notes ul { margin: 4px 0 4px 20px; padding: 0; }
 .detail-notes li { margin-bottom: 2px; }
 
@@ -982,6 +988,13 @@ body.page-leaving .content {
 }
 .note-tool-btn svg { width: 14px; height: 14px; }
 .note-tool-btn:hover { color: var(--parchment); border-color: var(--hairline-strong); }
+.note-hidden-toggle {
+  display: inline-flex; align-items: center; gap: 6px; margin-left: 8px;
+  font-size: 11.5px; color: var(--parchment-dim); cursor: pointer; user-select: none;
+}
+.note-hidden-toggle input { accent-color: var(--brass); }
+.note-hidden-toggle svg { width: 12px; height: 12px; opacity: 0.8; }
+.note-hidden-toggle:has(input:checked) { color: var(--brass-bright); }
 .note-remove-btn { margin-left: auto; }
 .note-editor {
   min-height: 90px;

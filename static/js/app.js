@@ -168,9 +168,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (form && notesHiddenInput) {
       form.addEventListener('submit', () => {
-        const blocks = Array.from(noteBlocks.querySelectorAll('.note-editor'))
-          .map((editor) => sanitizeNoteHtml(editor.innerHTML))
-          .filter((html) => !['', '<br>', '<div><br></div>'].includes(html));
+        // A visible note is a plain string; a hidden-from-Players note is {t, h: 1}.
+        const blocks = Array.from(noteBlocks.querySelectorAll('[data-note-block]'))
+          .map((block) => ({
+            html: sanitizeNoteHtml(block.querySelector('.note-editor').innerHTML),
+            hidden: !!(block.querySelector('[data-note-hidden]') || {}).checked,
+          }))
+          .filter((n) => !['', '<br>', '<div><br></div>'].includes(n.html))
+          .map((n) => (n.hidden ? { t: n.html, h: 1 } : n.html));
         notesHiddenInput.value = JSON.stringify(blocks);
       });
     }
