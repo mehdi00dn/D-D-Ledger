@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon %}
-{% set active_page = 'factions' %}
+{% set active_page = 'groups' %}
 {% block title %}{{ 'Edit' if group else 'New' }} Faction — Campaign Ledger{% endblock %}
 
 {% block content %}
@@ -8,7 +8,7 @@
   <div>
     <h1 class="page-title">{{ group.name if group else 'New Faction' }}</h1>
   </div>
-  <a href="{{ url_for('factions_list') }}" class="btn btn-ghost">{{ icon('arrow-left') }} Back to list</a>
+  <a href="{{ url_for('groups_list') }}" class="btn btn-ghost">{{ icon('arrow-left') }} Back to list</a>
 </div>
 
 <form class="form-panel" method="POST" enctype="multipart/form-data">{{ csrf_field() }}
@@ -70,7 +70,7 @@
   </div>
 
   <div class="form-actions">
-    <a href="{{ url_for('factions_list') }}" class="btn btn-ghost">Cancel</a>
+    <a href="{{ url_for('groups_list') }}" class="btn btn-ghost">Cancel</a>
     <button type="submit" class="btn btn-primary">{{ icon('check') }} {{ 'Save Changes' if group else 'Add Faction' }}</button>
   </div>
 </form>

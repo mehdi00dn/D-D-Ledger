@@ -326,6 +326,15 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
   font-family: var(--font-body);
   font-size: 13.5px;
 }
+.member-add-form select {
+  background: var(--bg-panel-inset);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-s);
+  padding: 9px 11px;
+  color: var(--parchment);
+  font-family: var(--font-body);
+  font-size: 13.5px;
+}
 .member-search { position: relative; flex: 1; min-width: 140px; }
 .member-search input[type="text"] { width: 100%; min-width: 0; }
 .member-search-results {
@@ -366,15 +375,6 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
 .member-add-feedback[hidden] { display: none; }
 .member-add-feedback.is-success { background: rgba(30, 154, 82, 0.12); border-color: rgba(30, 154, 82, 0.35); color: var(--moss-bright); }
 .member-add-feedback.is-error { background: rgba(226, 80, 72, 0.12); border-color: rgba(226, 80, 72, 0.35); color: var(--blood-bright); }
-.member-add-form select {
-  background: var(--bg-panel-inset);
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-s);
-  padding: 9px 11px;
-  color: var(--parchment);
-  font-family: var(--font-body);
-  font-size: 13.5px;
-}
 .leave-campaign-row { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--hairline); }
 .leave-campaign-row .hint-text { margin: 0; }
 .leave-campaign-row .btn { width: 100%; justify-content: center; }
@@ -1675,23 +1675,6 @@ body.page-leaving .content {
 /* ==========================================================================
    Image lightbox
    ========================================================================== */
-.lightbox-nav {
-  position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
-  z-index: 202;
-  width: 42px;
-  height: 42px;
-  border-radius: 50%;
-  background: rgba(11, 13, 19, 0.72);
-  border: 1px solid var(--hairline-strong);
-  color: var(--parchment);
-  backdrop-filter: blur(4px);
-}
-.lightbox-nav:hover { background: var(--bg-panel); color: var(--brass-bright); border-color: var(--brass); }
-.lightbox-nav svg { width: 19px; height: 19px; }
-.lightbox-prev { left: 14px; }
-.lightbox-next { right: 14px; }
 .lightbox-overlay {
   position: fixed;
   inset: 0;
@@ -1708,7 +1691,6 @@ body.page-leaving .content {
 .lightbox-overlay[hidden] { display: none; }
 
 .lightbox-stage {
-  position: relative;
   max-width: 90vw;
   max-height: 80vh;
   overflow: hidden;

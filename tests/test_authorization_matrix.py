@@ -102,7 +102,7 @@ def test_owner_can_still_use_every_id_route_in_their_own_campaign(appmod, make_u
     alice = make_user(); a = build_world(alice)
     ok = 0
     for rule, method in routes_with_ids(appmod):
-        if method != 'GET' or rule.endpoint in ('character_export', 'faction_export'):
+        if method != 'GET' or rule.endpoint in ('character_export', 'group_export'):
             continue
         resp = alice.get(fill(rule, a['cid'], a))
         assert resp.status_code in (200, 302), f'{rule.rule} -> {resp.status_code}'
