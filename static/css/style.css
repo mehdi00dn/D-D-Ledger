@@ -1534,6 +1534,17 @@ body.page-leaving .content {
   border-color: rgba(224, 163, 92, 0.35);
 }
 
+/* Fogged stats: placeholder digits under a CSS blur. The real numbers are
+   never sent to a Player, so this is presentation only. */
+.stats-fogged {
+  filter: blur(5px);
+  opacity: 0.8;
+  user-select: none;
+  pointer-events: none;
+}
+.stats-fog-wrap { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.stats-fog-wrap .stats-fogged { flex-shrink: 0; }
+
 .hp-controls { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
 .hp-amount-input {
   width: 46px;

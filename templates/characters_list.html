@@ -77,8 +77,16 @@
     </div>
 
     {% if npc_hidden %}
-    <div class="stats-hidden-badge" title="The DM hasn't revealed this creature's stats" style="margin-top:12px;">
-      {{ icon('lock') }}<span>Stats Hidden</span>
+    {# Placeholder digits only -- real values never reach a Player's page. #}
+    <div class="dossier-stats stats-fogged" title="The DM hasn't revealed this creature's stats" aria-label="Stats hidden">
+      {% for lbl in ['STR','DEX','CON','INT','WIS','CHA'] %}
+      <div class="stat-pill"><span class="val" aria-hidden="true">10</span><span class="lbl">{{ lbl }}</span></div>
+      {% endfor %}
+    </div>
+
+    <div class="dossier-hp-ac stats-fogged" aria-label="HP and AC hidden">
+      <span class="badge-hp" aria-hidden="true">{{ icon('heart') }}00 HP</span>
+      <span class="badge-ac" aria-hidden="true">{{ icon('shield') }}00 AC</span>
     </div>
     {% else %}
     <div class="dossier-stats">
@@ -99,9 +107,7 @@
     <div class="dossier-notes">{{ c.notes | notes_preview }}</div>
 
     <div class="dossier-actions">
-      {% if not npc_hidden %}
       <a href="{{ url_for('character_detail', char_id=c.id) }}" class="btn btn-ghost btn-sm">{{ icon('eye') }} Details</a>
-      {% endif %}
       {% if g.is_dm or c.created_by == session.user_id %}
       <a href="{{ url_for('character_export', char_id=c.id) }}" class="btn-icon" title="Export this character">{{ icon('upload') }}</a>
       <form method="POST" action="{{ url_for('character_delete', char_id=c.id) }}" data-confirm="Remove {{ c.name }} from the ledger permanently?">{{ csrf_field() }}

@@ -1154,16 +1154,17 @@ def character_detail(char_id):
     if character is None:
         db.close()
         return redirect(url_for('characters_list'))
-    # A Member can view their own party's dossier but not an enemy's -- same rule
-    # the battle screen and map pin bubble already enforce for NPCs.
-    if character['is_npc'] and not g.is_dm:
-        db.close()
-        abort(403)
-    sheets = db.execute('SELECT * FROM character_sheets WHERE character_id = ? ORDER BY sort_order', (char_id,)).fetchall()
+    # A Player can open an NPC's dossier for its notes only: stats and sheet
+    # images stay withheld (sheets are pictures of the stat block), and the
+    # template gets neither -- it renders blurred placeholders instead.
+    stats_hidden = bool(character['is_npc']) and not g.is_dm
+    sheets = [] if stats_hidden else db.execute(
+        'SELECT * FROM character_sheets WHERE character_id = ? ORDER BY sort_order', (char_id,)).fetchall()
     db.close()
     can_edit = g.is_dm or character['created_by'] == session['user_id']
     return render_template('character_detail.html', character=character, sheets=sheets,
-                            notes_html=notes_to_html(character['notes']), can_edit=can_edit)
+                            notes_html=notes_to_html(character['notes']), can_edit=can_edit,
+                            stats_hidden=stats_hidden)
 
 
 @app.route('/campaigns/<int:campaign_id>/characters/<int:char_id>/edit', methods=['GET', 'POST'])
@@ -1416,11 +1417,23 @@ def api_character_detail(char_id):
         db.close()
         return jsonify({'error': 'not found'}), 404
     if not g.is_dm and character['is_npc']:
-        # 5e convention: a Player can look up their own party's dossiers but
-        # not a monster/NPC's -- this is the real enforcement point, the
-        # "View details" button being hidden client-side is just UI polish.
+        # 5e convention: a Player may read an NPC's notes but never its
+        # numbers. This is the real enforcement point -- an allow-list, so a
+        # column added to `characters` later can't leak by default. No stat
+        # scores, HP, AC, raw notes or sheet images are sent.
         db.close()
-        return jsonify({'error': 'hidden'}), 403
+        return jsonify({
+            'id': character['id'],
+            'name': character['name'],
+            'avatar_path': character['avatar_path'],
+            'level': character['level'],
+            'is_npc': character['is_npc'],
+            'group_name': character['group_name'],
+            'group_color': character['group_color'],
+            'notes_html': notes_to_html(character['notes']),
+            'sheets': [],
+            'hidden_stats': True,
+        })
     sheets = db.execute('SELECT * FROM character_sheets WHERE character_id = ? ORDER BY sort_order', (char_id,)).fetchall()
     db.close()
     data = dict(character)

@@ -588,9 +588,9 @@
     pinBubble.style.left = `${leftPx}px`;
     pinBubble.style.top = `${topPx - halfHeightPx - 14}px`;
     pinBubble.hidden = false;
-    // A Player never gets a "View details" button on an NPC pin -- the
-    // detail endpoint already 403s them, this just stops the dead-end click.
-    pinViewBtn.style.display = (pin.pin_type === 'character' && (window.IS_DM || !pin.is_npc)) ? '' : 'none';
+    // Players can open an NPC pin's details too -- the detail endpoint
+    // returns notes only for them (stats are withheld server-side).
+    pinViewBtn.style.display = (pin.pin_type === 'character') ? '' : 'none';
     pinRenameBtn.style.display = pin.pin_type === 'character' ? 'none' : '';
     if (pinPcNpcToggle) {
       const isFamiliar = pin.pin_type === 'prop' && !!pin.participant_id;
@@ -1186,6 +1186,7 @@
     const res = await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/characters/${characterId}/detail`);
     const c = await res.json();
     detailTitle.textContent = c.name;
+    const foggedStats = !!c.hidden_stats;
     const canDeleteSheets = window.IS_DM || c.created_by === window.USER_ID;
     const sheetsHtml = c.sheets.length
       ? `<div class="sheet-thumbs">${c.sheets.map((s) => `<div class="sheet-thumb"><img src="/uploads/${s.image_path}" data-lightbox-src="/uploads/${s.image_path}"${canDeleteSheets ? ` data-delete-url="/campaigns/${window.CAMPAIGN_ID}/characters/${c.id}/sheets/${s.id}/delete"` : ''}></div>`).join('')}</div>`
@@ -1198,6 +1199,14 @@
           <div class="dossier-meta">Lvl ${c.level} &middot; ${c.group_name || 'Ungrouped'}</div>
         </div>
       </div>
+      ${foggedStats ? `
+      <div class="dossier-stats stats-fogged" style="margin-top:16px;" title="The DM hasn't revealed this creature's stats" aria-label="Stats hidden">
+        ${['STR','DEX','CON','INT','WIS','CHA'].map((l) => `<div class="stat-pill"><span class="val" aria-hidden="true">10</span><span class="lbl">${l}</span></div>`).join('')}
+      </div>
+      <div class="dossier-hp-ac stats-fogged" style="margin-top:12px;" aria-label="HP and AC hidden">
+        <span class="badge-hp" aria-hidden="true">00 HP</span>
+        <span class="badge-ac" aria-hidden="true">AC 00</span>
+      </div>` : `
       <div class="dossier-stats" style="margin-top:16px;">
         <div class="stat-pill"><span class="val">${c.str_score}</span><span class="lbl">STR</span></div>
         <div class="stat-pill"><span class="val">${c.dex_score}</span><span class="lbl">DEX</span></div>
@@ -1210,9 +1219,10 @@
         <span class="badge-hp">${c.max_hp} HP</span>
         <span class="badge-ac">AC ${c.armor_class}</span>
       </div>
+      `}
       <div class="detail-notes">${c.notes_html || '<em>No notes recorded.</em>'}</div>
-      <div class="form-section-title" style="margin-top:18px;">Sheets</div>
-      ${sheetsHtml}
+      ${foggedStats ? '' : `<div class="form-section-title" style="margin-top:18px;">Sheets</div>
+      ${sheetsHtml}`}
     `;
     detailModal.hidden = false;
   }

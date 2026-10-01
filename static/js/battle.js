@@ -47,8 +47,9 @@
     const tempHp = p.temp_hp || 0;
     const tempPct = p.char_max_hp ? (tempHp / p.char_max_hp) * 100 : 0;
     const tempBarWidth = Math.max(0, Math.min(100 - pct, tempPct));
-    // A Member can view their own party's dossier but not an enemy's.
-    const canViewDetails = isDM || !p.is_npc;
+    // Everyone can open a dossier; for an NPC a Player gets notes only
+    // (the server withholds the numbers).
+    const canViewDetails = true;
 
     // A DM-concealed NPC gets one compact badge in place of the INIT/AC/HP
     // controls -- not a trio of individually-disabled-looking fields. It
@@ -69,9 +70,15 @@
         ${ICONS.skull}<span>Downed</span>
       </div>`;
     } else if (hidden) {
+      // Blurred placeholder INIT/AC/HP (no real numbers ever reach the client).
       statsArea = `
-      <div class="stats-hidden-badge" title="The DM hasn't revealed this creature's stats">
-        ${ICONS.lock}<span>Stats Hidden</span>
+      <div class="stats-fog-wrap" title="The DM hasn't revealed this creature's stats" aria-label="Stats hidden">
+        <div class="stat-chip stats-fogged" aria-hidden="true"><label>INIT</label><input type="number" class="stat-chip-input" value="00" disabled tabindex="-1"></div>
+        <div class="stat-chip stats-fogged" aria-hidden="true"><label>AC</label><input type="number" class="stat-chip-input" value="00" disabled tabindex="-1"></div>
+        <div class="hp-block stats-fogged" aria-hidden="true">
+          <div class="hp-bar-track hp-bar-track-static"><div class="hp-bar-fill ${hpColorClass(70)}" style="width:70%"></div></div>
+          <span class="hp-readout">00 / 00</span>
+        </div>
       </div>`;
     } else {
       statsArea = `
@@ -370,6 +377,7 @@
     const res = await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/characters/${characterId}/detail`);
     const c = await res.json();
     detailTitle.textContent = c.name;
+    const foggedStats = !!c.hidden_stats;
     const canDeleteSheets = window.IS_DM || c.created_by === window.USER_ID;
     const sheetsHtml = c.sheets.length
       ? `<div class="sheet-thumbs">${c.sheets.map((s) => `<div class="sheet-thumb"><img src="/uploads/${s.image_path}" data-lightbox-src="/uploads/${s.image_path}"${canDeleteSheets ? ` data-delete-url="/campaigns/${window.CAMPAIGN_ID}/characters/${c.id}/sheets/${s.id}/delete"` : ''}></div>`).join('')}</div>`
@@ -382,6 +390,14 @@
           <div class="dossier-meta">Lvl ${c.level} &middot; ${c.group_name || 'No Faction'}</div>
         </div>
       </div>
+      ${foggedStats ? `
+      <div class="dossier-stats stats-fogged" style="margin-top:16px;" title="The DM hasn't revealed this creature's stats" aria-label="Stats hidden">
+        ${['STR','DEX','CON','INT','WIS','CHA'].map((l) => `<div class="stat-pill"><span class="val" aria-hidden="true">10</span><span class="lbl">${l}</span></div>`).join('')}
+      </div>
+      <div class="dossier-hp-ac stats-fogged" style="margin-top:12px;" aria-label="HP and AC hidden">
+        <span class="badge-hp" aria-hidden="true">${ICONS.heart} 00 HP</span>
+        <span class="badge-ac" aria-hidden="true">${ICONS.shield} AC 00</span>
+      </div>` : `
       <div class="dossier-stats" style="margin-top:16px;">
         <div class="stat-pill"><span class="val">${c.str_score}</span><span class="lbl">STR</span></div>
         <div class="stat-pill"><span class="val">${c.dex_score}</span><span class="lbl">DEX</span></div>
@@ -394,9 +410,10 @@
         <span class="badge-hp">${ICONS.heart} ${c.max_hp} HP</span>
         <span class="badge-ac">${ICONS.shield} AC ${c.armor_class}</span>
       </div>
+      `}
       <div class="detail-notes">${c.notes_html || '<em>No notes recorded.</em>'}</div>
-      <div class="form-section-title" style="margin-top:18px;">Sheets</div>
-      ${sheetsHtml}
+      ${foggedStats ? '' : `<div class="form-section-title" style="margin-top:18px;">Sheets</div>
+      ${sheetsHtml}`}
     `;
     detailModal.hidden = false;
   }

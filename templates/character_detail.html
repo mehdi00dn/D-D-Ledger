@@ -33,6 +33,19 @@
     </div>
   </div>
 
+  {% if stats_hidden %}
+  {# Placeholder digits only -- the real values are never sent to a Player. #}
+  <div class="dossier-stats stats-fogged" style="margin-top:18px;" title="The DM hasn't revealed this creature's stats" aria-label="Stats hidden">
+    {% for lbl in ['STR','DEX','CON','INT','WIS','CHA'] %}
+    <div class="stat-pill"><span class="val" aria-hidden="true">10</span><span class="lbl">{{ lbl }}</span></div>
+    {% endfor %}
+  </div>
+
+  <div class="dossier-hp-ac stats-fogged" style="margin-top:14px;" aria-label="HP and AC hidden">
+    <span class="badge-hp" aria-hidden="true">{{ icon('heart') }} 00 HP</span>
+    <span class="badge-ac" aria-hidden="true">{{ icon('shield') }} AC 00</span>
+  </div>
+  {% else %}
   <div class="dossier-stats" style="margin-top:18px;">
     <div class="stat-pill"><span class="val">{{ character.str_score }}</span><span class="lbl">STR</span></div>
     <div class="stat-pill"><span class="val">{{ character.dex_score }}</span><span class="lbl">DEX</span></div>
@@ -47,9 +60,12 @@
     <span class="badge-ac">{{ icon('shield') }} AC {{ character.armor_class }}</span>
   </div>
 
+  {% endif %}
+
   <div class="form-section-title" style="margin-top:22px;">Notes</div>
   <div class="detail-notes">{{ notes_html | safe if notes_html else '<em>No notes recorded.</em>' }}</div>
 
+  {% if not stats_hidden %}
   <div class="form-section-title" style="margin-top:22px;">Sheets</div>
   {% if sheets %}
   <div class="sheet-thumbs">
@@ -68,6 +84,7 @@
   </div>
   {% else %}
   <p class="hint-text">No sheet images attached.</p>
+  {% endif %}
   {% endif %}
 </div>
 {% endblock %}

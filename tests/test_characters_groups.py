@@ -44,18 +44,54 @@ def test_npc_stats_hidden_from_players(make_user):
     npc = dm.new_character(cid, name='Goblin Scout', is_npc='on', str_score=17)
     pc = dm.new_character(cid, name='Hero', str_score=12)
 
-    # Server-rendered dossier page: 403 for a Player on the NPC, 200 for the DM.
-    assert player.get(f'/campaigns/{cid}/characters/{npc}').status_code == 403
+    # Server-rendered dossier page: a Player may open the NPC (notes only), the DM sees everything.
+    assert player.get(f'/campaigns/{cid}/characters/{npc}').status_code == 200
     assert dm.get(f'/campaigns/{cid}/characters/{npc}').status_code == 200
     assert player.get(f'/campaigns/{cid}/characters/{pc}').status_code == 200   # own party's PC still visible
 
     # Roster page: the Player sees a hidden-stats badge instead of real numbers for the NPC.
     player_list = player.get(f'/campaigns/{cid}/characters').data.decode()
     assert 'Goblin Scout' in player_list                # the NPC still shows up in the roster
-    assert 'Stats Hidden' in player_list
+    assert 'stats-fogged' in player_list                # blurred placeholders replace the old text badge
+    assert 'Stats Hidden' not in player_list
     assert '<span class="val">17</span>' not in player_list   # the redacted STR score never reaches the page
     dm_list = dm.get(f'/campaigns/{cid}/characters').data.decode()
-    assert '<span class="val">17</span>' in dm_list and 'Stats Hidden' not in dm_list
+    assert '<span class="val">17</span>' in dm_list and 'stats-fogged' not in dm_list
+
+
+def test_player_npc_detail_is_notes_only(make_user):
+    """DL-61: a Player can open an NPC's dossier / detail API, but only notes + identity come back."""
+    dm, player = make_user(), make_user()
+    cid = dm.new_campaign()
+    _add_player(dm, player, cid)
+    npc = dm.new_character(cid, name='Goblin Scout', is_npc='on', level=3, max_hp=77, armor_class=19,
+                           str_score=17, dex_score=18, notes=json.dumps(['Owes the guild a favour']))
+    pc = dm.new_character(cid, name='Hero', max_hp=31, str_score=12)
+
+    # API: 200, allow-listed fields only, no numbers anywhere in the payload.
+    r = player.get(f'/campaigns/{cid}/api/characters/{npc}/detail')
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body['hidden_stats'] is True and body['sheets'] == []
+    assert 'Owes the guild a favour' in body['notes_html']
+    for leaked in ('str_score', 'dex_score', 'con_score', 'int_score', 'wis_score', 'cha_score',
+                   'max_hp', 'armor_class', 'notes', 'created_by'):
+        assert leaked not in body
+    assert '77' not in r.data.decode() and '19' not in [str(v) for v in body.values()]
+
+    # Dossier page: notes visible, real numbers absent, fogged placeholders present.
+    page = player.get(f'/campaigns/{cid}/characters/{npc}').data.decode()
+    assert 'Owes the guild a favour' in page and 'stats-fogged' in page
+    assert '<span class="val">17</span>' not in page and '>77<' not in page and '77 HP' not in page
+    assert '>Sheets<' not in page
+
+    # The DM still gets the full record, and a Player's own-party PC is unchanged.
+    dm_body = dm.get(f'/campaigns/{cid}/api/characters/{npc}/detail').get_json()
+    assert dm_body['str_score'] == 17 and dm_body['max_hp'] == 77 and 'hidden_stats' not in dm_body
+    dm_page = dm.get(f'/campaigns/{cid}/characters/{npc}').data.decode()
+    assert '<span class="val">17</span>' in dm_page and 'stats-fogged' not in dm_page
+    pc_body = player.get(f'/campaigns/{cid}/api/characters/{pc}/detail').get_json()
+    assert pc_body['max_hp'] == 31 and 'hidden_stats' not in pc_body
 
 PERSIAN = 'کاراکتر آزمایشی'
 PERSIAN_NOTES = json.dumps(['یادداشت‌های مهم: <b>مرد</b> در تاریکی', 'خط دوم'])
