@@ -161,7 +161,7 @@ def test_sole_owner_cannot_leave(camp):
 def test_non_member_is_locked_out(make_user):
     a, b = make_user(), make_user()
     cid = a.new_campaign(); ch = a.new_character(cid)
-    for url in (f'/campaigns/{cid}/characters', f'/campaigns/{cid}/characters/{ch}', f'/campaigns/{cid}/groups',
+    for url in (f'/campaigns/{cid}/characters', f'/campaigns/{cid}/characters/{ch}', f'/campaigns/{cid}/factions',
                 f'/campaigns/{cid}/maps', f'/campaigns/{cid}/battle', f'/campaigns/{cid}/api/battle',
                 f'/campaigns/{cid}/api/characters', f'/campaigns/{cid}/export/data', f'/campaigns/{cid}/edit'):
         assert b.get(url).status_code == 404, url

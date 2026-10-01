@@ -1675,6 +1675,23 @@ body.page-leaving .content {
 /* ==========================================================================
    Image lightbox
    ========================================================================== */
+.lightbox-nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 202;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: rgba(11, 13, 19, 0.72);
+  border: 1px solid var(--hairline-strong);
+  color: var(--parchment);
+  backdrop-filter: blur(4px);
+}
+.lightbox-nav:hover { background: var(--bg-panel); color: var(--brass-bright); border-color: var(--brass); }
+.lightbox-nav svg { width: 19px; height: 19px; }
+.lightbox-prev { left: 14px; }
+.lightbox-next { right: 14px; }
 .lightbox-overlay {
   position: fixed;
   inset: 0;
@@ -1691,6 +1708,7 @@ body.page-leaving .content {
 .lightbox-overlay[hidden] { display: none; }
 
 .lightbox-stage {
+  position: relative;
   max-width: 90vw;
   max-height: 80vh;
   overflow: hidden;

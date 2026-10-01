@@ -1208,7 +1208,7 @@ def _save_character(db, char_id):
     cha_score = int(form.get('cha_score') or 10)
     armor_class = int(form.get('armor_class') or 10)
     notes = sanitize_notes_payload(form.get('notes', ''))
-    group_id = _campaign_group_id(db, form.get('group_id'))
+    group_id = _campaign_faction_id(db, form.get('group_id'))
 
     avatar_path = save_upload_field('avatar', 'avatars')
     remove_avatar = form.get('remove_avatar') == '1'
@@ -1289,11 +1289,11 @@ def sheet_delete(char_id, sheet_id):
     return redirect(url_for('character_edit', char_id=char_id))
 
 
-# ---------------- GROUPS ----------------
+# ---------------- FACTIONS ----------------
 
-@app.route('/campaigns/<int:campaign_id>/groups')
+@app.route('/campaigns/<int:campaign_id>/factions')
 @campaign_access_required
-def groups_list():
+def factions_list():
     db = get_db()
     groups = db.execute('''
         SELECT g.*, (SELECT COUNT(*) FROM characters c WHERE c.group_id = g.id) AS member_count
@@ -1303,39 +1303,39 @@ def groups_list():
     return render_template('groups_list.html', groups=groups)
 
 
-@app.route('/campaigns/<int:campaign_id>/groups/new', methods=['GET', 'POST'])
+@app.route('/campaigns/<int:campaign_id>/factions/new', methods=['GET', 'POST'])
 @campaign_access_required
 @dm_required
-def group_new():
+def faction_new():
     db = get_db()
     if request.method == 'POST':
-        _save_group(db, None)
+        _save_faction(db, None)
         db.close()
-        return redirect(url_for('groups_list'))
+        return redirect(url_for('factions_list'))
     db.close()
     return render_template('group_form.html', group=None)
 
 
-@app.route('/campaigns/<int:campaign_id>/groups/<int:group_id>/edit', methods=['GET', 'POST'])
+@app.route('/campaigns/<int:campaign_id>/factions/<int:group_id>/edit', methods=['GET', 'POST'])
 @campaign_access_required
 @dm_required
-def group_edit(group_id):
+def faction_edit(group_id):
     db = get_db()
     if request.method == 'POST':
-        _save_group(db, group_id)
+        _save_faction(db, group_id)
         db.close()
-        return redirect(url_for('groups_list'))
+        return redirect(url_for('factions_list'))
     group = db.execute('SELECT * FROM groups WHERE id = ? AND campaign_id = ?', (group_id, g.campaign_id)).fetchone()
     db.close()
     if group is None:
-        return redirect(url_for('groups_list'))
+        return redirect(url_for('factions_list'))
     return render_template('group_form.html', group=group)
 
 
 _COLOR_RE = re.compile(r'^#[0-9a-fA-F]{6}$')
 
 
-def _campaign_group_id(db, raw):
+def _campaign_faction_id(db, raw):
     """A character may only join a group of ITS OWN campaign; anything else becomes 'no group'."""
     try:
         gid = int(raw)
@@ -1345,9 +1345,9 @@ def _campaign_group_id(db, raw):
     return gid if ok else None
 
 
-def _save_group(db, group_id):
+def _save_faction(db, group_id):
     form = request.form
-    name = form.get('name', '').strip() or 'Unnamed Group'
+    name = form.get('name', '').strip() or 'Unnamed Faction'
     bio = form.get('bio', '')
     color = form.get('color') or '#c9a24b'
     if not _COLOR_RE.match(color):
@@ -1373,10 +1373,10 @@ def _save_group(db, group_id):
     db.commit()
 
 
-@app.route('/campaigns/<int:campaign_id>/groups/<int:group_id>/delete', methods=['POST'])
+@app.route('/campaigns/<int:campaign_id>/factions/<int:group_id>/delete', methods=['POST'])
 @campaign_access_required
 @dm_required
-def group_delete(group_id):
+def faction_delete(group_id):
     db = get_db()
     group = db.execute('SELECT avatar_path FROM groups WHERE id = ? AND campaign_id = ?', (group_id, g.campaign_id)).fetchone()
     if group:
@@ -1384,7 +1384,7 @@ def group_delete(group_id):
         db.execute('DELETE FROM groups WHERE id = ? AND campaign_id = ?', (group_id, g.campaign_id))
         db.commit()
     db.close()
-    return redirect(url_for('groups_list'))
+    return redirect(url_for('factions_list'))
 
 
 # ---------------- API (for future battle screen use) ----------------
@@ -1939,21 +1939,21 @@ def character_export(char_id):
     return _build_export_zip(g.campaign_id, character_ids=[char_id], download_name=f'{_slugify(row["name"])}.zip')
 
 
-@app.route('/campaigns/<int:campaign_id>/groups/<int:group_id>/export')
+@app.route('/campaigns/<int:campaign_id>/factions/<int:group_id>/export')
 @campaign_access_required
-def group_export(group_id):
+def faction_export(group_id):
     db = get_db()
     row = db.execute('SELECT name FROM groups WHERE id = ? AND campaign_id = ?', (group_id, g.campaign_id)).fetchone()
     db.close()
     if row is None:
-        return redirect(url_for('groups_list'))
+        return redirect(url_for('factions_list'))
     return _build_export_zip(g.campaign_id, group_ids=[group_id], character_ids=[], download_name=f'{_slugify(row["name"])}.zip')
 
 
 @app.route('/campaigns/<int:campaign_id>/import/data', methods=['POST'])
 @campaign_access_required
 def import_data():
-    dest = 'groups_list' if 'groups' in (request.referrer or '') else 'characters_list'
+    dest = 'factions_list' if 'groups' in (request.referrer or '') else 'characters_list'
     data, temp_key = _read_upload_source(request.files.get('import_file'), request.form.get('import_file__key'))
     try:
         if not data:

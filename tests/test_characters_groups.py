@@ -14,22 +14,25 @@ def test_only_dm_manages_groups(make_user):
     _add_player(dm, player, cid)
     gid = dm.new_group(cid, name='Guild')
 
-    assert player.post(f'/campaigns/{cid}/groups/new', data={'name': 'Hax Guild'},
+    assert player.post(f'/campaigns/{cid}/factions/new', data={'name': 'Hax Guild'},
                         content_type='multipart/form-data').status_code == 403
-    assert player.post(f'/campaigns/{cid}/groups/{gid}/edit', data={'name': 'Hax'},
+    assert player.post(f'/campaigns/{cid}/factions/{gid}/edit', data={'name': 'Hax'},
                         content_type='multipart/form-data').status_code == 403
-    assert player.post(f'/campaigns/{cid}/groups/{gid}/delete').status_code == 403
+    assert player.post(f'/campaigns/{cid}/factions/{gid}/delete').status_code == 403
     assert q('SELECT name FROM groups WHERE id = ?', gid)[0]['name'] == 'Guild'   # unchanged
 
     # A Player cannot even reach the New/Edit forms via GET.
-    assert player.get(f'/campaigns/{cid}/groups/new').status_code == 403
-    assert player.get(f'/campaigns/{cid}/groups/{gid}/edit').status_code == 403
+    assert player.get(f'/campaigns/{cid}/factions/new').status_code == 403
+    assert player.get(f'/campaigns/{cid}/factions/{gid}/edit').status_code == 403
     # Neither control renders on the list page for a Player.
-    listing = player.get(f'/campaigns/{cid}/groups').data
-    assert b'New Group' not in listing and b'>Edit<' not in listing
+    listing = player.get(f'/campaigns/{cid}/factions').data
+    assert b'New Faction' not in listing and b'>Edit<' not in listing
+    # ...and the same page does show them to the DM, so the check above can actually fail.
+    dm_listing = dm.get(f'/campaigns/{cid}/factions').data
+    assert b'New Faction' in dm_listing and b'Edit' in dm_listing
 
     # The DM can still do all of it.
-    assert dm.post(f'/campaigns/{cid}/groups/{gid}/edit', data={'name': 'Renamed'},
+    assert dm.post(f'/campaigns/{cid}/factions/{gid}/edit', data={'name': 'Renamed'},
                     content_type='multipart/form-data').status_code == 302
     assert q('SELECT name FROM groups WHERE id = ?', gid)[0]['name'] == 'Renamed'
 
@@ -92,9 +95,9 @@ def test_group_lifecycle_and_membership(camp):
     gid = u.new_group(cid, name='Guild')
     a = u.new_character(cid, group_id=gid); b = u.new_character(cid)
     assert q('SELECT group_id FROM characters WHERE id = ?', a)[0]['group_id'] == gid
-    r = u.post(f'/campaigns/{cid}/groups/{gid}/edit', data={'name': 'Guild 2', 'color': '#111111'}, content_type='multipart/form-data')
+    r = u.post(f'/campaigns/{cid}/factions/{gid}/edit', data={'name': 'Guild 2', 'color': '#111111'}, content_type='multipart/form-data')
     assert r.status_code == 302 and q('SELECT name FROM groups WHERE id = ?', gid)[0]['name'] == 'Guild 2'
-    r = u.post(f'/campaigns/{cid}/groups/{gid}/delete')
+    r = u.post(f'/campaigns/{cid}/factions/{gid}/delete')
     assert r.status_code == 302 and u.get(r.headers['Location']).status_code == 200
     assert q('SELECT COUNT(*) AS n FROM groups WHERE id = ?', gid)[0]['n'] == 0
     # characters survive; their group link is cleared

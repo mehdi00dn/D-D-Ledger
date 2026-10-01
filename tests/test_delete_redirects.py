@@ -16,7 +16,7 @@ def test_all_delete_flows_land_on_working_pages(make_user):
     pid_user = q('SELECT id FROM users WHERE username = ?', p.name)[0]['id']
 
     gid = u.new_group(cid); ch = u.new_character(cid, group_id=gid); mid = u.new_map(cid)
-    _lands_ok(u, u.post(f'/campaigns/{cid}/groups/{gid}/delete'))
+    _lands_ok(u, u.post(f'/campaigns/{cid}/factions/{gid}/delete'))
     _lands_ok(u, u.post(f'/campaigns/{cid}/characters/{ch}/delete'))
     _lands_ok(u, u.post(f'/campaigns/{cid}/maps/{mid}/delete'))
     _lands_ok(u, u.post(f'/campaigns/{cid}/members/{pid_user}/remove'))

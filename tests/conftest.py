@@ -187,7 +187,7 @@ class User:
 
     def new_group(self, cid, name=None, color='#336699'):
         name = name or f'Grp {uuid.uuid4().hex[:6]}'
-        r = self.post(f'/campaigns/{cid}/groups/new', data={'name': name, 'color': color}, content_type='multipart/form-data')
+        r = self.post(f'/campaigns/{cid}/factions/new', data={'name': name, 'color': color}, content_type='multipart/form-data')
         assert r.status_code == 302
         return q('SELECT id FROM groups WHERE campaign_id = ? AND name = ?', cid, name)[0]['id']
 

@@ -63,12 +63,12 @@ def _confirm_delete(page, form_selector):
 
 def test_ui_delete_flows_never_land_on_a_404(pw, shared_server):
     base = shared_server.url; api = Api(base); cid = api.campaign('Del')
-    api.post(f'/campaigns/{cid}/groups/new', data={'name': 'G1', 'color': '#123456'})
+    api.post(f'/campaigns/{cid}/factions/new', data={'name': 'G1', 'color': '#123456'})
     api.character(cid, 'Doomed')
     api.post(f'/campaigns/{cid}/maps/new', data={'name': 'M1', 'blank_width': '300', 'blank_height': '300'})
     ctx = api.context(pw, base); page = ctx.new_page(); bad, errs = _collect(page)
     for path, sel in ((f'/campaigns/{cid}/characters', 'form[action*="/characters/"][action$="/delete"]'),
-                      (f'/campaigns/{cid}/groups', 'form[action*="/groups/"][action$="/delete"]'),
+                      (f'/campaigns/{cid}/factions', 'form[action*="/factions/"][action$="/delete"]'),
                       (f'/campaigns/{cid}/maps?browse=1', 'form[action*="/maps/"][action$="/delete"]')):
         page.goto(base + path)
         resp = _confirm_delete(page, sel)

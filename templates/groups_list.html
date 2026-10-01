@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon %}
-{% set active_page = 'groups' %}
+{% set active_page = 'factions' %}
 {% block title %}Factions — Campaign Ledger{% endblock %}
 
 {% block content %}
@@ -20,7 +20,7 @@
       <div class="upload-progress" hidden><div class="upload-progress-bar"></div></div>
     </form>
     {% if is_dm %}
-    <a href="{{ url_for('group_new') }}" class="btn btn-primary">{{ icon('plus') }} New Faction</a>
+    <a href="{{ url_for('faction_new') }}" class="btn btn-primary">{{ icon('plus') }} New Faction</a>
     {% endif %}
   </div>
 </div>
@@ -54,11 +54,11 @@
       <p class="group-bio">{{ g.bio }}</p>
       <div class="group-actions">
         {% if is_dm %}
-        <a href="{{ url_for('group_edit', group_id=g.id) }}" class="btn btn-ghost btn-sm">{{ icon('pencil') }} Edit</a>
+        <a href="{{ url_for('faction_edit', group_id=g.id) }}" class="btn btn-ghost btn-sm">{{ icon('pencil') }} Edit</a>
         {% endif %}
-        <a href="{{ url_for('group_export', group_id=g.id) }}" class="btn-icon" title="Export this faction">{{ icon('upload') }}</a>
+        <a href="{{ url_for('faction_export', group_id=g.id) }}" class="btn-icon" title="Export this faction">{{ icon('upload') }}</a>
         {% if is_dm %}
-        <form method="POST" action="{{ url_for('group_delete', group_id=g.id) }}" data-confirm="Delete faction '{{ g.name }}'? Members will become ungrouped.">{{ csrf_field() }}
+        <form method="POST" action="{{ url_for('faction_delete', group_id=g.id) }}" data-confirm="Delete faction '{{ g.name }}'? Members will become ungrouped.">{{ csrf_field() }}
           <button type="submit" class="btn btn-danger btn-sm">{{ icon('trash-2') }} Delete</button>
         </form>
         {% endif %}
@@ -73,7 +73,7 @@
   <h3>No factions yet</h3>
   <p>Create a faction or party to organize your characters.</p>
   {% if is_dm %}
-  <a href="{{ url_for('group_new') }}" class="btn btn-primary">{{ icon('plus') }} New Faction</a>
+  <a href="{{ url_for('faction_new') }}" class="btn btn-primary">{{ icon('plus') }} New Faction</a>
   {% endif %}
 </div>
 {% endif %}
