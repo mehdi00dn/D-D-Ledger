@@ -325,3 +325,46 @@ def test_faction_edit_cannot_touch_another_campaigns_faction(make_user):
     assert r.status_code == 404     # the URL-scope layer refuses another campaign's faction outright
     assert q('SELECT name FROM groups WHERE id = ?', victim_group)[0]['name'] == 'B-Faction'
     assert _group_of(mine) is None and _group_of(victim_char) == victim_group
+
+
+# ---------------- DL-63 follow-ups: remove from faction, label cleanup, empty notes ----------------
+
+def test_faction_member_remove_button(make_user):
+    dm, player = make_user(), make_user()
+    cid = dm.new_campaign(); _add_player(dm, player, cid)
+    gid = dm.new_group(cid, name='Guild'); other = dm.new_group(cid, name='Rivals')
+    a = dm.new_character(cid, name='Aldric', group_id=gid)
+    b = dm.new_character(cid, name='Brute', group_id=gid)
+    c = dm.new_character(cid, name='Cyrene', group_id=other)
+
+    # The DM gets an X per member; a Player gets none.
+    page = dm.get(f'/campaigns/{cid}/factions/{gid}').data.decode()
+    assert page.count('faction-member-remove') == 2 and f'/factions/{gid}/members/{a}/remove' in page
+    assert 'faction-member-remove' not in player.get(f'/campaigns/{cid}/factions/{gid}').data.decode()
+
+    # Removing one member ungroups only them, and lands back on the Details page.
+    r = dm.post(f'/campaigns/{cid}/factions/{gid}/members/{a}/remove')
+    assert r.status_code == 302 and r.headers['Location'].endswith(f'/factions/{gid}')
+    assert _group_of(a) is None and _group_of(b) == gid and _group_of(c) == other
+    assert 'Aldric' not in dm.get(f'/campaigns/{cid}/factions/{gid}').data.decode()
+
+    # Wrong faction for that character: nothing happens. A Player cannot remove anyone.
+    dm.post(f'/campaigns/{cid}/factions/{gid}/members/{c}/remove')
+    assert _group_of(c) == other
+    assert player.post(f'/campaigns/{cid}/factions/{gid}/members/{b}/remove').status_code == 403
+    assert _group_of(b) == gid
+    # Another campaign's faction/character ids are refused outright.
+    cid2 = dm.new_campaign(); g2 = dm.new_group(cid2, name='Else'); x2 = dm.new_character(cid2, name='Else Hero', group_id=g2)
+    assert dm.post(f'/campaigns/{cid}/factions/{g2}/members/{x2}/remove').status_code == 404
+    assert _group_of(x2) == g2
+
+
+def test_page_eyebrows_removed_and_empty_notes_render_as_html(make_user):
+    dm = make_user(); cid = dm.new_campaign()
+    gid = dm.new_group(cid, name='Guild')
+    ch = dm.new_character(cid, name='Blank')                      # no notes at all
+    detail = dm.get(f'/campaigns/{cid}/characters/{ch}').data.decode()
+    assert '<em>No notes recorded.</em>' in detail and '&lt;em&gt;' not in detail   # was shown as literal tags
+    for url in (f'/campaigns/{cid}/characters/{ch}', f'/campaigns/{cid}/factions/{gid}', '/campaigns',
+                '/campaigns/new', f'/campaigns/{cid}/edit'):
+        assert 'page-eyebrow' not in dm.get(url).data.decode(), url

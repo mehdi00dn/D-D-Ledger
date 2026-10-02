@@ -6,7 +6,6 @@
 {% block content %}
 <div class="page-header">
   <div>
-    <p class="page-eyebrow">Dossier</p>
     <h1 class="page-title">{{ character.name }}</h1>
     <p class="page-sub">Lvl {{ character.level }} &middot; {{ 'NPC' if character.is_npc else 'PC' }}{% if character.group_name %} &middot; {{ character.group_name }}{% endif %}</p>
   </div>
@@ -63,7 +62,7 @@
   {% endif %}
 
   <div class="form-section-title" style="margin-top:22px;">Notes</div>
-  <div class="detail-notes">{{ notes_html | safe if notes_html else '<em>No notes recorded.</em>' }}</div>
+  <div class="detail-notes">{% if notes_html %}{{ notes_html | safe }}{% else %}<em>No notes recorded.</em>{% endif %}</div>
 
   {% if not stats_hidden %}
   <div class="form-section-title" style="margin-top:22px;">Sheets</div>

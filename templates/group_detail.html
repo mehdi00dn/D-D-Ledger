@@ -6,7 +6,6 @@
 {% block content %}
 <div class="page-header">
   <div>
-    <p class="page-eyebrow">Faction</p>
     <h1 class="page-title"><span class="group-dot" style="background:{{ group.color }}"></span>{{ group.name }}</h1>
     <p class="page-sub">{{ members|length }} member{{ '' if members|length == 1 else 's' }}</p>
   </div>
@@ -34,14 +33,21 @@
   {% if members %}
   <div class="faction-members">
     {% for m in members %}
-    <a class="faction-member" href="{{ url_for('character_detail', char_id=m.id) }}">
-      <span class="avatar-frame">
-        {% if m.avatar_path %}<img src="{{ url_for('uploaded_file', filename=m.avatar_path) }}" alt="">{% else %}{{ icon('user') }}{% endif %}
-      </span>
-      <span class="faction-member-name" title="{{ m.name }}">{{ m.name }}</span>
-      <span class="dossier-tag {{ 'npc' if m.is_npc else '' }}">{{ 'NPC' if m.is_npc else 'PC' }}</span>
-      <span class="faction-member-meta">Lvl {{ m.level }}</span>
-    </a>
+    <div class="faction-member">
+      <a class="faction-member-link" href="{{ url_for('character_detail', char_id=m.id) }}">
+        <span class="avatar-frame">
+          {% if m.avatar_path %}<img src="{{ url_for('uploaded_file', filename=m.avatar_path) }}" alt="">{% else %}{{ icon('user') }}{% endif %}
+        </span>
+        <span class="faction-member-name" title="{{ m.name }}">{{ m.name }}</span>
+        <span class="dossier-tag {{ 'npc' if m.is_npc else '' }}">{{ 'NPC' if m.is_npc else 'PC' }}</span>
+        <span class="faction-member-meta">Lvl {{ m.level }}</span>
+      </a>
+      {% if g.is_dm %}
+      <form method="POST" action="{{ url_for('faction_member_remove', group_id=group.id, char_id=m.id) }}">{{ csrf_field() }}
+        <button type="submit" class="faction-member-remove" title="Remove {{ m.name }} from this faction" aria-label="Remove {{ m.name }} from this faction">{{ icon('x') }}</button>
+      </form>
+      {% endif %}
+    </div>
     {% endfor %}
   </div>
   {% else %}

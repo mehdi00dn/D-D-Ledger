@@ -8,7 +8,6 @@
 {% set cur_access = campaign.access_mode if campaign and campaign.access_mode else 'private' %}
 <div class="page-header">
   <div>
-    <p class="page-eyebrow">{{ 'Amend Campaign' if campaign else 'New Campaign' }}</p>
     <h1 class="page-title">{{ campaign.name if campaign else 'New Campaign' }}</h1>
   </div>
   <a href="{{ url_for('campaigns_list') }}" class="btn btn-ghost">{{ icon('arrow-left') }} Back to list</a>

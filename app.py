@@ -1382,6 +1382,19 @@ def faction_detail(group_id):
     return render_template('group_detail.html', group=group, members=members)
 
 
+@app.route('/campaigns/<int:campaign_id>/factions/<int:group_id>/members/<int:char_id>/remove', methods=['POST'])
+@campaign_access_required
+@dm_required
+def faction_member_remove(group_id, char_id):
+    """Take one character out of a faction (they become ungrouped). Scoped to this campaign and faction."""
+    db = get_db()
+    db.execute('UPDATE characters SET group_id = NULL WHERE id = ? AND group_id = ? AND campaign_id = ?',
+               (char_id, group_id, g.campaign_id))
+    db.commit()
+    db.close()
+    return redirect(url_for('faction_detail', group_id=group_id))
+
+
 @app.route('/campaigns/<int:campaign_id>/factions/<int:group_id>/edit', methods=['GET', 'POST'])
 @campaign_access_required
 @dm_required
