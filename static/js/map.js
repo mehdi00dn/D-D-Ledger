@@ -83,7 +83,43 @@
   canvas.width = naturalWidth;
   canvas.height = naturalHeight;
   bgImage.onload = () => { bgLoaded = true; redraw(); };
-  bgImage.src = '/uploads/' + initData.image_path;
+  // The picture comes from the fog-aware route (a Player's copy has fogged areas painted out).
+  const mapImageUrl = (v) => initData.image_url + (v ? '?v=' + v : '');
+  bgImage.src = mapImageUrl(initData.fog_version);
+
+  // ---- Fog of war (see map-fog.js) ----
+  const fogOptions = document.getElementById('fog-options-group');
+  const fogBrushInput = document.getElementById('fog-brush-size');
+  const fogToggle = document.getElementById('setup-fog-toggle');
+  const fog = window.MapFog ? window.MapFog.create({
+    mapId, campaignId: window.CAMPAIGN_ID, isDM: !!window.IS_DM,
+    naturalWidth, naturalHeight, initialVersion: initData.fog_version || 0,
+    layerEl: document.getElementById('map-fog-layer'),
+    ringEl: document.getElementById('fog-brush-ring'),
+    eventPos: (e) => eventPos(e),
+    pushCommand: (cmd) => pushCommand(cmd),
+    onChange: (active) => { if (fogToggle) fogToggle.checked = active; },
+    reloadImage: (v) => {
+      const next = new Image();
+      next.onload = () => { bgImage = next; bgLoaded = true; redraw(); };
+      next.src = mapImageUrl(v);
+    },
+  }) : null;
+  if (fog) fog.init(initData.fog_active);
+  if (fog && fogToggle) {
+    fogToggle.addEventListener('change', () => { if (fogToggle.checked) fog.fillAll(); else fog.clearAll(); });
+  }
+  document.querySelectorAll('[data-fog-mode]').forEach((b) => b.addEventListener('click', () => {
+    document.querySelectorAll('[data-fog-mode]').forEach((x) => x.classList.toggle('active', x === b));
+    if (fog) fog.setMode(b.dataset.fogMode);
+  }));
+  if (fogBrushInput) {
+    const brushLabel = document.getElementById('fog-brush-value');
+    fogBrushInput.addEventListener('input', () => {
+      brushLabel.textContent = fogBrushInput.value + 'px';
+      if (fog) fog.setBrush(fogBrushInput.value);
+    });
+  }
 
   function getNaturalPos(clientX, clientY) {
     const rect = stageInner.getBoundingClientRect();
@@ -1312,7 +1348,10 @@
       deselectPin();
       deselectShape();
       canvas.classList.toggle('tool-eraser', currentTool === 'eraser');
-      pinLayer.classList.toggle('draw-mode', SHAPE_TOOLS.includes(currentTool));
+      pinLayer.classList.toggle('draw-mode', SHAPE_TOOLS.includes(currentTool) || currentTool === 'fog');
+      if (fogOptions) fogOptions.hidden = currentTool !== 'fog';
+      canvas.classList.toggle('tool-fog', currentTool === 'fog');
+      if (fog && currentTool !== 'fog') fog.showRing(false);
       angleDrawState = null;
       previewShape = null;
       if (['line', 'rect', 'oval'].includes(currentTool)) {
@@ -1443,6 +1482,7 @@
   // the server is still corrected (the client edits optimistically and relies on this).
   function applyMapState(s) {
     let gridChanged = false;
+    if (fog) fog.onState(s);
 
     const nowLocked = !!s.locked_for_players;
     if (nowLocked !== lockedForPlayers) {
@@ -1551,6 +1591,7 @@
 
   canvas.addEventListener('mousedown', (e) => {
     if (readOnly()) return;
+    if (currentTool === 'fog') { if (fog && window.IS_DM && e.button === 0) fog.begin(e); return; }
     const pos = eventPos(e);
 
     if (currentTool === 'select') {
@@ -1672,6 +1713,7 @@
   }
 
   canvas.addEventListener('mousemove', (e) => {
+    if (currentTool === 'fog') { if (fog && window.IS_DM) fog.move(e); return; }
     // Hover detection for the "click to unlock" icon (select tool only).
     if (currentTool === 'select' && !drawState && !activeDrag) {
       const pos = eventPos(e);
@@ -1849,6 +1891,7 @@
   });
 
   window.addEventListener('mouseup', async (e) => {
+    if (fog && fog.isPainting()) { fog.end(); return; }
     if (activeDrag) {
       const drag = activeDrag;
       activeDrag = null;
@@ -2006,6 +2049,7 @@
   function openGridSettings(mandatory) {
     gridSettingsBefore = { gridSize, gridColor, gridVisible, gridOffsetX, gridOffsetY, snapToGrid };
     setupOverlay.hidden = false;
+    if (fog && fogToggle) fogToggle.checked = fog.hasFog();
     contentArea.classList.add('blurred');
     setupCloseBtn.hidden = !!mandatory;
     setupTitle.textContent = mandatory ? 'Set up your grid' : 'Grid & canvas settings';

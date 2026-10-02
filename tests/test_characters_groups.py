@@ -365,6 +365,8 @@ def test_page_eyebrows_removed_and_empty_notes_render_as_html(make_user):
     ch = dm.new_character(cid, name='Blank')                      # no notes at all
     detail = dm.get(f'/campaigns/{cid}/characters/{ch}').data.decode()
     assert '<em>No notes recorded.</em>' in detail and '&lt;em&gt;' not in detail   # was shown as literal tags
+    # A faction with no bio says so too (same wording as a character with no notes).
+    assert '<em>No notes recorded.</em>' in dm.get(f'/campaigns/{cid}/factions/{gid}').data.decode()
     for url in (f'/campaigns/{cid}/characters/{ch}', f'/campaigns/{cid}/factions/{gid}', '/campaigns',
                 '/campaigns/new', f'/campaigns/{cid}/edit'):
         assert 'page-eyebrow' not in dm.get(url).data.decode(), url

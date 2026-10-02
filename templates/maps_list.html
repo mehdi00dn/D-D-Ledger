@@ -18,7 +18,7 @@
   <div class="map-card">
     <a href="{{ url_for('map_editor', map_id=m.id) }}" class="map-card-image-link">
       <div class="map-card-image">
-        <img src="{{ url_for('uploaded_file', filename=m.image_path) }}" alt="{{ m.name }}">
+        <img src="{{ url_for('map_image', map_id=m.id, v=m.fog_version) }}" alt="{{ m.name }}">
         {% if m.linked_to_battle %}<span class="map-linked-badge">{{ icon('swords') }} Linked</span>{% endif %}
       </div>
     </a>

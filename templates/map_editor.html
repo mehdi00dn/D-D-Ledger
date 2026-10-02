@@ -70,7 +70,20 @@
     </div>
 
     <button type="button" class="map-tool-btn" data-tool="eraser" title="Eraser: click a shape or pin to delete it (E)">{{ icon('eraser') }}</button>
+    {% if g.is_dm %}
+    <button type="button" class="map-tool-btn" data-tool="fog" title="Fog of war: paint fog onto the map, or erase it">{{ icon('cloud') }}</button>
+    {% endif %}
   </div>
+
+  {% if g.is_dm %}
+  <div class="map-tool-group" id="fog-options-group" hidden>
+    <button type="button" class="btn btn-ghost btn-sm fog-mode-btn active" data-fog-mode="paint" title="Add fog">Add fog</button>
+    <button type="button" class="btn btn-ghost btn-sm fog-mode-btn" data-fog-mode="erase" title="Remove fog">Erase fog</button>
+    <label class="grid-size-label" for="fog-brush-size">Brush</label>
+    <input type="range" id="fog-brush-size" min="20" max="400" step="10" value="100" title="Brush size">
+    <span class="map-setup-value" id="fog-brush-value">100px</span>
+  </div>
+  {% endif %}
 
   <div class="map-tool-group">
     <button type="button" class="btn-icon" id="undo-btn" title="Undo (Ctrl+Z)" disabled>{{ icon('undo') }}</button>
@@ -114,7 +127,9 @@
 <div class="map-stage-wrap" id="map-stage-wrap" data-natural-width="{{ map.image_width }}" data-natural-height="{{ map.image_height }}" style="aspect-ratio: {{ map.image_width or 16 }} / {{ map.image_height or 9 }};">
   <div class="map-stage-inner" id="map-stage-inner">
     <canvas id="map-canvas"></canvas>
+    <div id="map-fog-layer" class="map-fog-layer" hidden><div class="map-fog-fill"></div><div class="map-fog-clouds"></div></div>
     <div id="map-pin-layer"></div>
+    {% if g.is_dm %}<div id="fog-brush-ring" class="fog-brush-ring" hidden></div>{% endif %}
     <div id="angle-labels-layer"></div>
     <!-- Pin action bubble shown when a pin is selected -->
     <div class="pin-rename-box" id="pin-rename-box" hidden>
@@ -185,6 +200,12 @@
         <input type="checkbox" id="setup-snap-grid" {{ 'checked' if map.snap_to_grid else '' }}>
         Snap pins to grid
       </label>
+      {% if g.is_dm %}
+      <label class="field-checkbox" title="Covers the whole map with fog, or wipes all of it. Takes effect immediately.">
+        <input type="checkbox" id="setup-fog-toggle">
+        Fog of war (cover the whole map)
+      </label>
+      {% endif %}
       <button type="button" class="btn btn-primary" id="setup-confirm-btn">{{ icon('check') }} Confirm</button>
     </div>
   </div>
@@ -205,5 +226,6 @@
 {% endblock %}
 
 {% block extra_scripts %}
+<script src="{{ url_for('static', filename='js/map-fog.js') }}"></script>
 <script src="{{ url_for('static', filename='js/map.js') }}"></script>
 {% endblock %}

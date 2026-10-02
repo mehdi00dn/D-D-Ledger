@@ -22,6 +22,7 @@ import security
 from concurrent.futures import ThreadPoolExecutor
 from flask import Response
 import images
+import fog
 import importer
 from storage import get_storage, StorageError, UPLOADS, TEMP
 from database import get_db, init_db, init_app as init_database_app, UniqueViolation
@@ -2237,7 +2238,14 @@ def map_editor(map_id):
         return redirect(url_for('maps_list', browse=1))
     session.setdefault('last_map_by_campaign', {})[str(g.campaign_id)] = map_id
     session.modified = True
-    return render_template('map_editor.html', map=dict(m))
+    init = dict(m)
+    # The raw image key goes to nobody's browser: the page loads the map through map_image(),
+    # which paints fogged areas out for Players. The mask itself is fetched separately.
+    init.pop('image_path', None)
+    init.pop('fog_mask', None)
+    init['image_url'] = url_for('map_image', map_id=map_id)
+    init['fog_active'] = m['fog_mask'] is not None
+    return render_template('map_editor.html', map=init)
 
 
 @app.route('/campaigns/<int:campaign_id>/maps/<int:map_id>/delete', methods=['POST'])
@@ -2298,10 +2306,117 @@ def api_map_state(map_id):
 def _map_state_payload(db, map_id):
     row = db.execute('''
         SELECT grid_size, grid_color, grid_visible, grid_offset_x, grid_offset_y,
-               snap_to_grid, grid_setup_done, locked_for_players, linked_to_battle
+               snap_to_grid, grid_setup_done, locked_for_players, linked_to_battle,
+               fog_version, (fog_mask IS NOT NULL) AS fog_active
         FROM maps WHERE id = ? AND campaign_id = ?
     ''', (map_id, g.campaign_id)).fetchone()
     return dict(row) if row is not None else None
+
+
+def _map_fog_row(db, map_id):
+    """(raw mask bytes or None, cols, rows, version, image_path, width, height) for a map of this campaign."""
+    m = db.execute('''
+        SELECT fog_mask, fog_cols, fog_rows, fog_version, image_path, image_width, image_height
+        FROM maps WHERE id = ? AND campaign_id = ?
+    ''', (map_id, g.campaign_id)).fetchone()
+    if m is None:
+        return None
+    raw = fog.from_storage(m['fog_mask'], m['fog_cols'], m['fog_rows'])
+    return raw, m['fog_cols'], m['fog_rows'], m['fog_version'], m['image_path'], m['image_width'], m['image_height']
+
+
+def _drop_fogged(db, map_id, items, xkey, ykey):
+    """A Player never receives a pin or drawing whose anchor sits under fog; the DM sees everything."""
+    if g.is_dm or not items:
+        return items
+    info = _map_fog_row(db, map_id)
+    if info is None or info[0] is None:
+        return items
+    raw, cols, rows = info[0], info[1], info[2]
+    return [i for i in items if not fog.point_fogged(raw, cols, rows, i.get(xkey), i.get(ykey))]
+
+
+@app.route('/campaigns/<int:campaign_id>/maps/<int:map_id>/image')
+@campaign_access_required
+def map_image(map_id):
+    """The map picture. The DM gets the original; a Player gets it with every fogged area painted
+    out on the server, so hidden parts of the map never leave it."""
+    db = get_db()
+    info = _map_fog_row(db, map_id)
+    db.close()
+    if info is None:
+        abort(404)
+    raw, cols, rows, version, image_path, _w, _h = info
+    km = _UPLOAD_KEY_RE.match(image_path or '')
+    data = get_storage().get(UPLOADS, image_path) if km else None
+    if data is None:
+        abort(404)
+    if g.is_dm or raw is None:
+        mimetype = images.EXT_TO_CONTENT_TYPE[km.group(2).lower()]
+    else:
+        try:
+            data, mimetype = fog.composite(data, raw, cols, rows)
+        except Exception:
+            abort(500)      # never fall back to the unmasked image for a Player
+    resp = Response(data, mimetype=mimetype)
+    # Revalidate every time: the URL is the same before and after the DM changes the fog.
+    resp.headers['Cache-Control'] = 'private, no-cache'
+    resp.headers['ETag'] = '"%s-%s-%s"' % (version, 'dm' if g.is_dm else 'pl', hashlib.sha1(image_path.encode()).hexdigest()[:8])
+    resp.headers['X-Content-Type-Options'] = 'nosniff'
+    return resp.make_conditional(request)
+
+
+@app.route('/campaigns/<int:campaign_id>/api/maps/<int:map_id>/fog')
+@campaign_access_required
+def api_map_fog_get(map_id):
+    """The fog mask (what is covered -- exactly what the DM chooses to show everyone)."""
+    db = get_db()
+    info = _map_fog_row(db, map_id)
+    db.close()
+    if info is None:
+        abort(404)
+    raw, cols, rows, version, _p, w, h = info
+    dims = fog.grid_dims(w, h)
+    return jsonify({'version': version, 'cell': fog.CELL, 'cols': dims[0] if dims else 0, 'rows': dims[1] if dims else 0,
+                    'mask': fog.to_client(raw) if raw is not None else None})
+
+
+@app.route('/campaigns/<int:campaign_id>/api/maps/<int:map_id>/fog', methods=['POST'])
+@campaign_access_required
+@dm_required
+def api_map_fog_set(map_id):
+    """DM only. Body: {"fill": true} covers the whole map, {"clear": true} removes all fog,
+    {"mask": "<base64 packed bits>"} replaces the mask (the brush sends this when a stroke ends)."""
+    data = request.get_json(silent=True) or {}
+    db = get_db()
+    info = _map_fog_row(db, map_id)
+    if info is None:
+        db.close()
+        abort(404)
+    w, h = info[5], info[6]
+    dims = fog.grid_dims(w, h)
+    if dims is None:
+        db.close()
+        return jsonify({'error': 'this map cannot have fog'}), 400
+    cols, rows = dims
+    if data.get('clear'):
+        raw = None
+    elif data.get('fill'):
+        raw = fog.all_fogged(cols, rows)
+    else:
+        try:
+            raw = fog.decode_client(data.get('mask'), cols, rows)
+        except ValueError as e:
+            db.close()
+            return jsonify({'error': str(e)}), 400
+        if not fog.any_fogged(raw):
+            raw = None
+    db.execute('UPDATE maps SET fog_mask = ?, fog_cols = ?, fog_rows = ?, fog_version = fog_version + 1 WHERE id = ? AND campaign_id = ?',
+               (fog.to_storage(raw) if raw is not None else None, cols, rows, map_id, g.campaign_id))
+    db.commit()
+    new_version = db.execute('SELECT fog_version FROM maps WHERE id = ?', (map_id,)).fetchone()['fog_version']
+    db.close()
+    return jsonify({'version': new_version, 'active': raw is not None})
 
 
 @app.route('/campaigns/<int:campaign_id>/api/maps/<int:map_id>/settings', methods=['POST'])
@@ -2360,7 +2475,11 @@ def api_map_settings(map_id):
         db.commit()
     m = db.execute('SELECT * FROM maps WHERE id = ?', (map_id,)).fetchone()
     db.close()
-    return jsonify(dict(m) if m else {})
+    out = dict(m) if m else {}
+    out.pop('fog_mask', None)
+    if not g.is_dm:
+        out.pop('image_path', None)   # a Player gets the map only through the fog-aware image route
+    return jsonify(out)
 
 
 # ---- Drawings ----
@@ -2381,7 +2500,7 @@ def _map_drawings_payload(db, map_id):
         d = dict(r)
         d['data'] = json.loads(d['data'])
         result.append(d)
-    return result
+    return _drop_fogged(db, map_id, result, 'cx', 'cy')
 
 
 @app.route('/campaigns/<int:campaign_id>/api/maps/<int:map_id>/drawings', methods=['POST'])
@@ -2537,7 +2656,7 @@ def _map_pins_payload(db, map_id):
                 p['current_hp'] = None
                 p['char_max_hp'] = None
         result.append(p)
-    return result
+    return _drop_fogged(db, map_id, result, 'x', 'y')
 
 
 @app.route('/campaigns/<int:campaign_id>/api/maps/<int:map_id>/pins')
