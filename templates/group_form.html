@@ -8,7 +8,7 @@
   <div>
     <h1 class="page-title">{{ group.name if group else 'New Faction' }}</h1>
   </div>
-  <a href="{{ url_for('factions_list') }}" class="btn btn-ghost">{{ icon('arrow-left') }} Back to list</a>
+  <a href="{{ url_for('faction_detail', group_id=group.id) if group else url_for('factions_list') }}" class="btn btn-ghost">{{ icon('arrow-left') }} {{ 'Back to details' if group else 'Back to list' }}</a>
 </div>
 
 <form class="form-panel" method="POST" enctype="multipart/form-data">{{ csrf_field() }}
@@ -69,9 +69,29 @@
     </div>
   </div>
 
+  {% if group %}
+  <div class="form-section" id="member-picker" data-group-id="{{ group.id }}">
+    <p class="form-section-title">Add characters</p>
+    <div class="field">
+      <div class="search-bar">
+        {{ icon('search') }}
+        <input type="text" id="member-search" placeholder="Search characters to add to this faction…" autocomplete="off">
+      </div>
+      <div class="member-results" id="member-results" hidden></div>
+      <div class="member-chips" id="member-chips"></div>
+      <p class="hint-text" id="member-hint" hidden>Added when you save. A character can only be in one faction, so anyone picked here leaves their current one.</p>
+      <script type="application/json" id="member-candidates">{{ candidates | tojson }}</script>
+    </div>
+  </div>
+  {% endif %}
+
   <div class="form-actions">
-    <a href="{{ url_for('factions_list') }}" class="btn btn-ghost">Cancel</a>
+    <a href="{{ url_for('faction_detail', group_id=group.id) if group else url_for('factions_list') }}" class="btn btn-ghost">Cancel</a>
     <button type="submit" class="btn btn-primary">{{ icon('check') }} {{ 'Save Changes' if group else 'Add Faction' }}</button>
   </div>
 </form>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="{{ url_for('static', filename='js/faction-members.js') }}"></script>
 {% endblock %}

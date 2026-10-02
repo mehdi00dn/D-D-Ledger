@@ -24,12 +24,14 @@ def test_only_dm_manages_groups(make_user):
     # A Player cannot even reach the New/Edit forms via GET.
     assert player.get(f'/campaigns/{cid}/factions/new').status_code == 403
     assert player.get(f'/campaigns/{cid}/factions/{gid}/edit').status_code == 403
-    # Neither control renders on the list page for a Player.
+    # Neither control renders for a Player: no New button on the list, no Edit link on the list or Details page.
     listing = player.get(f'/campaigns/{cid}/factions').data
     assert b'New Faction' not in listing and b'>Edit<' not in listing
-    # ...and the same page does show them to the DM, so the check above can actually fail.
+    assert f'/factions/{gid}/edit'.encode() not in player.get(f'/campaigns/{cid}/factions/{gid}').data
+    # ...and the DM does get them (Edit now lives inside the Details view), so the checks above can actually fail.
     dm_listing = dm.get(f'/campaigns/{cid}/factions').data
-    assert b'New Faction' in dm_listing and b'Edit' in dm_listing
+    assert b'New Faction' in dm_listing and b'Details' in dm_listing
+    assert f'/factions/{gid}/edit'.encode() in dm.get(f'/campaigns/{cid}/factions/{gid}').data
 
     # The DM can still do all of it.
     assert dm.post(f'/campaigns/{cid}/factions/{gid}/edit', data={'name': 'Renamed'},
@@ -234,3 +236,92 @@ def test_hidden_flag_round_trips_through_the_editor(make_user):
     dm.post(f'/campaigns/{cid}/characters/{ch}/edit', data={'name': 'Rogue', 'notes': json.dumps(stored)},
             content_type='multipart/form-data')
     assert json.loads(q('SELECT notes FROM characters WHERE id = ?', ch)[0]['notes']) == stored
+
+
+# ---------------- DL-63: faction Details view + add characters from the edit form ----------------
+
+def _group_of(char_id):
+    return q('SELECT group_id FROM characters WHERE id = ?', char_id)[0]['group_id']
+
+
+def test_faction_details_lists_members_and_hides_edit_from_players(make_user):
+    dm, player = make_user(), make_user()
+    cid = dm.new_campaign()
+    _add_player(dm, player, cid)
+    gid = dm.new_group(cid, name='Ashfall Company')
+    other = dm.new_group(cid, name='Rival Guild')
+    a = dm.new_character(cid, name='Aldric', group_id=gid, str_score=17)
+    b = dm.new_character(cid, name='Brute Orc', is_npc='on', group_id=gid, max_hp=8731, armor_class=29)
+    c = dm.new_character(cid, name='Cyrene', group_id=other)
+
+    # The list card says Details (for everyone) instead of Edit.
+    for who in (dm, player):
+        listing = who.get(f'/campaigns/{cid}/factions').data.decode()
+        assert f'/factions/{gid}"' in listing and 'Details' in listing
+        assert f'/factions/{gid}/edit' not in listing
+
+    # Details lists exactly this faction's members, with a link to each dossier.
+    for who in (dm, player):
+        page = who.get(f'/campaigns/{cid}/factions/{gid}').data.decode()
+        assert 'Aldric' in page and 'Brute Orc' in page and 'Cyrene' not in page
+        assert f'/characters/{a}"' in page and '2 members' in page
+        # No stat block anywhere on the faction page (the NPC's numbers stay private).
+        assert '8731' not in page and 'AC 29' not in page and '>29<' not in page
+    # Edit is reachable from inside the details view for the DM only.
+    assert f'/factions/{gid}/edit' in dm.get(f'/campaigns/{cid}/factions/{gid}').data.decode()
+    assert f'/factions/{gid}/edit' not in player.get(f'/campaigns/{cid}/factions/{gid}').data.decode()
+    assert player.get(f'/campaigns/{cid}/factions/{gid}/edit').status_code == 403
+
+    # Empty faction and a missing id are handled; a faction of another campaign is not reachable.
+    empty = dm.new_group(cid, name='Nobody')
+    assert 'No characters in this faction yet' in dm.get(f'/campaigns/{cid}/factions/{empty}').data.decode()
+    cid2 = dm.new_campaign(); gid2 = dm.new_group(cid2, name='Elsewhere')
+    assert dm.get(f'/campaigns/{cid}/factions/{gid2}').status_code == 404      # URL-scope layer: another campaign's faction
+    assert dm.get(f'/campaigns/{cid}/factions/999999').status_code in (302, 404)   # no such faction: never a 500
+
+
+def test_faction_edit_adds_characters_scoped_to_the_campaign(make_user):
+    dm, player = make_user(), make_user()
+    cid = dm.new_campaign(); _add_player(dm, player, cid)
+    gid = dm.new_group(cid, name='Guild'); other = dm.new_group(cid, name='Rivals')
+    free = dm.new_character(cid, name='Free Agent')
+    moving = dm.new_character(cid, name='Defector', group_id=other)
+    cid2 = dm.new_campaign()
+    foreign = dm.new_character(cid2, name='Elsewhere Hero')
+
+    # The edit page offers this campaign's characters (and not another campaign's) to search.
+    form = dm.get(f'/campaigns/{cid}/factions/{gid}/edit').data.decode()
+    assert 'member-search' in form and 'Free Agent' in form and 'Defector' in form and 'Elsewhere Hero' not in form
+    assert 'member-search' not in dm.get(f'/campaigns/{cid}/factions/new').data.decode()   # only when editing
+
+    r = dm.post(f'/campaigns/{cid}/factions/{gid}/edit', content_type='multipart/form-data',
+                data={'name': 'Guild', 'color': '#336699', 'bio': '',
+                      'add_character_ids': [str(free), str(moving), str(free), 'oops', str(foreign), '999999']})
+    assert r.status_code == 302 and r.headers['Location'].endswith(f'/factions/{gid}')
+    assert _group_of(free) == gid and _group_of(moving) == gid       # added; Defector left Rivals
+    assert _group_of(foreign) is None                                # another campaign's character untouched
+    assert 'Defector' in dm.get(f'/campaigns/{cid}/factions/{gid}').data.decode()
+
+    # Saving the form with nothing picked changes no memberships.
+    dm.post(f'/campaigns/{cid}/factions/{gid}/edit', data={'name': 'Guild2', 'color': '#336699'}, content_type='multipart/form-data')
+    assert _group_of(free) == gid and q('SELECT name FROM groups WHERE id = ?', gid)[0]['name'] == 'Guild2'
+
+    # A Player cannot add anyone.
+    stranger = dm.new_character(cid, name='Stranger')
+    assert player.post(f'/campaigns/{cid}/factions/{gid}/edit', content_type='multipart/form-data',
+                       data={'name': 'Hax', 'add_character_ids': [str(stranger)]}).status_code == 403
+    assert _group_of(stranger) is None
+
+
+def test_faction_edit_cannot_touch_another_campaigns_faction(make_user):
+    """A DM of campaign A must not be able to edit campaign B's faction via /campaigns/A/factions/<B's id>/edit."""
+    a, b = make_user(), make_user()
+    cid_a, cid_b = a.new_campaign(), b.new_campaign()
+    victim_group = b.new_group(cid_b, name='B-Faction')
+    victim_char = b.new_character(cid_b, name='B-Hero', group_id=victim_group)
+    mine = a.new_character(cid_a, name='A-Hero')
+    r = a.post(f'/campaigns/{cid_a}/factions/{victim_group}/edit', content_type='multipart/form-data',
+               data={'name': 'Hijacked', 'bio': 'owned', 'add_character_ids': [str(mine)]})
+    assert r.status_code == 404     # the URL-scope layer refuses another campaign's faction outright
+    assert q('SELECT name FROM groups WHERE id = ?', victim_group)[0]['name'] == 'B-Faction'
+    assert _group_of(mine) is None and _group_of(victim_char) == victim_group

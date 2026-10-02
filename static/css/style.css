@@ -892,6 +892,37 @@ body.page-leaving .content {
 .group-bio:empty::before { content: "No bio recorded."; font-style: italic; opacity: 0.6; }
 
 .group-actions { display: flex; gap: 8px; border-top: 1px solid var(--hairline); padding-top: 12px; }
+
+/* Faction details view + the edit form's add-characters search */
+.faction-detail-head { display: flex; flex-direction: column; gap: 12px; }
+.faction-detail-banner { height: 140px; border-radius: var(--radius-s); overflow: hidden; }
+.faction-detail-banner img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.faction-detail-bio { margin: 0; color: var(--parchment-dim); font-size: 13.5px; line-height: 1.5; white-space: pre-wrap; }
+.faction-members { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; }
+.page-title .group-dot { display: inline-block; width: 12px; height: 12px; margin-right: 12px; border-radius: 50%; vertical-align: middle; }
+.faction-member {
+  display: flex; align-items: center; gap: 10px; padding: 10px 12px; text-decoration: none; color: var(--parchment);
+  background: var(--bg-panel-inset); border: 1px solid var(--hairline); border-radius: var(--radius-s);
+}
+.faction-member:hover { border-color: var(--hairline-strong); }
+.faction-member .avatar-frame { width: 36px; height: 36px; flex-shrink: 0; }
+.faction-member-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.faction-member-meta { font-family: var(--font-mono); font-size: 11px; color: var(--parchment-faint); }
+.faction-member .dossier-tag { position: static; }
+#member-picker .search-bar { max-width: none; }
+.member-results { margin-top: 8px; border: 1px solid var(--hairline); border-radius: var(--radius-s); background: var(--bg-panel-inset); }
+.member-result { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-bottom: 1px solid var(--hairline); }
+.member-result:last-child { border-bottom: 0; }
+.member-result-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.member-result-meta, .member-result-empty { font-size: 11.5px; color: var(--parchment-faint); }
+.member-result-empty { padding: 8px 12px; }
+.member-result .dossier-tag { position: static; }
+.member-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.member-chip {
+  display: inline-flex; align-items: center; gap: 6px; padding: 4px 6px 4px 10px; font-size: 12.5px;
+  border: 1px solid var(--brass-dim); border-radius: 999px; color: var(--brass-bright);
+}
+.member-chip-remove { background: transparent; border: 0; color: inherit; cursor: pointer; font-size: 15px; line-height: 1; padding: 0 4px; }
 .group-actions form { flex: 1; display: flex; }
 .group-actions .btn { width: 100%; justify-content: center; }
 

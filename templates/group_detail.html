@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% set active_page = 'factions' %}
+{% block title %}{{ group.name }} — Campaign Ledger{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <p class="page-eyebrow">Faction</p>
+    <h1 class="page-title"><span class="group-dot" style="background:{{ group.color }}"></span>{{ group.name }}</h1>
+    <p class="page-sub">{{ members|length }} member{{ '' if members|length == 1 else 's' }}</p>
+  </div>
+  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+    {% if g.is_dm %}
+    <a href="{{ url_for('faction_edit', group_id=group.id) }}" class="btn btn-primary">{{ icon('pencil') }} Edit</a>
+    {% endif %}
+    <a href="{{ url_for('factions_list') }}" class="btn btn-ghost">{{ icon('arrow-left') }} Back to list</a>
+  </div>
+</div>
+
+<div class="form-panel">
+  <div class="faction-detail-head">
+    <div class="group-image-block faction-detail-banner" style="{{ '' if group.avatar_path else 'background: linear-gradient(135deg, ' ~ group.color ~ ', var(--bg-panel-inset));' }}">
+      {% if group.avatar_path %}
+        <img src="{{ url_for('uploaded_file', filename=group.avatar_path) }}" alt="{{ group.name }} avatar">
+      {% else %}
+        <div class="group-image-placeholder">{{ icon('shield') }}</div>
+      {% endif %}
+    </div>
+    {% if group.bio %}<p class="faction-detail-bio">{{ group.bio }}</p>{% endif %}
+  </div>
+
+  <div class="form-section-title" style="margin-top:22px;">Members</div>
+  {% if members %}
+  <div class="faction-members">
+    {% for m in members %}
+    <a class="faction-member" href="{{ url_for('character_detail', char_id=m.id) }}">
+      <span class="avatar-frame">
+        {% if m.avatar_path %}<img src="{{ url_for('uploaded_file', filename=m.avatar_path) }}" alt="">{% else %}{{ icon('user') }}{% endif %}
+      </span>
+      <span class="faction-member-name" title="{{ m.name }}">{{ m.name }}</span>
+      <span class="dossier-tag {{ 'npc' if m.is_npc else '' }}">{{ 'NPC' if m.is_npc else 'PC' }}</span>
+      <span class="faction-member-meta">Lvl {{ m.level }}</span>
+    </a>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="hint-text">No characters in this faction yet.{% if g.is_dm %} Use Edit to search for characters and add them.{% endif %}</p>
+  {% endif %}
+</div>
+{% endblock %}

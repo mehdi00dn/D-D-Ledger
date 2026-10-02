@@ -1360,7 +1360,26 @@ def faction_new():
         db.close()
         return redirect(url_for('factions_list'))
     db.close()
-    return render_template('group_form.html', group=None)
+    return render_template('group_form.html', group=None, candidates=[])
+
+
+@app.route('/campaigns/<int:campaign_id>/factions/<int:group_id>')
+@campaign_access_required
+def faction_detail(group_id):
+    """Read-only 'Details' view of a faction: who is in it. Editing (DM only) is reached from here.
+    Shows the same name/avatar/level a member can already see on the roster -- no stats."""
+    db = get_db()
+    group = db.execute('SELECT * FROM groups WHERE id = ? AND campaign_id = ?', (group_id, g.campaign_id)).fetchone()
+    if group is None:
+        db.close()
+        return redirect(url_for('factions_list'))
+    members = db.execute('''
+        SELECT id, name, avatar_path, is_npc, level FROM characters
+        WHERE group_id = ? AND campaign_id = ? AND is_temp_familiar = 0
+        ORDER BY lower(name) ASC
+    ''', (group_id, g.campaign_id)).fetchall()
+    db.close()
+    return render_template('group_detail.html', group=group, members=members)
 
 
 @app.route('/campaigns/<int:campaign_id>/factions/<int:group_id>/edit', methods=['GET', 'POST'])
@@ -1368,15 +1387,23 @@ def faction_new():
 @dm_required
 def faction_edit(group_id):
     db = get_db()
+    group = db.execute('SELECT * FROM groups WHERE id = ? AND campaign_id = ?', (group_id, g.campaign_id)).fetchone()
+    if group is None:
+        db.close()
+        return redirect(url_for('factions_list'))
     if request.method == 'POST':
         _save_faction(db, group_id)
         db.close()
-        return redirect(url_for('factions_list'))
-    group = db.execute('SELECT * FROM groups WHERE id = ? AND campaign_id = ?', (group_id, g.campaign_id)).fetchone()
+        return redirect(url_for('faction_detail', group_id=group_id))
+    # Everyone in this campaign who could be pulled into the faction (for the search-and-add box).
+    candidates = db.execute('''
+        SELECT c.id, c.name, c.is_npc, c.avatar_path, c.group_id, g.name AS group_name
+        FROM characters c LEFT JOIN groups g ON c.group_id = g.id
+        WHERE c.campaign_id = ? AND c.is_temp_familiar = 0
+        ORDER BY lower(c.name) ASC
+    ''', (g.campaign_id,)).fetchall()
     db.close()
-    if group is None:
-        return redirect(url_for('factions_list'))
-    return render_template('group_form.html', group=group)
+    return render_template('group_form.html', group=group, candidates=[dict(c) for c in candidates])
 
 
 _COLOR_RE = re.compile(r'^#[0-9a-fA-F]{6}$')
@@ -1417,6 +1444,15 @@ def _save_faction(db, group_id):
                 delete_upload(old['avatar_path'])
             db.execute('UPDATE groups SET avatar_path = NULL WHERE id = ?', (group_id,))
         db.execute('UPDATE groups SET name=?, bio=?, color=? WHERE id=?', (name, bio, color, group_id))
+        # Characters picked in the edit form's search box join this faction (moving them out of any
+        # other). Only this campaign's own characters can be added; foreign/garbage ids are ignored.
+        for raw_id in dict.fromkeys(request.form.getlist('add_character_ids')):
+            try:
+                cid_to_add = int(raw_id)
+            except (TypeError, ValueError):
+                continue
+            db.execute('UPDATE characters SET group_id = ? WHERE id = ? AND campaign_id = ? AND is_temp_familiar = 0',
+                       (group_id, cid_to_add, g.campaign_id))
     db.commit()
 
 

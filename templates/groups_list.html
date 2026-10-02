@@ -53,9 +53,7 @@
       <p class="group-count">{{ g.member_count }} member{{ '' if g.member_count == 1 else 's' }}</p>
       <p class="group-bio">{{ g.bio }}</p>
       <div class="group-actions">
-        {% if is_dm %}
-        <a href="{{ url_for('faction_edit', group_id=g.id) }}" class="btn btn-ghost btn-sm">{{ icon('pencil') }} Edit</a>
-        {% endif %}
+        <a href="{{ url_for('faction_detail', group_id=g.id) }}" class="btn btn-ghost btn-sm">{{ icon('eye') }} Details</a>
         <a href="{{ url_for('faction_export', group_id=g.id) }}" class="btn-icon" title="Export this faction">{{ icon('upload') }}</a>
         {% if is_dm %}
         <form method="POST" action="{{ url_for('faction_delete', group_id=g.id) }}" data-confirm="Delete faction '{{ g.name }}'? Members will become ungrouped.">{{ csrf_field() }}
