@@ -67,6 +67,14 @@
       <a href="{{ url_for('dice_view') }}" class="nav-tab {{ 'active' if active_page == 'dice' else '' }}" title="Dice">
         {{ icon('dices') }}<span>Dice</span>
       </a>
+      {% if g.real_is_dm %}
+      <form method="POST" action="{{ url_for('preview_as_player') }}" class="nav-form">{{ csrf_field() }}
+        <input type="hidden" name="on" value="{{ '0' if g.previewing else '1' }}">
+        <button type="submit" class="nav-tab nav-tab-button {{ 'active' if g.previewing else '' }}" title="{{ 'Stop viewing as a Player' if g.previewing else 'See this campaign exactly as a Player does' }}">
+          {{ icon('eye') }}<span>{{ 'Exit player view' if g.previewing else 'View as player' }}</span>
+        </button>
+      </form>
+      {% endif %}
       {% endif %}
     </nav>
 
@@ -89,6 +97,16 @@
   </aside>
 
   <main class="content">
+    {% if g.previewing %}
+    <div class="preview-banner" role="status">
+      {{ icon('eye') }}
+      <span><b>Viewing as a Player.</b> You are seeing exactly what the server sends your Players. DM tools are off.</span>
+      <form method="POST" action="{{ url_for('preview_as_player') }}">{{ csrf_field() }}
+        <input type="hidden" name="on" value="0">
+        <button type="submit" class="btn btn-sm btn-primary">Exit player view</button>
+      </form>
+    </div>
+    {% endif %}
     {% block content %}{% endblock %}
   </main>
 </div>

@@ -309,3 +309,23 @@ def test_battle_conditions_picker_and_chips(pw, shared_server):
     dpage.screenshot(path='/tmp/factions.png')
     assert not derrs and not perrs, (derrs, perrs)
     dctx.close(); pctx.close()
+
+
+def test_view_as_player_banner_and_hidden_dm_tools(pw, shared_server):
+    base = shared_server.url; dm = Api(base); cid = dm.campaign('Preview')
+    ogre = dm.character(cid, 'Ogre')
+    dm.post(f'/campaigns/{cid}/characters/{ogre}/edit', data={'name': 'Ogre', 'is_npc': 'on', 'level': '1', 'max_hp': '59', 'armor_class': '11'})
+    dm.post(f'/campaigns/{cid}/api/battle/add', json={'character_id': ogre})
+    dctx = dm.context(pw, base); dpage = dctx.new_page(); dbad, derrs = _collect(dpage)
+    dpage.goto(base + f'/campaigns/{cid}/battle'); dpage.wait_for_selector('.battle-row')
+    assert dpage.locator('#next-turn-btn').count() == 1 and dpage.locator('.preview-banner').count() == 0
+    dpage.click('.nav-tab-button')                                          # sidebar: View as player
+    dpage.wait_for_selector('.preview-banner'); dpage.wait_for_selector('.battle-row')
+    assert dpage.url.endswith('/battle')                                    # stays on the page it was on
+    assert dpage.locator('#next-turn-btn').count() == 0 and dpage.locator('#clear-battle-btn').count() == 0
+    dpage.screenshot(path='/tmp/preview.png')
+    dpage.click('.preview-banner button')                                   # Exit player view
+    dpage.wait_for_selector('#next-turn-btn')
+    assert dpage.locator('.preview-banner').count() == 0
+    assert not derrs, derrs
+    dctx.close()

@@ -2718,3 +2718,17 @@ body.page-leaving .content {
 .cond-tile.active { --cond-halo: var(--brass); background: var(--brass); border-color: var(--brass); color: #21170a; }
 :root[data-theme="light"] .cond-tile.active { color: var(--bg-panel); --cond-halo: var(--brass); }
 :root[data-theme="light"] .cond-chip { color: var(--brass); background: rgba(156, 122, 46, 0.12); }
+
+/* DL-42: View as player */
+.nav-form { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--hairline); }
+.nav-tab-button { width: 100%; border: 0; background: transparent; font: inherit; font-size: 14px; font-weight: 500; text-align: left; cursor: pointer; }
+.preview-banner {
+  position: sticky; top: 0; z-index: 30; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  margin: 0 0 18px; padding: 10px 14px; border-radius: var(--radius-s);
+  border: 1px solid var(--brass); background: var(--bg-panel); color: var(--parchment);
+  font-size: 13px; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
+}
+.preview-banner svg { width: 18px; height: 18px; color: var(--brass-bright); flex-shrink: 0; }
+.preview-banner span { flex: 1 1 260px; color: var(--parchment-dim); }
+.preview-banner b { color: var(--parchment); }
+.preview-banner form { margin: 0; }

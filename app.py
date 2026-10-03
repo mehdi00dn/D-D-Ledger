@@ -447,10 +447,34 @@ def campaign_access_required(view_func):
         g.campaign = campaign
         g.campaign_role = member['role']
         g.campaign_status = member['status'] or 'player'
+        g.real_is_dm = g.campaign_status == 'dm'
+        # DL-42: a DM who switched on "View as player" is treated as a Player by every route, so
+        # what they see is exactly what the server sends a Player (redaction included).
+        g.previewing = bool(g.real_is_dm and campaign_id in (session.get('preview_player') or []))
+        if g.previewing:
+            g.campaign_status = 'player'
         g.is_dm = g.campaign_status == 'dm'
         session['last_campaign_id'] = campaign_id
         return view_func(*args, **kwargs)
     return wrapped
+
+
+@app.route('/campaigns/<int:campaign_id>/preview-as-player', methods=['POST'])
+@campaign_access_required
+def preview_as_player():
+    """DM only (judged by their real status, so it also works to switch the preview off while it
+    is on).  Turns "View as player" on or off for this campaign in the DM's own session."""
+    if not g.real_is_dm:
+        abort(403)
+    on = request.form.get('on') == '1'
+    ids = [i for i in (session.get('preview_player') or []) if i != g.campaign_id]
+    if on:
+        ids.append(g.campaign_id)
+    session['preview_player'] = ids
+    # Go back to the page the DM was on (same campaign only), else the battle screen.
+    path = urlparse(request.referrer or '').path
+    prefix = f'/campaigns/{g.campaign_id}/'
+    return redirect(path if path.startswith(prefix) and not path.startswith('//') else url_for('battle_view'))
 
 
 def dm_required(view_func):
