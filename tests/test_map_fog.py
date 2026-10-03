@@ -92,24 +92,17 @@ def test_fog_editing_is_dm_only_and_validated(make_user):
     assert state['fog_active'] is False and state['fog_version'] == player.get(api).get_json()['version']
 
 
-def test_pins_and_drawings_under_fog_are_withheld_from_players(make_user):
+def test_tokens_under_fog_are_still_sent_because_the_fog_is_drawn_above_them(make_user):
     dm, player, cid, mid = _setup(make_user)
     base = f'/campaigns/{cid}/api/maps/{mid}'
     for cx in (50, 350):
         assert dm.json(f'{base}/drawings', {'kind': 'rect', 'cx': cx, 'cy': 150, 'w': 20, 'h': 20, 'data': {}}).status_code == 200
-        assert dm.json(f'{base}/pins', {'pin_type': 'prop', 'icon_key': 'skull', 'custom_name': f'secret-{cx}', 'x': cx, 'y': 150}).status_code == 200
+        assert dm.json(f'{base}/pins', {'pin_type': 'prop', 'icon_key': 'skull', 'custom_name': f'token-{cx}', 'x': cx, 'y': 150}).status_code == 200
     dm.json(f'{base}/fog', {'mask': _b64(_mask(left_cols=25))})       # left half (x < 200) fogged
 
-    for who, expected in ((dm, {50, 350}), (player, {350})):
-        assert {d['cx'] for d in who.get(f'{base}/drawings').get_json()} == expected
-        assert {p['x'] for p in who.get(f'{base}/pins').get_json()} == expected
-    assert 'secret-50' not in player.get(f'{base}/pins').data.decode()
-    # The combined sync feed applies the same rule.
-    assert 'secret-50' not in player.get(f'{base}/sync').data.decode()
-    assert 'secret-50' in dm.get(f'{base}/pins').data.decode()
-    # Clearing the fog shows them again.
-    dm.json(f'{base}/fog', {'clear': True})
-    assert {d['cx'] for d in player.get(f'{base}/drawings').get_json()} == {50, 350}
+    for who in (dm, player):
+        assert {d['cx'] for d in who.get(f'{base}/drawings').get_json()} == {50, 350}
+        assert {p['x'] for p in who.get(f'{base}/pins').get_json()} == {50, 350}
 
 
 def test_players_never_receive_the_raw_map_key(make_user):

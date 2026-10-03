@@ -99,6 +99,7 @@
     eventPos: (e) => eventPos(e),
     pushCommand: (cmd) => pushCommand(cmd),
     onChange: (active) => { if (fogToggle) fogToggle.checked = active; },
+    onRefresh: () => markFoggedPins(),
     reloadImage: (v) => {
       const next = new Image();
       next.onload = () => { bgImage = next; bgLoaded = true; redraw(); };
@@ -109,10 +110,15 @@
   if (fog && fogToggle) {
     fogToggle.addEventListener('change', () => { if (fogToggle.checked) fog.fillAll(); else fog.clearAll(); });
   }
-  document.querySelectorAll('[data-fog-mode]').forEach((b) => b.addEventListener('click', () => {
-    document.querySelectorAll('[data-fog-mode]').forEach((x) => x.classList.toggle('active', x === b));
-    if (fog) fog.setMode(b.dataset.fogMode);
-  }));
+  const isFogTool = (t) => t === 'fog-add' || t === 'fog-erase';
+  // Players: a token under fog can be seen through it but not clicked.
+  function markFoggedPins() {
+    if (!fog || window.IS_DM) return;
+    document.querySelectorAll('.map-pin').forEach((el) => {
+      const x = parseFloat(el.dataset.x), y = parseFloat(el.dataset.y);
+      el.classList.toggle('pin-in-fog', isFinite(x) && isFinite(y) && fog.pointFogged(x, y));
+    });
+  }
   if (fogBrushInput) {
     const brushLabel = document.getElementById('fog-brush-value');
     fogBrushInput.addEventListener('input', () => {
@@ -571,7 +577,7 @@
     // `.map-pin-visual` circle spins, so names stay upright and in place.
     return `
       <div class="map-pin" data-pin-id="${p.id}" data-pin-type="${p.pin_type}" data-locked="${!!p.locked}"
-           data-character-id="${p.character_id || ''}"
+           data-character-id="${p.character_id || ''}" data-x="${p.x}" data-y="${p.y}"
            style="left:${leftPct}%; top:${topPct}%; width:${wPct}%; height:${hPct}%;">
         <div class="map-pin-visual ${dead ? 'is-dead' : ''}" style="border-color:${borderColor}; transform: rotate(${p.rotation || 0}deg);">
           <div class="map-pin-avatar">${avatarInner}</div>
@@ -583,6 +589,7 @@
 
   function renderPins() {
     pinLayer.innerHTML = pins.map(pinMarkup).join('');
+    markFoggedPins();
     if (selectedPinId) positionPinBubble(selectedPinId);
   }
 
@@ -1348,10 +1355,11 @@
       deselectPin();
       deselectShape();
       canvas.classList.toggle('tool-eraser', currentTool === 'eraser');
-      pinLayer.classList.toggle('draw-mode', SHAPE_TOOLS.includes(currentTool) || currentTool === 'fog');
-      if (fogOptions) fogOptions.hidden = currentTool !== 'fog';
-      canvas.classList.toggle('tool-fog', currentTool === 'fog');
-      if (fog && currentTool !== 'fog') fog.showRing(false);
+      pinLayer.classList.toggle('draw-mode', SHAPE_TOOLS.includes(currentTool) || isFogTool(currentTool));
+      if (fogOptions) fogOptions.hidden = !isFogTool(currentTool);
+      canvas.classList.toggle('tool-fog', isFogTool(currentTool));
+      if (fog && isFogTool(currentTool)) fog.setMode(currentTool === 'fog-erase' ? 'erase' : 'paint');
+      if (fog && !isFogTool(currentTool)) fog.showRing(false);
       angleDrawState = null;
       previewShape = null;
       if (['line', 'rect', 'oval'].includes(currentTool)) {
@@ -1591,7 +1599,7 @@
 
   canvas.addEventListener('mousedown', (e) => {
     if (readOnly()) return;
-    if (currentTool === 'fog') { if (fog && window.IS_DM && e.button === 0) fog.begin(e); return; }
+    if (isFogTool(currentTool)) { if (fog && window.IS_DM && e.button === 0) fog.begin(e); return; }
     const pos = eventPos(e);
 
     if (currentTool === 'select') {
@@ -1713,7 +1721,7 @@
   }
 
   canvas.addEventListener('mousemove', (e) => {
-    if (currentTool === 'fog') { if (fog && window.IS_DM) fog.move(e); return; }
+    if (isFogTool(currentTool)) { if (fog && window.IS_DM) fog.move(e); return; }
     // Hover detection for the "click to unlock" icon (select tool only).
     if (currentTool === 'select' && !drawState && !activeDrag) {
       const pos = eventPos(e);

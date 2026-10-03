@@ -71,14 +71,20 @@
 
     <button type="button" class="map-tool-btn" data-tool="eraser" title="Eraser: click a shape or pin to delete it (E)">{{ icon('eraser') }}</button>
     {% if g.is_dm %}
-    <button type="button" class="map-tool-btn" data-tool="fog" title="Fog of war: paint fog onto the map, or erase it">{{ icon('cloud') }}</button>
+    <div class="tool-flyout" id="fog-flyout" data-flyout-group="fog">
+      <button type="button" class="map-tool-btn flyout-trigger" data-flyout-trigger title="Fog of war">
+        {{ icon('cloud-plus') }}
+      </button>
+      <div class="tool-flyout-menu"><div class="tool-flyout-menu-inner">
+        <button type="button" class="map-tool-btn" data-tool="fog-add" title="Add fog: paint fog onto the map">{{ icon('cloud-plus') }}</button>
+        <button type="button" class="map-tool-btn" data-tool="fog-erase" title="Erase fog: paint it away">{{ icon('cloud-minus') }}</button>
+      </div></div>
+    </div>
     {% endif %}
   </div>
 
   {% if g.is_dm %}
   <div class="map-tool-group" id="fog-options-group" hidden>
-    <button type="button" class="btn btn-ghost btn-sm fog-mode-btn active" data-fog-mode="paint" title="Add fog">Add fog</button>
-    <button type="button" class="btn btn-ghost btn-sm fog-mode-btn" data-fog-mode="erase" title="Remove fog">Erase fog</button>
     <label class="grid-size-label" for="fog-brush-size">Brush</label>
     <input type="range" id="fog-brush-size" min="20" max="400" step="10" value="100" title="Brush size">
     <span class="map-setup-value" id="fog-brush-value">100px</span>
@@ -127,7 +133,9 @@
 <div class="map-stage-wrap" id="map-stage-wrap" data-natural-width="{{ map.image_width }}" data-natural-height="{{ map.image_height }}" style="aspect-ratio: {{ map.image_width or 16 }} / {{ map.image_height or 9 }};">
   <div class="map-stage-inner" id="map-stage-inner">
     <canvas id="map-canvas"></canvas>
-    <div id="map-fog-layer" class="map-fog-layer" hidden><div class="map-fog-fill"></div><div class="map-fog-clouds"></div></div>
+    <div id="map-fog-layer" class="map-fog-layer" hidden
+         data-lottie-lib="{{ url_for('static', filename='vendor/lottie_light_canvas.min.js') }}"
+         data-smoke-json="{{ url_for('static', filename='fog/fog-smoke.json') }}"><div class="map-fog-fill"></div><div class="map-fog-clouds"><canvas class="map-fog-smoke" width="480" height="270"></canvas></div></div>
     <div id="map-pin-layer"></div>
     {% if g.is_dm %}<div id="fog-brush-ring" class="fog-brush-ring" hidden></div>{% endif %}
     <div id="angle-labels-layer"></div>

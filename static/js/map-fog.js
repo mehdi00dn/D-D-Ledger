@@ -28,6 +28,84 @@
 
     layer.classList.toggle('is-dm', !!host.isDM);
 
+    // ---- cloud animation ----------------------------------------------------------------------
+    // The smoke is a Lottie file drawn onto a SMALL canvas (the fog is soft, so resolution does not
+    // matter) that the browser stretches to the map and cuts to the fog mask. To stay cheap it:
+    //   * loads the player + animation only when fog first appears on the map,
+    //   * draws ~15 frames a second, and only while fog is visible and the tab is in the foreground,
+    //   * shows a single still frame for people who asked their system for reduced motion,
+    //   * gives up animating (keeps a still frame) if frames cost too much on a slow machine,
+    //   * and falls back to a plain CSS drift if the files cannot be loaded at all.
+    const smoke = (function () {
+      const canvas = layer.querySelector('.map-fog-smoke');
+      if (!canvas) return { sync() {} };
+      const c2d = canvas.getContext('2d');
+      const FPS = 15, STILL_FRAME = 240, SLOW_MS = 33, WINDOW = 20;
+      const reduced = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
+      let anim = null, loading = null, failed = false;
+      let wanted = false, running = false, still = false;
+      let raf = 0, startTs = 0, lastTs = 0, slow = 0, samples = 0;
+
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          if (window.lottie) { resolve(); return; }
+          const tag = document.createElement('script');
+          tag.src = src; tag.onload = resolve; tag.onerror = reject;
+          document.head.appendChild(tag);
+        });
+      }
+      function ensure() {
+        if (anim || failed) return Promise.resolve(anim);
+        if (loading) return loading;
+        loading = Promise.all([
+          loadScript(layer.dataset.lottieLib),
+          fetch(layer.dataset.smokeJson).then((r) => { if (!r.ok) throw new Error('smoke'); return r.json(); }),
+        ]).then(([, data]) => {
+          anim = window.lottie.loadAnimation({
+            renderer: 'canvas', loop: false, autoplay: false, animationData: data,
+            rendererSettings: { context: c2d, clearCanvas: true, preserveAspectRatio: 'xMidYMid slice' },
+          });
+          return anim;
+        }).catch(() => {
+          failed = true;
+          layer.classList.add('smoke-fallback');     // plain CSS clouds instead
+          return null;
+        });
+        return loading;
+      }
+      function draw(frame) { anim.goToAndStop(Math.floor(frame), true); }
+      function tick(ts) {
+        if (!running) return;
+        raf = requestAnimationFrame(tick);
+        if (ts - lastTs < 1000 / FPS - 2) return;
+        lastTs = ts;
+        const t0 = performance.now();
+        draw(((ts - startTs) * 0.06) % anim.totalFrames);          // the file is authored at 60 fps
+        samples++;
+        if (performance.now() - t0 > SLOW_MS) slow++;
+        if (samples >= WINDOW) {
+          if (slow > WINDOW / 2) { stop(); still = true; draw(STILL_FRAME); }   // too heavy here: hold still
+          samples = 0; slow = 0;
+        }
+      }
+      function start() {
+        if (running || still || !anim) return;
+        running = true; startTs = performance.now(); lastTs = 0; samples = 0; slow = 0;
+        raf = requestAnimationFrame(tick);
+      }
+      function stop() { running = false; if (raf) cancelAnimationFrame(raf); raf = 0; }
+      function apply() {
+        if (!wanted) { stop(); return; }
+        ensure().then((a) => {
+          if (!a || !wanted) return;
+          if ((reduced && reduced.matches) || still) { draw(STILL_FRAME); return; }
+          if (!document.hidden) start();
+        });
+      }
+      document.addEventListener('visibilitychange', () => { if (document.hidden) stop(); else if (wanted) apply(); });
+      return { sync(active) { if (active === wanted) return; wanted = active; apply(); } };
+    }());
+
     // ---- packing: rows padded to whole bytes, MSB first (matches fog.py / Pillow mode '1') ----
     function pack() {
       const rowBytes = (cols + 7) >> 3;
@@ -86,8 +164,10 @@
       }
       const url = `url(${source.toDataURL('image/png')})`;
       [fillEl, cloudEl].forEach((el) => { el.style.webkitMaskImage = url; el.style.maskImage = url; });
-      layer.hidden = !hasFog();
-      if (host.onChange) host.onChange(hasFog());
+      const active = hasFog();
+      layer.hidden = !active;
+      smoke.sync(active);
+      if (host.onChange) host.onChange(active);
     }
     function queueRender() {
       if (renderQueued) return;
@@ -151,11 +231,18 @@
       version = d.version;
       render();
       if (!host.isDM && host.reloadImage) host.reloadImage(version);   // Player: the picture changed too
+      if (host.onRefresh) host.onRefresh();
     }
 
     return {
       refresh,
       hasFog,
+      // true if this map point is under fog (used so a Player cannot click a token they cannot see)
+      pointFogged(x, y) {
+        const cx = Math.floor(x / cell), cy = Math.floor(y / cell);
+        if (!(cx >= 0 && cy >= 0 && cx < cols && cy < rows)) return false;
+        return mask[cy * cols + cx] === 1;
+      },
       isPainting: () => !!painting,
       setMode(m) { mode = m === 'erase' ? 'erase' : 'paint'; },
       setBrush(px) { brush = Math.max(20, Math.min(400, parseInt(px, 10) || 100)); },

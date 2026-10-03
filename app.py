@@ -2325,17 +2325,6 @@ def _map_fog_row(db, map_id):
     return raw, m['fog_cols'], m['fog_rows'], m['fog_version'], m['image_path'], m['image_width'], m['image_height']
 
 
-def _drop_fogged(db, map_id, items, xkey, ykey):
-    """A Player never receives a pin or drawing whose anchor sits under fog; the DM sees everything."""
-    if g.is_dm or not items:
-        return items
-    info = _map_fog_row(db, map_id)
-    if info is None or info[0] is None:
-        return items
-    raw, cols, rows = info[0], info[1], info[2]
-    return [i for i in items if not fog.point_fogged(raw, cols, rows, i.get(xkey), i.get(ykey))]
-
-
 @app.route('/campaigns/<int:campaign_id>/maps/<int:map_id>/image')
 @campaign_access_required
 def map_image(map_id):
@@ -2500,7 +2489,7 @@ def _map_drawings_payload(db, map_id):
         d = dict(r)
         d['data'] = json.loads(d['data'])
         result.append(d)
-    return _drop_fogged(db, map_id, result, 'cx', 'cy')
+    return result
 
 
 @app.route('/campaigns/<int:campaign_id>/api/maps/<int:map_id>/drawings', methods=['POST'])
@@ -2656,7 +2645,7 @@ def _map_pins_payload(db, map_id):
                 p['current_hp'] = None
                 p['char_max_hp'] = None
         result.append(p)
-    return _drop_fogged(db, map_id, result, 'x', 'y')
+    return result
 
 
 @app.route('/campaigns/<int:campaign_id>/api/maps/<int:map_id>/pins')

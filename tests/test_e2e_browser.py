@@ -172,3 +172,34 @@ def test_drawing_persists_after_reload(pw, shared_server):
     assert not errs, errs
     assert not [b for b in bad if b[0] >= 400], bad
     ctx.close()
+
+
+def test_fog_flyout_paints_fog_over_tokens_and_animates(pw, shared_server):
+    base = shared_server.url; api = Api(base); cid = api.campaign('Fog')
+    r = api.post(f'/campaigns/{cid}/maps/new', data={'name': 'Mist', 'blank_width': '800', 'blank_height': '600'})
+    mid = int(re.search(r'/maps/(\d+)', r.headers['Location']).group(1))
+    ctx = api.context(pw, base); page = ctx.new_page(); bad, errs = _collect(page)
+    page.goto(base + f'/campaigns/{cid}/maps/{mid}'); page.wait_for_load_state('networkidle'); page.wait_for_timeout(800)
+    if page.locator('#setup-confirm-btn').is_visible():
+        page.click('#setup-confirm-btn'); page.wait_for_timeout(600)
+    # The fog tool is one flyout button holding the add and remove icons (no extra toolbar buttons).
+    assert page.locator('#fog-flyout [data-tool]').count() == 2
+    page.click('#fog-flyout [data-flyout-trigger]')
+    page.click('#fog-flyout [data-tool=fog-add]')
+    box = page.locator('#map-canvas').bounding_box()
+    page.mouse.move(box['x'] + 100, box['y'] + 100); page.mouse.down()
+    page.mouse.move(box['x'] + 500, box['y'] + 300, steps=12); page.mouse.up()
+    page.wait_for_selector('#map-fog-layer:not([hidden])')
+    z = page.locator('#map-fog-layer').evaluate('e => getComputedStyle(e).zIndex')
+    assert z == '5', z                                       # above the tokens
+    page.wait_for_timeout(2500)                              # lazy-loaded smoke gets drawn
+    drawn = page.locator('canvas.map-fog-smoke').evaluate(
+        'c => { const d = c.getContext("2d").getImageData(0,0,c.width,c.height).data; let n=0; for (let i=3;i<d.length;i+=4) if (d[i]) n++; return n; }')
+    fallback = page.locator('#map-fog-layer').evaluate('e => e.classList.contains("smoke-fallback")')
+    assert drawn > 0 and not fallback, (drawn, fallback)
+    page.click('#fog-flyout [data-flyout-trigger]')
+    page.click('#fog-flyout [data-tool=fog-erase]')
+    assert not errs, errs
+    assert not [b for b in bad if b[0] >= 400], bad
+    page.screenshot(path='/tmp/fog-dm.png')
+    ctx.close()
