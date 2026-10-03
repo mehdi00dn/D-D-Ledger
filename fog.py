@@ -10,7 +10,7 @@ import zlib
 
 CELL = 8                      # map pixels per mask cell
 MAX_CELLS = 1_000_000         # sanity cap (an 8000 x 8000 px map)
-FOG_RGB = (22, 26, 36)        # what a Player sees under fog -- the real map is never sent
+FOG_RGB = (205, 209, 215)  # what a Player sees under fog -- the real map is never sent
 
 
 def grid_dims(width, height):

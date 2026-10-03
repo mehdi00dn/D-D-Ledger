@@ -2340,7 +2340,7 @@ body.page-leaving .content {
   -webkit-mask-size: 100% 100%; mask-size: 100% 100%;
   -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
 }
-.map-fog-fill { background: rgb(22, 26, 36); }                 /* same colour the server paints into a Player's map */
+.map-fog-fill { background: rgb(205, 209, 215); }               /* same colour the server paints into a Player's map */
 .map-fog-layer.is-dm .map-fog-fill { opacity: 0.58; }          /* the DM still sees the map through the fog */
 .map-fog-smoke { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 .map-fog-layer.smoke-fallback .map-fog-smoke { display: none; }

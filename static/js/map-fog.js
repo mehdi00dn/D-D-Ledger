@@ -40,6 +40,25 @@
       const canvas = layer.querySelector('.map-fog-smoke');
       if (!canvas) return { sync() {} };
       const c2d = canvas.getContext('2d');
+      // The animation is drawn small on a hidden tile, then repeated across the visible canvas.
+      // Alternate tiles are mirrored so the edges meet seamlessly (no visible grid lines).
+      const TILES_X = 4, TILES_Y = 4;
+      const tile = document.createElement('canvas');
+      tile.width = Math.round(canvas.width / TILES_X);
+      tile.height = Math.round(canvas.height / TILES_Y);
+      const tctx = tile.getContext('2d');
+      function paintTiles() {
+        c2d.clearRect(0, 0, canvas.width, canvas.height);
+        for (let ty = 0; ty < TILES_Y; ty++) {
+          for (let tx = 0; tx < TILES_X; tx++) {
+            c2d.save();
+            c2d.translate((tx + (tx % 2)) * tile.width, (ty + (ty % 2)) * tile.height);
+            c2d.scale(tx % 2 ? -1 : 1, ty % 2 ? -1 : 1);
+            c2d.drawImage(tile, 0, 0);
+            c2d.restore();
+          }
+        }
+      }
       const FPS = 15, STILL_FRAME = 240, SLOW_MS = 33, WINDOW = 20;
       const reduced = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
       let anim = null, loading = null, failed = false;
@@ -63,7 +82,7 @@
         ]).then(([, data]) => {
           anim = window.lottie.loadAnimation({
             renderer: 'canvas', loop: false, autoplay: false, animationData: data,
-            rendererSettings: { context: c2d, clearCanvas: true, preserveAspectRatio: 'xMidYMid slice' },
+            rendererSettings: { context: tctx, clearCanvas: true, preserveAspectRatio: 'xMidYMid slice' },
           });
           return anim;
         }).catch(() => {
@@ -73,7 +92,7 @@
         });
         return loading;
       }
-      function draw(frame) { anim.goToAndStop(Math.floor(frame), true); }
+      function draw(frame) { anim.goToAndStop(Math.floor(frame), true); paintTiles(); }
       function tick(ts) {
         if (!running) return;
         raf = requestAnimationFrame(tick);
