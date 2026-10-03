@@ -197,8 +197,14 @@
     bar.hidden = participants.length === 0;
     const round = document.getElementById('round-num');
     if (round && participants.length) round.textContent = participants[0].battle_round || 1;
+    const started = participants.some((p) => p.is_active);
     const label = document.getElementById('next-turn-label');
-    if (label) label.textContent = participants.some((p) => p.is_active) ? 'Next turn' : 'Start combat';
+    if (label) label.textContent = started ? 'Next turn' : 'Start combat';
+    // Back / Restart / End only mean something once the fight has started.
+    for (const id of ['prev-turn-btn', 'restart-turns-btn', 'end-turns-btn']) {
+      const b = document.getElementById(id);
+      if (b) b.disabled = !started;
+    }
   }
 
   async function apiCall(path, body) {
@@ -256,15 +262,25 @@
     }
   });
 
-  const nextTurnBtn = document.getElementById('next-turn-btn');
-  if (nextTurnBtn) {
-    nextTurnBtn.addEventListener('click', async () => {
-      nextTurnBtn.disabled = true;
+  // DM turn controls: one handler, each button names the endpoint it calls.
+  const TURN_BUTTONS = {
+    'next-turn-btn': { path: '/api/battle/next-turn' },
+    'prev-turn-btn': { path: '/api/battle/prev-turn' },
+    'restart-turns-btn': { path: '/api/battle/restart-turns', confirm: 'Restart from round 1 at the top of the initiative order?' },
+    'end-turns-btn': { path: '/api/battle/end-turns', confirm: 'End turn tracking? Everyone stays on the field; the round counter resets.' },
+  };
+  for (const [id, cfg] of Object.entries(TURN_BUTTONS)) {
+    const btn = document.getElementById(id);
+    if (!btn) continue;
+    btn.addEventListener('click', async () => {
+      if (cfg.confirm && !(await window.confirmAction(cfg.confirm))) return;
+      btn.disabled = true;
       try {
-        participants = await apiCall('/api/battle/next-turn', {});
+        participants = await apiCall(cfg.path, {});
         render();
       } finally {
-        nextTurnBtn.disabled = false;
+        btn.disabled = false;
+        updateTurnBar();                       // re-applies the right enabled / disabled state
       }
     });
   }

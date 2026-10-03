@@ -106,3 +106,47 @@ def test_two_quick_next_turn_presses_never_skip_anyone(make_user):
         list(ex.map(lambda _: dm.json(f'/campaigns/{cid}/api/battle/next-turn').status_code, range(2)))
     name, rnd = _active(dm, cid)
     assert (name, rnd) in (('Mid', 1), ('Low', 1))                # advanced once or twice, never lost or doubled oddly
+
+
+def _back(dm, cid):
+    r = dm.json(f'/campaigns/{cid}/api/battle/prev-turn')
+    assert r.status_code == 200
+    return r
+
+
+def test_back_undoes_next_and_returns_to_the_previous_round(make_user):
+    dm, player, cid, ids = _fight(make_user)
+    _back(dm, cid)                                                # nothing started: harmless
+    assert _active(dm, cid) == (None, 1)
+    for _ in range(4):
+        _next(dm, cid)                                            # High, Mid, Low, High (round 2)
+    assert _active(dm, cid) == ('High', 2)
+    seen = []
+    for _ in range(4):
+        _back(dm, cid); seen.append(_active(dm, cid))
+    assert seen == [('Low', 1), ('Mid', 1), ('High', 1), ('High', 1)]   # stops at the very first turn, never below round 1
+
+
+def test_back_skips_the_dead_and_only_the_dm_can_use_it(make_user):
+    dm, player, cid, ids = _fight(make_user)
+    assert player.json(f'/campaigns/{cid}/api/battle/prev-turn').status_code == 403
+    dm.json(f'/campaigns/{cid}/api/battle/{ids["Mid"]}/die')
+    _next(dm, cid); _next(dm, cid)                                # High, Low
+    _back(dm, cid)
+    assert _active(dm, cid) == ('High', 1)
+
+
+def test_restart_goes_to_round_one_at_the_top_and_end_stops_tracking(make_user):
+    dm, player, cid, ids = _fight(make_user)
+    for _ in range(5):
+        _next(dm, cid)
+    assert _active(dm, cid) == ('Mid', 2)
+    assert player.json(f'/campaigns/{cid}/api/battle/restart-turns').status_code == 403
+    assert player.json(f'/campaigns/{cid}/api/battle/end-turns').status_code == 403
+    assert dm.json(f'/campaigns/{cid}/api/battle/restart-turns').status_code == 200
+    assert _active(dm, cid) == ('High', 1)
+    r = dm.json(f'/campaigns/{cid}/api/battle/end-turns')
+    assert r.status_code == 200 and len(r.json) == 3            # everyone is still on the field
+    assert _active(dm, cid) == (None, 1)
+    _next(dm, cid)
+    assert _active(dm, cid) == ('High', 1)                        # can be started again

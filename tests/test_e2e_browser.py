@@ -265,6 +265,17 @@ def test_turn_tracker_highlights_the_active_turn_for_everyone(pw, shared_server)
     dpage.wait_for_timeout(600)
     assert dpage.locator('#round-num').inner_text() == '2'
     assert 'Aria' in dpage.locator('.battle-row.is-active .battle-name').inner_text()
+    dpage.click('#prev-turn-btn'); dpage.wait_for_timeout(600)                # Back: Borin, round 1
+    assert dpage.locator('#round-num').inner_text() == '1'
+    assert 'Borin' in dpage.locator('.battle-row.is-active .battle-name').inner_text()
     dpage.screenshot(path='/tmp/turns.png')
+    dpage.click('#restart-turns-btn'); dpage.wait_for_selector('#confirm-modal:not([hidden])'); dpage.click('#confirm-modal-yes')
+    dpage.wait_for_timeout(600)
+    assert 'Aria' in dpage.locator('.battle-row.is-active .battle-name').inner_text()
+    dpage.click('#end-turns-btn'); dpage.wait_for_selector('#confirm-modal:not([hidden])'); dpage.click('#confirm-modal-yes')
+    dpage.wait_for_timeout(600)
+    assert dpage.locator('.battle-row.is-active').count() == 0
+    assert dpage.locator('#next-turn-label').inner_text() == 'Start combat'
+    assert dpage.locator('#prev-turn-btn').is_disabled() and dpage.locator('#end-turns-btn').is_disabled()
     assert not derrs and not perrs, (derrs, perrs)
     dctx.close(); pctx.close()

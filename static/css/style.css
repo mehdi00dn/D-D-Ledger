@@ -1431,7 +1431,24 @@ body.page-leaving .content {
   background: var(--brass); color: var(--bg-deep, #0b0d13);
   font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
 }
-.turn-bar { display: flex; align-items: center; gap: 12px; margin-right: auto; }
+.turn-bar { display: flex; align-items: center; gap: 12px; margin-right: auto; flex-wrap: wrap; }
+.turn-controls {
+  display: inline-flex; align-items: stretch; gap: 2px; padding: 3px;
+  background: var(--bg-panel-inset); border: 1px solid var(--hairline-strong); border-radius: 10px;
+}
+.turn-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-width: 34px; height: 32px; padding: 0 9px; border: 0; border-radius: 7px;
+  background: transparent; color: var(--parchment-dim); font: inherit; font-size: 12.5px; cursor: pointer;
+}
+.turn-btn svg { width: 16px; height: 16px; flex-shrink: 0; }
+.turn-btn:hover:not(:disabled) { background: rgba(255, 255, 255, 0.07); color: var(--parchment); }
+.turn-btn:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
+.turn-btn:disabled { opacity: 0.35; cursor: default; }
+.turn-btn-main { background: var(--brass); color: #21170a; font-weight: 600; padding: 0 14px; }
+.turn-btn-main:hover:not(:disabled) { background: var(--brass-bright); color: #21170a; }
+.turn-btn-danger:hover:not(:disabled) { background: #e63946; color: #fff; }
+.turn-sep { width: 1px; margin: 5px 4px; background: var(--hairline-strong); }
 .round-badge {
   padding: 5px 12px; border: 1px solid var(--hairline-strong); border-radius: 999px;
   font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--parchment-dim);

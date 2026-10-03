@@ -21,7 +21,15 @@
 <div class="battle-toolbar">
   <div class="turn-bar" id="turn-bar" hidden>
     <span class="round-badge">Round <b id="round-num">1</b></span>
-    {% if g.is_dm %}<button type="button" class="btn btn-primary btn-sm" id="next-turn-btn">{{ icon('chevron-right') }} <span id="next-turn-label">Start combat</span></button>{% endif %}
+    {% if g.is_dm %}
+    <div class="turn-controls" role="group" aria-label="Turn controls">
+      <button type="button" class="turn-btn" id="prev-turn-btn" title="Previous turn" aria-label="Previous turn">{{ icon('chevron-left') }}</button>
+      <button type="button" class="turn-btn turn-btn-main" id="next-turn-btn" title="Next turn">{{ icon('chevron-right') }} <span id="next-turn-label">Start combat</span></button>
+      <span class="turn-sep" aria-hidden="true"></span>
+      <button type="button" class="turn-btn" id="restart-turns-btn" title="Restart: back to round 1, top of the order" aria-label="Restart turns">{{ icon('restart') }}</button>
+      <button type="button" class="turn-btn turn-btn-danger" id="end-turns-btn" title="End turn tracking (everyone stays on the field)" aria-label="End turn tracking">{{ icon('stop') }}</button>
+    </div>
+    {% endif %}
   </div>
   {% if g.is_dm %}
   <span class="hint-text" style="margin:0;">Sort by</span>

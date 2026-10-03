@@ -1653,22 +1653,29 @@ def _turn_order(db):
     return [(r['id'], bool(r['is_dead'])) for r in rows]
 
 
-def _pass_turn(db, skip_id=None):
-    """Hand the turn to the next living participant (dead ones are skipped, and so is `skip_id`,
-    someone who is about to be removed).  Passing the end of the order starts a new round.
-    Returns False if someone else passed the turn first, so a double click never skips a person."""
+def _pass_turn(db, skip_id=None, step=1):
+    """Move the turn to the next (step=1) or previous (step=-1) living participant.  Dead ones are
+    skipped, and so is `skip_id`, someone who is about to be removed.  Going past the end of the
+    order starts a new round; going back past the top returns to the previous round (never below 1).
+    Returns False if someone else moved the turn first, so a double click never skips a person."""
     camp = db.execute('SELECT battle_round, battle_turn_id FROM campaigns WHERE id = ?', (g.campaign_id,)).fetchone()
     order = _turn_order(db)
     ids = [i for i, _dead in order]
     alive = {i for i, dead in order if not dead and i != skip_id}
     current, rnd, nxt = camp['battle_turn_id'], camp['battle_round'], None
     start = ids.index(current) if current in ids else -1
-    for step in range(1, len(ids) + 1):
-        j = start + step
+    if step < 0 and start < 0:
+        return True                                        # nothing has started, so there is nothing to go back to
+    for k in range(1, len(ids) + 1):
+        j = start + step * k
         if ids[j % len(ids)] in alive:
             nxt = ids[j % len(ids)]
-            if start >= 0 and j >= len(ids):
+            if step > 0 and start >= 0 and j >= len(ids):
                 rnd += 1                                   # went past the last participant
+            elif step < 0 and j < 0:
+                if rnd <= 1:
+                    return True                            # already at the very first turn of round 1
+                rnd -= 1
             break
     cur = db.execute(
         'UPDATE campaigns SET battle_turn_id = ?, battle_round = ? WHERE id = ? AND battle_turn_id IS NOT DISTINCT FROM CAST(? AS INTEGER)',
@@ -1935,6 +1942,46 @@ def api_battle_next_turn():
     counter goes up each time the order wraps round to the top."""
     db = get_db()
     _pass_turn(db)
+    db.commit()
+    rows = _battle_rows(db)
+    db.close()
+    return jsonify(rows)
+
+
+@app.route('/campaigns/<int:campaign_id>/api/battle/prev-turn', methods=['POST'])
+@campaign_access_required
+@dm_required
+def api_battle_prev_turn():
+    """DM only. Steps back one turn (undo a mis-click); going back past the top returns to the previous round."""
+    db = get_db()
+    _pass_turn(db, step=-1)
+    db.commit()
+    rows = _battle_rows(db)
+    db.close()
+    return jsonify(rows)
+
+
+@app.route('/campaigns/<int:campaign_id>/api/battle/restart-turns', methods=['POST'])
+@campaign_access_required
+@dm_required
+def api_battle_restart_turns():
+    """DM only. Back to round 1 with the first living participant in initiative order acting."""
+    db = get_db()
+    first = next((i for i, dead in _turn_order(db) if not dead), None)
+    db.execute('UPDATE campaigns SET battle_round = 1, battle_turn_id = ? WHERE id = ?', (first, g.campaign_id))
+    db.commit()
+    rows = _battle_rows(db)
+    db.close()
+    return jsonify(rows)
+
+
+@app.route('/campaigns/<int:campaign_id>/api/battle/end-turns', methods=['POST'])
+@campaign_access_required
+@dm_required
+def api_battle_end_turns():
+    """DM only. Stops turn tracking (round 1, nobody acting) but leaves everyone on the field."""
+    db = get_db()
+    db.execute('UPDATE campaigns SET battle_round = 1, battle_turn_id = NULL WHERE id = ?', (g.campaign_id,))
     db.commit()
     rows = _battle_rows(db)
     db.close()
