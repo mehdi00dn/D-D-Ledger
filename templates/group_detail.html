@@ -23,7 +23,7 @@
       {% if group.avatar_path %}
         <img src="{{ url_for('uploaded_file', filename=group.avatar_path) }}" alt="{{ group.name }} avatar">
       {% else %}
-        <div class="group-image-placeholder">{{ icon('shield') }}</div>
+        <div class="group-image-placeholder">{{ icon('faction') }}</div>
       {% endif %}
     </div>
     <p class="faction-detail-bio">{% if group.bio %}{{ group.bio }}{% else %}<em>No notes recorded.</em>{% endif %}</p>

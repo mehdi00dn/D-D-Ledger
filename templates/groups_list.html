@@ -45,7 +45,7 @@
       {% if g.avatar_path %}
         <img src="{{ url_for('uploaded_file', filename=g.avatar_path) }}" alt="{{ g.name }} avatar">
       {% else %}
-        <div class="group-image-placeholder">{{ icon('shield') }}</div>
+        <div class="group-image-placeholder">{{ icon('faction') }}</div>
       {% endif %}
     </div>
     <div class="group-body">
@@ -67,7 +67,7 @@
 </div>
 {% else %}
 <div class="empty-state">
-  {{ icon('shield') }}
+  {{ icon('faction') }}
   <h3>No factions yet</h3>
   <p>Create a faction or party to organize your characters.</p>
   {% if is_dm %}

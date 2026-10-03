@@ -42,9 +42,11 @@
   const CONDITIONS = JSON.parse((document.getElementById('conditions-data') || { textContent: '[]' }).textContent);
   const CONDITION_LABEL = Object.fromEntries(CONDITIONS.map((c) => [c.key, c.label]));
 
+  const condIcon = (key, cls) => `<svg class="cond-icon ${cls || ''}" aria-hidden="true"><use href="/static/icons/conditions.svg#${key}"></use></svg>`;
+
   function conditionChips(p) {
     const list = (p.conditions || []).filter((k) => CONDITION_LABEL[k]);
-    const chips = list.map((k) => `<span class="cond-chip cond-${k}">${escapeHtml(CONDITION_LABEL[k])}</span>`).join('');
+    const chips = list.map((k) => `<span class="cond-chip cond-${k}">${condIcon(k)}${escapeHtml(CONDITION_LABEL[k])}</span>`).join('');
     const addBtn = isDM
       ? `<button type="button" class="cond-add" data-action="conditions" title="Conditions" aria-label="Conditions for ${escapeHtml(p.display_name)}">${ICONS.heart}${list.length ? '' : '<span>Conditions</span>'}</button>`
       : '';
@@ -437,7 +439,7 @@
     document.getElementById('conditions-modal-title').textContent = `Conditions — ${p.display_name}`;
     const on = new Set(p.conditions || []);
     condPicker.innerHTML = CONDITIONS.map((c) => `
-      <button type="button" class="chip cond-toggle ${on.has(c.key) ? 'active' : ''}" data-cond="${c.key}" aria-pressed="${on.has(c.key)}">${escapeHtml(c.label)}</button>`).join('');
+      <button type="button" class="cond-tile ${on.has(c.key) ? 'active' : ''}" data-cond="${c.key}" aria-pressed="${on.has(c.key)}">${condIcon(c.key, 'cond-icon-lg')}<span>${escapeHtml(c.label)}</span></button>`).join('');
   }
 
   function openConditions(pid) {

@@ -294,12 +294,18 @@ def test_battle_conditions_picker_and_chips(pw, shared_server):
     dpage.click('.cond-add'); dpage.wait_for_selector('#conditions-modal:not([hidden])')
     dpage.click('[data-cond="prone"]'); dpage.click('[data-cond="poisoned"]')
     dpage.wait_for_timeout(500)
-    assert dpage.locator('#conditions-picker .chip.active').count() == 2
+    assert dpage.locator('#conditions-picker .cond-tile.active').count() == 2
+    assert dpage.locator('#conditions-picker .cond-tile svg.cond-icon').count() == 15      # every condition has its icon tile
     dpage.screenshot(path='/tmp/conds-modal.png')
+    dpage.evaluate("() => document.documentElement.setAttribute('data-theme', 'light')")
+    dpage.wait_for_timeout(300); dpage.screenshot(path='/tmp/conds-modal-light.png')
+    dpage.evaluate("() => document.documentElement.setAttribute('data-theme', 'dark')")
     dpage.click('#close-conditions-modal')
     assert dpage.locator('.battle-row .cond-chip').all_text_contents() == ['Poisoned', 'Prone']
     ppage.wait_for_selector('.battle-row .cond-chip', timeout=15000)       # arrives by the normal live refresh
     assert ppage.locator('.battle-row .cond-chip').all_text_contents() == ['Poisoned', 'Prone']
     dpage.screenshot(path='/tmp/conds-row.png')
+    dpage.goto(base + f'/campaigns/{cid}/factions'); dpage.wait_for_timeout(500)
+    dpage.screenshot(path='/tmp/factions.png')
     assert not derrs and not perrs, (derrs, perrs)
     dctx.close(); pctx.close()

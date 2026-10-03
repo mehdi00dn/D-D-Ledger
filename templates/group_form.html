@@ -29,7 +29,7 @@
               <img id="group-avatar-preview" src="{{ url_for('uploaded_file', filename=group.avatar_path) }}" alt="avatar preview">
             {% else %}
               <img id="group-avatar-preview" style="display:none;" alt="avatar preview">
-              {{ icon('shield', 'avatar-placeholder-icon') }}
+              {{ icon('faction', 'avatar-placeholder-icon') }}
             {% endif %}
           </div>
           <button type="button" class="avatar-remove-btn" id="group-avatar-remove-btn" title="Remove avatar" {{ '' if group and group.avatar_path else 'hidden' }}>{{ icon('x') }}</button>
