@@ -1384,8 +1384,9 @@ def faction_new():
         _save_faction(db, None)
         db.close()
         return redirect(url_for('factions_list'))
+    candidates = _faction_candidates(db)
     db.close()
-    return render_template('group_form.html', group=None, candidates=[])
+    return render_template('group_form.html', group=None, candidates=candidates)
 
 
 @app.route('/campaigns/<int:campaign_id>/factions/<int:group_id>')
@@ -1433,15 +1434,20 @@ def faction_edit(group_id):
         _save_faction(db, group_id)
         db.close()
         return redirect(url_for('faction_detail', group_id=group_id))
-    # Everyone in this campaign who could be pulled into the faction (for the search-and-add box).
-    candidates = db.execute('''
+    candidates = _faction_candidates(db)
+    db.close()
+    return render_template('group_form.html', group=group, candidates=candidates)
+
+
+def _faction_candidates(db):
+    """Everyone in this campaign who could be pulled into a faction (for the search-and-add box)."""
+    rows = db.execute('''
         SELECT c.id, c.name, c.is_npc, c.avatar_path, c.group_id, g.name AS group_name
         FROM characters c LEFT JOIN groups g ON c.group_id = g.id
         WHERE c.campaign_id = ? AND c.is_temp_familiar = 0
         ORDER BY lower(c.name) ASC
     ''', (g.campaign_id,)).fetchall()
-    db.close()
-    return render_template('group_form.html', group=group, candidates=[dict(c) for c in candidates])
+    return [dict(r) for r in rows]
 
 
 _COLOR_RE = re.compile(r'^#[0-9a-fA-F]{6}$')
@@ -1468,8 +1474,8 @@ def _save_faction(db, group_id):
     remove_avatar = form.get('remove_avatar') == '1'
 
     if group_id is None:
-        db.execute('INSERT INTO groups (name, avatar_path, bio, color, campaign_id) VALUES (?, ?, ?, ?, ?)',
-                   (name, avatar_path, bio, color, g.campaign_id))
+        group_id = db.execute('INSERT INTO groups (name, avatar_path, bio, color, campaign_id) VALUES (?, ?, ?, ?, ?)',
+                              (name, avatar_path, bio, color, g.campaign_id)).lastrowid
     else:
         if avatar_path:
             old = db.execute('SELECT avatar_path FROM groups WHERE id = ?', (group_id,)).fetchone()
@@ -1482,15 +1488,16 @@ def _save_faction(db, group_id):
                 delete_upload(old['avatar_path'])
             db.execute('UPDATE groups SET avatar_path = NULL WHERE id = ?', (group_id,))
         db.execute('UPDATE groups SET name=?, bio=?, color=? WHERE id=?', (name, bio, color, group_id))
-        # Characters picked in the edit form's search box join this faction (moving them out of any
-        # other). Only this campaign's own characters can be added; foreign/garbage ids are ignored.
-        for raw_id in dict.fromkeys(request.form.getlist('add_character_ids')):
-            try:
-                cid_to_add = int(raw_id)
-            except (TypeError, ValueError):
-                continue
-            db.execute('UPDATE characters SET group_id = ? WHERE id = ? AND campaign_id = ? AND is_temp_familiar = 0',
-                       (group_id, cid_to_add, g.campaign_id))
+    # Characters picked in the form's search box join this faction (moving them out of any other),
+    # on creation as well as on edit.  Only this campaign's own characters can be added;
+    # foreign/garbage ids are ignored.
+    for raw_id in dict.fromkeys(request.form.getlist('add_character_ids')):
+        try:
+            cid_to_add = int(raw_id)
+        except (TypeError, ValueError):
+            continue
+        db.execute('UPDATE characters SET group_id = ? WHERE id = ? AND campaign_id = ? AND is_temp_familiar = 0',
+                   (group_id, cid_to_add, g.campaign_id))
     db.commit()
 
 
@@ -2024,19 +2031,6 @@ def api_battle_restart_turns():
     db = get_db()
     first = next((i for i, dead in _turn_order(db) if not dead), None)
     db.execute('UPDATE campaigns SET battle_round = 1, battle_turn_id = ? WHERE id = ?', (first, g.campaign_id))
-    db.commit()
-    rows = _battle_rows(db)
-    db.close()
-    return jsonify(rows)
-
-
-@app.route('/campaigns/<int:campaign_id>/api/battle/end-turns', methods=['POST'])
-@campaign_access_required
-@dm_required
-def api_battle_end_turns():
-    """DM only. Stops turn tracking (round 1, nobody acting) but leaves everyone on the field."""
-    db = get_db()
-    db.execute('UPDATE campaigns SET battle_round = 1, battle_turn_id = NULL WHERE id = ?', (g.campaign_id,))
     db.commit()
     rows = _battle_rows(db)
     db.close()

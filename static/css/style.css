@@ -1447,7 +1447,6 @@ body.page-leaving .content {
 .turn-btn:disabled { opacity: 0.35; cursor: default; }
 .turn-btn-main { background: var(--brass); color: #21170a; font-weight: 600; padding: 0 14px; }
 .turn-btn-main:hover:not(:disabled) { background: var(--brass-bright); color: #21170a; }
-.turn-btn-danger:hover:not(:disabled) { background: #e63946; color: #fff; }
 .turn-sep { width: 1px; margin: 5px 4px; background: var(--hairline-strong); }
 .round-badge {
   padding: 5px 12px; border: 1px solid var(--hairline-strong); border-radius: 999px;

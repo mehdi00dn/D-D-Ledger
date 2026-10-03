@@ -69,8 +69,7 @@
     </div>
   </div>
 
-  {% if group %}
-  <div class="form-section" id="member-picker" data-group-id="{{ group.id }}">
+  <div class="form-section" id="member-picker" data-group-id="{{ group.id if group else '' }}">
     <p class="form-section-title">Add characters</p>
     <div class="field">
       <div class="search-bar">
@@ -83,7 +82,6 @@
       <script type="application/json" id="member-candidates">{{ candidates | tojson }}</script>
     </div>
   </div>
-  {% endif %}
 
   <div class="form-actions">
     <a href="{{ url_for('faction_detail', group_id=group.id) if group else url_for('factions_list') }}" class="btn btn-ghost">Cancel</a>

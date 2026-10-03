@@ -272,11 +272,7 @@ def test_turn_tracker_highlights_the_active_turn_for_everyone(pw, shared_server)
     dpage.click('#restart-turns-btn'); dpage.wait_for_selector('#confirm-modal:not([hidden])'); dpage.click('#confirm-modal-yes')
     dpage.wait_for_timeout(600)
     assert 'Aria' in dpage.locator('.battle-row.is-active .battle-name').inner_text()
-    dpage.click('#end-turns-btn'); dpage.wait_for_selector('#confirm-modal:not([hidden])'); dpage.click('#confirm-modal-yes')
-    dpage.wait_for_timeout(600)
-    assert dpage.locator('.battle-row.is-active').count() == 0
-    assert dpage.locator('#next-turn-label').inner_text() == 'Start combat'
-    assert dpage.locator('#prev-turn-btn').is_disabled() and dpage.locator('#end-turns-btn').is_disabled()
+    assert dpage.locator('#end-turns-btn').count() == 0                      # there is no separate "end" button
     assert not derrs and not perrs, (derrs, perrs)
     dctx.close(); pctx.close()
 
@@ -328,4 +324,23 @@ def test_view_as_player_banner_and_hidden_dm_tools(pw, shared_server):
     dpage.wait_for_selector('#next-turn-btn')
     assert dpage.locator('.preview-banner').count() == 0
     assert not derrs, derrs
+    dctx.close()
+
+
+def test_new_faction_form_can_add_members(pw, shared_server):
+    base = shared_server.url; dm = Api(base); cid = dm.campaign('NewFaction')
+    dm.character(cid, 'Aria'); dm.character(cid, 'Borin')
+    dctx = dm.context(pw, base); page = dctx.new_page(); bad, errs = _collect(page)
+    page.goto(base + f'/campaigns/{cid}/factions/new'); page.wait_for_selector('#member-search')
+    page.fill('#name', 'Ashfall Company')
+    page.fill('#member-search', 'ar'); page.wait_for_selector('.member-result')
+    page.click('.member-result button')                                     # Add Aria
+    page.wait_for_selector('.member-chip')
+    page.screenshot(path='/tmp/newfaction.png', full_page=True)
+    page.click('.form-actions button[type=submit]'); page.wait_for_timeout(1500)
+    assert page.url.rstrip('/').endswith('/factions'), page.url
+    assert 'Ashfall Company' in page.inner_text('body')
+    aria = next(c for c in dm.get(f'/campaigns/{cid}/api/characters').json() if c['name'] == 'Aria')
+    assert aria['group_name'] == 'Ashfall Company'                          # Aria joined the faction while it was created
+    assert not errs, errs
     dctx.close()

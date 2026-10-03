@@ -292,7 +292,8 @@ def test_faction_edit_adds_characters_scoped_to_the_campaign(make_user):
     # The edit page offers this campaign's characters (and not another campaign's) to search.
     form = dm.get(f'/campaigns/{cid}/factions/{gid}/edit').data.decode()
     assert 'member-search' in form and 'Free Agent' in form and 'Defector' in form and 'Elsewhere Hero' not in form
-    assert 'member-search' not in dm.get(f'/campaigns/{cid}/factions/new').data.decode()   # only when editing
+    new_form = dm.get(f'/campaigns/{cid}/factions/new').data.decode()                      # DL-88: also when creating
+    assert 'member-search' in new_form and 'Free Agent' in new_form and 'Elsewhere Hero' not in new_form
 
     r = dm.post(f'/campaigns/{cid}/factions/{gid}/edit', content_type='multipart/form-data',
                 data={'name': 'Guild', 'color': '#336699', 'bio': '',
@@ -370,3 +371,24 @@ def test_page_eyebrows_removed_and_empty_notes_render_as_html(make_user):
     for url in (f'/campaigns/{cid}/characters/{ch}', f'/campaigns/{cid}/factions/{gid}', '/campaigns',
                 '/campaigns/new', f'/campaigns/{cid}/edit'):
         assert 'page-eyebrow' not in dm.get(url).data.decode(), url
+
+
+def test_members_can_be_picked_while_creating_a_faction(make_user):
+    """DL-88: the same Add-characters box works on the New Faction form."""
+    dm, player = make_user(), make_user()
+    cid = dm.new_campaign(); _add_player(dm, player, cid)
+    old = dm.new_group(cid, name='Old Guard')
+    free = dm.new_character(cid, name='Free Agent')
+    moving = dm.new_character(cid, name='Defector', group_id=old)
+    cid2 = dm.new_campaign()
+    foreign = dm.new_character(cid2, name='Elsewhere Hero')
+    r = dm.post(f'/campaigns/{cid}/factions/new', content_type='multipart/form-data',
+                data={'name': 'New Order', 'color': '#336699', 'bio': '',
+                      'add_character_ids': [str(free), str(moving), str(free), 'oops', str(foreign), '999999']})
+    assert r.status_code == 302
+    gid = q('SELECT id FROM groups WHERE campaign_id = ? AND name = ?', cid, 'New Order')[0]['id']
+    assert q('SELECT group_id FROM characters WHERE id = ?', free)[0]['group_id'] == gid
+    assert q('SELECT group_id FROM characters WHERE id = ?', moving)[0]['group_id'] == gid      # moved out of Old Guard
+    assert q('SELECT group_id FROM characters WHERE id = ?', foreign)[0]['group_id'] is None    # other campaign: untouched
+    # a faction made with no members still works
+    assert dm.post(f'/campaigns/{cid}/factions/new', content_type='multipart/form-data', data={'name': 'Empty'}).status_code == 302

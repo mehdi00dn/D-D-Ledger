@@ -136,20 +136,14 @@ def test_back_skips_the_dead_and_only_the_dm_can_use_it(make_user):
     assert _active(dm, cid) == ('High', 1)
 
 
-def test_restart_goes_to_round_one_at_the_top_and_end_stops_tracking(make_user):
+def test_restart_goes_to_round_one_at_the_top(make_user):
     dm, player, cid, ids = _fight(make_user)
     for _ in range(5):
         _next(dm, cid)
     assert _active(dm, cid) == ('Mid', 2)
     assert player.json(f'/campaigns/{cid}/api/battle/restart-turns').status_code == 403
-    assert player.json(f'/campaigns/{cid}/api/battle/end-turns').status_code == 403
     assert dm.json(f'/campaigns/{cid}/api/battle/restart-turns').status_code == 200
     assert _active(dm, cid) == ('High', 1)
-    r = dm.json(f'/campaigns/{cid}/api/battle/end-turns')
-    assert r.status_code == 200 and len(r.json) == 3            # everyone is still on the field
-    assert _active(dm, cid) == (None, 1)
-    _next(dm, cid)
-    assert _active(dm, cid) == ('High', 1)                        # can be started again
 
 
 # ---- DL-41: conditions ----
