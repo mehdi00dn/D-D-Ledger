@@ -240,3 +240,31 @@ def test_lightbox_arrows_sit_beside_the_image(pw, shared_server):
     page.screenshot(path='/tmp/lightbox-first.png')
     assert not errs, errs
     ctx.close()
+
+
+def test_turn_tracker_highlights_the_active_turn_for_everyone(pw, shared_server):
+    base = shared_server.url; dm = Api(base); player = Api(base); cid = dm.campaign('Turns')
+    dm.post(f'/campaigns/{cid}/members/add', data={'username': player.name, 'status': 'player'})
+    for name, init in (('Aria', 18), ('Borin', 9)):
+        chid = dm.character(cid, name)
+        pid = dm.post(f'/campaigns/{cid}/api/battle/add', json={'character_id': chid}).json()[-1]['id']
+        dm.post(f'/campaigns/{cid}/api/battle/{pid}/initiative', json={'value': init})
+    dctx = dm.context(pw, base); dpage = dctx.new_page(); dbad, derrs = _collect(dpage)
+    pctx = player.context(pw, base); ppage = pctx.new_page(); pbad, perrs = _collect(ppage)
+    dpage.goto(base + f'/campaigns/{cid}/battle'); ppage.goto(base + f'/campaigns/{cid}/battle')
+    dpage.wait_for_selector('#turn-bar:not([hidden])'); ppage.wait_for_selector('#turn-bar:not([hidden])')
+    assert dpage.locator('#next-turn-label').inner_text() == 'Start combat'
+    assert ppage.locator('#next-turn-btn').count() == 0                   # Players get no button
+    dpage.click('#next-turn-btn')
+    dpage.wait_for_selector('.battle-row.is-active')
+    assert 'Aria' in dpage.locator('.battle-row.is-active .battle-name').inner_text()
+    assert dpage.locator('#next-turn-label').inner_text() == 'Next turn'
+    ppage.wait_for_selector('.battle-row.is-active', timeout=15000)       # arrives by the normal live refresh
+    assert 'Aria' in ppage.locator('.battle-row.is-active .battle-name').inner_text()
+    dpage.click('#next-turn-btn'); dpage.click('#next-turn-btn')          # Borin, then a new round with Aria
+    dpage.wait_for_timeout(600)
+    assert dpage.locator('#round-num').inner_text() == '2'
+    assert 'Aria' in dpage.locator('.battle-row.is-active .battle-name').inner_text()
+    dpage.screenshot(path='/tmp/turns.png')
+    assert not derrs and not perrs, (derrs, perrs)
+    dctx.close(); pctx.close()

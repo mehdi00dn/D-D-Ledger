@@ -1598,6 +1598,11 @@ def _battle_rows(db, redact_enemies=False):
     ''', (g.campaign_id,)).fetchall()
     rows = [dict(r) for r in rows]
 
+    turn = db.execute('SELECT battle_round, battle_turn_id FROM campaigns WHERE id = ?', (g.campaign_id,)).fetchone()
+    for r in rows:
+        r['is_active'] = bool(turn and turn['battle_turn_id'] == r['id'])
+        r['battle_round'] = turn['battle_round'] if turn else 1
+
     for r in rows:
         r['effective_ac'] = r['ac_override'] if r['ac_override'] is not None else r['base_ac']
         # A binary "at 0 HP but not yet confirmed dead" flag is safe to send
@@ -1633,6 +1638,42 @@ def _battle_rows(db, redact_enemies=False):
                 r['effective_ac'] = None
                 r['base_ac'] = None
     return rows
+
+
+def _turn_order(db):
+    """Participants in turn order: highest initiative first, ties by the order they were added.
+    This is always computed from the real initiative values on the server, whatever order a
+    screen happens to sort its list in (and whether or not a Player can see the numbers)."""
+    rows = db.execute('''
+        SELECT bp.id, bp.is_dead
+        FROM battle_participants bp JOIN characters c ON bp.character_id = c.id
+        WHERE c.campaign_id = ?
+        ORDER BY bp.initiative DESC, bp.sort_order ASC, bp.id ASC
+    ''', (g.campaign_id,)).fetchall()
+    return [(r['id'], bool(r['is_dead'])) for r in rows]
+
+
+def _pass_turn(db, skip_id=None):
+    """Hand the turn to the next living participant (dead ones are skipped, and so is `skip_id`,
+    someone who is about to be removed).  Passing the end of the order starts a new round.
+    Returns False if someone else passed the turn first, so a double click never skips a person."""
+    camp = db.execute('SELECT battle_round, battle_turn_id FROM campaigns WHERE id = ?', (g.campaign_id,)).fetchone()
+    order = _turn_order(db)
+    ids = [i for i, _dead in order]
+    alive = {i for i, dead in order if not dead and i != skip_id}
+    current, rnd, nxt = camp['battle_turn_id'], camp['battle_round'], None
+    start = ids.index(current) if current in ids else -1
+    for step in range(1, len(ids) + 1):
+        j = start + step
+        if ids[j % len(ids)] in alive:
+            nxt = ids[j % len(ids)]
+            if start >= 0 and j >= len(ids):
+                rnd += 1                                   # went past the last participant
+            break
+    cur = db.execute(
+        'UPDATE campaigns SET battle_turn_id = ?, battle_round = ? WHERE id = ? AND battle_turn_id IS NOT DISTINCT FROM CAST(? AS INTEGER)',
+        (nxt, rnd if nxt is not None else camp['battle_round'], g.campaign_id, current))
+    return cur.rowcount == 1
 
 
 def _create_familiar_participant(db, icon_key, custom_name):
@@ -1886,12 +1927,31 @@ def api_battle_revive(pid):
     return jsonify(rows)
 
 
+@app.route('/campaigns/<int:campaign_id>/api/battle/next-turn', methods=['POST'])
+@campaign_access_required
+@dm_required
+def api_battle_next_turn():
+    """DM only. Starts the fight (first in initiative order) or passes the turn on; the round
+    counter goes up each time the order wraps round to the top."""
+    db = get_db()
+    _pass_turn(db)
+    db.commit()
+    rows = _battle_rows(db)
+    db.close()
+    return jsonify(rows)
+
+
 @app.route('/campaigns/<int:campaign_id>/api/battle/<int:pid>/remove', methods=['POST'])
 @campaign_access_required
 @dm_required
 def api_battle_remove(pid):
     db = get_db()
+    camp = db.execute('SELECT battle_turn_id FROM campaigns WHERE id = ?', (g.campaign_id,)).fetchone()
+    if camp and camp['battle_turn_id'] == pid:
+        _pass_turn(db, skip_id=pid)                        # removing whoever is acting passes the turn on
     db.execute('DELETE FROM battle_participants WHERE id = ?', (pid,))
+    if not _turn_order(db):
+        db.execute('UPDATE campaigns SET battle_round = 1, battle_turn_id = NULL WHERE id = ?', (g.campaign_id,))
     db.commit()
     rows = _battle_rows(db)
     db.close()
@@ -1907,6 +1967,7 @@ def api_battle_clear():
         'DELETE FROM battle_participants WHERE character_id IN (SELECT id FROM characters WHERE campaign_id = ?)',
         (g.campaign_id,)
     )
+    db.execute('UPDATE campaigns SET battle_round = 1, battle_turn_id = NULL WHERE id = ?', (g.campaign_id,))
     db.commit()
     db.close()
     return jsonify([])

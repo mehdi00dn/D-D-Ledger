@@ -19,6 +19,10 @@
 </div>
 
 <div class="battle-toolbar">
+  <div class="turn-bar" id="turn-bar" hidden>
+    <span class="round-badge">Round <b id="round-num">1</b></span>
+    {% if g.is_dm %}<button type="button" class="btn btn-primary btn-sm" id="next-turn-btn">{{ icon('chevron-right') }} <span id="next-turn-label">Start combat</span></button>{% endif %}
+  </div>
   {% if g.is_dm %}
   <span class="hint-text" style="margin:0;">Sort by</span>
   <div class="sort-toggle" id="sort-toggle">

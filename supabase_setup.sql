@@ -307,4 +307,14 @@ ALTER TABLE maps ADD COLUMN fog_version INTEGER NOT NULL DEFAULT 0;
 
 INSERT INTO schema_migrations (version) VALUES ('0006_map_fog.sql');
 
+-- ---- 0007_battle_turns.sql ----
+
+-- Turn tracker: which participant is acting and which round the fight is in.
+-- Kept on the campaign (one battle per campaign today). battle_turn_id clears itself if that
+-- participant leaves the battle.
+ALTER TABLE campaigns ADD COLUMN battle_round   INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE campaigns ADD COLUMN battle_turn_id INTEGER REFERENCES battle_participants(id) ON DELETE SET NULL;
+
+INSERT INTO schema_migrations (version) VALUES ('0007_battle_turns.sql');
+
 COMMIT;

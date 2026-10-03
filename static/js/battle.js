@@ -117,11 +117,11 @@
     }
 
     return `
-    <div class="battle-row ${dead ? 'is-dead' : ''}" data-pid="${p.id}">
+    <div class="battle-row ${dead ? 'is-dead' : ''} ${p.is_active ? 'is-active' : ''}" data-pid="${p.id}"${p.is_active ? ' aria-current="true"' : ''}>
       <div class="battle-avatar" style="border-color:${p.group_color || 'var(--brass)'};">${avatarMarkup(p)}</div>
 
       <div class="battle-name-block">
-        <div class="battle-name">${escapeHtml(p.display_name)}</div>
+        <div class="battle-name">${escapeHtml(p.display_name)}${p.is_active ? '<span class="turn-tag">Turn</span>' : ''}</div>
         <div class="battle-meta">${groupDot}${p.group_name ? escapeHtml(p.group_name) : 'No Faction'} &middot; ${p.is_npc ? 'NPC' : 'PC'}</div>
       </div>
 
@@ -173,6 +173,7 @@
   }
 
   function render() {
+    updateTurnBar();
     if (participants.length === 0) {
       root.innerHTML = '';
       root.appendChild(emptyTemplate.content.cloneNode(true));
@@ -187,6 +188,17 @@
       html += '<div class="battle-list">' + section.items.map(rowMarkup).join('') + '</div>';
     });
     root.innerHTML = html;
+  }
+
+  // Round counter + the DM's Next turn button (hidden while nobody is on the field).
+  function updateTurnBar() {
+    const bar = document.getElementById('turn-bar');
+    if (!bar) return;
+    bar.hidden = participants.length === 0;
+    const round = document.getElementById('round-num');
+    if (round && participants.length) round.textContent = participants[0].battle_round || 1;
+    const label = document.getElementById('next-turn-label');
+    if (label) label.textContent = participants.some((p) => p.is_active) ? 'Next turn' : 'Start combat';
   }
 
   async function apiCall(path, body) {
@@ -243,6 +255,19 @@
       if (p) openDetailModal(p.character_id);
     }
   });
+
+  const nextTurnBtn = document.getElementById('next-turn-btn');
+  if (nextTurnBtn) {
+    nextTurnBtn.addEventListener('click', async () => {
+      nextTurnBtn.disabled = true;
+      try {
+        participants = await apiCall('/api/battle/next-turn', {});
+        render();
+      } finally {
+        nextTurnBtn.disabled = false;
+      }
+    });
+  }
 
   root.addEventListener('change', async (e) => {
     const input = e.target.closest('[data-action="initiative"], [data-action="ac"], [data-action="max-hp"]');
