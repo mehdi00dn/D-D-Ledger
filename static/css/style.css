@@ -2683,3 +2683,23 @@ body.page-leaving .content {
   from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: translateY(0); }
 }
+:root[data-theme="light"] .turn-tag,
+:root[data-theme="light"] .turn-btn-main,
+:root[data-theme="light"] .turn-btn-main:hover:not(:disabled) { color: var(--bg-panel); }
+
+/* DL-41: battle conditions */
+.cond-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 5px; }
+.cond-chip {
+  padding: 1px 8px; border-radius: 999px; border: 1px solid var(--hairline-strong);
+  background: rgba(201, 162, 75, 0.14); color: var(--brass-bright);
+  font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase;
+}
+.cond-add {
+  display: inline-flex; align-items: center; gap: 5px; padding: 1px 7px; border-radius: 999px;
+  border: 1px dashed var(--hairline-strong); background: transparent; color: var(--parchment-faint);
+  font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase; cursor: pointer;
+}
+.cond-add svg { width: 10px; height: 10px; }
+.cond-add:hover { color: var(--parchment); border-color: var(--brass); }
+.cond-picker { display: flex; flex-wrap: wrap; gap: 8px; }
+:root[data-theme="light"] .cond-chip { color: var(--brass); background: rgba(156, 122, 46, 0.12); }

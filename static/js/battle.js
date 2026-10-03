@@ -38,6 +38,19 @@
     return div.innerHTML;
   }
 
+  // ---- Conditions (DL-41) ----
+  const CONDITIONS = JSON.parse((document.getElementById('conditions-data') || { textContent: '[]' }).textContent);
+  const CONDITION_LABEL = Object.fromEntries(CONDITIONS.map((c) => [c.key, c.label]));
+
+  function conditionChips(p) {
+    const list = (p.conditions || []).filter((k) => CONDITION_LABEL[k]);
+    const chips = list.map((k) => `<span class="cond-chip cond-${k}">${escapeHtml(CONDITION_LABEL[k])}</span>`).join('');
+    const addBtn = isDM
+      ? `<button type="button" class="cond-add" data-action="conditions" title="Conditions" aria-label="Conditions for ${escapeHtml(p.display_name)}">${ICONS.heart}${list.length ? '' : '<span>Conditions</span>'}</button>`
+      : '';
+    return (chips || addBtn) ? `<div class="cond-row">${chips}${addBtn}</div>` : '';
+  }
+
   function rowMarkup(p) {
     const hidden = !!p.hidden_stats; // enemy stats redacted server-side for Players
     const pct = hidden ? 0 : hpPercent(p);
@@ -123,6 +136,7 @@
       <div class="battle-name-block">
         <div class="battle-name">${escapeHtml(p.display_name)}${p.is_active ? '<span class="turn-tag">Turn</span>' : ''}</div>
         <div class="battle-meta">${groupDot}${p.group_name ? escapeHtml(p.group_name) : 'No Faction'} &middot; ${p.is_npc ? 'NPC' : 'PC'}</div>
+        ${conditionChips(p)}
       </div>
 
       ${statsArea}
@@ -259,6 +273,8 @@
     } else if (action === 'view') {
       const p = participants.find((x) => String(x.id) === pid);
       if (p) openDetailModal(p.character_id);
+    } else if (action === 'conditions') {
+      openConditions(pid);
     }
   });
 
@@ -408,6 +424,44 @@
     participants = await apiCall('/api/battle/add-group', { group_id: parseInt(btn.dataset.addGroup, 10) });
     render();
   });
+
+  // ---- Conditions modal (DM-only).  A modal rather than an inline menu, so the live refresh
+  // that redraws the rows can never close it halfway through a pick. ----
+  const condModal = document.getElementById('conditions-modal');
+  const condPicker = document.getElementById('conditions-picker');
+  let condPid = null;
+
+  function renderConditionPicker() {
+    const p = participants.find((x) => String(x.id) === String(condPid));
+    if (!p) { condModal.hidden = true; return; }
+    document.getElementById('conditions-modal-title').textContent = `Conditions — ${p.display_name}`;
+    const on = new Set(p.conditions || []);
+    condPicker.innerHTML = CONDITIONS.map((c) => `
+      <button type="button" class="chip cond-toggle ${on.has(c.key) ? 'active' : ''}" data-cond="${c.key}" aria-pressed="${on.has(c.key)}">${escapeHtml(c.label)}</button>`).join('');
+  }
+
+  function openConditions(pid) {
+    if (!condModal) return;
+    condPid = pid;
+    renderConditionPicker();
+    condModal.hidden = false;
+  }
+
+  if (condModal) {
+    document.getElementById('close-conditions-modal').addEventListener('click', () => { condModal.hidden = true; });
+    condModal.addEventListener('click', (e) => { if (e.target === condModal) condModal.hidden = true; });
+    condPicker.addEventListener('click', async (e) => {
+      const btn = e.target.closest('[data-cond]');
+      if (!btn) return;
+      const p = participants.find((x) => String(x.id) === String(condPid));
+      if (!p) return;
+      const next = new Set(p.conditions || []);
+      if (next.has(btn.dataset.cond)) next.delete(btn.dataset.cond); else next.add(btn.dataset.cond);
+      participants = await apiCall(`/api/battle/${condPid}/conditions`, { conditions: [...next] });
+      render();
+      renderConditionPicker();
+    });
+  }
 
   // ---- Detail modal ----
   const detailModal = document.getElementById('detail-modal');

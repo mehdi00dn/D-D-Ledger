@@ -1576,7 +1576,19 @@ def battle_view():
             'is_npc': c['is_npc'],
         } for c in characters]
     return render_template('battle.html', characters=characters,
+                            conditions=[{'key': k, 'label': label} for k, label in BATTLE_CONDITIONS],
                             added_id=request.args.get('added'))
+
+
+# The standard 5e conditions, in the order they are shown.  (Exhaustion is a plain on/off flag here.)
+BATTLE_CONDITIONS = [
+    ('blinded', 'Blinded'), ('charmed', 'Charmed'), ('deafened', 'Deafened'), ('exhaustion', 'Exhaustion'),
+    ('frightened', 'Frightened'), ('grappled', 'Grappled'), ('incapacitated', 'Incapacitated'),
+    ('invisible', 'Invisible'), ('paralyzed', 'Paralyzed'), ('petrified', 'Petrified'),
+    ('poisoned', 'Poisoned'), ('prone', 'Prone'), ('restrained', 'Restrained'), ('stunned', 'Stunned'),
+    ('unconscious', 'Unconscious'),
+]
+_CONDITION_KEYS = [k for k, _label in BATTLE_CONDITIONS]
 
 
 def _battle_rows(db, redact_enemies=False):
@@ -1600,6 +1612,7 @@ def _battle_rows(db, redact_enemies=False):
 
     turn = db.execute('SELECT battle_round, battle_turn_id FROM campaigns WHERE id = ?', (g.campaign_id,)).fetchone()
     for r in rows:
+        r['conditions'] = [k for k in _CONDITION_KEYS if k in (r.get('conditions') or '').split(',')]
         r['is_active'] = bool(turn and turn['battle_turn_id'] == r['id'])
         r['battle_round'] = turn['battle_round'] if turn else 1
 
@@ -1630,6 +1643,7 @@ def _battle_rows(db, redact_enemies=False):
             # real PC) stays fully visible to its party.
             if r['is_npc']:
                 r['hidden_stats'] = True
+                r['conditions'] = []                   # what is affecting a monster is the DM's to reveal
                 r['current_hp'] = None
                 r['char_max_hp'] = None
                 r['temp_hp'] = None
@@ -1928,6 +1942,23 @@ def api_battle_die(pid):
 def api_battle_revive(pid):
     db = get_db()
     db.execute('UPDATE battle_participants SET is_dead = 0 WHERE id = ?', (pid,))
+    db.commit()
+    rows = _battle_rows(db)
+    db.close()
+    return jsonify(rows)
+
+
+@app.route('/campaigns/<int:campaign_id>/api/battle/<int:pid>/conditions', methods=['POST'])
+@campaign_access_required
+@dm_required
+def api_battle_conditions(pid):
+    """DM only. Replaces the participant's condition list (unknown names are refused)."""
+    wanted = (request.get_json(silent=True) or {}).get('conditions')
+    if not isinstance(wanted, list) or any(not isinstance(k, str) or k not in _CONDITION_KEYS for k in wanted):
+        return jsonify({'error': 'Unknown condition'}), 400
+    db = get_db()
+    db.execute('UPDATE battle_participants SET conditions = ? WHERE id = ?',
+               (','.join(k for k in _CONDITION_KEYS if k in wanted), pid))
     db.commit()
     rows = _battle_rows(db)
     db.close()

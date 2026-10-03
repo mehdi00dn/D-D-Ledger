@@ -150,3 +150,28 @@ def test_restart_goes_to_round_one_at_the_top_and_end_stops_tracking(make_user):
     assert _active(dm, cid) == (None, 1)
     _next(dm, cid)
     assert _active(dm, cid) == ('High', 1)                        # can be started again
+
+
+# ---- DL-41: conditions ----
+def test_dm_sets_conditions_in_fixed_order_and_unknown_ones_are_refused(make_user):
+    dm, player, cid, ids = _fight(make_user)
+    r = dm.json(f'/campaigns/{cid}/api/battle/{ids["High"]}/conditions', {'conditions': ['prone', 'blinded', 'prone']})
+    assert r.status_code == 200
+    row = next(x for x in r.json if x['id'] == ids['High'])
+    assert row['conditions'] == ['blinded', 'prone']
+    assert dm.json(f'/campaigns/{cid}/api/battle/{ids["High"]}/conditions', {'conditions': ['nonsense']}).status_code == 400
+    assert dm.json(f'/campaigns/{cid}/api/battle/{ids["High"]}/conditions', {'conditions': 'prone'}).status_code == 400
+    r = dm.json(f'/campaigns/{cid}/api/battle/{ids["High"]}/conditions', {'conditions': []})
+    assert next(x for x in r.json if x['id'] == ids['High'])['conditions'] == []
+
+
+def test_players_cannot_set_conditions_and_see_pc_but_not_npc_conditions(make_user):
+    dm, player, cid, ids = _fight(make_user)
+    assert player.json(f'/campaigns/{cid}/api/battle/{ids["Low"]}/conditions', {'conditions': ['prone']}).status_code == 403
+    npc = dm.add_to_battle(cid, dm.new_character(cid, name='Goblin', max_hp=7, is_npc='on'))
+    dm.json(f'/campaigns/{cid}/api/battle/{ids["Low"]}/conditions', {'conditions': ['poisoned']})
+    dm.json(f'/campaigns/{cid}/api/battle/{npc}/conditions', {'conditions': ['charmed']})
+    rows = {r['id']: r for r in player.battle(cid)}
+    assert rows[ids['Low']]['conditions'] == ['poisoned']          # a party member's conditions are shared
+    assert rows[npc]['conditions'] == []                           # a monster's stay with the DM
+    assert {r['id']: r for r in dm.battle(cid)}[npc]['conditions'] == ['charmed']

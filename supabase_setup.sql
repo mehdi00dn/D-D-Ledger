@@ -317,4 +317,12 @@ ALTER TABLE campaigns ADD COLUMN battle_turn_id INTEGER REFERENCES battle_partic
 
 INSERT INTO schema_migrations (version) VALUES ('0007_battle_turns.sql');
 
+-- ---- 0008_battle_conditions.sql ----
+
+-- Battle conditions (Blinded, Prone, ...): kept on the participant as a comma-separated list of
+-- condition keys, in a fixed order.  The allowed keys live in app.py (BATTLE_CONDITIONS).
+ALTER TABLE battle_participants ADD COLUMN conditions TEXT NOT NULL DEFAULT '';
+
+INSERT INTO schema_migrations (version) VALUES ('0008_battle_conditions.sql');
+
 COMMIT;

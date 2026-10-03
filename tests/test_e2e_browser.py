@@ -279,3 +279,27 @@ def test_turn_tracker_highlights_the_active_turn_for_everyone(pw, shared_server)
     assert dpage.locator('#prev-turn-btn').is_disabled() and dpage.locator('#end-turns-btn').is_disabled()
     assert not derrs and not perrs, (derrs, perrs)
     dctx.close(); pctx.close()
+
+
+def test_battle_conditions_picker_and_chips(pw, shared_server):
+    base = shared_server.url; dm = Api(base); player = Api(base); cid = dm.campaign('Conds')
+    dm.post(f'/campaigns/{cid}/members/add', data={'username': player.name, 'status': 'player'})
+    chid = dm.character(cid, 'Aria')
+    dm.post(f'/campaigns/{cid}/api/battle/add', json={'character_id': chid})
+    dctx = dm.context(pw, base); dpage = dctx.new_page(); dbad, derrs = _collect(dpage)
+    pctx = player.context(pw, base); ppage = pctx.new_page(); pbad, perrs = _collect(ppage)
+    dpage.goto(base + f'/campaigns/{cid}/battle'); ppage.goto(base + f'/campaigns/{cid}/battle')
+    dpage.wait_for_selector('.battle-row'); ppage.wait_for_selector('.battle-row')
+    assert ppage.locator('.cond-add').count() == 0                         # Players get no picker
+    dpage.click('.cond-add'); dpage.wait_for_selector('#conditions-modal:not([hidden])')
+    dpage.click('[data-cond="prone"]'); dpage.click('[data-cond="poisoned"]')
+    dpage.wait_for_timeout(500)
+    assert dpage.locator('#conditions-picker .chip.active').count() == 2
+    dpage.screenshot(path='/tmp/conds-modal.png')
+    dpage.click('#close-conditions-modal')
+    assert dpage.locator('.battle-row .cond-chip').all_text_contents() == ['Poisoned', 'Prone']
+    ppage.wait_for_selector('.battle-row .cond-chip', timeout=15000)       # arrives by the normal live refresh
+    assert ppage.locator('.battle-row .cond-chip').all_text_contents() == ['Poisoned', 'Prone']
+    dpage.screenshot(path='/tmp/conds-row.png')
+    assert not derrs and not perrs, (derrs, perrs)
+    dctx.close(); pctx.close()
