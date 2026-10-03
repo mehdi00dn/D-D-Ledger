@@ -132,7 +132,7 @@ def test_uploads_require_login_and_are_cacheable(appmod, camp):
     anon = appmod.app.test_client().get('/uploads/' + path)
     assert anon.status_code == 302 and '/login' in anon.headers['Location']
     r = u.get('/uploads/' + path)
-    assert r.status_code == 200 and r.mimetype == 'image/png'
+    assert r.status_code == 200 and r.mimetype == 'image/webp'
     assert 'immutable' in r.headers['Cache-Control'] and r.headers['X-Content-Type-Options'] == 'nosniff'
     for bad in ('../app.py', 'avatars/../../x.png', 'avatars/nope.png', 'avatars/a.html', 'other/' + path.split('/')[1], 'avatars/' + 'a' * 100 + '.png'):
         assert u.get('/uploads/' + bad).status_code == 404, bad

@@ -19,7 +19,7 @@ def test_avatar_and_sheet_upload_persist_and_serve(camp):
     ch = _make_source(u, cid)
     assert ch['avatar_path']
     img = u.get('/uploads/' + ch['avatar_path'])
-    assert img.status_code == 200 and img.data[:4] == b'\x89PNG'
+    assert img.status_code == 200 and img.data[:4] == b'RIFF' and img.data[8:12] == b'WEBP'
     sheets = q('SELECT image_path FROM character_sheets WHERE character_id = ? ORDER BY sort_order', ch['id'])
     assert len(sheets) == 2
     for s in sheets:

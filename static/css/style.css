@@ -1795,6 +1795,7 @@ body.page-leaving .content {
 }
 #lightbox-img.zoomed { cursor: grab; }
 .lightbox-stage.is-dragging #lightbox-img { transition: none; cursor: grabbing; }
+.lightbox-stage.is-wheeling #lightbox-img { transition: none; }
 
 .lightbox-close {
   position: absolute;

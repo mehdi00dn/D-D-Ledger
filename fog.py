@@ -95,8 +95,10 @@ def composite(image_bytes, raw, cols, rows):
     fog = Image.new('RGBA', base.size, FOG_RGB + (255,))
     out = Image.composite(fog, base, mask)
     buf = io.BytesIO()
-    if fmt == 'JPEG' and not has_alpha:
-        out.convert('RGB').save(buf, 'JPEG', quality=88)
-        return buf.getvalue(), 'image/jpeg'
-    out.save(buf, 'PNG')
-    return buf.getvalue(), 'image/png'
+    if fmt == 'PNG' or fmt == 'GIF':                 # older stored maps: keep exact pixels
+        out.save(buf, 'PNG')
+        return buf.getvalue(), 'image/png'
+    # WebP / JPEG maps (everything uploaded now): a lossless copy of a big map can exceed what the
+    # host will send in one response, so the Player's copy is a high-quality lossy WebP.
+    out.convert('RGBA' if has_alpha else 'RGB').save(buf, 'WEBP', quality=92, method=4)
+    return buf.getvalue(), 'image/webp'

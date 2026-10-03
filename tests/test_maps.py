@@ -34,7 +34,7 @@ def test_map_from_uploaded_image_and_file_served(camp):
     row = q('SELECT image_path, image_width, image_height FROM maps WHERE id = ?', mid)[0]
     assert (row['image_width'], row['image_height']) == (800, 600)
     img = u.get('/uploads/' + row['image_path'])
-    assert img.status_code == 200 and img.data[:4] == b'\x89PNG'
+    assert img.status_code == 200 and img.data[:4] == b'RIFF' and img.data[8:12] == b'WEBP'
 
 
 def test_drawings_crud_and_float_precision(camp):

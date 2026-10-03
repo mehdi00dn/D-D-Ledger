@@ -15,8 +15,9 @@ def noise(w, h):
     return Image.frombytes('RGB', (w, h), os.urandom(w * h * 3))
 
 
-@pytest.mark.parametrize('fmt, ext', [('PNG', 'png'), ('JPEG', 'jpg'), ('GIF', 'png'), ('WEBP', 'webp')])
-def test_valid_formats_are_accepted_and_extension_comes_from_content(fmt, ext):
+@pytest.mark.parametrize('fmt', ['PNG', 'JPEG', 'GIF', 'WEBP'])
+def test_every_still_format_is_accepted_and_stored_as_webp(fmt):
+    ext = 'webp'
     p = process_image(enc(Image.new('RGB', (40, 30), (9, 9, 9)), fmt), 'avatars')
     assert (p.ext, p.width, p.height) == (ext, 40, 30)
     assert Image.open(io.BytesIO(p.data)).size == (40, 30)
@@ -72,11 +73,41 @@ def test_large_noisy_photo_is_shrunk_to_a_servable_size():
     Image.open(io.BytesIO(p.data)).verify()
 
 
-def test_big_jpeg_gets_recompressed_towards_1mb():
-    blob = enc(noise(2400, 1800), 'JPEG', quality=98)
-    assert len(blob) > 1_048_576
+def test_big_photo_upload_becomes_a_much_smaller_webp():
+    from PIL import ImageFilter
+    photo = noise(300, 225).resize((2400, 1800), Image.BICUBIC).filter(ImageFilter.GaussianBlur(2))   # smooth, photo-like
+    blob = enc(photo, 'JPEG', quality=95)
     p = process_image(blob, 'sheets')
-    assert p.ext == 'jpg' and len(p.data) <= 1_048_576 * 1.05 and max(p.width, p.height) <= 2000
+    assert p.ext == 'webp' and p.content_type == 'image/webp'
+    assert len(p.data) < len(blob) * 0.6 and len(p.data) <= SERVE_LIMIT
+    assert max(p.width, p.height) <= images.MAX_DIM['sheets']
+
+
+@pytest.mark.parametrize('kind', ['avatars', 'sheets', 'maps'])
+def test_longest_edge_is_capped_per_kind(kind):
+    p = process_image(enc(Image.new('RGB', (4000, 2000), (30, 90, 150)), 'PNG'), kind)
+    assert max(p.width, p.height) == images.MAX_DIM[kind]
+    assert p.width == 2 * p.height                                   # aspect ratio preserved
+    small = process_image(enc(Image.new('RGB', (300, 200), (30, 90, 150)), 'PNG'), kind)
+    assert (small.width, small.height) == (300, 200)                 # smaller than the cap: left alone
+
+
+def test_flat_artwork_is_stored_losslessly():
+    im = Image.new('RGB', (400, 300), (255, 255, 255))
+    for x in range(0, 400, 40):
+        for y in range(300):
+            im.putpixel((x, y), (0, 0, 0))                              # grid lines
+    p = process_image(enc(im, 'PNG'), 'maps')
+    out = Image.open(io.BytesIO(p.data)).convert('RGB')
+    assert out.getpixel((40, 10)) == (0, 0, 0) and out.getpixel((41, 10)) == (255, 255, 255)   # crisp, no blur
+
+
+def test_exif_rotation_is_baked_in_and_metadata_dropped():
+    im = Image.new('RGB', (200, 100), (10, 20, 30))
+    exif = Image.Exif(); exif[0x0112] = 6                              # "rotate 90 clockwise"
+    p = process_image(enc(im, 'JPEG', exif=exif), 'avatars')
+    out = Image.open(io.BytesIO(p.data))
+    assert (out.width, out.height) == (100, 200) and not out.getexif()
 
 
 def test_animated_gif_is_kept_animated():

@@ -34,6 +34,11 @@ def _setup(make_user):
     return dm, player, cid, mid
 
 
+def _near(a, b, tol=8):
+    """Pixels compare equal within lossy-WebP rounding (the Player's copy is a high-quality WebP)."""
+    return all(abs(x - y) <= tol for x, y in zip(a, b))
+
+
 def _img(resp):
     assert resp.status_code == 200, resp.status_code
     return Image.open(io.BytesIO(resp.data)).convert('RGB')
@@ -44,23 +49,23 @@ def test_player_image_is_painted_out_under_fog(make_user):
     url = f'/campaigns/{cid}/maps/{mid}/image'
     original = _img(dm.get(url))
     # No fog yet: a Player gets the real picture.
-    assert _img(player.get(url)).getpixel((50, 150)) == original.getpixel((50, 150))
+    assert _near(_img(player.get(url)).getpixel((50, 150)), original.getpixel((50, 150)))
 
     # Left half fogged.
     r = dm.json(f'/campaigns/{cid}/api/maps/{mid}/fog', {'mask': _b64(_mask(left_cols=25))})
     assert r.status_code == 200 and r.get_json()['active'] is True
     seen = _img(player.get(url))
     for x, y in ((0, 0), (50, 150), (150, 290), (190, 10)):             # well inside the fogged half
-        assert seen.getpixel((x, y)) == fog.FOG_RGB, (x, y)
+        assert _near(seen.getpixel((x, y)), fog.FOG_RGB), (x, y)
     for x, y in ((250, 150), (399, 299), (300, 5)):                      # clear half is untouched
-        assert seen.getpixel((x, y)) == original.getpixel((x, y)), (x, y)
+        assert _near(seen.getpixel((x, y)), original.getpixel((x, y))), (x, y)
     # The DM always sees the real map.
     assert _img(dm.get(url)).getpixel((50, 150)) == original.getpixel((50, 150))
 
     # Everything fogged: not one pixel of the map survives for a Player.
     dm.json(f'/campaigns/{cid}/api/maps/{mid}/fog', {'fill': True})
     colours = set(_img(player.get(url)).getdata())
-    assert colours == {fog.FOG_RGB}
+    assert all(_near(c, fog.FOG_RGB) for c in colours), colours
     # Clearing brings it all back.
     dm.json(f'/campaigns/{cid}/api/maps/{mid}/fog', {'clear': True})
     assert _img(player.get(url)).getpixel((50, 150)) == original.getpixel((50, 150))
@@ -156,7 +161,7 @@ def test_every_fogged_pixel_is_fully_hidden_for_any_mask(make_user):
     for (x, y) in fogged:
         for px in range(x * fog.CELL, min(W, (x + 1) * fog.CELL)):
             for py in range(y * fog.CELL, min(H, (y + 1) * fog.CELL)):
-                if seen.getpixel((px, py)) != fog.FOG_RGB:
+                if not _near(seen.getpixel((px, py)), fog.FOG_RGB):
                     leaked += 1
     assert leaked == 0, f'{leaked} fogged pixels leaked'
     # ...and the picture is not simply blanked everywhere: far from any fog it is the real map.
@@ -164,11 +169,11 @@ def test_every_fogged_pixel_is_fully_hidden_for_any_mask(make_user):
              if all((x + dx, y + dy) not in fogged for dx in range(-3, 4) for dy in range(-3, 4))]
     assert clear, 'test mask left no clear area'
     x, y = clear[0]
-    assert seen.getpixel((x * fog.CELL + 4, y * fog.CELL + 4)) == original.getpixel((x * fog.CELL + 4, y * fog.CELL + 4))
+    assert _near(seen.getpixel((x * fog.CELL + 4, y * fog.CELL + 4)), original.getpixel((x * fog.CELL + 4, y * fog.CELL + 4)))
 
 
-def test_fog_on_a_jpeg_map_stays_a_jpeg_and_hides_it(make_user):
-    """Uploaded JPEG maps are re-encoded as JPEG for Players (not silently sent unmasked or as a huge PNG)."""
+def test_fog_on_a_jpeg_upload_is_stored_as_webp_and_hidden(make_user):
+    """Uploaded JPEG maps are stored as WebP and sent to Players as WebP (never sent unmasked, and not as a huge PNG)."""
     dm, player = make_user(), make_user()
     cid = dm.new_campaign()
     dm.post(f'/campaigns/{cid}/members/add', data={'username': player.name, 'status': 'player'})
@@ -180,7 +185,7 @@ def test_fog_on_a_jpeg_map_stays_a_jpeg_and_hides_it(make_user):
     mid = int(re.search(r'/maps/(\d+)', r.headers['Location']).group(1))
     dm.json(f'/campaigns/{cid}/api/maps/{mid}/fog', {'fill': True})
     resp = player.get(f'/campaigns/{cid}/maps/{mid}/image')
-    assert resp.status_code == 200 and resp.mimetype in ('image/jpeg', 'image/png')
+    assert resp.status_code == 200 and resp.mimetype == 'image/webp'
     im = Image.open(io.BytesIO(resp.data)).convert('RGB')
     r_, g_, b_ = im.getpixel((200, 150))
     assert (r_, g_, b_) != (200, 40, 40) and abs(r_ - fog.FOG_RGB[0]) < 12 and abs(b_ - fog.FOG_RGB[2]) < 12

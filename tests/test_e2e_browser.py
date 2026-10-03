@@ -221,6 +221,17 @@ def test_lightbox_arrows_sit_beside_the_image(pw, shared_server):
     mid = img['y'] + img['height'] / 2
     assert abs(prev['y'] + prev['height'] / 2 - mid) < 4 and abs(nxt['y'] + nxt['height'] / 2 - mid) < 4
     page.screenshot(path='/tmp/lightbox.png')
+    # The mouse wheel zooms the picture in and out, centred on the cursor, and returns to normal size.
+    def zoom_level():
+        return page.locator('#lightbox-img').evaluate('e => { const m = getComputedStyle(e).transform; return m === "none" ? 1 : parseFloat(m.slice(7)); }')
+    assert zoom_level() == 1
+    page.mouse.move(img['x'] + img['width'] / 2, img['y'] + img['height'] / 2)
+    page.mouse.wheel(0, -400); page.wait_for_timeout(500)
+    zin = zoom_level(); assert zin > 1.5, zin
+    page.mouse.wheel(0, -400); page.wait_for_timeout(500)
+    assert zoom_level() > zin
+    page.mouse.wheel(0, 3000); page.wait_for_timeout(500)
+    assert zoom_level() == 1
     # First image: previous arrow is invisible but still takes its space, so the picture does not jump.
     page.click('#lightbox-prev-btn'); page.wait_for_timeout(300)
     img0 = page.locator('#lightbox-img').bounding_box()

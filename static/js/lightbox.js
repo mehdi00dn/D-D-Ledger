@@ -15,10 +15,12 @@
   const nextBtn = document.getElementById('lightbox-next-btn');
   const stage = overlay.querySelector('.lightbox-stage');
 
-  const ZOOM_SCALE = 2.4;
+  const ZOOM_SCALE = 2.4;   // what a click zooms to
+  const MAX_SCALE = 8;      // how far the mouse wheel can zoom in
   const DRAG_THRESHOLD = 6; // px of movement before a mousedown counts as a drag, not a click
 
   let zoomed = false;
+  let scale = 1;            // current zoom; `zoomed` is simply scale > 1
   let panX = 0;
   let panY = 0;
   let dragging = false;
@@ -32,7 +34,7 @@
 
   function applyTransform() {
     img.style.transform = zoomed
-      ? `translate(${panX}px, ${panY}px) scale(${ZOOM_SCALE})`
+      ? `translate(${panX}px, ${panY}px) scale(${scale})`
       : 'translate(0, 0) scale(1)';
     img.classList.toggle('zoomed', zoomed);
     stage.classList.toggle('is-dragging', dragging && zoomed);
@@ -40,6 +42,7 @@
 
   function reset() {
     zoomed = false;
+    scale = 1;
     panX = 0;
     panY = 0;
     dragging = false;
@@ -96,10 +99,28 @@
   }
 
   function clampPan(rect) {
-    const maxPanX = (rect.width * (ZOOM_SCALE - 1)) / 2;
-    const maxPanY = (rect.height * (ZOOM_SCALE - 1)) / 2;
+    const maxPanX = (rect.width * (scale - 1)) / 2;
+    const maxPanY = (rect.height * (scale - 1)) / 2;
     panX = clamp(panX, maxPanX);
     panY = clamp(panY, maxPanY);
+  }
+
+  // Zoom to `next`, keeping the picture point under (clientX, clientY) where it is.
+  function zoomAt(next, clientX, clientY) {
+    next = Math.min(MAX_SCALE, Math.max(1, next));
+    if (next <= 1.001) {
+      zoomed = false; scale = 1; panX = 0; panY = 0;
+      return;
+    }
+    if (!zoomed) baseRect = img.getBoundingClientRect(); // still unscaled here
+    const cx = baseRect.left + baseRect.width / 2;
+    const cy = baseRect.top + baseRect.height / 2;
+    const ratio = next / scale;
+    panX = (clientX - cx) - ((clientX - cx) - panX) * ratio;
+    panY = (clientY - cy) - ((clientY - cy) - panY) * ratio;
+    scale = next;
+    zoomed = true;
+    clampPan(baseRect);
   }
 
   // ---- Open triggers: any element with data-lightbox-src ----
@@ -144,18 +165,9 @@
     if (movedDistance < DRAG_THRESHOLD) {
       // A real click (not a drag): toggle zoom
       if (!zoomed) {
-        const rect = img.getBoundingClientRect(); // unscaled at this point
-        baseRect = rect;
-        const fx = (e.clientX - rect.left) / rect.width;
-        const fy = (e.clientY - rect.top) / rect.height;
-        panX = (0.5 - fx) * rect.width * (ZOOM_SCALE - 1);
-        panY = (0.5 - fy) * rect.height * (ZOOM_SCALE - 1);
-        clampPan(rect);
-        zoomed = true;
+        zoomAt(ZOOM_SCALE, e.clientX, e.clientY);
       } else {
-        zoomed = false;
-        panX = 0;
-        panY = 0;
+        zoomAt(1);
       }
     }
     applyTransform();
@@ -190,23 +202,31 @@
     if (movedDistance < DRAG_THRESHOLD) {
       const t = e.changedTouches[0];
       if (!zoomed) {
-        const rect = img.getBoundingClientRect(); // unscaled at this point
-        baseRect = rect;
-        const fx = (t.clientX - rect.left) / rect.width;
-        const fy = (t.clientY - rect.top) / rect.height;
-        panX = (0.5 - fx) * rect.width * (ZOOM_SCALE - 1);
-        panY = (0.5 - fy) * rect.height * (ZOOM_SCALE - 1);
-        clampPan(rect);
-        zoomed = true;
+        zoomAt(ZOOM_SCALE, t.clientX, t.clientY);
       } else {
-        zoomed = false;
-        panX = 0;
-        panY = 0;
+        zoomAt(1);
       }
     }
     applyTransform();
   });
 
+
+  // ---- Mouse wheel zooms the picture (and never scrolls the page behind) ----
+  let wheelTimer = null;
+  overlay.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    if (!img.getAttribute('src')) return;
+    const r = zoomed && baseRect ? baseRect : img.getBoundingClientRect();
+    const overImage = e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
+    const px = overImage ? e.clientX : r.left + r.width / 2;
+    const py = overImage ? e.clientY : r.top + r.height / 2;
+    const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1;   // lines / pages -> pixels
+    zoomAt(scale * Math.exp(-e.deltaY * unit * 0.0015), px, py);
+    stage.classList.add('is-wheeling');                                  // no easing while the wheel turns
+    clearTimeout(wheelTimer);
+    wheelTimer = setTimeout(() => stage.classList.remove('is-wheeling'), 150);
+    applyTransform();
+  }, { passive: false });
 
   prevBtn.addEventListener('click', (e) => { e.stopPropagation(); navigate(-1); });
   nextBtn.addEventListener('click', (e) => { e.stopPropagation(); navigate(1); });
