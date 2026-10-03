@@ -95,11 +95,13 @@
 
 <div class="lightbox-overlay" id="image-lightbox" hidden>
   <button type="button" class="btn-icon lightbox-close" id="lightbox-close-btn">{{ icon('x') }}</button>
-  <button type="button" class="btn-icon lightbox-nav lightbox-prev" id="lightbox-prev-btn" title="Previous image" hidden>{{ icon('chevron-left') }}</button>
-  <button type="button" class="btn-icon lightbox-nav lightbox-next" id="lightbox-next-btn" title="Next image" hidden>{{ icon('chevron-right') }}</button>
   <button type="button" class="btn btn-danger lightbox-delete" id="lightbox-delete-btn" hidden>{{ icon('trash-2') }} Delete this image</button>
-  <div class="lightbox-stage">
-    <img id="lightbox-img" src="" alt="Preview">
+  <div class="lightbox-row">
+    <button type="button" class="btn-icon lightbox-nav lightbox-prev" id="lightbox-prev-btn" title="Previous image">{{ icon('chevron-left') }}</button>
+    <div class="lightbox-stage">
+      <img id="lightbox-img" src="" alt="Preview">
+    </div>
+    <button type="button" class="btn-icon lightbox-nav lightbox-next" id="lightbox-next-btn" title="Next image">{{ icon('chevron-right') }}</button>
   </div>
   <p class="lightbox-hint">Click to zoom &middot; hold and drag to pan</p>
 </div>

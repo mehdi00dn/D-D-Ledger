@@ -203,3 +203,29 @@ def test_fog_flyout_paints_fog_over_tokens_and_animates(pw, shared_server):
     assert not [b for b in bad if b[0] >= 400], bad
     page.screenshot(path='/tmp/fog-dm.png')
     ctx.close()
+
+
+def test_lightbox_arrows_sit_beside_the_image(pw, shared_server):
+    base = shared_server.url; api = Api(base); cid = api.campaign('Light')
+    files = [('sheets', (f's{i}.png', png_bytes(600, 300, (40 * i, 80, 120)), 'image/png')) for i in range(3)]
+    api.post(f'/campaigns/{cid}/characters/new', data={'name': 'Gallery', 'max_hp': '10'}, files=files)
+    char_id = next(c['id'] for c in api.get(f'/campaigns/{cid}/api/characters').json() if c['name'] == 'Gallery')
+    ctx = api.context(pw, base); page = ctx.new_page(); bad, errs = _collect(page)
+    page.goto(base + f'/campaigns/{cid}/characters/{char_id}'); page.wait_for_load_state('networkidle')
+    page.locator('.sheet-thumbs img[data-lightbox-src]').nth(1).click()
+    page.wait_for_selector('#image-lightbox:not([hidden])'); page.wait_for_timeout(400)
+    img, prev, nxt = (page.locator(s).bounding_box() for s in ('#lightbox-img', '#lightbox-prev-btn', '#lightbox-next-btn'))
+    # Each arrow hugs its side of the picture (a small gap), not the edge of the screen.
+    assert 0 < img['x'] - (prev['x'] + prev['width']) < 40, (img, prev)
+    assert 0 < nxt['x'] - (img['x'] + img['width']) < 40, (img, nxt)
+    mid = img['y'] + img['height'] / 2
+    assert abs(prev['y'] + prev['height'] / 2 - mid) < 4 and abs(nxt['y'] + nxt['height'] / 2 - mid) < 4
+    page.screenshot(path='/tmp/lightbox.png')
+    # First image: previous arrow is invisible but still takes its space, so the picture does not jump.
+    page.click('#lightbox-prev-btn'); page.wait_for_timeout(300)
+    img0 = page.locator('#lightbox-img').bounding_box()
+    assert abs(img0['x'] - img['x']) < 2, (img0, img, page.locator('#lightbox-prev-btn').bounding_box())
+    assert not page.locator('#lightbox-prev-btn').is_visible() and page.locator('#lightbox-next-btn').is_visible()
+    page.screenshot(path='/tmp/lightbox-first.png')
+    assert not errs, errs
+    ctx.close()

@@ -50,8 +50,8 @@
   function updateNavigation() {
     const hasPrev = currentIndex > 0;
     const hasNext = currentIndex >= 0 && currentIndex < currentImages.length - 1;
-    prevBtn.hidden = !hasPrev;
-    nextBtn.hidden = !hasNext;
+    prevBtn.classList.toggle('is-off', !hasPrev);
+    nextBtn.classList.toggle('is-off', !hasNext);
   }
 
   function open(src, deleteUrl, images) {

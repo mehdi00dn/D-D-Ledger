@@ -1738,11 +1738,16 @@ body.page-leaving .content {
 /* ==========================================================================
    Image lightbox
    ========================================================================== */
+/* Previous / next sit on either side of the picture itself, not at the screen edges. */
+.lightbox-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  max-width: 100%;
+}
 .lightbox-nav {
-  position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
-  z-index: 202;
+  flex: 0 0 auto;
   width: 42px;
   height: 42px;
   border-radius: 50%;
@@ -1753,8 +1758,8 @@ body.page-leaving .content {
 }
 .lightbox-nav:hover { background: var(--bg-panel); color: var(--brass-bright); border-color: var(--brass); }
 .lightbox-nav svg { width: 19px; height: 19px; }
-.lightbox-prev { left: 14px; }
-.lightbox-next { right: 14px; }
+/* On the first / last image the button keeps its space, so the picture does not shift sideways. */
+.lightbox-nav.is-off { visibility: hidden; pointer-events: none; }
 .lightbox-overlay {
   position: fixed;
   inset: 0;
@@ -1772,7 +1777,7 @@ body.page-leaving .content {
 
 .lightbox-stage {
   position: relative;
-  max-width: 90vw;
+  max-width: calc(100vw - 180px);
   max-height: 80vh;
   overflow: hidden;
   border-radius: var(--radius-m);
@@ -1782,7 +1787,7 @@ body.page-leaving .content {
 }
 #lightbox-img {
   display: block;
-  max-width: 90vw;
+  max-width: calc(100vw - 180px);
   max-height: 80vh;
   object-fit: contain;
   cursor: zoom-in;
