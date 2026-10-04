@@ -2828,3 +2828,5 @@ body.page-leaving .content {
 [data-invite-link-row] .member-name-text { white-space: nowrap; }
 [data-invite-link-row] .member-actions { flex: none; }
 .invite-link-new .hint-text { margin: 0 0 8px; }
+.invite-link-new[hidden], #invite-link-list[hidden], #invite-link-empty[hidden], #invite-link-error[hidden] { display: none; }
+#invite-link-error { margin: 0 0 12px; }

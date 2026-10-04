@@ -200,17 +200,17 @@
     {% set links_saved = cur_access == 'invite_link' %}
     <div class="invite-links" id="invite-links" {{ 'hidden' if not links_saved }}>
       <p class="pending-invites-title">Invite links</p>
-      {% if new_invite_link %}
-      <div class="invite-link-new" id="invite-link-new">
+      <div class="invite-link-new" id="invite-link-new" {{ 'hidden' if not new_invite_link }}>
         <p class="hint-text">Copy this link now &mdash; for security it is shown only once.</p>
         <div class="invite-link-copy">
-          <input type="text" id="invite-link-url" value="{{ new_invite_link }}" readonly>
+          <input type="text" id="invite-link-url" value="{{ new_invite_link or '' }}" readonly>
           <button type="button" class="btn btn-primary btn-sm" id="invite-link-copy-btn">{{ icon('check') }} Copy</button>
         </div>
       </div>
-      {% endif %}
-      <p class="hint-text invite-links-unsaved" id="invite-links-unsaved" hidden>Save your changes to start creating links.</p>
+      <p class="member-add-feedback is-error" id="invite-link-error" hidden></p>
+      <p class="hint-text invite-links-unsaved" id="invite-links-unsaved" hidden>Creating a link switches this campaign to Invite Link right away.</p>
       <form method="POST" action="{{ url_for('invite_link_create', campaign_id=campaign.id) }}" class="invite-link-form" id="invite-link-form">{{ csrf_field() }}
+        <input type="hidden" name="enable" value="1">
         <label class="invite-field">Expires
           <select name="expires_in">
             <option value="1h">in 1 hour</option>
@@ -224,8 +224,7 @@
         </label>
         <button type="submit" class="btn btn-primary btn-sm invite-link-submit">{{ icon('plus') }} Create link</button>
       </form>
-      {% if invite_links %}
-      <div class="member-list" id="invite-link-list">
+      <div class="member-list" id="invite-link-list" {{ 'hidden' if not invite_links }}>
         {% for l in invite_links %}
         {% set dead = l.revoked_at or l.expired or (l.max_uses and l.use_count >= l.max_uses) %}
         <div class="member-row {{ 'is-dead' if dead }}" data-invite-link-row data-link-id="{{ l.id }}">
@@ -248,9 +247,7 @@
         </div>
         {% endfor %}
       </div>
-      {% else %}
-      <p class="hint-text">No links yet. Links can only be copied right after they are created.</p>
-      {% endif %}
+      <p class="hint-text" id="invite-link-empty" {{ 'hidden' if invite_links }}>No links yet. Links can only be copied right after they are created.</p>
     </div>
     {% endif %}
 
@@ -277,17 +274,49 @@
   var saved = {{ 'true' if cur_access == 'invite_link' else 'false' }};
   var form = document.getElementById('invite-link-form');
   var note = document.getElementById('invite-links-unsaved');
+  var box = document.getElementById('invite-link-new');
+  var urlInput = document.getElementById('invite-link-url');
+  var errBox = document.getElementById('invite-link-error');
+  var list = document.getElementById('invite-link-list');
+  var empty = document.getElementById('invite-link-empty');
+  function picked() { var p = document.querySelector('input[name="access_mode"]:checked'); return p && p.value; }
   function sync() {
-    var picked = document.querySelector('input[name="access_mode"]:checked');
-    var on = picked && picked.value === 'invite_link';
+    var on = picked() === 'invite_link';
     panel.hidden = !on;
-    var locked = on && !saved;                 // chosen but not saved yet: show the options, but links need the saved mode
-    note.hidden = !locked;
-    Array.prototype.forEach.call(form.elements, function (el) { if (el.type !== 'hidden') el.disabled = locked; });
-    form.classList.toggle('is-locked', locked);
+    note.hidden = !(on && !saved);              // chosen but not saved yet: creating a link will switch the mode on
   }
   Array.prototype.forEach.call(document.querySelectorAll('input[name="access_mode"]'), function (r) { r.addEventListener('change', sync); });
   sync();
+
+  function esc(t) { var d = document.createElement('div'); d.textContent = t; return d.innerHTML; }
+  form.addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    var btn = form.querySelector('button[type=submit]');
+    var payload = { enable: true, expires_in: form.elements.expires_in.value, max_uses: form.elements.max_uses.value };
+    errBox.hidden = true; btn.disabled = true;
+    fetch(form.action, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+      .then(function (r) { return r.json().then(function (j) { return { status: r.status, body: j }; }); })
+      .then(function (res) {
+        btn.disabled = false;
+        if (res.status >= 400) { errBox.textContent = res.body.error || 'Could not create that link.'; errBox.hidden = false; return; }
+        saved = true; note.hidden = true;
+        urlInput.value = res.body.url; box.hidden = false;
+        var copy = document.getElementById('invite-link-copy-btn'); if (copy) copy.lastChild.textContent = ' Copy';
+        urlInput.focus(); urlInput.select();
+        var uses = res.body.max_uses ? ' / ' + res.body.max_uses : '';
+        var row = document.createElement('div');
+        row.className = 'member-row'; row.setAttribute('data-invite-link-row', ''); row.setAttribute('data-link-id', res.body.id);
+        row.innerHTML = '<span class="member-name"><span class="member-name-text">Link #' + res.body.id + '</span> ' +
+          '<span class="role-badge role-badge-player">Active</span> ' +
+          '<span class="invite-link-meta">0' + uses + ' used &middot; expires ' + esc(res.body.expires_at) + ' UTC</span></span>' +
+          '<span class="member-actions"><form method="POST" action="/campaigns/' + window.CAMPAIGN_ID + '/invite-links/revoke" data-confirm="Revoke this link? Anyone holding it will no longer be able to join.">' +
+          '<input type="hidden" name="csrf_token" value="' + esc(form.querySelector('input[name=csrf_token]').value) + '">' +
+          '<input type="hidden" name="link_id" value="' + res.body.id + '">' +
+          '<button type="submit" class="btn-icon" title="Revoke link">' + {{ icon('x') | tojson }} + '</button></form></span>';
+        list.insertBefore(row, list.firstChild); list.hidden = false; empty.hidden = true;
+      })
+      .catch(function () { btn.disabled = false; errBox.textContent = 'Network problem -- try again.'; errBox.hidden = false; });
+  });
 })();
 (function () {
   var copyBtn = document.getElementById('invite-link-copy-btn');

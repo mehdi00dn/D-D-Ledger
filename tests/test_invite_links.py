@@ -36,7 +36,7 @@ def test_enabling_link_mode_alone_grants_nothing(make_user):
 def test_only_the_owner_creates_links_and_only_in_link_mode(make_user):
     owner, dm = make_user(), make_user(); cid = owner.new_campaign()
     owner.add_member(cid, dm, 'dm')
-    assert owner.json(f'/campaigns/{cid}/invite-links', {}).status_code == 400   # still private
+    assert owner.json(f'/campaigns/{cid}/invite-links', {}).status_code == 400   # still private, and not asking to switch
     _link_mode(owner, cid)
     assert dm.post(f'/campaigns/{cid}/invite-links', data={}).status_code == 403
     assert _create(owner, cid)
@@ -136,3 +136,14 @@ def test_links_are_deleted_with_the_campaign(make_user):
     owner = make_user(); cid = owner.new_campaign(); _link_mode(owner, cid); _create(owner, cid)
     owner.post(f'/campaigns/{cid}/delete')
     assert q('SELECT COUNT(*) AS n FROM campaign_invite_links WHERE campaign_id = ?', cid)[0]['n'] == 0
+
+
+def test_creating_a_link_can_switch_the_campaign_to_invite_link_in_one_step(make_user):
+    owner, dm, g = make_user(), make_user(), make_user(); cid = owner.new_campaign(); owner.add_member(cid, dm, 'dm')
+    assert dm.json(f'/campaigns/{cid}/invite-links', {'enable': True}).status_code == 403          # still owner-only
+    assert q('SELECT access_mode FROM campaigns WHERE id = ?', cid)[0]['access_mode'] == 'private'
+    r = owner.json(f'/campaigns/{cid}/invite-links', {'enable': True, 'max_uses': '2'})
+    body = r.get_json()
+    assert r.status_code == 200 and body['max_uses'] == 2 and body['id'] and body['expires_at']
+    assert q('SELECT access_mode FROM campaigns WHERE id = ?', cid)[0]['access_mode'] == 'invite_link'
+    assert g.post(_path(body['url'])).status_code == 302

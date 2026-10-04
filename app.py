@@ -712,9 +712,12 @@ def _hash_invite_token(token):
 def invite_link_create():
     if g.campaign_role != 'owner':
         abort(403)
-    if g.campaign['access_mode'] != 'invite_link':
-        return _reject_request('Switch Access & Privacy to "Invite Link" (and save) before creating links.', 400)
     data = request.get_json(silent=True) or request.form
+    # Creating a link from the edit page also switches the campaign to Invite Link ("enable"), so the owner can get a
+    # link on the spot without saving the whole form first.  Without it, a private campaign refuses.
+    enable = str(data.get('enable') or '').lower() in ('1', 'true', 'yes', 'on')
+    if g.campaign['access_mode'] != 'invite_link' and not enable:
+        return _reject_request('Switch Access & Privacy to "Invite Link" before creating links.', 400)
     lifetime = INVITE_LINK_LIFETIMES.get(data.get('expires_in', '7d'))
     if lifetime is None:
         return _reject_request('Pick how long the link should last.', 400)
@@ -731,14 +734,18 @@ def invite_link_create():
         db.close()
         return _reject_request('This campaign already has %d active links. Revoke one first.' % MAX_ACTIVE_INVITE_LINKS, 400)
     token = secrets.token_urlsafe(32)
-    db.execute('INSERT INTO campaign_invite_links (campaign_id, created_by_id, token_hash, expires_at, max_uses) '
-               'VALUES (?, ?, ?, ' + _UTC_NOW + " + (? * interval '1 second'), ?)",
-               (g.campaign_id, session['user_id'], _hash_invite_token(token), lifetime, max_uses))
+    if g.campaign['access_mode'] != 'invite_link':
+        db.execute("UPDATE campaigns SET access_mode = 'invite_link' WHERE id = ?", (g.campaign_id,))
+    cur = db.execute('INSERT INTO campaign_invite_links (campaign_id, created_by_id, token_hash, expires_at, max_uses) '
+                     'VALUES (?, ?, ?, ' + _UTC_NOW + " + (? * interval '1 second'), ?)",
+                     (g.campaign_id, session['user_id'], _hash_invite_token(token), lifetime, max_uses))
+    link_id = cur.lastrowid
+    expires_at = db.execute('SELECT expires_at FROM campaign_invite_links WHERE id = ?', (link_id,)).fetchone()['expires_at']
     db.commit()
     db.close()
     url = url_for('join_via_link', token=token, _external=True)
     if _wants_json():
-        return jsonify({'ok': True, 'url': url})
+        return jsonify({'ok': True, 'url': url, 'id': link_id, 'expires_at': str(expires_at), 'max_uses': max_uses})
     session['new_invite_link'] = url                # shown once on the next edit page, then forgotten
     return redirect(url_for('campaign_edit', campaign_id=g.campaign_id))
 

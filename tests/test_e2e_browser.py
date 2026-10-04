@@ -459,23 +459,32 @@ def test_invite_link_options_appear_live_when_the_access_mode_changes(pw, shared
     page.goto(base + f'/campaigns/{cid}/edit'); page.wait_for_load_state('networkidle')
     assert page.is_hidden('#invite-links')                                      # private: nothing to show
 
-    page.click('label.access-option:has(input[value=invite_link])')                    # no save, no reload
-    assert page.is_visible('#invite-links')
-    assert page.is_visible('#invite-links-unsaved') and page.is_disabled('#invite-link-form button[type=submit]')
-    page.screenshot(path='/tmp/invite_links_unsaved.png', clip=page.locator('#invite-links').bounding_box())
-
+    page.click('label.access-option:has(input[value=invite_link])')             # no save, no reload
+    assert page.is_visible('#invite-links') and page.is_visible('#invite-links-unsaved')
     page.click('label.access-option:has(input[value=private])')
     assert page.is_hidden('#invite-links')
-
     page.click('label.access-option:has(input[value=invite_link])')
-    page.click('#campaign-form button[type=submit]'); page.wait_for_load_state('networkidle')
-    page.goto(base + f'/campaigns/{cid}/edit'); page.wait_for_load_state('networkidle')
-    assert page.is_visible('#invite-links') and page.is_hidden('#invite-links-unsaved')
-    assert page.is_enabled('#invite-link-form button[type=submit]')
+    page.screenshot(path='/tmp/invite_links_unsaved.png', clip=page.locator('#invite-links').bounding_box())
+
+    # Create a link straight away: no page navigation, the link appears in place, and the mode is now saved.
+    marker = page.evaluate("window.__marker = 'same-page'")
     page.fill('#invite-link-form input[name=max_uses]', '3')
-    page.click('#invite-link-form button[type=submit]'); page.wait_for_selector('#invite-link-url')
+    page.click('#invite-link-form button[type=submit]'); page.wait_for_selector('#invite-link-new:not([hidden])')
     assert '/join/' in page.input_value('#invite-link-url')
+    assert page.evaluate('window.__marker') == 'same-page'                      # the page was never reloaded
+    assert page.is_hidden('#invite-links-unsaved')
+    page.wait_for_selector('[data-invite-link-row]:has-text("0 / 3 used")')
+    assert q_mode(cid) == 'invite_link'
     page.wait_for_timeout(600)
     page.screenshot(path='/tmp/invite_links_saved.png', clip=page.locator('#invite-links').bounding_box())
+
+    # a second link stacks on top, and the revoke button on the freshly-added row works
+    page.click('#invite-link-form button[type=submit]'); page.locator('[data-invite-link-row]').nth(1).wait_for()
+    page.once('dialog', lambda d: d.accept())
+    page.click('[data-invite-link-row] >> nth=0 >> button[title="Revoke link"]'); page.wait_for_load_state('networkidle')
     assert not errs and not bad
     ctx.close()
+
+
+def q_mode(cid):
+    return q('SELECT access_mode FROM campaigns WHERE id = ?', cid)[0]['access_mode']
