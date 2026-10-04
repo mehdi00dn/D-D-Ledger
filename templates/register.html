@@ -32,6 +32,7 @@
     <h1 class="auth-title">Create your account</h1>
     {% if error %}<p class="auth-error">{{ error }}</p>{% endif %}
     <form method="POST" class="auth-form">{{ csrf_field() }}
+      <input type="hidden" name="next" value="{{ next }}">
       <div class="field" style="margin-bottom:14px;">
         <label for="username">Username</label>
         <input type="text" id="username" name="username" value="{{ username }}" required autofocus>
@@ -46,7 +47,7 @@
       </div>
       <button type="submit" class="btn btn-primary auth-submit">Create Account</button>
     </form>
-    <p class="auth-switch">Already have an account? <a href="{{ url_for('login') }}">Log in</a></p>
+    <p class="auth-switch">Already have an account? <a href="{{ url_for('login', next=next) if next else url_for('login') }}">Log in</a></p>
   </div>
 </div>
 </body>

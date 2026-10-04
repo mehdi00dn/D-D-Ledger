@@ -109,7 +109,7 @@
             <span class="access-option-card-title">{{ icon('globe') }} Invite Link</span>
             <span class="access-option-card-check">{{ icon('check') }}</span>
           </span>
-          <p class="access-option-card-desc">Anyone with the invitation link can request to join.</p>
+          <p class="access-option-card-desc">Anyone with a valid invite link can join as a Player. Create links after saving.</p>
         </span>
       </label>
     </div>
@@ -196,6 +196,62 @@
     <div class="member-add-feedback" id="member-add-feedback" hidden></div>
     {% endif %}
 
+    {% if is_owner and cur_access == 'invite_link' %}
+    <div class="invite-links" id="invite-links">
+      <p class="pending-invites-title">Invite links</p>
+      {% if new_invite_link %}
+      <div class="invite-link-new" id="invite-link-new">
+        <p class="hint-text">Copy this link now &mdash; for security it is shown only once.</p>
+        <div class="invite-link-copy">
+          <input type="text" id="invite-link-url" value="{{ new_invite_link }}" readonly>
+          <button type="button" class="btn btn-primary btn-sm" id="invite-link-copy-btn">{{ icon('check') }} Copy</button>
+        </div>
+      </div>
+      {% endif %}
+      <form method="POST" action="{{ url_for('invite_link_create', campaign_id=campaign.id) }}" class="invite-link-form" id="invite-link-form">{{ csrf_field() }}
+        <label>Expires
+          <select name="expires_in">
+            <option value="1h">in 1 hour</option>
+            <option value="1d">in 1 day</option>
+            <option value="7d" selected>in 7 days</option>
+            <option value="30d">in 30 days</option>
+          </select>
+        </label>
+        <label>Max uses
+          <input type="number" name="max_uses" min="1" max="500" placeholder="Unlimited">
+        </label>
+        <button type="submit" class="btn btn-primary btn-sm">{{ icon('plus') }} Create link</button>
+      </form>
+      {% if invite_links %}
+      <div class="member-list" id="invite-link-list">
+        {% for l in invite_links %}
+        {% set dead = l.revoked_at or l.expired or (l.max_uses and l.use_count >= l.max_uses) %}
+        <div class="member-row {{ 'is-dead' if dead }}" data-invite-link-row data-link-id="{{ l.id }}">
+          <span class="member-name">
+            <span class="member-name-text">Link #{{ l.id }}</span>
+            {% if l.revoked_at %}<span class="pending-tag">Revoked</span>
+            {% elif l.expired %}<span class="pending-tag">Expired</span>
+            {% elif l.max_uses and l.use_count >= l.max_uses %}<span class="pending-tag">Used up</span>
+            {% else %}<span class="role-badge role-badge-player">Active</span>{% endif %}
+            <span class="invite-link-meta">{{ l.use_count }}{{ ' / %d' % l.max_uses if l.max_uses }} used &middot; expires {{ l.expires_at }} UTC</span>
+          </span>
+          {% if not dead %}
+          <span class="member-actions">
+            <form method="POST" action="{{ url_for('invite_link_revoke', campaign_id=campaign.id) }}" data-confirm="Revoke this link? Anyone holding it will no longer be able to join.">{{ csrf_field() }}
+              <input type="hidden" name="link_id" value="{{ l.id }}">
+              <button type="submit" class="btn-icon" title="Revoke link">{{ icon('x') }}</button>
+            </form>
+          </span>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="hint-text">No links yet. Links can only be copied right after they are created.</p>
+      {% endif %}
+    </div>
+    {% endif %}
+
     <div class="leave-campaign-row">
       {% if can_leave_freely %}
       <form method="POST" action="{{ url_for('campaign_leave', campaign_id=campaign.id) }}" data-confirm="Leave '{{ campaign.name }}'? You'll need a new invite to get back in.">{{ csrf_field() }}
@@ -213,6 +269,16 @@
 </div>
 
 <script>
+(function () {
+  var copyBtn = document.getElementById('invite-link-copy-btn');
+  if (copyBtn) copyBtn.addEventListener('click', function () {
+    var input = document.getElementById('invite-link-url');
+    input.select();
+    var done = function () { copyBtn.lastChild.textContent = ' Copied'; };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(input.value).then(done, function () { document.execCommand('copy'); done(); });
+    else { document.execCommand('copy'); done(); }
+  });
+})();
 (function () {
   var presetSelect = document.getElementById('setting-preset');
   var customInput = document.getElementById('setting-custom');

@@ -317,7 +317,7 @@ def register():
         wait = security.register_blocked_for(db, app.secret_key, ip)
         if wait:
             db.close()
-            return render_template('register.html', error=_wait_message(wait), username=username), 429
+            return render_template('register.html', error=_wait_message(wait), username=username, next=request.form.get('next', '')), 429
         security.record_registration(db, app.secret_key, ip)
         db.commit()
 
@@ -337,7 +337,7 @@ def register():
             error = 'That username is already taken.'
         if error:
             db.close()
-            return render_template('register.html', error=error, username=username)
+            return render_template('register.html', error=error, username=username, next=request.form.get('next', ''))
 
         is_first_user = db.execute('SELECT COUNT(*) AS n FROM users').fetchone()['n'] == 0
         try:
@@ -346,7 +346,7 @@ def register():
         except UniqueViolation:      # two people registering the same name at once
             db.rollback()
             db.close()
-            return render_template('register.html', error='That username is already taken.', username=username)
+            return render_template('register.html', error='That username is already taken.', username=username, next=request.form.get('next', ''))
         user_id = cur.lastrowid
         if is_first_user:
             _claim_orphaned_campaigns(db, user_id)
@@ -354,8 +354,8 @@ def register():
         db.close()
 
         _start_session(user_id, username)
-        return redirect(url_for('campaigns_list'))
-    return render_template('register.html', error=None, username='')
+        return redirect(_safe_next(request.form.get('next', '')) or url_for('campaigns_list'))
+    return render_template('register.html', error=None, username='', next=request.args.get('next', ''))
 
 
 @app.route('/login', methods=['GET', 'POST'])
@@ -564,6 +564,9 @@ def campaign_edit():
             UPDATE campaigns SET name = ?, description = ?, setting = ?, status = ?, access_mode = ?
             WHERE id = ?
         ''', (name, description, setting, status, access_mode, g.campaign_id))
+        if access_mode != 'invite_link':           # leaving invite-link mode kills every outstanding link for good
+            db.execute('UPDATE campaign_invite_links SET revoked_at = ' + _UTC_NOW + ' WHERE campaign_id = ? AND revoked_at IS NULL',
+                       (g.campaign_id,))
         db.commit()
         db.close()
         return redirect(url_for('campaigns_list'))
@@ -580,9 +583,16 @@ def campaign_edit():
         WHERE i.campaign_id = ? AND i.state = 'pending'
         ORDER BY lower(u.username) ASC
     ''', (g.campaign_id,)).fetchall() if g.campaign_role == 'owner' else []
+    invite_links = db.execute('''
+        SELECT id, created_at, expires_at, max_uses, use_count, revoked_at,
+               (expires_at <= ''' + _UTC_NOW + ''') AS expired
+        FROM campaign_invite_links WHERE campaign_id = ? ORDER BY id DESC LIMIT 15
+    ''', (g.campaign_id,)).fetchall() if g.campaign_role == 'owner' and campaign['access_mode'] == 'invite_link' else []
     db.close()
+    new_invite_link = session.pop('new_invite_link', None) if g.campaign_role == 'owner' else None
     setting_preset, setting_custom = _split_campaign_setting(campaign['setting'])
     return render_template('campaign_form.html', campaign=campaign, members=members, invitations=invitations,
+                            invite_links=invite_links, new_invite_link=new_invite_link,
                             setting_preset=setting_preset, setting_custom=setting_custom)
 
 
@@ -678,6 +688,137 @@ def campaign_member_uninvite(user_id):
     if _wants_json():
         return jsonify({'ok': True})
     return redirect(url_for('campaign_edit', campaign_id=g.campaign_id))
+
+
+# ---------------- INVITE LINKS ----------------
+# The owner creates a link (shown ONCE -- only its hash is stored).  Whoever opens it while logged in can join
+# as a Player until it expires, runs out of uses or is revoked.  Links work only while the campaign's access
+# mode is "invite_link"; switching to Private revokes them all.  Every way a link can be unusable (unknown,
+# expired, revoked, used up, campaign not accepting links) looks identical to the visitor.
+
+INVITE_LINK_LIFETIMES = {'1h': 3600, '1d': 86400, '7d': 7 * 86400, '30d': 30 * 86400}
+INVITE_LINK_MAX_USES_CAP = 500
+MAX_ACTIVE_INVITE_LINKS = 10
+_LINK_LIVE_SQL = ("revoked_at IS NULL AND expires_at > " + _UTC_NOW +
+                  " AND (max_uses IS NULL OR use_count < max_uses)")
+
+
+def _hash_invite_token(token):
+    return hashlib.sha256(str(token).encode()).hexdigest()
+
+
+@app.route('/campaigns/<int:campaign_id>/invite-links', methods=['POST'])
+@campaign_access_required
+def invite_link_create():
+    if g.campaign_role != 'owner':
+        abort(403)
+    if g.campaign['access_mode'] != 'invite_link':
+        return _reject_request('Switch Access & Privacy to "Invite Link" (and save) before creating links.', 400)
+    data = request.get_json(silent=True) or request.form
+    lifetime = INVITE_LINK_LIFETIMES.get(data.get('expires_in', '7d'))
+    if lifetime is None:
+        return _reject_request('Pick how long the link should last.', 400)
+    raw_uses = str(data.get('max_uses') or '').strip()
+    max_uses = None
+    if raw_uses:
+        if not raw_uses.isdigit() or not 1 <= int(raw_uses) <= INVITE_LINK_MAX_USES_CAP:
+            return _reject_request('Max uses must be a whole number from 1 to %d, or empty for unlimited.' % INVITE_LINK_MAX_USES_CAP, 400)
+        max_uses = int(raw_uses)
+    db = get_db()
+    active = db.execute('SELECT COUNT(*) AS n FROM campaign_invite_links WHERE campaign_id = ? AND ' + _LINK_LIVE_SQL,
+                        (g.campaign_id,)).fetchone()['n']
+    if active >= MAX_ACTIVE_INVITE_LINKS:
+        db.close()
+        return _reject_request('This campaign already has %d active links. Revoke one first.' % MAX_ACTIVE_INVITE_LINKS, 400)
+    token = secrets.token_urlsafe(32)
+    db.execute('INSERT INTO campaign_invite_links (campaign_id, created_by_id, token_hash, expires_at, max_uses) '
+               'VALUES (?, ?, ?, ' + _UTC_NOW + " + (? * interval '1 second'), ?)",
+               (g.campaign_id, session['user_id'], _hash_invite_token(token), lifetime, max_uses))
+    db.commit()
+    db.close()
+    url = url_for('join_via_link', token=token, _external=True)
+    if _wants_json():
+        return jsonify({'ok': True, 'url': url})
+    session['new_invite_link'] = url                # shown once on the next edit page, then forgotten
+    return redirect(url_for('campaign_edit', campaign_id=g.campaign_id))
+
+
+@app.route('/campaigns/<int:campaign_id>/invite-links/revoke', methods=['POST'])
+@campaign_access_required
+def invite_link_revoke():
+    if g.campaign_role != 'owner':
+        abort(403)
+    raw = request.form.get('link_id') or (request.get_json(silent=True) or {}).get('link_id')
+    if not str(raw or '').isdigit():
+        return _reject_request('Unknown link.', 400)
+    db = get_db()
+    db.execute('UPDATE campaign_invite_links SET revoked_at = ' + _UTC_NOW + ' WHERE id = ? AND campaign_id = ? AND revoked_at IS NULL',
+               (int(raw), g.campaign_id))
+    db.commit()
+    db.close()
+    if _wants_json():
+        return jsonify({'ok': True})
+    return redirect(url_for('campaign_edit', campaign_id=g.campaign_id))
+
+
+def _usable_link(db, token):
+    return db.execute('''
+        SELECT l.id, l.campaign_id, l.created_by_id, c.name AS campaign_name, c.avatar_path
+        FROM campaign_invite_links l JOIN campaigns c ON c.id = l.campaign_id
+        WHERE l.token_hash = ? AND c.access_mode = 'invite_link'
+          AND l.revoked_at IS NULL AND l.expires_at > ''' + _UTC_NOW + '''
+          AND (l.max_uses IS NULL OR l.use_count < l.max_uses)
+    ''', (_hash_invite_token(token),)).fetchone()
+
+
+def _dead_link_page():
+    return render_template('join_link.html', link=None), 404
+
+
+def _is_member(db, campaign_id):
+    return db.execute('SELECT 1 FROM campaign_members WHERE campaign_id = ? AND user_id = ?',
+                      (campaign_id, session['user_id'])).fetchone() is not None
+
+
+@app.route('/join/<token>')
+def join_via_link(token):
+    db = get_db()
+    link = _usable_link(db, token)
+    member = link is not None and _is_member(db, link['campaign_id'])
+    db.close()
+    if link is None:
+        return _dead_link_page()
+    if member:                                      # already in: just go there (nothing is used up)
+        return redirect(url_for('characters_list', campaign_id=link['campaign_id']))
+    return render_template('join_link.html', link=link, token=token)
+
+
+@app.route('/join/<token>', methods=['POST'])
+def join_via_link_accept(token):
+    db = get_db()
+    link = _usable_link(db, token)
+    if link is None:
+        db.close()
+        return _dead_link_page()
+    if _is_member(db, link['campaign_id']):
+        db.close()
+        return redirect(url_for('characters_list', campaign_id=link['campaign_id']))
+    # Spend one use atomically: the conditions are re-checked inside the UPDATE, so two people racing for the
+    # last use cannot both get in.
+    cur = db.execute('UPDATE campaign_invite_links SET use_count = use_count + 1 WHERE id = ? AND ' + _LINK_LIVE_SQL,
+                     (link['id'],))
+    if cur.rowcount == 0:
+        db.rollback()
+        db.close()
+        return _dead_link_page()
+    db.execute("INSERT INTO campaign_members (campaign_id, user_id, role, status) VALUES (?, ?, 'member', 'player') "
+               'ON CONFLICT (campaign_id, user_id) DO NOTHING', (link['campaign_id'], session['user_id']))
+    if link['created_by_id'] and link['created_by_id'] != session['user_id']:
+        notify(db, link['created_by_id'], 'invite_link_joined', '%s joined %s' % (session['username'], link['campaign_name']),
+               'They used your invite link and joined as a Player.', url_for('campaign_edit', campaign_id=link['campaign_id']))
+    db.commit()
+    db.close()
+    return redirect(url_for('characters_list', campaign_id=link['campaign_id']))
 
 
 # ---------------- NOTIFICATIONS + INVITATION RESPONSES ----------------

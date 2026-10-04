@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Join campaign — Campaign Ledger{% endblock %}
+
+{% block content %}
+<div class="join-link-card form-panel">
+  {% if link %}
+  <p class="pending-invites-title">You've been invited</p>
+  <h1 class="page-title">{{ link.campaign_name }}</h1>
+  <p class="hint-text">You'll join this campaign as a Player. Joining does not change anything else on your account.</p>
+  <form method="POST" action="{{ url_for('join_via_link_accept', token=token) }}">{{ csrf_field() }}
+    <div class="form-actions">
+      <a href="{{ url_for('campaigns_list') }}" class="btn btn-ghost">Not now</a>
+      <button type="submit" class="btn btn-primary">{{ icon('check') }} Join campaign</button>
+    </div>
+  </form>
+  {% else %}
+  <h1 class="page-title">This invite link doesn't work</h1>
+  <p class="hint-text">It may have expired, been revoked or reached its limit. Ask the campaign owner for a new one.</p>
+  <div class="form-actions"><a href="{{ url_for('campaigns_list') }}" class="btn btn-primary">Back to campaigns</a></div>
+  {% endif %}
+</div>
+{% endblock %}

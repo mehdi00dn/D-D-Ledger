@@ -2794,3 +2794,15 @@ body.page-leaving .content {
 .foot-bell .nav-badge { position: absolute; top: 4px; right: 4px; margin: 0; min-width: 16px; padding: 0 4px; font-size: 10px; line-height: 16px; }
 :root[data-sidebar="collapsed"] .foot-actions { flex-direction: column; }
 :root[data-sidebar="collapsed"] .foot-bell { width: auto; padding: 14px 0; }
+
+/* ---- invite links ---- */
+.invite-links { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--line, rgba(255,255,255,0.08)); }
+.invite-link-form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; margin: 0 0 12px; }
+.invite-link-form label { display: flex; flex-direction: column; gap: 4px; font: 600 11px var(--font-mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--parchment-dim); }
+.invite-link-form input[type=number] { width: 110px; }
+.invite-link-new { margin-bottom: 12px; }
+.invite-link-copy { display: flex; gap: 8px; }
+.invite-link-copy input { flex: 1; min-width: 0; font-family: var(--font-mono); font-size: 12px; }
+.invite-link-meta { display: block; width: 100%; font-size: 12px; color: var(--parchment-dim); }
+.member-row.is-dead { opacity: 0.6; }
+.join-link-card { max-width: 480px; margin: 40px auto; }
