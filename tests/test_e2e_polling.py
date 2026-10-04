@@ -108,7 +108,7 @@ def test_idle_polling_backs_off_and_snaps_back_when_something_changes(pw, shared
 def test_other_users_edits_appear_live_without_reload(pw, shared_server):
     base = shared_server.url
     dm, pl = Api(base), Api(base); cid = dm.campaign('Live')
-    dm.post(f'/campaigns/{cid}/members/add', data={'username': pl.name, 'status': 'player'})
+    dm.add_member(cid, pl)
     r = dm.post(f'/campaigns/{cid}/maps/new', data={'name': 'M', 'blank_width': '600', 'blank_height': '400'})
     mid = int(re.search(r'/maps/(\d+)', r.headers['Location']).group(1))
     dm.post(f'/campaigns/{cid}/api/maps/{mid}/settings', json={'grid_setup_done': 1})

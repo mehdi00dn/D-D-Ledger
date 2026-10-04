@@ -9,7 +9,7 @@ pytestmark = pytest.mark.skipif(BACKEND == 'sqlite', reason='new-code tests')
 def _fight(make_user):
     dm, player = make_user(), make_user()
     cid = dm.new_campaign()
-    dm.post(f'/campaigns/{cid}/members/add', data={'username': player.name, 'status': 'player'})
+    dm.add_member(cid, player)
     ids = {}
     for name, init in (('Low', 5), ('High', 20), ('Mid', 12)):
         ids[name] = dm.add_to_battle(cid, dm.new_character(cid, name=name, max_hp=10))

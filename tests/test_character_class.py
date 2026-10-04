@@ -14,7 +14,7 @@ KEYS = ['artificer', 'barbarian', 'bard', 'cleric', 'druid', 'fighter', 'monk', 
 def _setup(make_user):
     dm, player = make_user(), make_user()
     cid = dm.new_campaign()
-    dm.post(f'/campaigns/{cid}/members/add', data={'username': player.name, 'status': 'player'})
+    dm.add_member(cid, player)
     return dm, player, cid
 
 

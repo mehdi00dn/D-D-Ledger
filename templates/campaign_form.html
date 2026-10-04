@@ -165,16 +165,33 @@
     </div>
 
     {% if is_owner %}
+    <div class="pending-invites" id="pending-invites" {{ 'hidden' if not invitations }}>
+      <p class="pending-invites-title">Pending invitations</p>
+      <div class="member-list" id="pending-invite-list">
+        {% for inv in invitations %}
+        <div class="member-row is-pending" data-pending-row data-user-id="{{ inv.id }}">
+          <span class="member-name">{{ icon('user') }} <span class="member-name-text">{{ inv.username }}</span>
+            <span class="role-badge role-badge-{{ inv.status }}">{{ 'DM' if inv.status == 'dm' else 'Player' }}</span>
+            <span class="pending-tag">Waiting for a reply</span></span>
+          <span class="member-actions">
+            <form method="POST" action="{{ url_for('campaign_member_uninvite', campaign_id=campaign.id, user_id=inv.id) }}" data-confirm="Cancel the invitation to {{ inv.username }}?">{{ csrf_field() }}
+              <button type="submit" class="btn-icon" title="Cancel invitation">{{ icon('x') }}</button>
+            </form>
+          </span>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
     <form method="POST" action="{{ url_for('campaign_member_add', campaign_id=campaign.id) }}" class="member-add-form" id="member-add-form" autocomplete="off">{{ csrf_field() }}
       <div class="member-search">
         <input type="text" name="username" id="member-username-input" placeholder="Username to invite" required autocomplete="off">
         <ul class="member-search-results" id="member-search-results" hidden></ul>
       </div>
-      <select name="status" title="Starting status">
+      <select name="status" title="Status they get when they join">
         <option value="player">Player</option>
         <option value="dm">DM</option>
       </select>
-      <button type="submit" class="btn btn-primary btn-sm">{{ icon('plus') }} Add</button>
+      <button type="submit" class="btn btn-primary btn-sm">{{ icon('plus') }} Invite</button>
     </form>
     <div class="member-add-feedback" id="member-add-feedback" hidden></div>
     {% endif %}
@@ -221,12 +238,10 @@
   var input = document.getElementById('member-username-input');
   var list = document.getElementById('member-search-results');
   var feedback = document.getElementById('member-add-feedback');
-  var memberList = document.getElementById('member-list');
-  var statusSel = form.querySelector('select[name="status"]');
+    var statusSel = form.querySelector('select[name="status"]');
   var searchTimer = null, activeIndex = -1, lastQuery = '';
 
   var ICON_USER = '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.5"/><path d="M4.5 20c1.2-4 4-6 7.5-6s6.3 2 7.5 6"/></svg>';
-  var ICON_CROWN = '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m3 7 4.5 4L12 5l4.5 6L21 7l-1.6 10.5a1 1 0 0 1-1 .85H5.6a1 1 0 0 1-1-.85z"/><path d="M7 21h10"/></svg>';
   var ICON_X = '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>';
 
   function esc(s) { return s.replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
@@ -297,24 +312,21 @@
     feedback.hidden = false;
   }
 
-  function addRow(userId, username, status) {
+  var pendingBox = document.getElementById('pending-invites');
+  var pendingList = document.getElementById('pending-invite-list');
+
+  // The invited person is not a member yet: show them under "Pending invitations" until they reply.
+  function addPendingRow(userId, username, status) {
     var row = document.createElement('div');
-    row.className = 'member-row';
-    row.dataset.memberRow = ''; row.dataset.userId = userId;
+    row.className = 'member-row is-pending';
+    row.dataset.pendingRow = ''; row.dataset.userId = userId;
     row.innerHTML =
-      '<span class="member-name">' + ICON_USER + ' <span class="member-name-text">' + esc(username) + '</span></span>' +
+      '<span class="member-name">' + ICON_USER + ' <span class="member-name-text">' + esc(username) + '</span> ' +
+        '<span class="role-badge role-badge-' + status + '">' + (status === 'dm' ? 'DM' : 'Player') + '</span> ' +
+        '<span class="pending-tag">Waiting for a reply</span></span>' +
       '<span class="member-actions">' +
-        '<form method="POST" action="/campaigns/' + window.CAMPAIGN_ID + '/members/' + userId + '/status">' +
-          '<select name="status" class="status-select status-select-' + status + '" title="Dungeon Master / Player" onchange="this.form.submit()">' +
-            '<option value="dm"' + (status === 'dm' ? ' selected' : '') + '>DM</option>' +
-            '<option value="player"' + (status === 'player' ? ' selected' : '') + '>Player</option>' +
-          '</select>' +
-        '</form>' +
-        '<form method="POST" action="/campaigns/' + window.CAMPAIGN_ID + '/members/' + userId + '/make-owner" data-confirm="Make ' + esc(username) + ' an owner of this campaign?">' +
-          '<button type="submit" class="btn-icon" title="Make owner">' + ICON_CROWN + '</button>' +
-        '</form>' +
-        '<form method="POST" action="/campaigns/' + window.CAMPAIGN_ID + '/members/' + userId + '/remove" data-confirm="Remove ' + esc(username) + ' from this campaign?">' +
-          '<button type="submit" class="btn-icon" title="Remove member">' + ICON_X + '</button>' +
+        '<form method="POST" action="/campaigns/' + window.CAMPAIGN_ID + '/members/' + userId + '/uninvite" data-confirm="Cancel the invitation to ' + esc(username) + '?">' +
+          '<button type="submit" class="btn-icon" title="Cancel invitation">' + ICON_X + '</button>' +
         '</form>' +
       '</span>';
     Array.prototype.forEach.call(row.querySelectorAll('form'), function (f) {
@@ -322,7 +334,8 @@
       t.type = 'hidden'; t.name = 'csrf_token'; t.value = form.querySelector('input[name=csrf_token]').value;
       f.appendChild(t);
     });
-    memberList.appendChild(row);
+    pendingList.appendChild(row);
+    pendingBox.hidden = false;
   }
 
   form.addEventListener('submit', function (ev) {
@@ -340,9 +353,9 @@
       .then(function (r) { return r.json().then(function (j) { return { status: r.status, body: j }; }); })
       .then(function (res) {
         btn.disabled = false;
-        if (res.status >= 400) { showFeedback(false, res.body.error || 'Could not add that member.'); return; }
-        showFeedback(true, 'Added ' + res.body.username + ' as ' + (res.body.status === 'dm' ? 'DM' : 'Player') + '.');
-        addRow(res.body.user_id, res.body.username, res.body.status);
+        if (res.status >= 400) { showFeedback(false, res.body.error || 'Could not send that invitation.'); return; }
+        showFeedback(true, 'Invitation sent to ' + res.body.username + '. They join as a ' + (res.body.status === 'dm' ? 'DM' : 'Player') + ' once they accept.');
+        addPendingRow(res.body.user_id, res.body.username, res.body.status);
         form.reset();
       })
       .catch(function () { btn.disabled = false; showFeedback(false, 'Something went wrong. Please try again.'); });

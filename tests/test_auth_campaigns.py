@@ -76,6 +76,9 @@ def test_invite_by_username_is_case_insensitive(make_user):
     variant = player.name.upper() if player.name != player.name.upper() else player.name.lower()
     r = dm.post(f'/campaigns/{cid}/members/add', data={'username': variant, 'status': 'player'})
     assert r.status_code == 302
+    assert player.get(f'/campaigns/{cid}/characters').status_code == 404        # invited, not a member yet
+    inv = q("SELECT id FROM campaign_invitations WHERE campaign_id = ?", cid)[0]['id']
+    assert player.post(f'/invitations/{inv}/accept').status_code == 302
     assert player.get(f'/campaigns/{cid}/characters').status_code == 200
 
 
@@ -90,9 +93,13 @@ def test_invite_gives_inline_json_feedback_not_a_redirect(make_user):
     assert r.status_code == 200
     body = r.get_json()
     player_id = q('SELECT id FROM users WHERE username = ?', player.name)[0]['id']
-    assert body == {'ok': True, 'username': player.name, 'status': 'dm', 'user_id': player_id}
-    assert player.get(f'/campaigns/{cid}/characters').status_code == 200
+    assert body == {'ok': True, 'pending': True, 'username': player.name, 'status': 'dm', 'user_id': player_id,
+                    'invitation_id': body['invitation_id']}
+    assert player.get(f'/campaigns/{cid}/characters').status_code == 404           # an invitation is not membership
 
+    r = dm.json(f'/campaigns/{cid}/members/add', {'username': player.name, 'status': 'player'})
+    assert r.status_code == 400 and 'pending invitation' in r.get_json()['error']
+    assert player.post(f"/invitations/{body['invitation_id']}/accept").status_code == 302
     r = dm.json(f'/campaigns/{cid}/members/add', {'username': player.name, 'status': 'player'})
     assert r.status_code == 400 and 'already a member' in r.get_json()['error']
 
@@ -106,7 +113,7 @@ def test_member_search_autocomplete(make_user):
     dm, player = make_user('findme_alpha'), make_user('findme_beta')
     make_user('unrelated_person')                                  # a non-matching account must never surface
     cid = dm.new_campaign()
-    dm.post(f'/campaigns/{cid}/members/add', data={'username': player.name, 'status': 'player'})
+    dm.add_member(cid, player)
 
     assert dm.get(f'/campaigns/{cid}/api/members/search?q=f').get_json() == {'results': []}   # below minimum length
 
@@ -136,7 +143,7 @@ def test_member_search_is_rate_limited(make_user):
 def test_membership_roles(make_user):
     dm, player = make_user(), make_user()
     cid = dm.new_campaign()
-    r = dm.post(f'/campaigns/{cid}/members/add', data={'username': player.name, 'status': 'player'})
+    r = dm.add_member(cid, player)
     assert r.status_code == 302
     assert player.get(f'/campaigns/{cid}/characters').status_code == 200
     assert player.post(f'/campaigns/{cid}/delete').status_code == 403       # only owners delete

@@ -4,7 +4,7 @@ from conftest import q
 
 
 def _add_player(dm, player, cid):
-    r = dm.post(f'/campaigns/{cid}/members/add', data={'username': player.name, 'status': 'player'})
+    r = dm.add_member(cid, player)
     assert r.status_code == 302
 
 

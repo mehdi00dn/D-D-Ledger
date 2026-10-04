@@ -58,7 +58,7 @@ def test_add_group_and_clear_and_duplicate_names(camp):
 def test_player_sees_redacted_enemy_stats(make_user):
     dm, pl = make_user(), make_user()
     cid = dm.new_campaign()
-    dm.post(f'/campaigns/{cid}/members/add', data={'username': pl.name, 'status': 'player'})
+    dm.add_member(cid, pl)
     pc = dm.new_character(cid, name='Hero', max_hp=20)
     npc = dm.new_character(cid, name='Ogre', max_hp=59, is_npc='on')
     dm.add_to_battle(cid, pc); dm.add_to_battle(cid, npc)

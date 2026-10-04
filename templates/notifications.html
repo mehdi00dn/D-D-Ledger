@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% set active_page = 'notifications' %}
+{% block title %}Notifications — Campaign Ledger{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Notifications</h1>
+    <p class="page-sub">Campaign invitations and other updates.</p>
+  </div>
+  {% if notifications | selectattr('read_at', 'none') | list %}
+  <form method="POST" action="{{ url_for('notifications_read_all') }}">{{ csrf_field() }}
+    <button type="submit" class="btn btn-ghost">{{ icon('check') }} Mark all read</button>
+  </form>
+  {% endif %}
+</div>
+
+{% if notifications %}
+<div class="notification-list">
+  {% for n in notifications %}
+  <div class="notification-card {{ '' if n.read_at else 'is-unread' }}" data-notification-id="{{ n.id }}">
+    <div class="notification-main">
+      <p class="notification-title">{{ n.title }}</p>
+      {% if n.body %}<p class="notification-body">{{ n.body }}</p>{% endif %}
+      <p class="notification-time">{{ n.created_at }} UTC</p>
+    </div>
+    <div class="notification-actions">
+      {% if n.kind == 'campaign_invite' %}
+        {% if n.invite_state == 'pending' %}
+        <form method="POST" action="{{ url_for('invitation_accept', invitation_id=n.invitation_id) }}">{{ csrf_field() }}
+          <button type="submit" class="btn btn-primary btn-sm">{{ icon('check') }} Accept</button>
+        </form>
+        <form method="POST" action="{{ url_for('invitation_decline', invitation_id=n.invitation_id) }}">{{ csrf_field() }}
+          <button type="submit" class="btn btn-ghost btn-sm">{{ icon('x') }} Decline</button>
+        </form>
+        {% else %}
+        <span class="notification-state notification-state-{{ n.invite_state }}">{{ {'accepted': 'Accepted', 'declined': 'Declined', 'revoked': 'Withdrawn'}.get(n.invite_state, '') }}</span>
+        {% endif %}
+      {% elif n.link %}
+        <a href="{{ n.link }}" class="btn btn-ghost btn-sm">View</a>
+      {% endif %}
+      {% if not n.read_at and not (n.kind == 'campaign_invite' and n.invite_state == 'pending') %}
+      <form method="POST" action="{{ url_for('notification_read', notification_id=n.id) }}">{{ csrf_field() }}
+        <button type="submit" class="btn-icon" title="Mark as read" aria-label="Mark as read">{{ icon('check') }}</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="empty-state">
+  {{ icon('bell') }}
+  <h3>Nothing here yet</h3>
+  <p>When someone invites you to a campaign, it will show up here.</p>
+</div>
+{% endif %}
+{% endblock %}

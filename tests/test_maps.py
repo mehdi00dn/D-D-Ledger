@@ -96,7 +96,7 @@ def test_familiar_prop_pin_lifecycle_when_map_is_linked(camp):
 
 def test_player_map_lock(make_user):
     dm, pl = make_user(), make_user()
-    cid = dm.new_campaign(); dm.post(f'/campaigns/{cid}/members/add', data={'username': pl.name, 'status': 'player'})
+    cid = dm.new_campaign(); dm.add_member(cid, pl)
     mid = dm.new_map(cid)
     D = f'/campaigns/{cid}/api/maps/{mid}/drawings'
     assert pl.json(D, {'kind': 'rect', 'data': {}, 'w': 1, 'h': 1}).status_code == 200            # unlocked: players may draw

@@ -12,7 +12,7 @@ def _lands_ok(u, resp):
 def test_all_delete_flows_land_on_working_pages(make_user):
     u, p = make_user(), make_user()
     cid = u.new_campaign()
-    u.post(f'/campaigns/{cid}/members/add', data={'username': p.name, 'status': 'player'})
+    u.add_member(cid, p)
     pid_user = q('SELECT id FROM users WHERE username = ?', p.name)[0]['id']
 
     gid = u.new_group(cid); ch = u.new_character(cid, group_id=gid); mid = u.new_map(cid)
@@ -20,7 +20,7 @@ def test_all_delete_flows_land_on_working_pages(make_user):
     _lands_ok(u, u.post(f'/campaigns/{cid}/characters/{ch}/delete'))
     _lands_ok(u, u.post(f'/campaigns/{cid}/maps/{mid}/delete'))
     _lands_ok(u, u.post(f'/campaigns/{cid}/members/{pid_user}/remove'))
-    u.post(f'/campaigns/{cid}/members/add', data={'username': p.name, 'status': 'player'})
+    u.add_member(cid, p)
     _lands_ok(p, p.post(f'/campaigns/{cid}/leave'))
     _lands_ok(u, u.post(f'/campaigns/{cid}/delete'))
 

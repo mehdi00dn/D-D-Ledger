@@ -8,7 +8,7 @@ pytestmark = pytest.mark.skipif(BACKEND == 'sqlite', reason='new-code tests')
 def _setup(make_user):
     dm, player = make_user(), make_user()
     cid = dm.new_campaign()
-    dm.post(f'/campaigns/{cid}/members/add', data={'username': player.name, 'status': 'player'})
+    dm.add_member(cid, player)
     ogre = dm.add_to_battle(cid, dm.new_character(cid, name='Ogre', max_hp=59, is_npc='on'))
     hero = dm.add_to_battle(cid, dm.new_character(cid, name='Hero', max_hp=30))
     dm.json(f'/campaigns/{cid}/api/battle/{ogre}/conditions', {'conditions': ['charmed']})

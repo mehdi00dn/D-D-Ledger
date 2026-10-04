@@ -221,7 +221,9 @@ _SCOPE_PARENT_SQL = {            # arg -> (SQL returning the parent id, name of 
 }
 # URL arguments the policy knows about.  tests/test_authorization_matrix.py fails if a route
 # introduces an argument that is not listed here (so a new kind of ID cannot slip through).
-SCOPED_URL_ARGS = {'campaign_id', 'user_id', 'filename', 'token'} | set(_SCOPE_OWNER_SQL) | set(_SCOPE_PARENT_SQL)
+# invitation_id / notification_id are not campaign-scoped: each is checked against the logged-in user in its route
+# (an invitation is only ever visible to the person invited; a notification only to its recipient).
+SCOPED_URL_ARGS = {'campaign_id', 'user_id', 'filename', 'token', 'invitation_id', 'notification_id'} | set(_SCOPE_OWNER_SQL) | set(_SCOPE_PARENT_SQL)
 
 
 @app.before_request
@@ -572,15 +574,49 @@ def campaign_edit():
         WHERE cm.campaign_id = ?
         ORDER BY cm.role DESC, lower(u.username) ASC
     ''', (g.campaign_id,)).fetchall()
+    invitations = db.execute('''
+        SELECT i.invited_user_id AS id, i.status, u.username
+        FROM campaign_invitations i JOIN users u ON u.id = i.invited_user_id
+        WHERE i.campaign_id = ? AND i.state = 'pending'
+        ORDER BY lower(u.username) ASC
+    ''', (g.campaign_id,)).fetchall() if g.campaign_role == 'owner' else []
     db.close()
     setting_preset, setting_custom = _split_campaign_setting(campaign['setting'])
-    return render_template('campaign_form.html', campaign=campaign, members=members,
+    return render_template('campaign_form.html', campaign=campaign, members=members, invitations=invitations,
                             setting_preset=setting_preset, setting_custom=setting_custom)
+
+
+_UTC_NOW = "(CURRENT_TIMESTAMP AT TIME ZONE 'UTC')"
+MAX_PENDING_INVITATIONS = 25          # open invitations per campaign (keeps invites from being used to spam people)
+STATUS_LABELS = {'dm': 'DM', 'player': 'Player'}
+
+
+def notify(db, user_id, kind, title, body='', link=None, invitation_id=None):
+    """Add an in-app notification for one user (the caller commits)."""
+    db.execute('INSERT INTO notifications (user_id, kind, title, body, link, invitation_id) VALUES (?, ?, ?, ?, ?, ?)',
+               (user_id, kind, title[:200], body[:500], link, invitation_id))
+
+
+def unread_notification_count():
+    """Unread notifications for the logged-in user (one cheap query per request, shown as the sidebar badge)."""
+    if not session.get('user_id'):
+        return 0
+    if not hasattr(g, '_unread_notifications'):
+        db = get_db()
+        g._unread_notifications = db.execute('SELECT COUNT(*) AS n FROM notifications WHERE user_id = ? AND read_at IS NULL',
+                                              (session['user_id'],)).fetchone()['n']
+        db.close()
+    return g._unread_notifications
+
+
+app.jinja_env.globals['unread_notification_count'] = unread_notification_count
 
 
 @app.route('/campaigns/<int:campaign_id>/members/add', methods=['POST'])
 @campaign_access_required
 def campaign_member_add():
+    """Owner-only: INVITE a user.  Nobody is added to the campaign here -- the invited user gets a
+    notification and joins only if they accept (see invitation_accept)."""
     if g.campaign_role != 'owner':
         abort(403)
     data = request.get_json(silent=True) or request.form
@@ -602,15 +638,132 @@ def campaign_member_add():
     if existing:
         db.close()
         return _reject_request('%s is already a member of this campaign.' % user['username'], 400)
-    # New invites always join as a plain member -- ownership is granted
-    # separately (see campaign_member_make_owner), never at invite time.
-    db.execute('INSERT INTO campaign_members (campaign_id, user_id, role, status) VALUES (?, ?, ?, ?)',
-               (g.campaign_id, user['id'], 'member', status))
+    pending = db.execute("SELECT COUNT(*) AS n FROM campaign_invitations WHERE campaign_id = ? AND state = 'pending'",
+                         (g.campaign_id,)).fetchone()['n']
+    if pending >= MAX_PENDING_INVITATIONS:
+        db.close()
+        return _reject_request('This campaign already has %d open invitations. Cancel some before inviting more.' % MAX_PENDING_INVITATIONS, 400)
+    try:
+        # Invitees never join as owner -- ownership is granted separately (see campaign_member_make_owner).
+        inv_id = db.execute('INSERT INTO campaign_invitations (campaign_id, invited_user_id, invited_by_id, status) VALUES (?, ?, ?, ?)',
+                            (g.campaign_id, user['id'], session['user_id'], status)).lastrowid
+    except UniqueViolation:         # the partial unique index: this person already has an open invitation
+        db.rollback()
+        db.close()
+        return _reject_request('%s already has a pending invitation to this campaign.' % user['username'], 400)
+    notify(db, user['id'], 'campaign_invite', '%s invited you to %s' % (session['username'], g.campaign['name']),
+           'You would join as a %s.' % STATUS_LABELS[status], url_for('notifications_page'), inv_id)
     db.commit()
     db.close()
     if _wants_json():
-        return jsonify({'ok': True, 'username': user['username'], 'status': status, 'user_id': user['id']})
+        return jsonify({'ok': True, 'pending': True, 'username': user['username'], 'status': status,
+                        'user_id': user['id'], 'invitation_id': inv_id})
     return redirect(url_for('campaign_edit', campaign_id=g.campaign_id))
+
+
+@app.route('/campaigns/<int:campaign_id>/members/<int:user_id>/uninvite', methods=['POST'])
+@campaign_access_required
+def campaign_member_uninvite(user_id):
+    """Owner-only: withdraw a pending invitation."""
+    if g.campaign_role != 'owner':
+        abort(403)
+    db = get_db()
+    inv = db.execute("SELECT id FROM campaign_invitations WHERE campaign_id = ? AND invited_user_id = ? AND state = 'pending'",
+                     (g.campaign_id, user_id)).fetchone()
+    if inv:
+        db.execute("UPDATE campaign_invitations SET state = 'revoked', responded_at = " + _UTC_NOW + " WHERE id = ? AND state = 'pending'", (inv['id'],))
+        db.execute('UPDATE notifications SET read_at = ' + _UTC_NOW + ' WHERE invitation_id = ? AND read_at IS NULL', (inv['id'],))
+        db.commit()
+    db.close()
+    if _wants_json():
+        return jsonify({'ok': True})
+    return redirect(url_for('campaign_edit', campaign_id=g.campaign_id))
+
+
+# ---------------- NOTIFICATIONS + INVITATION RESPONSES ----------------
+# Not campaign-scoped: they belong to the logged-in person.  Every query below filters on
+# session['user_id'], so someone else's invitation or notification is simply "not found".
+
+@app.route('/notifications')
+def notifications_page():
+    db = get_db()
+    rows = db.execute('''
+        SELECT n.id, n.kind, n.title, n.body, n.link, n.created_at, n.read_at, n.invitation_id,
+               i.state AS invite_state, i.status AS invite_status, c.name AS campaign_name
+        FROM notifications n
+        LEFT JOIN campaign_invitations i ON i.id = n.invitation_id
+        LEFT JOIN campaigns c ON c.id = i.campaign_id
+        WHERE n.user_id = ?
+        ORDER BY n.id DESC LIMIT 100
+    ''', (session['user_id'],)).fetchall()
+    db.close()
+    return render_template('notifications.html', notifications=rows)
+
+
+@app.route('/notifications/<int:notification_id>/read', methods=['POST'])
+def notification_read(notification_id):
+    db = get_db()
+    db.execute('UPDATE notifications SET read_at = ' + _UTC_NOW + ' WHERE id = ? AND user_id = ? AND read_at IS NULL',
+               (notification_id, session['user_id']))
+    db.commit()
+    db.close()
+    return redirect(url_for('notifications_page'))
+
+
+@app.route('/notifications/read-all', methods=['POST'])
+def notifications_read_all():
+    db = get_db()
+    db.execute('UPDATE notifications SET read_at = ' + _UTC_NOW + ' WHERE user_id = ? AND read_at IS NULL', (session['user_id'],))
+    db.commit()
+    db.close()
+    return redirect(url_for('notifications_page'))
+
+
+def _respond_to_invitation(invitation_id, accept):
+    db = get_db()
+    inv = db.execute('''
+        SELECT i.*, c.name AS campaign_name FROM campaign_invitations i
+        JOIN campaigns c ON c.id = i.campaign_id
+        WHERE i.id = ? AND i.invited_user_id = ?
+    ''', (invitation_id, session['user_id'])).fetchone()
+    if inv is None:
+        db.close()
+        abort(404)                                         # someone else's (or no such) invitation: indistinguishable
+    new_state = 'accepted' if accept else 'declined'
+    # The state change is the gate: only one response can ever flip a pending invitation, so a double
+    # click or a replay can't add the member twice or notify the owner twice.
+    cur = db.execute("UPDATE campaign_invitations SET state = ?, responded_at = " + _UTC_NOW + " WHERE id = ? AND state = 'pending'",
+                     (new_state, invitation_id))
+    if cur.rowcount == 0:
+        db.close()
+        if inv['state'] == new_state:                      # already did exactly this: harmless
+            return redirect(url_for('characters_list', campaign_id=inv['campaign_id']) if accept else url_for('notifications_page'))
+        return _reject_request('This invitation is no longer open.', 409)
+    if accept:
+        db.execute('''INSERT INTO campaign_members (campaign_id, user_id, role, status) VALUES (?, ?, 'member', ?)
+                       ON CONFLICT (campaign_id, user_id) DO NOTHING''', (inv['campaign_id'], session['user_id'], inv['status']))
+    db.execute('UPDATE notifications SET read_at = ' + _UTC_NOW + ' WHERE invitation_id = ? AND user_id = ? AND read_at IS NULL',
+               (invitation_id, session['user_id']))
+    if inv['invited_by_id']:
+        notify(db, inv['invited_by_id'], 'invite_accepted' if accept else 'invite_declined',
+               '%s %s your invitation' % (session['username'], 'accepted' if accept else 'declined'),
+               'Campaign: %s' % inv['campaign_name'],
+               url_for('campaign_edit', campaign_id=inv['campaign_id']) if accept else None, invitation_id)
+    db.commit()
+    db.close()
+    if accept:
+        return redirect(url_for('characters_list', campaign_id=inv['campaign_id']))
+    return redirect(url_for('notifications_page'))
+
+
+@app.route('/invitations/<int:invitation_id>/accept', methods=['POST'])
+def invitation_accept(invitation_id):
+    return _respond_to_invitation(invitation_id, True)
+
+
+@app.route('/invitations/<int:invitation_id>/decline', methods=['POST'])
+def invitation_decline(invitation_id):
+    return _respond_to_invitation(invitation_id, False)
 
 
 @app.route('/campaigns/<int:campaign_id>/api/members/search')
@@ -638,8 +791,9 @@ def api_member_search():
         WHERE username ILIKE ? ESCAPE '\\'
           AND id != ?
           AND id NOT IN (SELECT user_id FROM campaign_members WHERE campaign_id = ?)
+          AND id NOT IN (SELECT invited_user_id FROM campaign_invitations WHERE campaign_id = ? AND state = 'pending')
         ORDER BY username ASC LIMIT 8
-    ''', (like, session['user_id'], g.campaign_id)).fetchall()
+    ''', (like, session['user_id'], g.campaign_id, g.campaign_id)).fetchall()
     db.close()
     return jsonify({'results': [r['username'] for r in rows]})
 

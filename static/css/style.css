@@ -2751,3 +2751,34 @@ body.page-leaving .content {
 }
 .class-tip b { display: block; margin-bottom: 2px; font-family: var(--font-display); font-size: 13px; color: var(--brass-bright); }
 .class-tip[hidden] { display: none; }
+
+/* DL-93: notifications + pending invitations */
+.nav-notifications { margin-top: 6px; }
+.nav-badge {
+  margin-left: auto; min-width: 20px; padding: 1px 6px; border-radius: 999px; text-align: center;
+  background: var(--brass); color: var(--bg-panel); font: 700 11px/18px var(--font-mono); font-style: normal;
+}
+:root[data-sidebar="collapsed"] .nav-notifications .nav-badge {
+  position: absolute; top: 4px; right: 10px; margin: 0; min-width: 16px; padding: 0 4px; font-size: 10px; line-height: 16px;
+}
+.notification-list { display: flex; flex-direction: column; gap: 10px; max-width: 760px; }
+.notification-card {
+  display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;
+  padding: 14px 16px; border: 1px solid var(--hairline); border-radius: var(--radius-m); background: var(--bg-panel);
+}
+.notification-card.is-unread { border-color: var(--brass); box-shadow: inset 3px 0 0 var(--brass); }
+.notification-main { flex: 1 1 260px; min-width: 0; }
+.notification-title { margin: 0 0 2px; font-weight: 600; color: var(--parchment); overflow-wrap: anywhere; }
+.notification-body { margin: 0 0 4px; font-size: 13px; color: var(--parchment-dim); overflow-wrap: anywhere; }
+.notification-time { margin: 0; font: 11px var(--font-mono); color: var(--parchment-dim); opacity: 0.75; }
+.notification-actions { display: flex; align-items: center; gap: 8px; }
+.notification-actions form { margin: 0; }
+.notification-state { font: 600 11px var(--font-mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--parchment-dim); }
+.notification-state-accepted { color: var(--moss-bright); }
+.pending-invites { margin: 0 0 16px; }
+.pending-invites[hidden] { display: none; }
+.pending-invites-title { margin: 0 0 8px; font: 600 11px var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--parchment-dim); }
+.member-row.is-pending { border-style: dashed; }
+.member-row.is-pending .member-name { flex: 1 1 0; min-width: 0; flex-wrap: wrap; row-gap: 2px; }
+.member-row.is-pending .member-actions { margin-left: auto; }
+.pending-tag { flex-basis: 100%; font-size: 12px; font-style: italic; color: var(--parchment-dim); }

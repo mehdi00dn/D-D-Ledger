@@ -5,7 +5,7 @@ import requests
 if os.path.isdir('/opt/pw-browsers'):                       # pre-installed browsers (some sandboxes); CI installs its own
     os.environ.setdefault('PLAYWRIGHT_BROWSERS_PATH', '/opt/pw-browsers')
 playwright = pytest.importorskip('playwright.sync_api')
-from conftest import png_bytes, CsrfSession, SESSION_COOKIE
+from conftest import png_bytes, CsrfSession, SESSION_COOKIE, q
 
 
 @pytest.fixture(scope='module')
@@ -28,6 +28,13 @@ class Api:
     def character(self, cid, name, **f):
         self.post(f'/campaigns/{cid}/characters/new', data={'name': name, 'max_hp': '30', **{k: str(v) for k, v in f.items()}}, **({'files': f.pop('files')} if 'files' in f else {}))
         return next(c['id'] for c in self.get(f'/campaigns/{cid}/api/characters').json() if c['name'] == name)
+    def add_member(self, cid, other, status='player'):
+        """Invite `other` (another Api) and have them accept -- invitations are no longer instant joins."""
+        r = self.post(f'/campaigns/{cid}/members/add', data={'username': other.name, 'status': status}); assert r.status_code == 302
+        inv = q("SELECT i.id FROM campaign_invitations i JOIN users u ON u.id = i.invited_user_id "
+                "WHERE i.campaign_id = ? AND u.username = ? AND i.state = 'pending'", cid, other.name)[0]['id']
+        r = other.post(f'/invitations/{inv}/accept'); assert r.status_code == 302
+        return r
     def context(self, browser, base):
         ctx = browser.new_context(viewport={'width': 1400, 'height': 900})
         ctx.add_cookies([{'name': SESSION_COOKIE, 'value': self.s.cookies.get(SESSION_COOKIE), 'url': base}])
@@ -97,7 +104,7 @@ def test_images_render_after_reload(pw, shared_server):
 def test_two_users_see_each_others_changes_without_reload(pw, shared_server):
     base = shared_server.url
     dm, pl = Api(base), Api(base); cid = dm.campaign('Table')
-    dm.post(f'/campaigns/{cid}/members/add', data={'username': pl.name, 'status': 'player'})
+    dm.add_member(cid, pl)
     hero = dm.character(cid, 'Hero'); ogre = dm.character(cid, 'Ogre', is_npc='on', max_hp=59)
     dctx, pctx = dm.context(pw, base), pl.context(pw, base)
     dpage, ppage = dctx.new_page(), pctx.new_page()
@@ -126,19 +133,20 @@ def test_invite_autocomplete_and_inline_feedback(pw, shared_server):
     assert page.input_value('#member-username-input') == player.name
     assert page.is_hidden('#member-search-results')
 
-    # Submitting adds the member inline: green feedback, a new row, no navigation away from /edit.
+    # Submitting sends an invitation inline: green feedback, a "pending" row, no navigation away from /edit.
     page.click('#member-add-form button[type=submit]')
     page.wait_for_selector('#member-add-feedback.is-success')
     assert player.name in page.inner_text('#member-add-feedback')
-    page.wait_for_selector(f'.member-row:has-text("{player.name}")')
+    page.wait_for_selector(f'[data-pending-row]:has-text("{player.name}")')
+    assert page.locator('#member-list [data-member-row]').count() == 1           # not a member until they accept
     assert '/edit' in page.url                                  # never a full-page reload/redirect
 
-    # The dynamically-inserted row's own forms (status / make-owner / remove) must carry a real
-    # CSRF token too -- they're built in JS, so the template-source scan can't check this one.
+    # The dynamically-inserted row's own form (cancel invitation) must carry a real CSRF token too --
+    # it's built in JS, so the template-source scan can't check this one.
     real_token = page.get_attribute('#member-add-form input[name=csrf_token]', 'value')
-    new_row = page.locator('.member-row', has_text=player.name)
+    new_row = page.locator('[data-pending-row]', has_text=player.name)
     tokens = new_row.locator('input[name=csrf_token]').all()
-    assert len(tokens) == 3, 'expected a token on the status, make-owner and remove forms'
+    assert len(tokens) == 1, 'expected a token on the cancel-invitation form'
     assert all(t.get_attribute('value') == real_token for t in tokens)
 
     # Inviting an unknown username shows an inline error instead -- still no navigation.
@@ -244,7 +252,7 @@ def test_lightbox_arrows_sit_beside_the_image(pw, shared_server):
 
 def test_turn_tracker_highlights_the_active_turn_for_everyone(pw, shared_server):
     base = shared_server.url; dm = Api(base); player = Api(base); cid = dm.campaign('Turns')
-    dm.post(f'/campaigns/{cid}/members/add', data={'username': player.name, 'status': 'player'})
+    dm.add_member(cid, player)
     for name, init in (('Aria', 18), ('Borin', 9)):
         chid = dm.character(cid, name)
         pid = dm.post(f'/campaigns/{cid}/api/battle/add', json={'character_id': chid}).json()[-1]['id']
@@ -279,7 +287,7 @@ def test_turn_tracker_highlights_the_active_turn_for_everyone(pw, shared_server)
 
 def test_battle_conditions_picker_and_chips(pw, shared_server):
     base = shared_server.url; dm = Api(base); player = Api(base); cid = dm.campaign('Conds')
-    dm.post(f'/campaigns/{cid}/members/add', data={'username': player.name, 'status': 'player'})
+    dm.add_member(cid, player)
     chid = dm.character(cid, 'Aria')
     dm.post(f'/campaigns/{cid}/api/battle/add', json={'character_id': chid})
     dctx = dm.context(pw, base); dpage = dctx.new_page(); dbad, derrs = _collect(dpage)
@@ -401,3 +409,33 @@ def test_note_and_bio_previews_wrap_like_the_text(pw, shared_server):
     page.screenshot(path='/tmp/wrap-factions.png')
     assert not errs, errs
     dctx.close()
+
+
+def test_invitation_flow_in_the_browser(pw, shared_server):
+    base = shared_server.url; dm, pl = Api(base), Api(base); cid = dm.campaign('Invites')
+    dctx = dm.context(pw, base); dpage = dctx.new_page(); dbad, derrs = _collect(dpage)
+    dpage.goto(base + f'/campaigns/{cid}/edit'); dpage.wait_for_selector('#member-username-input')
+    dpage.fill('#member-username-input', pl.name); dpage.select_option('#member-add-form select[name=status]', 'dm')
+    dpage.wait_for_selector('#member-search-results li[role=option]'); dpage.press('#member-username-input', 'Escape')
+    dpage.click('#member-add-form button[type=submit]')
+    dpage.wait_for_selector('#pending-invites:not([hidden]) [data-pending-row]')
+    assert pl.name in dpage.inner_text('#pending-invite-list') and 'Waiting for a reply' in dpage.inner_text('#pending-invite-list')
+    assert dpage.locator('#member-list [data-member-row]').count() == 1                      # still only the owner
+    assert 'Invitation sent' in dpage.inner_text('#member-add-feedback')
+    dpage.screenshot(path='/tmp/invite-owner.png')
+
+    pctx = pl.context(pw, base); ppage = pctx.new_page(); pbad, perrs = _collect(ppage)
+    ppage.goto(base + '/campaigns'); ppage.wait_for_selector('.nav-badge')
+    assert ppage.inner_text('.nav-badge') == '1'
+    ppage.click('.nav-notifications'); ppage.wait_for_selector('.notification-card.is-unread'); ppage.wait_for_timeout(700)
+    assert 'invited you to Invites' in ppage.inner_text('.notification-card')
+    ppage.screenshot(path='/tmp/invite-player.png')
+    ppage.evaluate("() => document.documentElement.setAttribute('data-theme', 'light')")
+    ppage.wait_for_timeout(400); ppage.screenshot(path='/tmp/invite-player-light.png')
+    ppage.click('.notification-card button:has-text("Accept")'); ppage.wait_for_url(f'**/campaigns/{cid}/**')
+    assert ppage.locator('.nav-badge').count() == 0
+
+    dpage.goto(base + f'/campaigns/{cid}/edit'); dpage.wait_for_selector('#member-list')
+    assert dpage.locator('#member-list [data-member-row]').count() == 2 and dpage.locator('#pending-invites').is_hidden()
+    assert not derrs and not perrs, (derrs, perrs)
+    dctx.close(); pctx.close()

@@ -37,7 +37,7 @@ def test_sync_includes_pins_when_linked_and_matches_the_pins_endpoint(user):
 def test_players_get_the_same_redacted_pin_data_from_sync(make_user):
     dm, pl = make_user(), make_user()
     cid, mid = _setup(dm)
-    dm.post(f'/campaigns/{cid}/members/add', data={'username': pl.name, 'status': 'player'})
+    dm.add_member(cid, pl)
     npc = dm.new_character(cid, name='Ogre', max_hp=59, is_npc='on'); dm.add_to_battle(cid, npc)
     base = f'/campaigns/{cid}/api/maps/{mid}'
     dm.json(f'{base}/settings', {'linked_to_battle': 1})

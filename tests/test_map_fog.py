@@ -29,7 +29,7 @@ def _b64(raw):
 def _setup(make_user):
     dm, player = make_user(), make_user()
     cid = dm.new_campaign()
-    assert dm.post(f'/campaigns/{cid}/members/add', data={'username': player.name, 'status': 'player'}).status_code == 302
+    assert dm.add_member(cid, player).status_code == 302
     mid = dm.new_map(cid, w=W, h=H)
     return dm, player, cid, mid
 
@@ -176,7 +176,7 @@ def test_fog_on_a_jpeg_upload_is_stored_as_webp_and_hidden(make_user):
     """Uploaded JPEG maps are stored as WebP and sent to Players as WebP (never sent unmasked, and not as a huge PNG)."""
     dm, player = make_user(), make_user()
     cid = dm.new_campaign()
-    dm.post(f'/campaigns/{cid}/members/add', data={'username': player.name, 'status': 'player'})
+    dm.add_member(cid, player)
     buf = io.BytesIO(); Image.new('RGB', (W, H), (200, 40, 40)).save(buf, 'JPEG')
     r = dm.post(f'/campaigns/{cid}/maps/new', data={'name': 'Jpeg', 'image': (io.BytesIO(buf.getvalue()), 'm.jpg')},
                 content_type='multipart/form-data')

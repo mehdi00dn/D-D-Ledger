@@ -185,6 +185,16 @@ class User:
         assert rows, 'character not persisted'
         return rows[0]['id']
 
+    def add_member(self, cid, other, status='player'):
+        """Invite `other` to the campaign and have them accept (invitations are no longer instant joins)."""
+        r = self.post(f'/campaigns/{cid}/members/add', data={'username': other.name, 'status': status})
+        assert r.status_code == 302, f'invite -> {r.status_code}'
+        inv = q("SELECT i.id FROM campaign_invitations i JOIN users u ON u.id = i.invited_user_id "
+                "WHERE i.campaign_id = ? AND u.username = ? AND i.state = 'pending'", cid, other.name)[0]['id']
+        r = other.post(f'/invitations/{inv}/accept')
+        assert r.status_code == 302, f'accept -> {r.status_code}'
+        return r
+
     def new_group(self, cid, name=None, color='#336699'):
         name = name or f'Grp {uuid.uuid4().hex[:6]}'
         r = self.post(f'/campaigns/{cid}/factions/new', data={'name': name, 'color': color}, content_type='multipart/form-data')
