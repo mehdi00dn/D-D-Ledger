@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_icons.html" import icon %}
+{% from "_icons.html" import icon, class_icon %}
 {% set active_page = 'factions' %}
 {% block title %}{{ group.name }} — Campaign Ledger{% endblock %}
 
@@ -38,7 +38,7 @@
         <span class="avatar-frame">
           {% if m.avatar_path %}<img src="{{ url_for('uploaded_file', filename=m.avatar_path) }}" alt="">{% else %}{{ icon('user') }}{% endif %}
         </span>
-        <span class="faction-member-name" title="{{ m.name }}">{{ m.name }}</span>
+        <span class="faction-member-name" title="{{ m.name }}">{% if g.is_dm or not m.is_npc %}{{ class_icon(m.class_key) }}{% endif %}{{ m.name }}</span>
         <span class="dossier-tag {{ 'npc' if m.is_npc else '' }}">{{ 'NPC' if m.is_npc else 'PC' }}</span>
         <span class="faction-member-meta">Lvl {{ m.level }}</span>
       </a>

@@ -1266,6 +1266,33 @@ def character_edit(char_id):
     return render_template('character_form.html', character=character, sheets=sheets, groups=groups, from_battle=False, notes_entries=notes_entries)
 
 
+# Character classes (DL-43).  Optional on a character.  The text is the hover guide in the picker.
+CHARACTER_CLASSES = [
+    ('artificer', 'Artificer', 'An inventor who infuses magic into items and constructs.'),
+    ('barbarian', 'Barbarian', 'A fierce warrior who enters a damaging battle rage.'),
+    ('bard', 'Bard', 'A performer who weaves magic through art, music, and speech.'),
+    ('cleric', 'Cleric', 'A holy servant who channels divine power from a deity.'),
+    ('druid', 'Druid', 'A guardian of nature who wields primal magic and wild shapes.'),
+    ('fighter', 'Fighter', 'A master of martial combat and weapon mastery.'),
+    ('monk', 'Monk', 'A disciplined martial artist who harnesses inner ki energy.'),
+    ('paladin', 'Paladin', 'A holy knight bound by an oath and divine smites.'),
+    ('ranger', 'Ranger', 'A wilderness tracker blending combat and nature spells.'),
+    ('rogue', 'Rogue', 'A stealthy expert in traps, sneak attacks, and trickery.'),
+    ('sorcerer', 'Sorcerer', 'A spellcaster born with innate magical bloodlines.'),
+    ('warlock', 'Warlock', 'A seeker of secrets who makes a pact with an otherworldly being.'),
+    ('wizard', 'Wizard', 'A scholar who masters arcane magic through intense study.'),
+]
+CLASS_KEYS = [k for k, _l, _d in CHARACTER_CLASSES]
+app.jinja_env.globals['character_classes'] = [{'key': k, 'label': l, 'desc': d} for k, l, d in CHARACTER_CLASSES]
+app.jinja_env.globals['class_labels'] = {k: l for k, l, _d in CHARACTER_CLASSES}
+
+
+def _clean_class(raw):
+    """A known class key, or None (a class is optional)."""
+    raw = (raw or '').strip().lower() if isinstance(raw, str) else ''
+    return raw if raw in CLASS_KEYS else None
+
+
 def _save_character(db, char_id):
     form = request.form
     name = form.get('name', '').strip() or 'Unnamed'
@@ -1281,6 +1308,7 @@ def _save_character(db, char_id):
     armor_class = int(form.get('armor_class') or 10)
     notes = sanitize_notes_payload(form.get('notes', ''))
     group_id = _campaign_faction_id(db, form.get('group_id'))
+    class_key = _clean_class(form.get('class_key'))
 
     avatar_path = save_upload_field('avatar', 'avatars')
     remove_avatar = form.get('remove_avatar') == '1'
@@ -1289,10 +1317,10 @@ def _save_character(db, char_id):
         cur = db.execute('''
             INSERT INTO characters
             (name, is_npc, level, max_hp, str_score, dex_score, con_score, int_score,
-             wis_score, cha_score, armor_class, avatar_path, notes, group_id, campaign_id, created_by)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             wis_score, cha_score, armor_class, avatar_path, notes, group_id, class_key, campaign_id, created_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (name, is_npc, level, max_hp, str_score, dex_score, con_score, int_score,
-              wis_score, cha_score, armor_class, avatar_path, notes, group_id, g.campaign_id, session['user_id']))
+              wis_score, cha_score, armor_class, avatar_path, notes, group_id, class_key, g.campaign_id, session['user_id']))
         char_id = cur.lastrowid
     else:
         if avatar_path:
@@ -1307,10 +1335,10 @@ def _save_character(db, char_id):
             db.execute('UPDATE characters SET avatar_path = NULL WHERE id = ?', (char_id,))
         db.execute('''
             UPDATE characters SET name=?, is_npc=?, level=?, max_hp=?, str_score=?, dex_score=?,
-                con_score=?, int_score=?, wis_score=?, cha_score=?, armor_class=?, notes=?, group_id=?
+                con_score=?, int_score=?, wis_score=?, cha_score=?, armor_class=?, notes=?, group_id=?, class_key=?
             WHERE id=?
         ''', (name, is_npc, level, max_hp, str_score, dex_score, con_score, int_score,
-              wis_score, cha_score, armor_class, notes, group_id, char_id))
+              wis_score, cha_score, armor_class, notes, group_id, class_key, char_id))
 
     # multiple sheet images
     max_order = db.execute('SELECT COALESCE(MAX(sort_order), -1) AS m FROM character_sheets WHERE character_id = ?', (char_id,)).fetchone()['m']
@@ -1400,7 +1428,7 @@ def faction_detail(group_id):
         db.close()
         return redirect(url_for('factions_list'))
     members = db.execute('''
-        SELECT id, name, avatar_path, is_npc, level FROM characters
+        SELECT id, name, avatar_path, is_npc, level, class_key FROM characters
         WHERE group_id = ? AND campaign_id = ? AND is_temp_familiar = 0
         ORDER BY lower(name) ASC
     ''', (group_id, g.campaign_id)).fetchall()
@@ -1442,7 +1470,7 @@ def faction_edit(group_id):
 def _faction_candidates(db):
     """Everyone in this campaign who could be pulled into a faction (for the search-and-add box)."""
     rows = db.execute('''
-        SELECT c.id, c.name, c.is_npc, c.avatar_path, c.group_id, g.name AS group_name
+        SELECT c.id, c.name, c.is_npc, c.avatar_path, c.group_id, c.class_key, g.name AS group_name
         FROM characters c LEFT JOIN groups g ON c.group_id = g.id
         WHERE c.campaign_id = ? AND c.is_temp_familiar = 0
         ORDER BY lower(c.name) ASC
@@ -1631,7 +1659,7 @@ def _battle_rows(db, redact_enemies=False):
     never redacted -- a party can see its own stats."""
     rows = db.execute('''
         SELECT bp.*, c.name AS char_name, c.avatar_path, c.is_npc, c.max_hp AS char_max_hp,
-               c.armor_class AS base_ac, c.is_temp_familiar, c.familiar_icon_key,
+               c.armor_class AS base_ac, c.is_temp_familiar, c.familiar_icon_key, c.class_key,
                g.id AS gid, g.name AS group_name, g.color AS group_color
         FROM battle_participants bp
         JOIN characters c ON bp.character_id = c.id
@@ -1675,6 +1703,7 @@ def _battle_rows(db, redact_enemies=False):
             if r['is_npc']:
                 r['hidden_stats'] = True
                 r['conditions'] = []                   # what is affecting a monster is the DM's to reveal
+                r['class_key'] = None                  # ...and so is what class it is
                 r['current_hp'] = None
                 r['char_max_hp'] = None
                 r['temp_hp'] = None
@@ -2150,6 +2179,7 @@ def _build_export_zip(campaign_id, group_ids=None, character_ids=None, download_
                 'wis_score': c['wis_score'],
                 'cha_score': c['cha_score'],
                 'armor_class': c['armor_class'],
+                'class_key': c['class_key'],
                 'notes': notes_for_viewer(c['notes'], can_see_hidden_notes(c)),
                 'group_name': group_id_to_name.get(c['group_id']),
                 'avatar_file': c['avatar_path'],
@@ -2298,12 +2328,12 @@ def import_data():
         cur = db.execute('''
             INSERT INTO characters
             (name, is_npc, level, max_hp, str_score, dex_score, con_score, int_score,
-             wis_score, cha_score, armor_class, avatar_path, notes, group_id, campaign_id, created_by)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             wis_score, cha_score, armor_class, avatar_path, notes, group_id, class_key, campaign_id, created_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (c['name'], c['is_npc'], c['level'], c['max_hp'],
               c['str_score'], c['dex_score'], c['con_score'], c['int_score'],
               c['wis_score'], c['cha_score'], c['armor_class'],
-              avatar_path, c['notes'], group_id, g.campaign_id, session['user_id']))
+              avatar_path, c['notes'], group_id, _clean_class(c.get('class_key')), g.campaign_id, session['user_id']))
         new_char_id = cur.lastrowid
 
         for i, sheet_rel_path in enumerate(c['sheet_files']):
@@ -2784,7 +2814,7 @@ def _map_pins_payload(db, map_id):
         if p['participant_id']:
             live = db.execute('''
                 SELECT bp.current_hp, bp.is_dead, c.id AS character_id, c.name AS char_name, c.avatar_path,
-                       c.max_hp AS char_max_hp, c.is_npc, c.is_temp_familiar, g.color AS group_color
+                       c.max_hp AS char_max_hp, c.is_npc, c.is_temp_familiar, c.class_key, g.color AS group_color
                 FROM battle_participants bp
                 JOIN characters c ON bp.character_id = c.id
                 LEFT JOIN groups g ON c.group_id = g.id
@@ -2801,6 +2831,7 @@ def _map_pins_payload(db, map_id):
                 p['hidden_stats'] = True
                 p['current_hp'] = None
                 p['char_max_hp'] = None
+                p['class_key'] = None
         result.append(p)
     return result
 

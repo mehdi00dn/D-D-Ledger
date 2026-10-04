@@ -52,7 +52,10 @@
     }
     matches.slice(0, MAX_SHOWN).forEach((c) => {
       const row = el('div', 'member-result');
-      row.appendChild(el('span', 'member-result-name', c.name));
+      const nm = el('span', 'member-result-name');
+      if (window.classIconHtml) nm.innerHTML = window.classIconHtml(c.class_key);
+      nm.appendChild(document.createTextNode(c.name));
+      row.appendChild(nm);
       row.appendChild(el('span', 'dossier-tag' + (c.is_npc ? ' npc' : ''), c.is_npc ? 'NPC' : 'PC'));
       const inThis = c.group_id === groupId;
       row.appendChild(el('span', 'member-result-meta',

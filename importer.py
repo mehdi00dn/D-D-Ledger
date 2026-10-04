@@ -151,6 +151,7 @@ def normalize_manifest(manifest, sanitize_notes):
             'wis_score': _int(c.get('wis_score'), 10, 0, 100),
             'cha_score': _int(c.get('cha_score'), 10, 0, 100),
             'armor_class': _int(c.get('armor_class'), 10, 0, 100),
+            'class_key': _clean(c.get('class_key'), 40).strip().lower() or None,   # checked against the known classes on import
             'notes': sanitize_notes(_clean(c.get('notes'), 200000)),
             'group_name': _clean(c.get('group_name'), 120).strip() or None,
             'avatar_file': _image_ref(c.get('avatar_file')),

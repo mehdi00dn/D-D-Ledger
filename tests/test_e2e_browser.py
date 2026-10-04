@@ -344,3 +344,39 @@ def test_new_faction_form_can_add_members(pw, shared_server):
     assert aria['group_name'] == 'Ashfall Company'                          # Aria joined the faction while it was created
     assert not errs, errs
     dctx.close()
+
+
+def test_class_dropdown_hover_guide_select_clear_and_icons(pw, shared_server):
+    base = shared_server.url; dm = Api(base); cid = dm.campaign('Classes')
+    dctx = dm.context(pw, base); page = dctx.new_page(); bad, errs = _collect(page)
+    page.goto(base + f'/campaigns/{cid}/characters/new'); page.wait_for_selector('#class-trigger')
+    assert page.locator('#class-menu').is_hidden() and page.inner_text('#class-trigger-text') == 'No class'
+    page.click('#class-trigger'); page.wait_for_selector('#class-menu:not([hidden])')
+    assert page.locator('.class-option').count() == 14                       # "No class" + the 13 classes
+    page.hover('.class-option[data-value=wizard]'); page.wait_for_selector('.class-tip:not([hidden])')
+    assert 'scholar who masters arcane magic' in page.inner_text('.class-tip') and 'Wizard' in page.inner_text('.class-tip')
+    page.screenshot(path='/tmp/class-hover.png')
+    page.fill('#name', 'Merlin')
+    page.click('.class-option[data-value=wizard]')
+    assert page.locator('#class-menu').is_hidden() and page.input_value('#class_key') == 'wizard'
+    assert page.inner_text('#class-trigger-text') == 'Wizard' and page.locator('#class-trigger-icon svg').count() == 1
+    page.click('#class-trigger'); page.click('.class-option-none')           # back to no class
+    assert page.input_value('#class_key') == '' and page.inner_text('#class-trigger-text') == 'No class'
+    page.focus('#class-trigger'); page.keyboard.press('ArrowDown')            # keyboard: open, move, choose
+    page.keyboard.press('ArrowDown'); page.keyboard.press('ArrowDown'); page.keyboard.press('ArrowDown'); page.keyboard.press('Enter')
+    assert page.input_value('#class_key') == 'bard'
+    page.click('#class-trigger')
+    page.evaluate("() => document.documentElement.setAttribute('data-theme', 'light')")
+    page.screenshot(path='/tmp/class-picker-light.png')
+    page.evaluate("() => document.documentElement.setAttribute('data-theme', 'dark')")
+    page.keyboard.press('Escape')
+    page.screenshot(path='/tmp/class-picker.png')
+    page.click('.form-actions button[type=submit]'); page.wait_for_timeout(1200)
+    page.goto(base + f'/campaigns/{cid}/characters'); page.wait_for_selector('.dossier-name .class-icon')
+    assert page.locator('.dossier-name .class-icon').get_attribute('title') == 'Bard'
+    chid = next(c for c in dm.get(f'/campaigns/{cid}/api/characters').json() if c['name'] == 'Merlin')['id']
+    dm.post(f'/campaigns/{cid}/api/battle/add', json={'character_id': chid})
+    page.goto(base + f'/campaigns/{cid}/battle'); page.wait_for_selector('.battle-name .class-icon')
+    page.screenshot(path='/tmp/class-battle.png')
+    assert not errs, errs
+    dctx.close()

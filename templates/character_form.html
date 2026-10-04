@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_icons.html" import icon %}
+{% from "_icons.html" import icon, class_icon %}
 {% set active_page = 'characters' %}
 {% macro note_block(content='', hidden=False) %}
 <div class="note-block" data-note-block>
@@ -55,6 +55,26 @@
           <input type="checkbox" name="is_npc" {{ 'checked' if character and character.is_npc else '' }}>
           This is an NPC (not a player character)
         </label>
+      </div>
+    </div>
+    <div class="field">
+      <label id="class-label">Class <span class="field-optional">optional</span></label>
+      {% set cur = character.class_key if character and character.class_key else '' %}
+      <div class="class-select" id="class-picker">
+        <input type="hidden" name="class_key" id="class_key" value="{{ cur }}">
+        <button type="button" class="class-trigger" id="class-trigger" aria-haspopup="listbox" aria-expanded="false" aria-labelledby="class-label class-trigger-text">
+          <span class="class-trigger-icon" id="class-trigger-icon"></span>
+          <span class="class-trigger-text" id="class-trigger-text">No class</span>
+          {{ icon('chevron-down') }}
+        </button>
+        <ul class="class-menu" id="class-menu" role="listbox" aria-labelledby="class-label" tabindex="-1" hidden>
+          <li class="class-option class-option-none" role="option" data-value="" data-tip-title="No class" data-tip="Leave the class empty - it is optional."><span class="class-option-icon"></span><span>No class</span></li>
+          {% for c in character_classes %}
+          <li class="class-option" role="option" data-value="{{ c.key }}" data-tip-title="{{ c.label }}" data-tip="{{ c.desc }}">
+            <span class="class-option-icon"><svg aria-hidden="true"><use href="/static/icons/classes.svg#{{ c.key }}"></use></svg></span><span>{{ c.label }}</span>
+          </li>
+          {% endfor %}
+        </ul>
       </div>
     </div>
   </div>

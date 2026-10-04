@@ -571,7 +571,7 @@
     const avatarInner = isChar
       ? (p.avatar_path ? `<img src="/uploads/${p.avatar_path}" alt="">` : USER_FALLBACK_ICON)
       : `<img src="${PROP_ICON_SRC[p.icon_key] || PROP_ICON_SRC.paw}" alt="" class="prop-icon-img">`;
-    const label = isChar ? escapeHtml(p.char_name || '') : escapeHtml(p.custom_name || p.icon_key || 'Marker');
+    const label = isChar ? classIconHtml(p.class_key) + escapeHtml(p.char_name || '') : escapeHtml(p.custom_name || p.icon_key || 'Marker');
     const unlockOverlay = p.locked ? `<button type="button" class="pin-unlock-icon" data-unlock-pin="${p.id}" title="Unlock">${UNLOCK_SVG}</button>` : '';
     // The label sits on `.map-pin` itself (never rotated); only the inner
     // `.map-pin-visual` circle spins, so names stay upright and in place.
@@ -1238,7 +1238,7 @@
       <div class="detail-header">
         <div class="avatar-frame" style="width:72px;height:72px;">${c.avatar_path ? `<img src="/uploads/${c.avatar_path}">` : ''}</div>
         <div>
-          <div class="dossier-name">${escapeHtml(c.name)}</div>
+          <div class="dossier-name">${classIconHtml(c.class_key)}${escapeHtml(c.name)}</div>
           <div class="dossier-meta">Lvl ${c.level} &middot; ${c.group_name || 'Ungrouped'}</div>
         </div>
       </div>

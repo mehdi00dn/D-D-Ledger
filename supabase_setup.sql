@@ -325,4 +325,12 @@ ALTER TABLE battle_participants ADD COLUMN conditions TEXT NOT NULL DEFAULT '';
 
 INSERT INTO schema_migrations (version) VALUES ('0008_battle_conditions.sql');
 
+-- ---- 0009_character_class.sql ----
+
+-- Optional character class (one of the 13 keys listed in app.py, CHARACTER_CLASSES).
+-- Unknown values are rejected by the app; the column itself stays free text so adding a class never needs a migration.
+ALTER TABLE characters ADD COLUMN class_key TEXT;
+
+INSERT INTO schema_migrations (version) VALUES ('0009_character_class.sql');
+
 COMMIT;

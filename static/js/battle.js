@@ -136,7 +136,7 @@
       <div class="battle-avatar" style="border-color:${p.group_color || 'var(--brass)'};">${avatarMarkup(p)}</div>
 
       <div class="battle-name-block">
-        <div class="battle-name">${escapeHtml(p.display_name)}${p.is_active ? '<span class="turn-tag">Turn</span>' : ''}</div>
+        <div class="battle-name">${classIconHtml(p.class_key)}${escapeHtml(p.display_name)}${p.is_active ? '<span class="turn-tag">Turn</span>' : ''}</div>
         <div class="battle-meta">${groupDot}${p.group_name ? escapeHtml(p.group_name) : 'No Faction'} &middot; ${p.is_npc ? 'NPC' : 'PC'}</div>
         ${conditionChips(p)}
       </div>
@@ -390,7 +390,7 @@
       <div class="add-character-item">
         <div class="battle-avatar" style="width:36px;height:36px;border-color:${c.group_color || 'var(--brass)'};">${c.avatar_path ? `<img src="/uploads/${c.avatar_path}" alt="">` : ICONS.user}</div>
         <div class="battle-name-block">
-          <div class="battle-name" style="font-size:14px;">${escapeHtml(c.name)}</div>
+          <div class="battle-name" style="font-size:14px;">${classIconHtml(c.class_key)}${escapeHtml(c.name)}</div>
           <div class="battle-meta">${c.group_name ? escapeHtml(c.group_name) : 'No Faction'}</div>
         </div>
         <button type="button" class="btn btn-primary btn-sm" data-add-char="${c.id}">Add</button>
@@ -482,7 +482,7 @@
       <div class="detail-header">
         <div class="avatar-frame" style="width:72px;height:72px;">${c.avatar_path ? `<img src="/uploads/${c.avatar_path}">` : ICONS.user}</div>
         <div>
-          <div class="dossier-name">${escapeHtml(c.name)}</div>
+          <div class="dossier-name">${classIconHtml(c.class_key)}${escapeHtml(c.name)}</div>
           <div class="dossier-meta">Lvl ${c.level} &middot; ${c.group_name || 'No Faction'}</div>
         </div>
       </div>

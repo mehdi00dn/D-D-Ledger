@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_icons.html" import icon %}
+{% from "_icons.html" import icon, class_icon %}
 {% set active_page = 'characters' %}
 {% block title %}{{ character.name }} — Campaign Ledger{% endblock %}
 
@@ -27,7 +27,7 @@
       {% endif %}
     </div>
     <div>
-      <div class="dossier-name">{{ character.name }}</div>
+      <div class="dossier-name">{% if not stats_hidden %}{{ class_icon(character.class_key) }}{% endif %}{{ character.name }}</div>
       <div class="dossier-meta">Lvl {{ character.level }} &middot; {{ character.group_name or 'Ungrouped' }}</div>
     </div>
   </div>
