@@ -450,3 +450,32 @@ def test_invitation_flow_in_the_browser(pw, shared_server):
     assert dpage.locator('#member-list [data-member-row]').count() == 2 and dpage.locator('#pending-invites').is_hidden()
     assert not derrs and not perrs, (derrs, perrs)
     dctx.close(); pctx.close()
+
+
+def test_invite_link_options_appear_live_when_the_access_mode_changes(pw, shared_server):
+    base = shared_server.url; dm = Api(base)
+    cid = dm.campaign('Links')
+    ctx = dm.context(pw, base); page = ctx.new_page(); bad, errs = _collect(page)
+    page.goto(base + f'/campaigns/{cid}/edit'); page.wait_for_load_state('networkidle')
+    assert page.is_hidden('#invite-links')                                      # private: nothing to show
+
+    page.click('label.access-option:has(input[value=invite_link])')                    # no save, no reload
+    assert page.is_visible('#invite-links')
+    assert page.is_visible('#invite-links-unsaved') and page.is_disabled('#invite-link-form button[type=submit]')
+    page.screenshot(path='/tmp/invite_links_unsaved.png', clip=page.locator('#invite-links').bounding_box())
+
+    page.click('label.access-option:has(input[value=private])')
+    assert page.is_hidden('#invite-links')
+
+    page.click('label.access-option:has(input[value=invite_link])')
+    page.click('#campaign-form button[type=submit]'); page.wait_for_load_state('networkidle')
+    page.goto(base + f'/campaigns/{cid}/edit'); page.wait_for_load_state('networkidle')
+    assert page.is_visible('#invite-links') and page.is_hidden('#invite-links-unsaved')
+    assert page.is_enabled('#invite-link-form button[type=submit]')
+    page.fill('#invite-link-form input[name=max_uses]', '3')
+    page.click('#invite-link-form button[type=submit]'); page.wait_for_selector('#invite-link-url')
+    assert '/join/' in page.input_value('#invite-link-url')
+    page.wait_for_timeout(600)
+    page.screenshot(path='/tmp/invite_links_saved.png', clip=page.locator('#invite-links').bounding_box())
+    assert not errs and not bad
+    ctx.close()

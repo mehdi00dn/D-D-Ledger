@@ -196,8 +196,9 @@
     <div class="member-add-feedback" id="member-add-feedback" hidden></div>
     {% endif %}
 
-    {% if is_owner and cur_access == 'invite_link' %}
-    <div class="invite-links" id="invite-links">
+    {% if is_owner %}
+    {% set links_saved = cur_access == 'invite_link' %}
+    <div class="invite-links" id="invite-links" {{ 'hidden' if not links_saved }}>
       <p class="pending-invites-title">Invite links</p>
       {% if new_invite_link %}
       <div class="invite-link-new" id="invite-link-new">
@@ -208,8 +209,9 @@
         </div>
       </div>
       {% endif %}
+      <p class="hint-text invite-links-unsaved" id="invite-links-unsaved" hidden>Save your changes to start creating links.</p>
       <form method="POST" action="{{ url_for('invite_link_create', campaign_id=campaign.id) }}" class="invite-link-form" id="invite-link-form">{{ csrf_field() }}
-        <label>Expires
+        <label class="invite-field">Expires
           <select name="expires_in">
             <option value="1h">in 1 hour</option>
             <option value="1d">in 1 day</option>
@@ -217,10 +219,10 @@
             <option value="30d">in 30 days</option>
           </select>
         </label>
-        <label>Max uses
+        <label class="invite-field">Max uses
           <input type="number" name="max_uses" min="1" max="500" placeholder="Unlimited">
         </label>
-        <button type="submit" class="btn btn-primary btn-sm">{{ icon('plus') }} Create link</button>
+        <button type="submit" class="btn btn-primary btn-sm invite-link-submit">{{ icon('plus') }} Create link</button>
       </form>
       {% if invite_links %}
       <div class="member-list" id="invite-link-list">
@@ -269,6 +271,24 @@
 </div>
 
 <script>
+(function () {
+  var panel = document.getElementById('invite-links');
+  if (!panel) return;
+  var saved = {{ 'true' if cur_access == 'invite_link' else 'false' }};
+  var form = document.getElementById('invite-link-form');
+  var note = document.getElementById('invite-links-unsaved');
+  function sync() {
+    var picked = document.querySelector('input[name="access_mode"]:checked');
+    var on = picked && picked.value === 'invite_link';
+    panel.hidden = !on;
+    var locked = on && !saved;                 // chosen but not saved yet: show the options, but links need the saved mode
+    note.hidden = !locked;
+    Array.prototype.forEach.call(form.elements, function (el) { if (el.type !== 'hidden') el.disabled = locked; });
+    form.classList.toggle('is-locked', locked);
+  }
+  Array.prototype.forEach.call(document.querySelectorAll('input[name="access_mode"]'), function (r) { r.addEventListener('change', sync); });
+  sync();
+})();
 (function () {
   var copyBtn = document.getElementById('invite-link-copy-btn');
   if (copyBtn) copyBtn.addEventListener('click', function () {
