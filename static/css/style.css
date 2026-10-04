@@ -1293,11 +1293,9 @@ body.page-leaving .content {
   100% { transform: translateX(250%); }
 }
 
-/* Circular variant -- used over avatar/map-image previews.  A dark backing disc keeps it
-   legible on any picture, the ring fills clockwise, and the live percentage sits in the
-   middle.  JS drives it through two custom properties: --pct (0-100, fractional, for the
-   ring) and --pct-int (whole number, for the label).  A compound selector so it wins over
-   the linear-bar rules above regardless of source order. */
+/* Circular variant -- used over avatar/map-image previews.  Just the animated ring (static/js/loading-ring.js,
+   a re-creation of the supplied Lottie), centred on the picture in the brand brass; a soft shadow keeps it legible
+   on any image.  No backing disc, track or number.  A compound selector so it wins over the linear-bar rules above. */
 .upload-progress.upload-progress-circle {
   position: absolute;
   left: 50%;
@@ -1305,39 +1303,19 @@ body.page-leaving .content {
   right: auto;
   bottom: auto;
   transform: translate(-50%, -50%);
-  width: 42px;
-  height: 42px;
-  display: grid;
-  place-items: center;
+  width: 46px;
+  height: 46px;
   border: none;
-  border-radius: 50%;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
   overflow: visible;
-  background: rgba(11, 13, 19, 0.78);
-  box-shadow:
-    0 2px 8px rgba(0, 0, 0, 0.45),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.06);
-  counter-reset: upct var(--pct-int, 0);
+  color: var(--brass-bright);
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.6));
+  pointer-events: none;
 }
 .upload-progress.upload-progress-circle[hidden] { display: none; }
-.upload-progress.upload-progress-circle::before {
-  content: '';
-  position: absolute;
-  inset: 1px;
-  border-radius: 50%;
-  background: conic-gradient(
-    var(--brass-bright) calc(var(--pct, 0) * 1%),
-    rgba(236, 227, 201, 0.18) 0
-  );
-  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 3px));
-          mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 3px));
-}
-.upload-progress.upload-progress-circle::after {
-  content: counter(upct) '%';
-  position: relative;
-  font: 600 10px/1 var(--font-mono);
-  font-variant-numeric: tabular-nums;
-  color: var(--parchment);
-}
+.upload-progress.upload-progress-circle svg { display: block; width: 100%; height: 100%; overflow: visible; }
 
 /* The Save / Create button doubles as a progress bar while an upload is in flight -- that's
    where the eyes are after clicking, and the avatar ring can be scrolled out of view. */

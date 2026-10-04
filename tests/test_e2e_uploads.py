@@ -130,9 +130,21 @@ def _sample(page, selector, seconds, js):
     return out
 
 
-RING = "el => ({pct: parseFloat(getComputedStyle(el).getPropertyValue('--pct') || '0'), " \
-       "shown: !el.hidden && getComputedStyle(el).display !== 'none' && el.getBoundingClientRect().width > 20, " \
-       "cls: el.className})"
+# The ring is the looping "Insider loading circle" animation (static/js/loading-ring.js): no percentage, no track,
+# no backing disc -- just two chasing arcs.  The real figure lives on the Save button.
+RING = "el => ({shown: !el.hidden && getComputedStyle(el).display !== 'none' && el.getBoundingClientRect().width > 20, " \
+       "arcs: el.querySelectorAll('svg circle').length, text: el.textContent.trim(), " \
+       "before: getComputedStyle(el, '::before').content, after: getComputedStyle(el, '::after').content, " \
+       "bg: getComputedStyle(el).backgroundColor, " \
+       "frame: [...el.querySelectorAll('svg circle')].map(c => c.getAttribute('stroke-dasharray') + '|' + c.getAttribute('transform')).join(';')})"
+
+
+def _assert_plain_animated_ring(ring):
+    assert all(r['shown'] for r in ring), 'the ring disappeared mid-upload'
+    assert all(r['arcs'] == 2 for r in ring), ring[0]
+    assert all(r['text'] == '' and r['after'] in ('none', 'normal') and r['before'] in ('none', 'normal') for r in ring), 'extra stuff on the ring'
+    assert all(r['bg'] in ('rgba(0, 0, 0, 0)', 'transparent') for r in ring), 'a backing disc is still drawn'
+    assert len({r['frame'] for r in ring}) >= 5, 'the ring is not animating'
 
 
 def test_progress_fills_during_a_slow_upload(pw, shared_server):
@@ -147,23 +159,27 @@ def test_progress_fills_during_a_slow_upload(pw, shared_server):
     page.wait_for_selector('#crop-apply-btn', state='visible'); page.click('#crop-apply-btn'); page.wait_for_timeout(400)
     _slow(ctx, page, latency_ms=20, up_bytes_per_s=250_000)
     page.click('main.content button[type=submit]')
-    ring = _sample(page, '.upload-progress-circle', 8, RING)
+    both = _sample(page, 'main.content', 8, """main => {
+        const ring = main.querySelector('.upload-progress-circle'), btn = main.querySelector('button[type=submit]');
+        const r = (%s)(ring);
+        r.pct = parseFloat(btn.style.getPropertyValue('--btn-pct') || '0'); r.btn = btn.textContent.trim();
+        return r
+    }""" % RING)
     ctx.close()
-    assert len(ring) >= 5, f'never saw the ring during the upload: {ring}'
-    first = next((i for i, r in enumerate(ring) if r['shown']), None)      # a big image is shrunk first ('Preparing…')
+    assert len(both) >= 5, f'never saw the ring during the upload: {both}'
+    first = next((i for i, r in enumerate(both) if r['shown']), None)     # a big image is shrunk first ('Preparing…')
     assert first is not None, 'the ring never appeared'
-    ring = ring[first:]
-    pcts = [r['pct'] for r in ring]
-    assert all(r['shown'] for r in ring), 'the ring disappeared again mid-upload'
-    assert not any('is-indeterminate' in r['cls'] for r in ring), 'fell back to the indeterminate spinner'
-    assert pcts == sorted(pcts), f'the fill went backwards: {pcts}'
-    assert any(5 < p < 80 for p in pcts), f'no genuine mid-upload fill observed: {pcts}'
+    both = both[first:]
+    _assert_plain_animated_ring(both)
+    pcts = [r['pct'] for r in both]
+    assert pcts == sorted(pcts), f'the button fill went backwards: {pcts}'
+    assert any(5 < p < 80 for p in pcts), f'no genuine mid-upload fill on the button: {pcts}'
 
 
 def test_progress_keeps_filling_while_a_slow_server_works(pw, shared_server):
     """Slow SERVER, tiny file -- what a cropped avatar on Vercel actually looks like: the bytes
     are out instantly and all that's left is waiting.  That wait must still read as a fill
-    heading toward done (ring number, ring, and Save button), not as a spinner or a frozen page."""
+    heading toward done (the Save button counting up, the ring still turning), not as a spinner or a frozen page."""
     base = shared_server.url; api = Api(base); cid = api.campaign('SlowServer')
     ctx, page, seen, bad, errs = new_page(pw, api, base)
     page.goto(f'{base}/campaigns/{cid}/characters/new'); page.wait_for_load_state('networkidle')
@@ -174,19 +190,18 @@ def test_progress_keeps_filling_while_a_slow_server_works(pw, shared_server):
     page.click('main.content button[type=submit]')
     both = _sample(page, 'main.content',  4, """main => {
         const ring = main.querySelector('.upload-progress-circle'), btn = main.querySelector('button[type=submit]');
-        return {pct: parseFloat(getComputedStyle(ring).getPropertyValue('--pct') || '0'),
-                shown: !ring.hidden && ring.getBoundingClientRect().width > 20, cls: ring.className,
-                num: getComputedStyle(ring).getPropertyValue('--pct-int').trim(), btn: btn.textContent.trim(), disabled: btn.disabled}
-    }""")
+        const r = (%s)(ring);
+        r.pct = parseFloat(btn.style.getPropertyValue('--btn-pct') || '0'); r.btn = btn.textContent.trim(); r.disabled = btn.disabled;
+        return r
+    }""" % RING)
     ctx.close()
     pcts = [r['pct'] for r in both]
     assert len(both) >= 8, f'too few samples: {len(both)}'
-    assert all(r['shown'] for r in both) and not any('is-indeterminate' in r['cls'] for r in both)
-    assert pcts == sorted(pcts), f'the fill went backwards: {pcts}'
+    _assert_plain_animated_ring(both)
+    assert pcts == sorted(pcts), f'the button fill went backwards: {pcts}'
     assert pcts[-1] > pcts[0] and 80 <= pcts[-1] < 100, f'should creep toward (never reach) 100 while waiting: {pcts}'
     assert all(r['disabled'] for r in both), 'the Save button must stay disabled while the request is in flight'
     assert re.fullmatch(r'Saving\W+\d+%', both[-1]['btn']), both[-1]['btn']
-    assert abs(int(both[-1]['num']) - round(pcts[-1])) <= 1, both[-1]      # the number shown in the ring's middle
 
 
 def test_import_button_shows_progress(pw, shared_server):

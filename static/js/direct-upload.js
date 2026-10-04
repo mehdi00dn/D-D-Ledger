@@ -48,7 +48,7 @@
     return new Promise(function (resolve) { canvas.toBlob(resolve, type, quality); });
   }
 
-  // --- Progress indicator: a ring over image previews, a bar on the import forms. ---
+  // --- Progress indicator: a looping ring over image previews, a bar on the import forms. ---
   // One continuous 0..100 fill, never a spinner:
   //   * real bytes leaving the browser fill the first UPLOAD_SHARE percent;
   //   * once they're out, the server still has to re-encode / store / redirect, and it can't
@@ -68,10 +68,7 @@
 
   function paint(el, pct) {
     el._pct = pct;
-    if (el.classList.contains('upload-progress-circle')) {
-      el.style.setProperty('--pct', pct);                       // the ring
-      el.style.setProperty('--pct-int', Math.round(pct));       // the number in its middle
-    } else {
+    if (!el.classList.contains('upload-progress-circle')) {      // the ring is a looping animation, not a gauge
       el.querySelector('.upload-progress-bar').style.width = pct + '%';
     }
     if (el._onPaint) el._onPaint(pct);                          // mirror it on the Save button
