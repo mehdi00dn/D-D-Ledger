@@ -370,6 +370,7 @@ def test_class_dropdown_hover_guide_select_clear_and_icons(pw, shared_server):
     assert page.inner_text('#class-trigger-text') == 'Wizard' and page.locator('#class-trigger-icon svg').count() == 1
     page.click('#class-trigger'); page.click('.class-option-none')           # back to no class
     assert page.input_value('#class_key') == '' and page.inner_text('#class-trigger-text') == 'No class'
+    page.mouse.move(5, 5)                                                      # a resting pointer over the menu would hover-select over the keys
     page.focus('#class-trigger'); page.keyboard.press('ArrowDown')            # keyboard: open, move, choose
     page.keyboard.press('ArrowDown'); page.keyboard.press('ArrowDown'); page.keyboard.press('ArrowDown'); page.keyboard.press('Enter')
     assert page.input_value('#class_key') == 'bard'
@@ -427,6 +428,7 @@ def test_invitation_flow_in_the_browser(pw, shared_server):
     pctx = pl.context(pw, base); ppage = pctx.new_page(); pbad, perrs = _collect(ppage)
     ppage.goto(base + '/campaigns'); ppage.wait_for_selector('.nav-badge')
     assert ppage.inner_text('.nav-badge') == '1'
+    assert 'Campaigns' in ppage.inner_text('.sidebar-nav') and ppage.locator('.foot-bell').count() == 0     # outside a campaign: Campaigns + Notifications in the menu
     ppage.click('.nav-notifications'); ppage.wait_for_selector('.notification-card.is-unread'); ppage.wait_for_timeout(700)
     assert 'invited you to Invites' in ppage.inner_text('.notification-card')
     ppage.screenshot(path='/tmp/invite-player.png')
@@ -434,8 +436,17 @@ def test_invitation_flow_in_the_browser(pw, shared_server):
     ppage.wait_for_timeout(400); ppage.screenshot(path='/tmp/invite-player-light.png')
     ppage.click('.notification-card button:has-text("Accept")'); ppage.wait_for_url(f'**/campaigns/{cid}/**')
     assert ppage.locator('.nav-badge').count() == 0
+    # inside a campaign the bell is an icon-only button beside the theme switch, not a menu entry
+    assert ppage.locator('.sidebar-nav .nav-notifications').count() == 0
+    assert ppage.locator('.foot-actions #theme-toggle').count() == 1 and ppage.locator('.foot-actions .foot-bell').count() == 1
+    assert ppage.inner_text('.foot-bell').strip() == ''
 
     dpage.goto(base + f'/campaigns/{cid}/edit'); dpage.wait_for_selector('#member-list')
+    assert dpage.inner_text('.foot-bell .nav-badge') == '1'                                      # the owner learns the invitation was accepted
+    dpage.wait_for_timeout(600); dpage.screenshot(path='/tmp/foot-bell.png', clip={'x': 0, 'y': 650, 'width': 240, 'height': 250})
+    dpage.evaluate("() => document.documentElement.setAttribute('data-sidebar', 'collapsed')"); dpage.wait_for_timeout(500)
+    dpage.screenshot(path='/tmp/foot-bell-collapsed.png', clip={'x': 0, 'y': 600, 'width': 140, 'height': 300})
+    dpage.evaluate("() => document.documentElement.removeAttribute('data-sidebar')")
     assert dpage.locator('#member-list [data-member-row]').count() == 2 and dpage.locator('#pending-invites').is_hidden()
     assert not derrs and not perrs, (derrs, perrs)
     dctx.close(); pctx.close()

@@ -75,13 +75,17 @@
         </button>
       </form>
       {% endif %}
-      {% endif %}
+      {% else %}
+      <a href="{{ url_for('campaigns_list') }}" class="nav-tab {{ 'active' if active_page == 'campaigns' else '' }}" title="Campaigns">
+        {{ icon('scroll') }}<span>Campaigns</span>
+      </a>
       {% if session.user_id %}
       {% set unread = unread_notification_count() %}
       <a href="{{ url_for('notifications_page') }}" class="nav-tab nav-notifications {{ 'active' if active_page == 'notifications' else '' }}" title="Notifications">
         {{ icon('bell') }}<span>Notifications</span>
         {% if unread %}<em class="nav-badge" aria-label="{{ unread }} unread">{{ unread if unread < 100 else '99+' }}</em>{% endif %}
       </a>
+      {% endif %}
       {% endif %}
     </nav>
 
@@ -94,10 +98,19 @@
         </form>
       </div>
       {% endif %}
-      <button type="button" class="theme-toggle-btn" id="theme-toggle" title="Toggle light/dark mode">
-        <span class="theme-icon theme-icon-sun">{{ icon('sun') }}</span>
-        <span class="theme-icon theme-icon-moon">{{ icon('moon') }}</span>
-      </button>
+      <div class="foot-actions">
+        <button type="button" class="theme-toggle-btn" id="theme-toggle" title="Toggle light/dark mode">
+          <span class="theme-icon theme-icon-sun">{{ icon('sun') }}</span>
+          <span class="theme-icon theme-icon-moon">{{ icon('moon') }}</span>
+        </button>
+        {% if g.campaign_id and session.user_id %}
+        {% set unread = unread_notification_count() %}
+        <a href="{{ url_for('notifications_page') }}" class="foot-bell" title="Notifications{{ ' (%d unread)' % unread if unread else '' }}" aria-label="Notifications{{ ' (%d unread)' % unread if unread else '' }}">
+          {{ icon('bell') }}
+          {% if unread %}<em class="nav-badge">{{ unread if unread < 100 else '99+' }}</em>{% endif %}
+        </a>
+        {% endif %}
+      </div>
       <span class="foot-line"></span>
       <span class="foot-label">v0.1 &middot; local session</span>
     </div>

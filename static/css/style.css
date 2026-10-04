@@ -436,9 +436,9 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 100%;
+  flex: 1 1 auto;
+  min-width: 0;
   padding: 20px;
-  margin-bottom: 14px;
   border-radius: var(--radius-s);
   border: 1px solid var(--hairline);
   background: transparent;
@@ -2782,3 +2782,15 @@ body.page-leaving .content {
 .member-row.is-pending .member-name { flex: 1 1 0; min-width: 0; flex-wrap: wrap; row-gap: 2px; }
 .member-row.is-pending .member-actions { margin-left: auto; }
 .pending-tag { flex-basis: 100%; font-size: 12px; font-style: italic; color: var(--parchment-dim); }
+
+/* DL-93: inside a campaign the notifications bell sits beside the theme switch (icon only). */
+.foot-actions { display: flex; gap: 8px; margin-bottom: 14px; }
+.foot-bell {
+  flex: 0 0 auto; position: relative; display: flex; align-items: center; justify-content: center; width: 58px;
+  border-radius: var(--radius-s); border: 1px solid var(--hairline); color: var(--brass-bright);
+}
+.foot-bell:hover { border-color: var(--brass); background: rgba(201,162,75,0.08); }
+.foot-bell svg { width: 17px; height: 17px; }
+.foot-bell .nav-badge { position: absolute; top: 4px; right: 4px; margin: 0; min-width: 16px; padding: 0 4px; font-size: 10px; line-height: 16px; }
+:root[data-sidebar="collapsed"] .foot-actions { flex-direction: column; }
+:root[data-sidebar="collapsed"] .foot-bell { width: auto; padding: 14px 0; }
