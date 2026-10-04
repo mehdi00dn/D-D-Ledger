@@ -83,7 +83,7 @@ def test_familiar_prop_pin_lifecycle_when_map_is_linked(camp):
     mid = u.new_map(cid)
     u.json(f'/campaigns/{cid}/api/maps/{mid}/settings', {'linked_to_battle': 1})
     P = f'/campaigns/{cid}/api/maps/{mid}/pins'
-    made = u.json(P, {'pin_type': 'prop', 'icon_key': 'wolf', 'custom_name': 'Fang', 'x': 3, 'y': 4}).get_json()
+    made = u.json(P, {'pin_type': 'prop', 'icon_key': 'paw', 'custom_name': 'Fang', 'x': 3, 'y': 4}).get_json()
     assert made['participant_id']
     rows = u.battle(cid)
     assert [r['char_name'] for r in rows] == ['Fang'] and rows[0]['is_temp_familiar'] == 1

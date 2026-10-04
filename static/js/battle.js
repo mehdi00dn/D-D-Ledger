@@ -24,29 +24,34 @@
 
   function avatarMarkup(p) {
     if (p.is_temp_familiar) {
-      return `<img src="/static/icons/pins/${p.familiar_icon_key || 'paw'}.svg" alt="${escapeHtml(p.char_name)}" class="familiar-avatar-icon">`;
+      return `<img src="/static/icons/pins/${escapeHtml(p.familiar_icon_key || 'paw')}.svg" alt="${escapeHtml(p.char_name)}" class="familiar-avatar-icon">`;
     }
     if (p.avatar_path) {
-      return `<img src="/uploads/${p.avatar_path}" alt="${escapeHtml(p.char_name)}">`;
+      return `<img src="/uploads/${escapeHtml(p.avatar_path)}" alt="${escapeHtml(p.char_name)}">`;
     }
     return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.5"/><path d="M4.5 20c1.2-4 4-6 7.5-6s6.3 2 7.5 6"/></svg>`;
   }
 
+  // Escapes text for BOTH element content and quoted attribute values (the old textContent/innerHTML trick left " and '
+  // alone, so a name like  " onmouseover="...  could break out of an attribute).
   function escapeHtml(str) {
-    const div = document.createElement('div');
-    div.textContent = str == null ? '' : String(str);
-    return div.innerHTML;
+    return (str == null ? '' : String(str)).replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+  }
+
+  // Colours end up inside style="..." attributes: only hex colours and var(--token) get through.
+  function safeColor(value, fallback) {
+    return typeof value === 'string' && (/^#[0-9a-fA-F]{3,8}$/.test(value) || /^var\(--[a-z-]+\)$/.test(value)) ? value : fallback;
   }
 
   // ---- Conditions (DL-41) ----
   const CONDITIONS = JSON.parse((document.getElementById('conditions-data') || { textContent: '[]' }).textContent);
   const CONDITION_LABEL = Object.fromEntries(CONDITIONS.map((c) => [c.key, c.label]));
 
-  const condIcon = (key, cls) => `<svg class="cond-icon ${cls || ''}" aria-hidden="true"><use href="/static/icons/conditions.svg#${key}"></use></svg>`;
+  const condIcon = (key, cls) => `<svg class="cond-icon ${escapeHtml(cls || '')}" aria-hidden="true"><use href="/static/icons/conditions.svg#${escapeHtml(key)}"></use></svg>`;
 
   function conditionChips(p) {
     const list = (p.conditions || []).filter((k) => CONDITION_LABEL[k]);
-    const chips = list.map((k) => `<span class="cond-chip cond-${k}">${condIcon(k)}${escapeHtml(CONDITION_LABEL[k])}</span>`).join('');
+    const chips = list.map((k) => `<span class="cond-chip cond-${escapeHtml(k)}">${condIcon(k)}${escapeHtml(CONDITION_LABEL[k])}</span>`).join('');
     const addBtn = isDM
       ? `<button type="button" class="cond-add" data-action="conditions" title="Conditions" aria-label="Conditions for ${escapeHtml(p.display_name)}">${ICONS.heart}${list.length ? '' : '<span>Conditions</span>'}</button>`
       : '';
@@ -58,7 +63,7 @@
     const pct = hidden ? 0 : hpPercent(p);
     const dead = !!p.is_dead;
     const showDiedBtn = isDM && !hidden && p.current_hp <= 0 && !dead;
-    const groupDot = p.group_color ? `<span class="group-dot" style="background:${p.group_color}"></span>` : '';
+    const groupDot = p.group_color ? `<span class="group-dot" style="background:${safeColor(p.group_color, '#c9a24b')}"></span>` : '';
     const tempHp = p.temp_hp || 0;
     const tempPct = p.char_max_hp ? (tempHp / p.char_max_hp) * 100 : 0;
     const tempBarWidth = Math.max(0, Math.min(100 - pct, tempPct));
@@ -133,7 +138,7 @@
 
     return `
     <div class="battle-row ${dead ? 'is-dead' : ''} ${p.is_active ? 'is-active' : ''}" data-pid="${p.id}"${p.is_active ? ' aria-current="true"' : ''}>
-      <div class="battle-avatar" style="border-color:${p.group_color || 'var(--brass)'};">${avatarMarkup(p)}</div>
+      <div class="battle-avatar" style="border-color:${safeColor(p.group_color, 'var(--brass)')};">${avatarMarkup(p)}</div>
 
       <div class="battle-name-block">
         <div class="battle-name">${classIconHtml(p.class_key)}${escapeHtml(p.display_name)}${p.is_active ? '<span class="turn-tag">Turn</span>' : ''}</div>
@@ -199,7 +204,7 @@
     let html = '';
     sections.forEach((section) => {
       if (section.heading) {
-        html += `<div class="group-heading"><span class="group-dot" style="background:${section.heading.color || '#c9a24b'}"></span>${escapeHtml(section.heading.name)}</div>`;
+        html += `<div class="group-heading"><span class="group-dot" style="background:${safeColor(section.heading.color, '#c9a24b')}"></span>${escapeHtml(section.heading.name)}</div>`;
       }
       html += '<div class="battle-list">' + section.items.map(rowMarkup).join('') + '</div>';
     });
@@ -363,8 +368,8 @@
       <p class="hint-text" style="margin:0 0 8px;">Add a whole faction at once</p>
       <div class="add-modal-groups-row">
         ${groups.map((g) => `
-          <button type="button" class="chip add-whole-group-chip" data-add-group="${g.id}" style="border-color:${g.color};">
-            <span class="group-dot" style="background:${g.color}"></span>${escapeHtml(g.name)}
+          <button type="button" class="chip add-whole-group-chip" data-add-group="${g.id}" style="border-color:${safeColor(g.color, '#c9a24b')};">
+            <span class="group-dot" style="background:${safeColor(g.color, '#c9a24b')}"></span>${escapeHtml(g.name)}
           </button>
         `).join('')}
       </div>
@@ -388,7 +393,7 @@
     }
     addModalList.innerHTML = filtered.map((c) => `
       <div class="add-character-item">
-        <div class="battle-avatar" style="width:36px;height:36px;border-color:${c.group_color || 'var(--brass)'};">${c.avatar_path ? `<img src="/uploads/${c.avatar_path}" alt="">` : ICONS.user}</div>
+        <div class="battle-avatar" style="width:36px;height:36px;border-color:${safeColor(c.group_color, 'var(--brass)')};">${c.avatar_path ? `<img src="/uploads/${escapeHtml(c.avatar_path)}" alt="">` : ICONS.user}</div>
         <div class="battle-name-block">
           <div class="battle-name" style="font-size:14px;">${classIconHtml(c.class_key)}${escapeHtml(c.name)}</div>
           <div class="battle-meta">${c.group_name ? escapeHtml(c.group_name) : 'No Faction'}</div>
@@ -438,7 +443,7 @@
     document.getElementById('conditions-modal-title').textContent = `Conditions — ${p.display_name}`;
     const on = new Set(p.conditions || []);
     condPicker.innerHTML = CONDITIONS.map((c) => `
-      <button type="button" class="cond-tile ${on.has(c.key) ? 'active' : ''}" data-cond="${c.key}" aria-pressed="${on.has(c.key)}">${condIcon(c.key, 'cond-icon-lg')}<span>${escapeHtml(c.label)}</span></button>`).join('');
+      <button type="button" class="cond-tile ${on.has(c.key) ? 'active' : ''}" data-cond="${escapeHtml(c.key)}" aria-pressed="${on.has(c.key)}">${condIcon(c.key, 'cond-icon-lg')}<span>${escapeHtml(c.label)}</span></button>`).join('');
   }
 
   function openConditions(pid) {
@@ -476,14 +481,14 @@
     const foggedStats = !!c.hidden_stats;
     const canDeleteSheets = window.IS_DM || c.created_by === window.USER_ID;
     const sheetsHtml = c.sheets.length
-      ? `<div class="sheet-thumbs">${c.sheets.map((s) => `<div class="sheet-thumb"><img src="/uploads/${s.image_path}" data-lightbox-src="/uploads/${s.image_path}"${canDeleteSheets ? ` data-delete-url="/campaigns/${window.CAMPAIGN_ID}/characters/${c.id}/sheets/${s.id}/delete"` : ''}></div>`).join('')}</div>`
+      ? `<div class="sheet-thumbs">${c.sheets.map((s) => `<div class="sheet-thumb"><img src="/uploads/${escapeHtml(s.image_path)}" data-lightbox-src="/uploads/${escapeHtml(s.image_path)}"${canDeleteSheets ? ` data-delete-url="/campaigns/${window.CAMPAIGN_ID}/characters/${c.id}/sheets/${s.id}/delete"` : ''}></div>`).join('')}</div>`
       : `<p class="hint-text">No sheet images attached.</p>`;
     detailBody.innerHTML = `
       <div class="detail-header">
-        <div class="avatar-frame" style="width:72px;height:72px;">${c.avatar_path ? `<img src="/uploads/${c.avatar_path}">` : ICONS.user}</div>
+        <div class="avatar-frame" style="width:72px;height:72px;">${c.avatar_path ? `<img src="/uploads/${escapeHtml(c.avatar_path)}">` : ICONS.user}</div>
         <div>
           <div class="dossier-name">${classIconHtml(c.class_key)}${escapeHtml(c.name)}</div>
-          <div class="dossier-meta">Lvl ${c.level} &middot; ${c.group_name || 'No Faction'}</div>
+          <div class="dossier-meta">Lvl ${c.level} &middot; ${escapeHtml(c.group_name || 'No Faction')}</div>
         </div>
       </div>
       ${foggedStats ? `

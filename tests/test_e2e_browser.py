@@ -488,3 +488,24 @@ def test_invite_link_options_appear_live_when_the_access_mode_changes(pw, shared
 
 def q_mode(cid):
     return q('SELECT access_mode FROM campaigns WHERE id = ?', cid)[0]['access_mode']
+
+
+def test_hostile_names_never_execute_in_battle_or_map_screens(pw, shared_server):
+    base = shared_server.url; dm = Api(base); cid = dm.campaign('Xss')
+    gname = '<img src=x onerror=alert("group")>'
+    r = dm.post(f'/campaigns/{cid}/factions/new', data={'name': gname, 'color': '#336699'}, files={'x': ('', b'')}); assert r.status_code == 302
+    gid = q('SELECT id FROM groups WHERE campaign_id = ?', cid)[0]['id']
+    cname = 'a" onmouseover="alert(\'attr\')" x="'
+    chid = dm.character(cid, cname, group_id=gid)
+    pid = dm.post(f'/campaigns/{cid}/api/battle/add', json={'character_id': chid}).json()[-1]['id']
+    ctx = dm.context(pw, base); page = ctx.new_page(); bad, errs = _collect(page)
+    dialogs = []
+    page.on('dialog', lambda d: (dialogs.append(d.message), d.dismiss()))
+    page.goto(base + f'/campaigns/{cid}/battle'); page.wait_for_selector('.battle-row')
+    page.hover('.cond-add'); page.wait_for_timeout(300)                      # would fire the injected onmouseover
+    page.click('[data-action="view"]'); page.wait_for_selector('.dossier-name')
+    page.wait_for_timeout(500)
+    assert 'onerror' in page.inner_text('.dossier-meta')                      # the faction name is shown as literal text
+    assert page.locator('.dossier-meta img').count() == 0
+    assert dialogs == [], dialogs
+    ctx.close()

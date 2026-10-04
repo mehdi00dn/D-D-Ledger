@@ -70,10 +70,15 @@
   };
   const USER_FALLBACK_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.5"/><path d="M4.5 20c1.2-4 4-6 7.5-6s6.3 2 7.5 6"/></svg>';
 
+  // Escapes text for BOTH element content and quoted attribute values (the old textContent/innerHTML trick left " and '
+  // alone, so a name like  " onmouseover="...  could break out of an attribute).
   function escapeHtml(str) {
-    const div = document.createElement('div');
-    div.textContent = str == null ? '' : String(str);
-    return div.innerHTML;
+    return (str == null ? '' : String(str)).replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+  }
+
+  // Colours end up inside style="..." attributes: only hex colours and var(--token) get through.
+  function safeColor(value, fallback) {
+    return typeof value === 'string' && (/^#[0-9a-fA-F]{3,8}$/.test(value) || /^var\(--[a-z-]+\)$/.test(value)) ? value : fallback;
   }
 
   // ---------------------------------------------------------------------
@@ -566,18 +571,18 @@
     const hPct = (gridSize * scale / naturalHeight) * 100;
     const leftPct = (p.x / naturalWidth) * 100;
     const topPct = (p.y / naturalHeight) * 100;
-    const borderColor = isChar ? (p.group_color || '#c9a24b') : '#c9a24b';
+    const borderColor = isChar ? safeColor(p.group_color, '#c9a24b') : '#c9a24b';
     const dead = isChar && p.is_dead;
     const avatarInner = isChar
-      ? (p.avatar_path ? `<img src="/uploads/${p.avatar_path}" alt="">` : USER_FALLBACK_ICON)
+      ? (p.avatar_path ? `<img src="/uploads/${escapeHtml(p.avatar_path)}" alt="">` : USER_FALLBACK_ICON)
       : `<img src="${PROP_ICON_SRC[p.icon_key] || PROP_ICON_SRC.paw}" alt="" class="prop-icon-img">`;
     const label = isChar ? classIconHtml(p.class_key) + escapeHtml(p.char_name || '') : escapeHtml(p.custom_name || p.icon_key || 'Marker');
     const unlockOverlay = p.locked ? `<button type="button" class="pin-unlock-icon" data-unlock-pin="${p.id}" title="Unlock">${UNLOCK_SVG}</button>` : '';
     // The label sits on `.map-pin` itself (never rotated); only the inner
     // `.map-pin-visual` circle spins, so names stay upright and in place.
     return `
-      <div class="map-pin" data-pin-id="${p.id}" data-pin-type="${p.pin_type}" data-locked="${!!p.locked}"
-           data-character-id="${p.character_id || ''}" data-x="${p.x}" data-y="${p.y}"
+      <div class="map-pin" data-pin-id="${p.id}" data-pin-type="${escapeHtml(p.pin_type)}" data-locked="${!!p.locked}"
+           data-character-id="${escapeHtml(p.character_id || '')}" data-x="${p.x}" data-y="${p.y}"
            style="left:${leftPct}%; top:${topPct}%; width:${wPct}%; height:${hPct}%;">
         <div class="map-pin-visual ${dead ? 'is-dead' : ''}" style="border-color:${borderColor}; transform: rotate(${p.rotation || 0}deg);">
           <div class="map-pin-avatar">${avatarInner}</div>
@@ -1232,14 +1237,14 @@
     const foggedStats = !!c.hidden_stats;
     const canDeleteSheets = window.IS_DM || c.created_by === window.USER_ID;
     const sheetsHtml = c.sheets.length
-      ? `<div class="sheet-thumbs">${c.sheets.map((s) => `<div class="sheet-thumb"><img src="/uploads/${s.image_path}" data-lightbox-src="/uploads/${s.image_path}"${canDeleteSheets ? ` data-delete-url="/campaigns/${window.CAMPAIGN_ID}/characters/${c.id}/sheets/${s.id}/delete"` : ''}></div>`).join('')}</div>`
+      ? `<div class="sheet-thumbs">${c.sheets.map((s) => `<div class="sheet-thumb"><img src="/uploads/${escapeHtml(s.image_path)}" data-lightbox-src="/uploads/${escapeHtml(s.image_path)}"${canDeleteSheets ? ` data-delete-url="/campaigns/${window.CAMPAIGN_ID}/characters/${c.id}/sheets/${s.id}/delete"` : ''}></div>`).join('')}</div>`
       : `<p class="hint-text">No sheet images attached.</p>`;
     detailBody.innerHTML = `
       <div class="detail-header">
-        <div class="avatar-frame" style="width:72px;height:72px;">${c.avatar_path ? `<img src="/uploads/${c.avatar_path}">` : ''}</div>
+        <div class="avatar-frame" style="width:72px;height:72px;">${c.avatar_path ? `<img src="/uploads/${escapeHtml(c.avatar_path)}">` : ''}</div>
         <div>
           <div class="dossier-name">${classIconHtml(c.class_key)}${escapeHtml(c.name)}</div>
-          <div class="dossier-meta">Lvl ${c.level} &middot; ${c.group_name || 'Ungrouped'}</div>
+          <div class="dossier-meta">Lvl ${c.level} &middot; ${escapeHtml(c.group_name || 'Ungrouped')}</div>
         </div>
       </div>
       ${foggedStats ? `

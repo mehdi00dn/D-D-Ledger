@@ -288,7 +288,7 @@
   Array.prototype.forEach.call(document.querySelectorAll('input[name="access_mode"]'), function (r) { r.addEventListener('change', sync); });
   sync();
 
-  function esc(t) { var d = document.createElement('div'); d.textContent = t; return d.innerHTML; }
+  function esc(t) { return String(t == null ? '' : t).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   form.addEventListener('submit', function (ev) {
     ev.preventDefault();
     var btn = form.querySelector('button[type=submit]');

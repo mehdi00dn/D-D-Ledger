@@ -114,7 +114,7 @@ def test_children_must_belong_to_the_parent_in_the_url(make_user):
     u = make_user(); cid = u.new_campaign()
     m1, m2 = u.new_map(cid, 'One'), u.new_map(cid, 'Two')
     d1 = u.json(f'/campaigns/{cid}/api/maps/{m1}/drawings', {'kind': 'rect', 'data': {}, 'w': 1, 'h': 1}).get_json()['id']
-    p1 = u.json(f'/campaigns/{cid}/api/maps/{m1}/pins', {'pin_type': 'prop', 'icon_key': 'x', 'x': 1, 'y': 1}).get_json()['id']
+    p1 = u.json(f'/campaigns/{cid}/api/maps/{m1}/pins', {'pin_type': 'prop', 'icon_key': 'sword', 'x': 1, 'y': 1}).get_json()['id']
     assert u.json(f'/campaigns/{cid}/api/maps/{m2}/drawings/{d1}/delete').status_code == 404      # drawing of map 1 via map 2
     assert u.json(f'/campaigns/{cid}/api/maps/{m2}/drawings/{d1}/update', {'cx': 5}).status_code == 404
     assert u.json(f'/campaigns/{cid}/api/maps/{m2}/pins/{p1}/delete').status_code == 404

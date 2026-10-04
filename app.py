@@ -603,6 +603,8 @@ STATUS_LABELS = {'dm': 'DM', 'player': 'Player'}
 
 def notify(db, user_id, kind, title, body='', link=None, invitation_id=None):
     """Add an in-app notification for one user (the caller commits)."""
+    if link and not (link.startswith('/') and not link.startswith('//')):
+        link = None                                         # notification links are in-app paths only, never an external URL
     db.execute('INSERT INTO notifications (user_id, kind, title, body, link, invitation_id) VALUES (?, ?, ?, ?, ?, ?)',
                (user_id, kind, title[:200], body[:500], link, invitation_id))
 
@@ -3174,6 +3176,24 @@ def api_map_sync(map_id):
     return jsonify({'state': state, 'drawings': drawings, 'pins': pins})
 
 
+# Pins can be added by any Player while a map is unlocked, so everything they store must be a known value or plain
+# bounded text: it later reaches other members' browsers (the DM's included) through the map and battle screens.
+PIN_ICON_KEYS = frozenset(os.path.splitext(n)[0] for n in os.listdir(os.path.join(app.static_folder, 'icons', 'pins')) if n.endswith('.svg'))
+PIN_NAME_MAX = 80
+
+
+def _pin_name(value):
+    """A pin / familiar name: None or bounded plain text. Raises ValueError for anything else."""
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError('name')
+    value = ''.join(ch for ch in value if ch.isprintable()).strip()
+    if len(value) > PIN_NAME_MAX:
+        raise ValueError('name')
+    return value or None
+
+
 @app.route('/campaigns/<int:campaign_id>/api/maps/<int:map_id>/pins', methods=['POST'])
 @campaign_access_required
 @map_edit_allowed
@@ -3181,7 +3201,14 @@ def api_map_pins_add(map_id):
     data = request.get_json(force=True)
     pin_type = data.get('pin_type', 'prop')
     icon_key = data.get('icon_key')
-    custom_name = data.get('custom_name')
+    if pin_type != 'prop':                                  # character pins are created by the battle sync, never by clients
+        return jsonify({'error': 'Unknown pin type.'}), 400
+    if icon_key is not None and icon_key not in PIN_ICON_KEYS:
+        return jsonify({'error': 'Unknown pin icon.'}), 400
+    try:
+        custom_name = _pin_name(data.get('custom_name'))
+    except ValueError:
+        return jsonify({'error': 'Pin names must be plain text of at most %d characters.' % PIN_NAME_MAX}), 400
     x = float(data.get('x', 0))
     y = float(data.get('y', 0))
     scale = float(data.get('scale', 1.0))
@@ -3222,11 +3249,16 @@ def api_map_pin_update(map_id, pin_id):
     if 'locked' in data:
         fields.append('locked = ?'); values.append(1 if data['locked'] else 0)
     if 'custom_name' in data:
-        fields.append('custom_name = ?'); values.append(data['custom_name'])
+        try:
+            new_custom_name = _pin_name(data['custom_name'])
+        except ValueError:
+            db.close()
+            return jsonify({'error': 'Pin names must be plain text of at most %d characters.' % PIN_NAME_MAX}), 400
+        fields.append('custom_name = ?'); values.append(new_custom_name)
         # Keep a familiar's battle-tracker name in sync with its pin name.
         pin_row = db.execute('SELECT participant_id, icon_key FROM map_pins WHERE id = ? AND map_id = ?', (pin_id, map_id)).fetchone()
         if pin_row and pin_row['participant_id']:
-            new_name = data['custom_name'] or (pin_row['icon_key'] or 'familiar').capitalize()
+            new_name = new_custom_name or (pin_row['icon_key'] or 'familiar').capitalize()
             char_row = db.execute('SELECT character_id FROM battle_participants WHERE id = ?', (pin_row['participant_id'],)).fetchone()
             if char_row:
                 db.execute('UPDATE characters SET name = ? WHERE id = ?', (new_name, char_row['character_id']))
