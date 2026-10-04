@@ -1,0 +1,174 @@
+diff --git a/app.py b/app.py
+index c9964b7..713e3ab 100644
+--- a/app.py
++++ b/app.py
+@@ -877,18 +877,27 @@ def notes_to_html(raw, show_hidden=False):
+         for e in entries)
+ 
+ 
++def preview_lines(text):
++    """Tidy text for a card preview: keep the author's line breaks, but trim each line, collapse runs of
++    spaces and drop empty lines (a blank line would otherwise use up a clamped preview line)."""
++    lines = (re.sub(r'[ \t\f\v\u00a0]+', ' ', ln).strip() for ln in str(text or '').replace('\r\n', '\n').replace('\r', '\n').split('\n'))
++    return '\n'.join(ln for ln in lines if ln)
++
++
+ def notes_plain_preview(raw, show_hidden=False):
+-    """Flatten stored notes to plain text for compact card previews."""
++    """Flatten stored notes to plain text for compact card previews, keeping their line structure
++    (the card shows it with white-space: pre-line)."""
+     blocks = [e['t'] for e in notes_parse_entries(raw) if show_hidden or not e['h']]
+     if not blocks:
+         return ''
+-    joined = re.sub(r'<(br|/div|/li|/p)\s*/?>', ' ', ' '.join(blocks), flags=re.I)
++    joined = re.sub(r'<(br|/div|/li|/p)\s*/?>', '\n', '\n'.join(blocks), flags=re.I)
+     joined = _NOTE_STRIP_TAGS_RE.sub('', joined)
+     joined = joined.replace('&lt;', '<').replace('&gt;', '>').replace('&amp;', '&')
+-    return re.sub(r'\s+', ' ', joined).strip()
++    return preview_lines(joined)
+ 
+ 
+ app.jinja_env.filters['notes_preview'] = notes_plain_preview
++app.jinja_env.filters['preview_lines'] = preview_lines
+ 
+ 
+ # ---------------- UPLOADS ----------------
+diff --git a/static/css/style.css b/static/css/style.css
+index 5804189..97935b2 100644
+--- a/static/css/style.css
++++ b/static/css/style.css
+@@ -726,6 +726,8 @@ body.page-leaving .content {
+   line-height: 1.5;
+   margin: 4px 0 14px;
+   padding: 0 1px;
++  white-space: pre-line;          /* keep the author's line breaks; long lines still wrap */
++  overflow-wrap: anywhere;        /* an unbroken string wraps instead of being clipped or widening the card */
+   display: -webkit-box;
+   -webkit-line-clamp: 2;
+   line-clamp: 2;
+@@ -882,6 +884,8 @@ body.page-leaving .content {
+   margin: 8px 0 16px;
+   padding: 0 1px;
+   min-height: 20px;
++  white-space: pre-line;
++  overflow-wrap: anywhere;
+   display: -webkit-box;
+   -webkit-line-clamp: 3;
+   line-clamp: 3;
+@@ -898,7 +902,7 @@ body.page-leaving .content {
+ /* Same 5:3 ratio the banner cropper saves (640x384), so the image is shown uncropped. */
+ .faction-detail-banner { flex: 0 0 360px; max-width: 100%; height: auto; aspect-ratio: 5 / 3; border-radius: var(--radius-m); overflow: hidden; }
+ .faction-detail-banner img { width: 100%; height: 100%; object-fit: cover; display: block; }
+-.faction-detail-bio { flex: 1 1 240px; margin: 0; color: var(--parchment-dim); font-size: 13.5px; line-height: 1.5; white-space: pre-wrap; }
++.faction-detail-bio { flex: 1 1 240px; margin: 0; color: var(--parchment-dim); font-size: 13.5px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+ .faction-members { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; }
+ .page-title .group-dot { display: inline-block; width: 12px; height: 12px; margin-right: 12px; border-radius: 50%; vertical-align: middle; }
+ .faction-member {
+diff --git a/templates/campaigns_list.html b/templates/campaigns_list.html
+index ffbca0d..d7f1309 100644
+--- a/templates/campaigns_list.html
++++ b/templates/campaigns_list.html
+@@ -25,7 +25,7 @@
+     <div class="group-body">
+       <h3 class="group-name">{{ c.name }} <span class="role-badge role-badge-{{ c.my_role }}">{{ c.my_role }}</span></h3>
+       <p class="group-count">{{ c.character_count }} character{{ '' if c.character_count == 1 else 's' }} &middot; {{ c.group_count }} group{{ '' if c.group_count == 1 else 's' }} &middot; {{ c.map_count }} map{{ '' if c.map_count == 1 else 's' }}</p>
+-      <p class="group-bio">{{ c.description }}</p>
++      <p class="group-bio">{{ c.description | preview_lines }}</p>
+       <div class="group-actions">
+         <a href="{{ url_for('characters_list', campaign_id=c.id) }}" class="btn btn-primary btn-sm">{{ icon('scroll') }} Enter</a>
+         {% if c.my_role == 'owner' %}
+diff --git a/templates/groups_list.html b/templates/groups_list.html
+index c8d7cff..9046c4d 100644
+--- a/templates/groups_list.html
++++ b/templates/groups_list.html
+@@ -51,7 +51,7 @@
+     <div class="group-body">
+       <h3 class="group-name"><span class="group-dot" style="background:{{ g.color }}"></span>{{ g.name }}</h3>
+       <p class="group-count">{{ g.member_count }} member{{ '' if g.member_count == 1 else 's' }}</p>
+-      <p class="group-bio">{{ g.bio }}</p>
++      <p class="group-bio">{{ g.bio | preview_lines }}</p>
+       <div class="group-actions">
+         <a href="{{ url_for('faction_detail', group_id=g.id) }}" class="btn btn-ghost btn-sm">{{ icon('eye') }} Details</a>
+         <a href="{{ url_for('faction_export', group_id=g.id) }}" class="btn-icon" title="Export this faction">{{ icon('upload') }}</a>
+diff --git a/tests/test_e2e_browser.py b/tests/test_e2e_browser.py
+index eafca4c..274b03a 100644
+--- a/tests/test_e2e_browser.py
++++ b/tests/test_e2e_browser.py
+@@ -1,5 +1,5 @@
+ """Real-browser checks (Chromium via Playwright) against a live server process."""
+-import os, re, uuid, time
++import json, os, re, uuid, time
+ import pytest
+ import requests
+ if os.path.isdir('/opt/pw-browsers'):                       # pre-installed browsers (some sandboxes); CI installs its own
+@@ -380,3 +380,24 @@ def test_class_dropdown_hover_guide_select_clear_and_icons(pw, shared_server):
+     page.screenshot(path='/tmp/class-battle.png')
+     assert not errs, errs
+     dctx.close()
++
++
++def test_note_and_bio_previews_wrap_like_the_text(pw, shared_server):
++    base = shared_server.url; dm = Api(base); cid = dm.campaign('Wrap')
++    long_word = 'W' * 90
++    dm.character(cid, 'Scribe', notes=json.dumps([f'<div>Alpha beta</div><div>Gamma {long_word}</div><div>Delta</div>']))
++    dm.post(f'/campaigns/{cid}/factions/new', data={'name': 'Order', 'color': '#336699', 'bio': f'First line\nSecond line\nThird line {long_word}\nFourth line'})
++    dctx = dm.context(pw, base); page = dctx.new_page(); bad, errs = _collect(page)
++    for width in (1400, 480):
++        page.set_viewport_size({'width': width, 'height': 900})
++        page.goto(base + f'/campaigns/{cid}/characters'); page.wait_for_selector('.dossier-notes')
++        box = page.eval_on_selector('.dossier-notes', "e => ({ws: getComputedStyle(e).whiteSpace, sw: e.scrollWidth, cw: e.clientWidth, h: e.clientHeight, lh: parseFloat(getComputedStyle(e).lineHeight)})")
++        assert box['ws'] == 'pre-line' and box['sw'] <= box['cw'] + 1, box          # nothing pushed past the card
++        assert box['h'] <= box['lh'] * 2 + 2, box                                       # still clamped to two lines
++        page.goto(base + f'/campaigns/{cid}/factions'); page.wait_for_selector('.group-bio')
++        box = page.eval_on_selector('.group-bio', "e => ({ws: getComputedStyle(e).whiteSpace, sw: e.scrollWidth, cw: e.clientWidth, h: e.clientHeight, lh: parseFloat(getComputedStyle(e).lineHeight)})")
++        assert box['ws'] == 'pre-line' and box['sw'] <= box['cw'] + 1, box
++        assert box['lh'] * 2.5 < box['h'] <= box['lh'] * 3 + 2, box                     # separate lines, clamped to three
++    page.screenshot(path='/tmp/wrap-factions.png')
++    assert not errs, errs
++    dctx.close()
+diff --git a/tests/test_text_previews.py b/tests/test_text_previews.py
+new file mode 100644
+index 0000000..c41450b
+--- /dev/null
++++ b/tests/test_text_previews.py
+@@ -0,0 +1,40 @@
++"""DL-100: card previews of character notes and faction bios keep the author's line structure."""
++import html
++import json
++import re
++import pytest
++from conftest import BACKEND
++
++pytestmark = pytest.mark.skipif(BACKEND == 'sqlite', reason='new-code tests')
++
++
++def test_preview_lines_keeps_breaks_and_drops_blank_runs():
++    from app import preview_lines
++    assert preview_lines('One  two\r\n\r\n\r\n  Three \t four\n') == 'One two\nThree four'
++    assert preview_lines('') == '' and preview_lines(None) == ''
++
++
++def test_notes_preview_keeps_one_line_per_block_break_and_paragraph():
++    from app import notes_plain_preview
++    raw = json.dumps(['<div>First line</div><div>Second line<br>Third line</div>', '<p>Next note</p>',
++                      {'t': 'Secret', 'h': 1}])
++    assert notes_plain_preview(raw, False) == 'First line\nSecond line\nThird line\nNext note'
++    assert notes_plain_preview(raw, True).endswith('Next note\nSecret')
++    assert notes_plain_preview('Legacy text\nsecond & <line>') == 'Legacy text\nsecond & <line>'
++
++
++def _inner(page_html, cls):
++    m = re.search(r'<(?:p|div) class="%s">(.*?)</(?:p|div)>' % cls, page_html, re.S)
++    assert m, cls
++    return html.unescape(m.group(1))
++
++
++def test_cards_render_the_stored_line_breaks(make_user):
++    dm = make_user(); cid = dm.new_campaign()
++    dm.new_character(cid, name='Poet', notes=json.dumps(['<div>Line one</div><div>Line two</div><div><br></div><div>Line three</div>']))
++    page = dm.get(f'/campaigns/{cid}/characters').data.decode()
++    assert _inner(page, 'dossier-notes').strip() == 'Line one\nLine two\nLine three'
++    r = dm.post(f'/campaigns/{cid}/factions/new', data={'name': 'Guild', 'color': '#336699', 'bio': 'Founded long ago.\n\n\nMotto: stay sharp.'}, content_type='multipart/form-data')
++    assert r.status_code == 302
++    page = dm.get(f'/campaigns/{cid}/factions').data.decode()
++    assert _inner(page, 'group-bio').strip() == 'Founded long ago.\nMotto: stay sharp.'

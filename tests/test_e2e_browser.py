@@ -1,5 +1,5 @@
 """Real-browser checks (Chromium via Playwright) against a live server process."""
-import os, re, uuid, time
+import json, os, re, uuid, time
 import pytest
 import requests
 if os.path.isdir('/opt/pw-browsers'):                       # pre-installed browsers (some sandboxes); CI installs its own
@@ -378,5 +378,26 @@ def test_class_dropdown_hover_guide_select_clear_and_icons(pw, shared_server):
     dm.post(f'/campaigns/{cid}/api/battle/add', json={'character_id': chid})
     page.goto(base + f'/campaigns/{cid}/battle'); page.wait_for_selector('.battle-name .class-icon')
     page.screenshot(path='/tmp/class-battle.png')
+    assert not errs, errs
+    dctx.close()
+
+
+def test_note_and_bio_previews_wrap_like_the_text(pw, shared_server):
+    base = shared_server.url; dm = Api(base); cid = dm.campaign('Wrap')
+    long_word = 'W' * 90
+    dm.character(cid, 'Scribe', notes=json.dumps([f'<div>Alpha beta</div><div>Gamma {long_word}</div><div>Delta</div>']))
+    dm.post(f'/campaigns/{cid}/factions/new', data={'name': 'Order', 'color': '#336699', 'bio': f'First line\nSecond line\nThird line {long_word}\nFourth line'})
+    dctx = dm.context(pw, base); page = dctx.new_page(); bad, errs = _collect(page)
+    for width in (1400, 480):
+        page.set_viewport_size({'width': width, 'height': 900})
+        page.goto(base + f'/campaigns/{cid}/characters'); page.wait_for_selector('.dossier-notes')
+        box = page.eval_on_selector('.dossier-notes', "e => ({ws: getComputedStyle(e).whiteSpace, sw: e.scrollWidth, cw: e.clientWidth, h: e.clientHeight, lh: parseFloat(getComputedStyle(e).lineHeight)})")
+        assert box['ws'] == 'pre-line' and box['sw'] <= box['cw'] + 1, box          # nothing pushed past the card
+        assert box['h'] <= box['lh'] * 2 + 2, box                                       # still clamped to two lines
+        page.goto(base + f'/campaigns/{cid}/factions'); page.wait_for_selector('.group-bio')
+        box = page.eval_on_selector('.group-bio', "e => ({ws: getComputedStyle(e).whiteSpace, sw: e.scrollWidth, cw: e.clientWidth, h: e.clientHeight, lh: parseFloat(getComputedStyle(e).lineHeight)})")
+        assert box['ws'] == 'pre-line' and box['sw'] <= box['cw'] + 1, box
+        assert box['lh'] * 2.5 < box['h'] <= box['lh'] * 3 + 2, box                     # separate lines, clamped to three
+    page.screenshot(path='/tmp/wrap-factions.png')
     assert not errs, errs
     dctx.close()

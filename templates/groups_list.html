@@ -51,7 +51,7 @@
     <div class="group-body">
       <h3 class="group-name"><span class="group-dot" style="background:{{ g.color }}"></span>{{ g.name }}</h3>
       <p class="group-count">{{ g.member_count }} member{{ '' if g.member_count == 1 else 's' }}</p>
-      <p class="group-bio">{{ g.bio }}</p>
+      <p class="group-bio">{{ g.bio | preview_lines }}</p>
       <div class="group-actions">
         <a href="{{ url_for('faction_detail', group_id=g.id) }}" class="btn btn-ghost btn-sm">{{ icon('eye') }} Details</a>
         <a href="{{ url_for('faction_export', group_id=g.id) }}" class="btn-icon" title="Export this faction">{{ icon('upload') }}</a>

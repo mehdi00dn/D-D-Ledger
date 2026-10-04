@@ -25,7 +25,7 @@
     <div class="group-body">
       <h3 class="group-name">{{ c.name }} <span class="role-badge role-badge-{{ c.my_role }}">{{ c.my_role }}</span></h3>
       <p class="group-count">{{ c.character_count }} character{{ '' if c.character_count == 1 else 's' }} &middot; {{ c.group_count }} group{{ '' if c.group_count == 1 else 's' }} &middot; {{ c.map_count }} map{{ '' if c.map_count == 1 else 's' }}</p>
-      <p class="group-bio">{{ c.description }}</p>
+      <p class="group-bio">{{ c.description | preview_lines }}</p>
       <div class="group-actions">
         <a href="{{ url_for('characters_list', campaign_id=c.id) }}" class="btn btn-primary btn-sm">{{ icon('scroll') }} Enter</a>
         {% if c.my_role == 'owner' %}

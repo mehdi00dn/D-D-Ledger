@@ -877,18 +877,27 @@ def notes_to_html(raw, show_hidden=False):
         for e in entries)
 
 
+def preview_lines(text):
+    """Tidy text for a card preview: keep the author's line breaks, but trim each line, collapse runs of
+    spaces and drop empty lines (a blank line would otherwise use up a clamped preview line)."""
+    lines = (re.sub(r'[ \t\f\v\u00a0]+', ' ', ln).strip() for ln in str(text or '').replace('\r\n', '\n').replace('\r', '\n').split('\n'))
+    return '\n'.join(ln for ln in lines if ln)
+
+
 def notes_plain_preview(raw, show_hidden=False):
-    """Flatten stored notes to plain text for compact card previews."""
+    """Flatten stored notes to plain text for compact card previews, keeping their line structure
+    (the card shows it with white-space: pre-line)."""
     blocks = [e['t'] for e in notes_parse_entries(raw) if show_hidden or not e['h']]
     if not blocks:
         return ''
-    joined = re.sub(r'<(br|/div|/li|/p)\s*/?>', ' ', ' '.join(blocks), flags=re.I)
+    joined = re.sub(r'<(br|/div|/li|/p)\s*/?>', '\n', '\n'.join(blocks), flags=re.I)
     joined = _NOTE_STRIP_TAGS_RE.sub('', joined)
     joined = joined.replace('&lt;', '<').replace('&gt;', '>').replace('&amp;', '&')
-    return re.sub(r'\s+', ' ', joined).strip()
+    return preview_lines(joined)
 
 
 app.jinja_env.filters['notes_preview'] = notes_plain_preview
+app.jinja_env.filters['preview_lines'] = preview_lines
 
 
 # ---------------- UPLOADS ----------------
