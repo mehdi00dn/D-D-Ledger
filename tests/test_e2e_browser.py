@@ -546,3 +546,27 @@ def test_custom_conditions_are_typed_in_place_and_capped_at_three(pw, shared_ser
     assert ppage.locator('.battle-row .cond-chip.cond-custom').count() == 2
     assert dpage.locator('.battle-row .cond-chip.cond-custom b').count() == 0 and dialogs == []   # markup stays text
     assert not derrs
+
+
+def test_condition_chip_x_removes_it_on_hover(pw, shared_server):
+    base = shared_server.url; dm = Api(base); player = Api(base); cid = dm.campaign('ChipX')
+    dm.add_member(cid, player)
+    pid = dm.post(f'/campaigns/{cid}/api/battle/add', json={'character_id': dm.character(cid, 'Aria')}).json()[0]['id']
+    dm.post(f'/campaigns/{cid}/api/battle/{pid}/conditions', json={'conditions': ['prone', 'poisoned'], 'custom_conditions': ['Hexed']})
+    dctx = dm.context(pw, base); dpage = dctx.new_page(); dbad, derrs = _collect(dpage)
+    pctx = player.context(pw, base); ppage = pctx.new_page()
+    dpage.goto(base + f'/campaigns/{cid}/battle'); ppage.goto(base + f'/campaigns/{cid}/battle')
+    dpage.wait_for_selector('.cond-chip'); ppage.wait_for_selector('.cond-chip')
+    assert ppage.locator('.cond-x').count() == 0                                     # Players never get the x
+    chip = dpage.locator('.cond-chip.cond-prone')
+    x = chip.locator('.cond-x')
+    assert not x.is_visible()                                                        # hidden until hover
+    chip.hover(); assert x.is_visible()
+    x.click()
+    dpage.locator('.cond-chip.cond-prone').wait_for(state='detached')
+    assert sorted(dpage.locator('.cond-chip').all_text_contents()) == ['Hexed', 'Poisoned']
+    dpage.locator('.cond-chip.cond-custom').hover(); dpage.locator('.cond-chip.cond-custom .cond-x').click()
+    dpage.locator('.cond-chip.cond-custom').wait_for(state='detached')
+    assert dpage.locator('.cond-chip').all_text_contents() == ['Poisoned']
+    assert not derrs, derrs
+    dctx.close(); pctx.close()

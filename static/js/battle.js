@@ -55,8 +55,12 @@
   function conditionChips(p) {
     const list = (p.conditions || []).filter((k) => CONDITION_LABEL[k]);
     const customs = p.custom_conditions || [];
-    const chips = list.map((k) => `<span class="cond-chip cond-${escapeHtml(k)}">${condIcon(k)}${escapeHtml(CONDITION_LABEL[k])}</span>`).join('')
-      + customs.map((n) => `<span class="cond-chip cond-custom">${condIcon('custom')}${escapeHtml(n)}</span>`).join('');
+    // The DM gets an "x" on each chip (revealed on hover / keyboard focus) to clear that one condition.
+    const x = (attrs, name) => (isDM
+      ? `<button type="button" class="cond-x" ${attrs} title="Remove ${escapeHtml(name)}" aria-label="Remove ${escapeHtml(name)}"></button>`
+      : '');
+    const chips = list.map((k) => `<span class="cond-chip cond-${escapeHtml(k)}">${condIcon(k)}${escapeHtml(CONDITION_LABEL[k])}${x(`data-action="cond-remove" data-cond="${escapeHtml(k)}"`, CONDITION_LABEL[k])}</span>`).join('')
+      + customs.map((n, i) => `<span class="cond-chip cond-custom">${condIcon('custom')}${escapeHtml(n)}${x(`data-action="cond-remove" data-chip-custom="${i}"`, n)}</span>`).join('');
     const addBtn = isDM
       ? `<button type="button" class="cond-add" data-action="conditions" title="Conditions" aria-label="Conditions for ${escapeHtml(p.display_name)}">${ICONS.heart}${(list.length || customs.length) ? '' : '<span>Conditions</span>'}</button>`
       : '';
@@ -287,6 +291,13 @@
       if (p) openDetailModal(p.character_id);
     } else if (action === 'conditions') {
       openConditions(pid);
+    } else if (action === 'cond-remove') {
+      const key = btn.dataset.cond;
+      const index = btn.dataset.chipCustom;
+      mutateConditions((cur) => ({
+        standard: key ? (cur.conditions || []).filter((k) => k !== key) : (cur.conditions || []),
+        customs: key ? (cur.custom_conditions || []) : (cur.custom_conditions || []).filter((_, i) => String(i) !== index),
+      }), pid);
     }
   });
 
@@ -463,9 +474,9 @@
   // Every change goes through one queue and is computed from the latest state, so two quick clicks (or a click while
   // a custom name is being committed) can never overwrite each other with stale lists.
   let condQueue = Promise.resolve();
-  function mutateConditions(change) {
+  function mutateConditions(change, pid = condPid) {
     condQueue = condQueue.then(async () => {
-      const p = participants.find((x) => String(x.id) === String(condPid));
+      const p = participants.find((x) => String(x.id) === String(pid));
       if (!p) return;
       const next = change(p);
       participants = await apiCall(`/api/battle/${p.id}/conditions`, { conditions: next.standard, custom_conditions: next.customs });
