@@ -69,6 +69,19 @@
       </div></div>
     </div>
 
+    {% if g.is_dm %}
+    <div class="tool-flyout" id="characters-flyout" data-flyout-group="characters">
+      <button type="button" class="map-tool-btn flyout-trigger" id="characters-trigger" data-flyout-trigger title="Place characters on the map">
+        {{ icon('user') }}
+      </button>
+      <div class="tool-flyout-menu"><div class="tool-flyout-menu-inner roster-menu">
+        <label class="roster-search">{{ icon('search') }}<input type="text" id="roster-search" placeholder="Find a character" autocomplete="off" aria-label="Find a character"></label>
+        <div class="roster-list" id="roster-list"></div>
+        <p class="roster-foot" id="roster-foot">Pick someone, then click the map to place them. Place the same character again for more copies.</p>
+      </div></div>
+    </div>
+    {% endif %}
+
     <button type="button" class="map-tool-btn" data-tool="eraser" title="Eraser: click a shape or pin to delete it (E)">{{ icon('eraser') }}</button>
     {% if g.is_dm %}
     <div class="tool-flyout" id="fog-flyout" data-flyout-group="fog">
@@ -172,6 +185,10 @@
   <strong>Shift</strong> draw/resize from center &middot; <strong>Alt</strong> lock square/circle (45&deg; snap for lines)
 </div>
 
+<div class="modifier-hint" id="place-hint" hidden>
+  Placing <strong id="place-hint-name"></strong> &middot; click the map to drop &middot; <strong>Esc</strong> to stop
+</div>
+
 <div class="modifier-hint" id="nav-hint" hidden>
   <strong>Ctrl</strong>+Scroll to zoom &middot; <strong>Space</strong>+drag to pan
 </div>
@@ -234,6 +251,7 @@
 {% endblock %}
 
 {% block extra_scripts %}
+{% if g.is_dm %}<script id="map-roster-data" type="application/json">{{ roster | tojson }}</script>{% endif %}
 <script src="{{ url_for('static', filename='js/map-fog.js') }}"></script>
 <script src="{{ url_for('static', filename='js/map.js') }}"></script>
 {% endblock %}

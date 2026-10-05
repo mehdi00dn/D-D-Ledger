@@ -480,7 +480,6 @@ def test_invite_link_options_appear_live_when_the_access_mode_changes(pw, shared
 
     # a second link stacks on top, and the revoke button on the freshly-added row works
     page.click('#invite-link-form button[type=submit]'); page.locator('[data-invite-link-row]').nth(1).wait_for()
-    page.once('dialog', lambda d: d.accept())
     page.click('[data-invite-link-row] >> nth=0 >> button[title="Revoke link"]'); page.wait_for_load_state('networkidle')
     assert not errs and not bad
     ctx.close()
@@ -588,4 +587,44 @@ def test_condition_chip_x_removes_it_on_hover(pw, shared_server):
     dpage.locator('.cond-chip.cond-custom').wait_for(state='detached')
     assert dpage.locator('.cond-chip').all_text_contents() == ['Poisoned']
     assert not derrs, derrs
+    dctx.close(); pctx.close()
+
+
+def test_dm_places_characters_on_a_map_without_a_battle(pw, shared_server):
+    base = shared_server.url; dm = Api(base); player = Api(base); cid = dm.campaign('Roster')
+    dm.add_member(cid, player)
+    dm.character(cid, 'Aria'); dm.character(cid, 'Goblin')
+    r = dm.post(f'/campaigns/{cid}/maps/new', data={'name': 'Cave', 'blank_width': '800', 'blank_height': '600'})
+    mid = int(re.search(r'/maps/(\d+)', r.headers['Location']).group(1))
+    dctx = dm.context(pw, base); page = dctx.new_page(); bad, errs = _collect(page)
+    pctx = player.context(pw, base); ppage = pctx.new_page()
+    page.goto(base + f'/campaigns/{cid}/maps/{mid}'); page.wait_for_load_state('networkidle'); page.wait_for_timeout(800)
+    if page.locator('#setup-confirm-btn').is_visible():
+        page.click('#setup-confirm-btn'); page.wait_for_timeout(600)
+    ppage.goto(base + f'/campaigns/{cid}/maps/{mid}'); ppage.wait_for_load_state('networkidle'); ppage.wait_for_timeout(600)
+    assert ppage.locator('#characters-flyout').count() == 0                      # Players don't get the tool
+
+    page.click('#characters-trigger')
+    page.fill('#roster-search', 'gob')
+    assert page.locator('.roster-item').count() == 1
+    page.click('.roster-item')                                                   # pick the goblin...
+    page.wait_for_selector('#place-hint:not([hidden])')
+    box = page.locator('#map-canvas').bounding_box()
+    for dx in (150, 300):                                                        # ...and drop two copies
+        page.mouse.click(box['x'] + dx, box['y'] + 200); page.wait_for_timeout(500)
+    page.wait_for_selector('.map-pin')
+    assert page.locator('.map-pin-label').all_text_contents() == ['Goblin #1', 'Goblin #2']
+    page.screenshot(path='/tmp/map-characters.png')
+    assert dm.get(f'/campaigns/{cid}/api/battle').json() == []                   # no battle involved
+    page.keyboard.press('Escape')
+    assert page.locator('#place-hint').is_hidden()
+    ppage.wait_for_selector('.map-pin', timeout=15000)                           # the party sees them on the next refresh
+    assert ppage.locator('.map-pin').count() == 2
+
+    page.click('#characters-trigger'); page.fill('#roster-search', '')           # the roster counts what is already placed
+    assert 'x2' in page.locator('.roster-item:has-text("Goblin") .roster-count').inner_text().replace('×', 'x')
+
+    dm.post(f'/campaigns/{cid}/api/maps/{mid}/settings', json={'linked_to_battle': 1})   # linking merges them into the battle
+    assert len(dm.get(f'/campaigns/{cid}/api/battle').json()) == 2
+    assert not errs, errs
     dctx.close(); pctx.close()

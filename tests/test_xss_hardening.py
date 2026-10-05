@@ -16,7 +16,8 @@ def test_pin_api_only_stores_known_types_and_icons(make_user):
     dm, pl = make_user(), make_user(); cid = dm.new_campaign(); dm.add_member(cid, pl); mid = dm.new_map(cid)
     url = f'/campaigns/{cid}/api/maps/{mid}/pins'
     base = {'pin_type': 'prop', 'icon_key': 'paw', 'x': 5, 'y': 5}
-    for bad in ({'pin_type': '" onmouseover="alert(1)'}, {'pin_type': 'character'}, {'icon_key': 'x" onerror="alert(1)'},
+    assert pl.json(url, {**base, 'pin_type': 'character', 'character_id': 1}).status_code == 403   # only the DM places characters
+    for bad in ({'pin_type': '" onmouseover="alert(1)'}, {'icon_key': 'x" onerror="alert(1)'},
                 {'icon_key': '../../uploads/evil'}, {'icon_key': 7}, {'custom_name': 'x' * 81}, {'custom_name': ['a']}, {'custom_name': 5}):
         r = pl.json(url, {**base, **bad})
         assert r.status_code == 400, (bad, r.status_code)

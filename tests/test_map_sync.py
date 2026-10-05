@@ -20,7 +20,7 @@ def test_sync_equals_the_three_separate_endpoints_when_unlinked(user):
     d = d.get_json()
     assert d['state'] == user.get(f'{base}/state').get_json()
     assert d['drawings'] == user.get(f'{base}/drawings').get_json() and len(d['drawings']) == 1
-    assert d['pins'] is None                                     # pins are only polled while linked to the battle
+    assert d['pins'] == user.get(f'{base}/pins').get_json() == []   # pins are always part of the refresh now (characters live on unlinked maps too)
 
 
 def test_sync_includes_pins_when_linked_and_matches_the_pins_endpoint(user):

@@ -594,6 +594,7 @@
 
   function renderPins() {
     pinLayer.innerHTML = pins.map(pinMarkup).join('');
+    if (typeof renderRoster === 'function') renderRoster();
     markFoggedPins();
     if (selectedPinId) positionPinBubble(selectedPinId);
   }
@@ -639,6 +640,7 @@
     // Players can open an NPC pin's details too -- the detail endpoint
     // returns notes only for them (stats are withheld server-side).
     pinViewBtn.style.display = (pin.pin_type === 'character') ? '' : 'none';
+    pinDeleteBtn.style.display = (pin.pin_type === 'character' && !window.IS_DM) ? 'none' : '';
     pinRenameBtn.style.display = pin.pin_type === 'character' ? 'none' : '';
     if (pinPcNpcToggle) {
       const isFamiliar = pin.pin_type === 'prop' && !!pin.participant_id;
@@ -991,7 +993,7 @@
   }
 
   function serializePinForCreate(p) {
-    return { pin_type: p.pin_type, icon_key: p.icon_key, x: p.x, y: p.y, scale: p.scale || 1, rotation: p.rotation || 0, locked: !!p.locked };
+    return { pin_type: p.pin_type, icon_key: p.icon_key, character_id: p.character_id || null, custom_name: p.pin_type === 'prop' ? (p.custom_name || null) : null, x: p.x, y: p.y, scale: p.scale || 1, rotation: p.rotation || 0, locked: !!p.locked };
   }
   async function persistPinFields(p, fields) {
     await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/pins/${p.id}/update`, {
@@ -1048,6 +1050,13 @@
     };
   }
   async function deletePinObj(pin) {
+    if (pin.pin_type === 'character') {
+      if (!window.IS_DM) return;                              // taking a character off the map is the DM's call
+      if (linkedToBattle && pin.participant_id) {
+        const ok = await window.confirmAction(`Remove ${pin.char_name || 'this character'} from the map and the battle?`);
+        if (!ok) return;
+      }
+    }
     const index = pins.findIndex((p) => p.id === pin.id);
     await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/pins/${pin.id}/delete`, { method: 'POST' });
     pins.splice(index, 1);
@@ -1357,6 +1366,7 @@
       document.querySelectorAll('.map-tool-btn[data-tool]').forEach((b) => b.classList.remove('active'));
       btn.classList.add('active');
       currentTool = btn.dataset.tool;
+      stopPlacingCharacter();
       deselectPin();
       deselectShape();
       canvas.classList.toggle('tool-eraser', currentTool === 'eraser');
@@ -1687,6 +1697,10 @@
       return;
     }
 
+    if (currentTool === 'place-character') {
+      if (placingChar && e.button === 0) placeCharacter(pos);
+      return;
+    }
     if (currentTool.startsWith('prop-')) {
       const iconKey = currentTool.replace('prop-', '');
       placeProp(pos, iconKey);
@@ -1993,6 +2007,94 @@
     redraw();
     await finalizeNewShape(shapeToSave);
   });
+
+  // ---------------------------------------------------------------------
+  // DM "Characters" tool: pick someone from the roster, then click the map to drop them. Works whether or not the
+  // map is linked to the battle (when linked, the server adds them to the battle too).
+  // ---------------------------------------------------------------------
+  const rosterEl = document.getElementById('map-roster-data');
+  const ROSTER = rosterEl ? JSON.parse(rosterEl.textContent || '[]') : [];
+  const rosterList = document.getElementById('roster-list');
+  const rosterSearch = document.getElementById('roster-search');
+  const placeHint = document.getElementById('place-hint');
+  const placeHintName = document.getElementById('place-hint-name');
+  const charactersTrigger = document.getElementById('characters-trigger');
+  let placingChar = null;
+
+  function renderRoster() {
+    if (!rosterList) return;
+    const needle = (rosterSearch.value || '').trim().toLowerCase();
+    const onMap = {};
+    pins.forEach((p) => { if (p.pin_type === 'character') onMap[p.character_id] = (onMap[p.character_id] || 0) + 1; });
+    const shown = ROSTER.filter((c) => !needle || c.name.toLowerCase().includes(needle));
+    if (!ROSTER.length) { rosterList.innerHTML = '<p class="roster-empty">No characters yet. Create one first.</p>'; return; }
+    if (!shown.length) { rosterList.innerHTML = '<p class="roster-empty">No character matches that name.</p>'; return; }
+    rosterList.innerHTML = shown.map((c) => `
+      <button type="button" class="roster-item${placingChar && placingChar.id === c.id ? ' is-picked' : ''}" data-roster-id="${Number(c.id)}">
+        <span class="roster-avatar" style="border-color:${safeColor(c.group_color, 'var(--hairline-strong)')}">${c.avatar_path ? `<img src="/uploads/${escapeHtml(c.avatar_path)}" alt="">` : USER_FALLBACK_ICON}</span>
+        <span class="roster-name">${classIconHtml(c.class_key)}${escapeHtml(c.name)}</span>
+        <span class="roster-meta">${c.is_npc ? '<span class="roster-tag">NPC</span>' : ''}${onMap[c.id] ? `<span class="roster-count" title="Already on this map">&times;${onMap[c.id]}</span>` : ''}</span>
+      </button>`).join('');
+  }
+
+  function updatePlaceHint() {
+    if (!placeHint) return;
+    placeHint.hidden = !placingChar;
+    if (placingChar) placeHintName.textContent = placingChar.name;
+    canvas.classList.toggle('tool-place', !!placingChar);
+    renderRoster();
+  }
+  function stopPlacingCharacter() {
+    if (!placingChar) return;
+    placingChar = null;
+    updatePlaceHint();
+  }
+  function startPlacingCharacter(character) {
+    placingChar = character;
+    document.querySelectorAll('.map-tool-btn[data-tool]').forEach((b) => b.classList.remove('active'));
+    currentTool = 'place-character';
+    deselectPin(); deselectShape();
+    canvas.classList.remove('tool-eraser', 'tool-fog');
+    pinLayer.classList.add('draw-mode');                      // tokens under the cursor must not swallow the drop click
+    if (fogOptions) fogOptions.hidden = true;
+    if (fog) fog.showRing(false);
+    angleDrawState = null; previewShape = null;
+    hideModifierHint();
+    document.querySelectorAll('.tool-flyout').forEach((f) => f.classList.remove('open'));
+    document.querySelectorAll('.flyout-trigger').forEach((t) => t.classList.remove('active'));
+    if (charactersTrigger) charactersTrigger.classList.add('active');
+    updateStylePanelVisibility();
+    updatePlaceHint();
+  }
+
+  async function placeCharacter(pos) {
+    const snapped = snapPointToGridCenter(pos.x, pos.y);
+    const res = await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/pins`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pin_type: 'character', character_id: placingChar.id, x: snapped.x, y: snapped.y, scale: 1.0, rotation: 0 }),
+    });
+    if (!res.ok) return;
+    const json = await res.json();
+    await loadPins();                                         // the server numbers duplicates and links the battle row
+    const pin = pins.find((p) => p.id === json.id);
+    if (pin) pushCommand(makeAddPinCommand(pin));
+  }
+
+  if (rosterList) {
+    rosterSearch.addEventListener('input', renderRoster);
+    rosterList.addEventListener('click', (e) => {
+      const item = e.target.closest('[data-roster-id]');
+      if (!item) return;
+      const character = ROSTER.find((c) => c.id === Number(item.dataset.rosterId));
+      if (character) startPlacingCharacter(character);
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape' || currentTool !== 'place-character') return;
+      const selectBtn = document.querySelector('.map-tool-btn[data-tool="select"]');
+      if (selectBtn) selectBtn.click();
+    });
+    renderRoster();
+  }
 
   async function placeProp(pos, iconKey) {
     const snapped = snapPointToGridCenter(pos.x, pos.y);

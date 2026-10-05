@@ -2117,6 +2117,11 @@ def _create_familiar_participant(db, icon_key, custom_name):
     return cur2.lastrowid
 
 
+def _detach_character_pins(db, map_id):
+    """An unlinked map keeps its characters as plain map tokens: they just stop pointing at battle rows."""
+    db.execute("UPDATE map_pins SET participant_id = NULL WHERE map_id = ? AND pin_type = 'character'", (map_id,))
+
+
 def _cleanup_familiar_participants(db, map_id):
     """Remove every temporary familiar this map ever added to the battle —
     called when the map is unlinked from battle, another map takes over as
@@ -2419,17 +2424,29 @@ def api_battle_restart_turns():
     return jsonify(rows)
 
 
+def _remove_participant(db, pid):
+    """Take one participant out of this campaign's battle (the caller commits).  Removing whoever is acting
+    passes the turn on, and an emptied battle goes back to round 1."""
+    row = db.execute(
+        'SELECT bp.id FROM battle_participants bp JOIN characters c ON c.id = bp.character_id WHERE bp.id = ? AND c.campaign_id = ?',
+        (pid, g.campaign_id)).fetchone()
+    if row is None:
+        return False
+    camp = db.execute('SELECT battle_turn_id FROM campaigns WHERE id = ?', (g.campaign_id,)).fetchone()
+    if camp and camp['battle_turn_id'] == pid:
+        _pass_turn(db, skip_id=pid)
+    db.execute('DELETE FROM battle_participants WHERE id = ?', (pid,))
+    if not _turn_order(db):
+        db.execute('UPDATE campaigns SET battle_round = 1, battle_turn_id = NULL WHERE id = ?', (g.campaign_id,))
+    return True
+
+
 @app.route('/campaigns/<int:campaign_id>/api/battle/<int:pid>/remove', methods=['POST'])
 @campaign_access_required
 @dm_required
 def api_battle_remove(pid):
     db = get_db()
-    camp = db.execute('SELECT battle_turn_id FROM campaigns WHERE id = ?', (g.campaign_id,)).fetchone()
-    if camp and camp['battle_turn_id'] == pid:
-        _pass_turn(db, skip_id=pid)                        # removing whoever is acting passes the turn on
-    db.execute('DELETE FROM battle_participants WHERE id = ?', (pid,))
-    if not _turn_order(db):
-        db.execute('UPDATE campaigns SET battle_round = 1, battle_turn_id = NULL WHERE id = ?', (g.campaign_id,))
+    _remove_participant(db, pid)
     db.commit()
     rows = _battle_rows(db)
     db.close()
@@ -2785,7 +2802,16 @@ def map_editor(map_id):
     init.pop('fog_mask', None)
     init['image_url'] = url_for('map_image', map_id=map_id)
     init['fog_active'] = m['fog_mask'] is not None
-    return render_template('map_editor.html', map=init)
+    roster = []
+    if g.is_dm:                                             # the DM's "Characters" tool; Players never get the roster
+        db = get_db()
+        roster = [dict(r) for r in db.execute('''
+            SELECT c.id, c.name, c.avatar_path, c.is_npc, c.class_key, gr.name AS group_name, gr.color AS group_color
+            FROM characters c LEFT JOIN groups gr ON c.group_id = gr.id
+            WHERE c.is_temp_familiar = 0 AND c.campaign_id = ? ORDER BY lower(c.name) ASC
+        ''', (g.campaign_id,)).fetchall()]
+        db.close()
+    return render_template('map_editor.html', map=init, roster=roster)
 
 
 @app.route('/campaigns/<int:campaign_id>/maps/<int:map_id>/delete', methods=['POST'])
@@ -2994,13 +3020,17 @@ def api_map_settings(map_id):
             ).fetchall()
             for o in others:
                 _cleanup_familiar_participants(db, o['id'])
+                _detach_character_pins(db, o['id'])
                 db.execute('UPDATE maps SET linked_to_battle = 0 WHERE id = ?', (o['id'],))
         else:
             _cleanup_familiar_participants(db, map_id)
+            _detach_character_pins(db, map_id)
         fields.append('linked_to_battle = ?'); values.append(new_val)
     if fields:
         values.append(map_id)
         db.execute(f'UPDATE maps SET {", ".join(fields)} WHERE id = ?', values)
+        if data.get('linked_to_battle'):
+            _reconcile_map_battle(db, map_id)               # merge what is on the map with what is in the battle
         db.commit()
     m = db.execute('SELECT * FROM maps WHERE id = ?', (map_id,)).fetchone()
     db.close()
@@ -3114,57 +3144,115 @@ def api_map_drawings_clear(map_id):
 
 # ---- Pins ----
 
+def _reconcile_map_battle(db, map_id):
+    """While a map is linked to the battle, the two share ONE roster (the caller commits):
+      * a battle row that has no token on the map gets one,
+      * a token that has no battle row yet is added to the battle (adopting an unplaced row of the same
+        character first, so linking a map that already shows the party never doubles anyone),
+      * a token whose battle row was removed from the battle disappears from the map.
+    Tokens of an unlinked map are plain map tokens (participant_id NULL) and are left alone."""
+    parts = db.execute('''
+        SELECT bp.id, bp.character_id FROM battle_participants bp
+        JOIN characters c ON bp.character_id = c.id
+        WHERE c.is_temp_familiar = 0 AND c.campaign_id = ?
+        ORDER BY bp.sort_order ASC, bp.id ASC
+    ''', (g.campaign_id,)).fetchall()
+    valid = {r['id'] for r in parts}
+    pins = db.execute(
+        "SELECT id, character_id, participant_id FROM map_pins WHERE map_id = ? AND pin_type = 'character' ORDER BY id", (map_id,)
+    ).fetchall()
+    pinned = set()
+    unplaced = []
+    for pin in pins:
+        if pin['participant_id'] is None:
+            unplaced.append(pin)
+        elif pin['participant_id'] in valid:
+            pinned.add(pin['participant_id'])
+        else:                                                   # its battle row is gone: removed from the battle
+            db.execute('DELETE FROM map_pins WHERE id = ?', (pin['id'],))
+    max_order = db.execute('SELECT COALESCE(MAX(sort_order), -1) AS m FROM battle_participants').fetchone()['m']
+    for pin in unplaced:
+        char = db.execute('SELECT max_hp FROM characters WHERE id = ? AND campaign_id = ?', (pin['character_id'], g.campaign_id)).fetchone()
+        if char is None:
+            continue
+        pid = next((r['id'] for r in parts if r['character_id'] == pin['character_id'] and r['id'] not in pinned), None)
+        created = pid is None
+        if created:
+            max_order += 1
+            pid = db.execute(
+                'INSERT INTO battle_participants (character_id, current_hp, initiative, is_dead, sort_order) VALUES (?, ?, 0, 0, ?)',
+                (pin['character_id'], char['max_hp'], max_order)).lastrowid
+        won = db.execute(
+            'UPDATE map_pins SET participant_id = ? WHERE id = ? AND participant_id IS NULL '
+            'AND NOT EXISTS (SELECT 1 FROM map_pins x WHERE x.map_id = ? AND x.participant_id = ?)',
+            (pid, pin['id'], map_id, pid)).rowcount == 1
+        if won:
+            pinned.add(pid)
+        elif created:                                           # another request got there first: don't leave a stray row
+            db.execute('DELETE FROM battle_participants WHERE id = ?', (pid,))
+    missing = [r for r in parts if r['id'] not in pinned]
+    for i, r in enumerate(missing):
+        offset = 40 + (i * 30) % 200
+        db.execute(
+            "INSERT INTO map_pins (map_id, pin_type, character_id, participant_id, x, y, scale) VALUES (?, 'character', ?, ?, ?, ?, 1.0) ON CONFLICT DO NOTHING",
+            (map_id, r['character_id'], r['id'], offset, offset))
+
+
 def _map_pins_payload(db, map_id):
     m = db.execute('SELECT * FROM maps WHERE id = ? AND campaign_id = ?', (map_id, g.campaign_id)).fetchone()
     if m is None:
         return []
 
     if m['linked_to_battle']:
-        # Auto-place a pin for any battle participant that doesn't have one
-        # yet — but never for a familiar's own participant, since a familiar
-        # already has its own prop pin representing it on the map. Scoped to
-        # this campaign so a battle running in another campaign never bleeds
-        # pins onto this map.
-        participants = db.execute('''
-            SELECT bp.id FROM battle_participants bp
-            JOIN characters c ON bp.character_id = c.id
-            WHERE c.is_temp_familiar = 0 AND c.campaign_id = ?
-        ''', (g.campaign_id,)).fetchall()
-        participant_ids = [p['id'] for p in participants]
-        existing = db.execute(
-            "SELECT participant_id FROM map_pins WHERE map_id = ? AND pin_type = 'character'", (map_id,)
-        ).fetchall()
-        existing_ids = {e['participant_id'] for e in existing}
-        new_ids = [pid for pid in participant_ids if pid not in existing_ids]
-        for i, participant_id in enumerate(new_ids):
-            offset = 40 + (i * 30) % 200
-            db.execute(
-                "INSERT INTO map_pins (map_id, pin_type, participant_id, x, y, scale) VALUES (?, 'character', ?, ?, ?, 1.0)",
-                (map_id, participant_id, offset, offset)
-            )
-        # Drop pins for participants no longer in the current battle
-        if participant_ids:
-            placeholders = ','.join('?' * len(participant_ids))
-            db.execute(
-                f"DELETE FROM map_pins WHERE map_id = ? AND pin_type = 'character' AND participant_id NOT IN ({placeholders})",
-                [map_id] + participant_ids
-            )
-        else:
-            db.execute("DELETE FROM map_pins WHERE map_id = ? AND pin_type = 'character'", (map_id,))
+        _reconcile_map_battle(db, map_id)
         db.commit()
 
-    rows = db.execute('SELECT * FROM map_pins WHERE map_id = ?', (map_id,)).fetchall()
-    # Reuse the battle tracker's own duplicate-numbering (e.g. "Goblin #1",
-    # "Goblin #2") so character pins on the map match the battle menu exactly.
+    rows = [dict(r) for r in db.execute('SELECT * FROM map_pins WHERE map_id = ? ORDER BY id', (map_id,)).fetchall()]
+    # Everything a token shows comes from its character (and, if it has one, its battle row), fetched in two queries.
+    char_ids = sorted({r['character_id'] for r in rows if r['pin_type'] == 'character' and r['character_id']})
+    chars = {}
+    if char_ids:
+        marks = ','.join('?' * len(char_ids))
+        for c in db.execute(f'''
+            SELECT c.id AS character_id, c.name AS char_name, c.avatar_path, c.max_hp AS char_max_hp, c.is_npc,
+                   c.is_temp_familiar, c.class_key, g.color AS group_color
+            FROM characters c LEFT JOIN groups g ON c.group_id = g.id
+            WHERE c.campaign_id = ? AND c.id IN ({marks})
+        ''', [g.campaign_id] + char_ids).fetchall():
+            chars[c['character_id']] = dict(c)
+    # Reuse the battle tracker's own duplicate-numbering ("Goblin #1", "Goblin #2") so linked tokens match the battle menu.
     battle_display_names = {r['id']: r['display_name'] for r in _battle_rows(db)}
-    result = []
+    # Tokens with no battle row number their own duplicates, in the order they were placed.
+    plain_total, plain_seen = {}, {}
     for r in rows:
-        p = dict(r)
-        # A prop pin with a participant_id is a familiar wired into the
-        # battle tracker -- fetch its live is_npc/HP too, not just real
-        # "character" pins, so a familiar the DM has marked as an NPC gets
-        # the same PC/NPC-aware treatment everywhere else does.
-        if p['participant_id']:
+        if r['pin_type'] == 'character' and r['participant_id'] is None:
+            plain_total[r['character_id']] = plain_total.get(r['character_id'], 0) + 1
+    result = []
+    for p in rows:
+        if p['pin_type'] == 'character':
+            c = chars.get(p['character_id'])
+            if c is None:
+                continue
+            p.update(c)
+            live = None
+            if p['participant_id']:
+                live = db.execute('SELECT current_hp, is_dead FROM battle_participants WHERE id = ?', (p['participant_id'],)).fetchone()
+            if live is not None:
+                p['current_hp'], p['is_dead'] = live['current_hp'], live['is_dead']
+                p['char_name'] = battle_display_names.get(p['participant_id'], p['char_name'])
+            else:
+                p['current_hp'], p['is_dead'] = None, 0
+                if plain_total.get(p['character_id'], 0) > 1:
+                    plain_seen[p['character_id']] = plain_seen.get(p['character_id'], 0) + 1
+                    p['char_name'] = f"{p['char_name']} #{plain_seen[p['character_id']]}"
+            if not g.is_dm and p['is_npc']:
+                p['hidden_stats'] = True
+                p['current_hp'] = None
+                p['char_max_hp'] = None
+                p['class_key'] = None
+        elif p['participant_id']:
+            # A prop pin with a participant_id is a familiar wired into the battle tracker -- fetch its live
+            # is_npc/HP too, so a familiar the DM has marked as an NPC gets the same PC/NPC-aware treatment.
             live = db.execute('''
                 SELECT bp.current_hp, bp.is_dead, c.id AS character_id, c.name AS char_name, c.avatar_path,
                        c.max_hp AS char_max_hp, c.is_npc, c.is_temp_familiar, c.class_key, g.color AS group_color
@@ -3177,9 +3265,6 @@ def _map_pins_payload(db, map_id):
                 continue
             p.update(dict(live))
             p['char_name'] = battle_display_names.get(p['participant_id'], p['char_name'])
-            # Same redaction as the battle menu: a Player doesn't get a
-            # monster's (or an NPC-marked familiar's) HP just by opening
-            # the map instead.
             if not g.is_dm and p['is_npc']:
                 p['hidden_stats'] = True
                 p['current_hp'] = None
@@ -3202,7 +3287,7 @@ def api_map_pins_list(map_id):
 @campaign_access_required
 def api_map_sync(map_id):
     """One request instead of three: the map editor's live refresh needs the grid/lock
-    state, the drawings and (only while the map is linked to the battle) the pins.
+    state, the drawings and the pins.
     Serving them together means one serverless invocation and one database connection
     per refresh instead of three."""
     db = get_db()
@@ -3211,7 +3296,7 @@ def api_map_sync(map_id):
         db.close()
         abort(404)
     drawings = _map_drawings_payload(db, map_id)
-    pins = _map_pins_payload(db, map_id) if state['linked_to_battle'] else None
+    pins = _map_pins_payload(db, map_id)
     db.close()
     return jsonify({'state': state, 'drawings': drawings, 'pins': pins})
 
@@ -3241,7 +3326,16 @@ def api_map_pins_add(map_id):
     data = request.get_json(force=True)
     pin_type = data.get('pin_type', 'prop')
     icon_key = data.get('icon_key')
-    if pin_type != 'prop':                                  # character pins are created by the battle sync, never by clients
+    character_id = None
+    if pin_type == 'character':                             # only the DM puts characters on the map
+        if not g.is_dm:
+            abort(403)
+        icon_key = None
+        try:
+            character_id = int(data.get('character_id'))
+        except (TypeError, ValueError):
+            return jsonify({'error': 'Unknown character.'}), 400
+    elif pin_type != 'prop':
         return jsonify({'error': 'Unknown pin type.'}), 400
     if icon_key is not None and icon_key not in PIN_ICON_KEYS:
         return jsonify({'error': 'Unknown pin icon.'}), 400
@@ -3256,16 +3350,25 @@ def api_map_pins_add(map_id):
     locked = 1 if data.get('locked') else 0
     db = get_db()
     participant_id = None
-    if pin_type == 'prop':
-        m = db.execute('SELECT linked_to_battle FROM maps WHERE id = ?', (map_id,)).fetchone()
-        if m and m['linked_to_battle']:
-            participant_id = _create_familiar_participant(db, icon_key, custom_name)
+    m = db.execute('SELECT linked_to_battle FROM maps WHERE id = ?', (map_id,)).fetchone()
+    linked = bool(m and m['linked_to_battle'])
+    if pin_type == 'character':
+        if db.execute('SELECT 1 FROM characters WHERE id = ? AND campaign_id = ? AND is_temp_familiar = 0',
+                      (character_id, g.campaign_id)).fetchone() is None:
+            db.close()
+            return jsonify({'error': 'Character not found.'}), 404
+    elif linked:
+        participant_id = _create_familiar_participant(db, icon_key, custom_name)
     cur = db.execute(
-        "INSERT INTO map_pins (map_id, pin_type, icon_key, custom_name, x, y, scale, rotation, locked, participant_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (map_id, pin_type, icon_key, custom_name, x, y, scale, rotation, locked, participant_id)
+        "INSERT INTO map_pins (map_id, pin_type, icon_key, custom_name, x, y, scale, rotation, locked, participant_id, character_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (map_id, pin_type, icon_key, custom_name if pin_type == 'prop' else None, x, y, scale, rotation, locked, participant_id, character_id)
     )
-    db.commit()
     new_id = cur.lastrowid
+    if pin_type == 'character' and linked:
+        _reconcile_map_battle(db, map_id)                   # the new token joins the battle straight away
+        row = db.execute('SELECT participant_id FROM map_pins WHERE id = ?', (new_id,)).fetchone()
+        participant_id = row['participant_id'] if row else None
+    db.commit()
     db.close()
     return jsonify({'id': new_id, 'participant_id': participant_id})
 
@@ -3329,8 +3432,16 @@ def api_map_pin_update(map_id, pin_id):
 @map_edit_allowed
 def api_map_pin_delete(map_id, pin_id):
     db = get_db()
-    pin = db.execute('SELECT participant_id FROM map_pins WHERE id = ? AND map_id = ?', (pin_id, map_id)).fetchone()
-    if pin and pin['participant_id']:
+    pin = db.execute('SELECT participant_id, pin_type FROM map_pins WHERE id = ? AND map_id = ?', (pin_id, map_id)).fetchone()
+    if pin and pin['pin_type'] == 'character':
+        # Taking a character off a linked map takes them out of the battle too, so it is the DM's call alone.
+        if not g.is_dm:
+            db.close()
+            abort(403)
+        m = db.execute('SELECT linked_to_battle FROM maps WHERE id = ?', (map_id,)).fetchone()
+        if pin['participant_id'] and m and m['linked_to_battle']:
+            _remove_participant(db, pin['participant_id'])
+    elif pin and pin['participant_id']:
         char_row = db.execute('SELECT character_id FROM battle_participants WHERE id = ?', (pin['participant_id'],)).fetchone()
         if char_row:
             db.execute('DELETE FROM characters WHERE id = ? AND is_temp_familiar = 1', (char_row['character_id'],))
