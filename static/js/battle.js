@@ -46,14 +46,19 @@
   // ---- Conditions (DL-41) ----
   const CONDITIONS = JSON.parse((document.getElementById('conditions-data') || { textContent: '[]' }).textContent);
   const CONDITION_LABEL = Object.fromEntries(CONDITIONS.map((c) => [c.key, c.label]));
+  const MAX_CUSTOM = 3;          // keep in step with MAX_CUSTOM_CONDITIONS / CUSTOM_CONDITION_MAX_LEN in app.py
+  const CUSTOM_MAX_LEN = 24;
+  const condCustomHint = document.getElementById('custom-cond-hint');
 
   const condIcon = (key, cls) => `<svg class="cond-icon ${escapeHtml(cls || '')}" aria-hidden="true"><use href="/static/icons/conditions.svg#${escapeHtml(key)}"></use></svg>`;
 
   function conditionChips(p) {
     const list = (p.conditions || []).filter((k) => CONDITION_LABEL[k]);
-    const chips = list.map((k) => `<span class="cond-chip cond-${escapeHtml(k)}">${condIcon(k)}${escapeHtml(CONDITION_LABEL[k])}</span>`).join('');
+    const customs = p.custom_conditions || [];
+    const chips = list.map((k) => `<span class="cond-chip cond-${escapeHtml(k)}">${condIcon(k)}${escapeHtml(CONDITION_LABEL[k])}</span>`).join('')
+      + customs.map((n) => `<span class="cond-chip cond-custom">${condIcon('custom')}${escapeHtml(n)}</span>`).join('');
     const addBtn = isDM
-      ? `<button type="button" class="cond-add" data-action="conditions" title="Conditions" aria-label="Conditions for ${escapeHtml(p.display_name)}">${ICONS.heart}${list.length ? '' : '<span>Conditions</span>'}</button>`
+      ? `<button type="button" class="cond-add" data-action="conditions" title="Conditions" aria-label="Conditions for ${escapeHtml(p.display_name)}">${ICONS.heart}${(list.length || customs.length) ? '' : '<span>Conditions</span>'}</button>`
       : '';
     return (chips || addBtn) ? `<div class="cond-row">${chips}${addBtn}</div>` : '';
   }
@@ -442,8 +447,56 @@
     if (!p) { condModal.hidden = true; return; }
     document.getElementById('conditions-modal-title').textContent = `Conditions — ${p.display_name}`;
     const on = new Set(p.conditions || []);
+    const customs = p.custom_conditions || [];
     condPicker.innerHTML = CONDITIONS.map((c) => `
-      <button type="button" class="cond-tile ${on.has(c.key) ? 'active' : ''}" data-cond="${escapeHtml(c.key)}" aria-pressed="${on.has(c.key)}">${condIcon(c.key, 'cond-icon-lg')}<span>${escapeHtml(c.label)}</span></button>`).join('');
+      <button type="button" class="cond-tile ${on.has(c.key) ? 'active' : ''}" data-cond="${escapeHtml(c.key)}" aria-pressed="${on.has(c.key)}">${condIcon(c.key, 'cond-icon-lg')}<span>${escapeHtml(c.label)}</span></button>`).join('')
+      + '<p class="cond-section-label">Custom</p>'
+      + customs.map((n, i) => `
+      <button type="button" class="cond-tile cond-tile-custom active" data-custom-index="${i}" aria-pressed="true" title="Click to remove">${condIcon('custom', 'cond-icon-lg')}<span>${escapeHtml(n)}</span></button>`).join('')
+      + (customs.length < MAX_CUSTOM ? `
+      <button type="button" class="cond-tile cond-tile-new" data-custom-new title="Add a custom condition">${condIcon('plus', 'cond-icon-lg')}<span>Custom</span></button>` : '');
+    if (condCustomHint) condCustomHint.textContent = customs.length >= MAX_CUSTOM
+      ? `Custom limit reached (${MAX_CUSTOM}). Click a custom condition to remove it.`
+      : `Custom conditions: type your own, up to ${MAX_CUSTOM} per character. Click one to remove it.`;
+  }
+
+  // Every change goes through one queue and is computed from the latest state, so two quick clicks (or a click while
+  // a custom name is being committed) can never overwrite each other with stale lists.
+  let condQueue = Promise.resolve();
+  function mutateConditions(change) {
+    condQueue = condQueue.then(async () => {
+      const p = participants.find((x) => String(x.id) === String(condPid));
+      if (!p) return;
+      const next = change(p);
+      participants = await apiCall(`/api/battle/${p.id}/conditions`, { conditions: next.standard, custom_conditions: next.customs });
+      render();
+      renderConditionPicker();
+    }).catch(() => { renderConditionPicker(); });
+    return condQueue;
+  }
+
+  // The "+ Custom" tile turns into a text box in place; Enter (or leaving the box with text in it) adds the condition.
+  function startCustomEntry(tile) {
+    if (!participants.some((x) => String(x.id) === String(condPid))) return;
+    const box = document.createElement('div');
+    box.className = 'cond-tile cond-tile-new is-editing';
+    box.innerHTML = `${condIcon('custom', 'cond-icon-lg')}<input type="text" class="cond-custom-input" maxlength="${CUSTOM_MAX_LEN}" placeholder="Name it" aria-label="Custom condition name" autocomplete="off">`;
+    tile.replaceWith(box);
+    const input = box.querySelector('input');
+    let done = false;
+    const finish = async (commit) => {
+      if (done) return;
+      done = true;
+      const name = input.value.trim().replace(/\s+/g, ' ');
+      if (!commit || !name) { renderConditionPicker(); return; }
+      await mutateConditions((cur) => ({ standard: cur.conditions || [], customs: [...(cur.custom_conditions || []), name] }));
+    };
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); finish(true); }
+      else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish(false); }
+    });
+    input.addEventListener('blur', () => finish(true));
+    input.focus();
   }
 
   function openConditions(pid) {
@@ -457,15 +510,22 @@
     document.getElementById('close-conditions-modal').addEventListener('click', () => { condModal.hidden = true; });
     condModal.addEventListener('click', (e) => { if (e.target === condModal) condModal.hidden = true; });
     condPicker.addEventListener('click', async (e) => {
+      const newTile = e.target.closest('[data-custom-new]');
+      if (newTile) { startCustomEntry(newTile); return; }
+      const customTile = e.target.closest('[data-custom-index]');
+      if (customTile) {
+        const index = customTile.dataset.customIndex;
+        mutateConditions((cur) => ({ standard: cur.conditions || [], customs: (cur.custom_conditions || []).filter((_, i) => String(i) !== index) }));
+        return;
+      }
       const btn = e.target.closest('[data-cond]');
       if (!btn) return;
-      const p = participants.find((x) => String(x.id) === String(condPid));
-      if (!p) return;
-      const next = new Set(p.conditions || []);
-      if (next.has(btn.dataset.cond)) next.delete(btn.dataset.cond); else next.add(btn.dataset.cond);
-      participants = await apiCall(`/api/battle/${condPid}/conditions`, { conditions: [...next] });
-      render();
-      renderConditionPicker();
+      const key = btn.dataset.cond;
+      mutateConditions((cur) => {
+        const next = new Set(cur.conditions || []);
+        if (next.has(key)) next.delete(key); else next.add(key);
+        return { standard: [...next], customs: cur.custom_conditions || [] };
+      });
     });
   }
 

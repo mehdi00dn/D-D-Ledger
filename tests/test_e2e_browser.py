@@ -299,7 +299,7 @@ def test_battle_conditions_picker_and_chips(pw, shared_server):
     dpage.click('[data-cond="prone"]'); dpage.click('[data-cond="poisoned"]')
     dpage.wait_for_timeout(500)
     assert dpage.locator('#conditions-picker .cond-tile.active').count() == 2
-    assert dpage.locator('#conditions-picker .cond-tile svg.cond-icon').count() == 15      # every condition has its icon tile
+    assert dpage.locator('#conditions-picker [data-cond] svg.cond-icon').count() == 15     # every condition has its icon tile
     dpage.screenshot(path='/tmp/conds-modal.png')
     dpage.evaluate("() => document.documentElement.setAttribute('data-theme', 'light')")
     dpage.wait_for_timeout(300); dpage.screenshot(path='/tmp/conds-modal-light.png')
@@ -509,3 +509,40 @@ def test_hostile_names_never_execute_in_battle_or_map_screens(pw, shared_server)
     assert page.locator('.dossier-meta img').count() == 0
     assert dialogs == [], dialogs
     ctx.close()
+
+
+def test_custom_conditions_are_typed_in_place_and_capped_at_three(pw, shared_server):
+    base = shared_server.url; dm = Api(base); player = Api(base); cid = dm.campaign('Custom')
+    dm.add_member(cid, player)
+    dm.post(f'/campaigns/{cid}/api/battle/add', json={'character_id': dm.character(cid, 'Aria')})
+    dctx = dm.context(pw, base); dpage = dctx.new_page(); dbad, derrs = _collect(dpage)
+    pctx = player.context(pw, base); ppage = pctx.new_page()
+    dialogs = []; dpage.on('dialog', lambda d: (dialogs.append(d.message), d.dismiss()))
+    dpage.goto(base + f'/campaigns/{cid}/battle'); ppage.goto(base + f'/campaigns/{cid}/battle')
+    dpage.wait_for_selector('.battle-row'); ppage.wait_for_selector('.battle-row')
+    dpage.click('.cond-add'); dpage.wait_for_selector('#conditions-modal:not([hidden])')
+    assert dpage.locator('[data-custom-new]').count() == 1
+
+    for name in ('Hexed', '<b onclick=alert(1)>x', 'On fire'):
+        dpage.click('[data-custom-new]')
+        dpage.fill('.cond-custom-input', name); dpage.keyboard.press('Enter')
+        dpage.wait_for_selector(f'[data-custom-index]:has-text("{name.replace(chr(34), "")}")')
+    assert dpage.locator('[data-custom-index]').count() == 3
+    assert dpage.locator('[data-custom-new]').count() == 0                                  # the limit is 3: no more "+" tile
+    assert 'limit reached' in dpage.inner_text('#custom-cond-hint')
+    dpage.screenshot(path='/tmp/conds-custom-full.png')
+
+    dpage.click('[data-custom-index="0"]')                                                  # click a custom one to remove it
+    dpage.locator('[data-custom-new]').wait_for()
+    assert dpage.locator('[data-custom-index]').count() == 2
+
+    dpage.click('[data-custom-new]'); dpage.fill('.cond-custom-input', 'x'); dpage.keyboard.press('Escape')   # Escape cancels
+    dpage.locator('[data-custom-new]').wait_for()
+    assert dpage.locator('[data-custom-index]').count() == 2
+
+    dpage.click('#close-conditions-modal')
+    assert sorted(dpage.locator('.battle-row .cond-chip.cond-custom').all_text_contents()) == ['<b onclick=alert(1)>x', 'On fire']
+    ppage.wait_for_selector('.battle-row .cond-chip.cond-custom', timeout=15000)           # the party sees it on a PC row
+    assert ppage.locator('.battle-row .cond-chip.cond-custom').count() == 2
+    assert dpage.locator('.battle-row .cond-chip.cond-custom b').count() == 0 and dialogs == []   # markup stays text
+    assert not derrs

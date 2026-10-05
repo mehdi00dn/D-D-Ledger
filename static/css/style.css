@@ -2830,3 +2830,15 @@ body.page-leaving .content {
 .invite-link-new .hint-text { margin: 0 0 8px; }
 .invite-link-new[hidden], #invite-link-list[hidden], #invite-link-empty[hidden], #invite-link-error[hidden] { display: none; }
 #invite-link-error { margin: 0 0 12px; }
+
+/* custom conditions (typed by the DM) */
+.cond-tile-new { border-style: dashed; background: transparent; }
+.cond-tile-new.is-editing { cursor: text; border-style: solid; border-color: var(--brass); color: var(--parchment); }
+.cond-custom-input {
+  width: 100%; box-sizing: border-box; min-width: 0; padding: 4px 6px; text-align: center;
+  background: var(--bg-panel-inset); border: 1px solid var(--hairline-strong); border-radius: 6px; color: var(--parchment);
+  font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.04em; text-transform: uppercase;
+}
+.cond-custom-input:focus { outline: none; border-color: var(--brass-bright); }
+.cond-tile-custom span { overflow-wrap: anywhere; }
+.cond-section-label { grid-column: 1 / -1; margin: 6px 0 0; padding-top: 10px; border-top: 1px solid var(--hairline); font: 600 10.5px var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--parchment-dim); }

@@ -1962,6 +1962,35 @@ BATTLE_CONDITIONS = [
 ]
 _CONDITION_KEYS = [k for k, _label in BATTLE_CONDITIONS]
 
+# Custom conditions: free text the DM types for one participant ("Hexed", "On fire"...).  Plain text only (the
+# screens escape it), short, and capped so a participant row can't turn into a notice board.
+MAX_CUSTOM_CONDITIONS = 3
+CUSTOM_CONDITION_MAX_LEN = 24
+
+
+def _clean_custom_conditions(raw):
+    """Validated list of custom condition names (whitespace tidied, case-insensitive duplicates dropped).
+    Raises ValueError for anything that is not a list of 1..24-character strings, or has too many entries."""
+    if not isinstance(raw, list) or len(raw) > MAX_CUSTOM_CONDITIONS:
+        raise ValueError('custom_conditions')
+    names = []
+    for item in raw:
+        if not isinstance(item, str):
+            raise ValueError('custom_conditions')
+        name = ' '.join(''.join(ch for ch in item if ch.isprintable()).split())
+        if not name or len(name) > CUSTOM_CONDITION_MAX_LEN:
+            raise ValueError('custom_conditions')
+        if name.lower() not in [n.lower() for n in names]:
+            names.append(name)
+    return names
+
+
+def _load_custom_conditions(stored):
+    try:
+        return _clean_custom_conditions(json.loads(stored or '[]'))
+    except (ValueError, TypeError):
+        return []
+
 
 def _battle_rows(db, redact_enemies=False):
     """redact_enemies=True (a Player viewing the battle) strips HP, AC, and
@@ -1985,6 +2014,7 @@ def _battle_rows(db, redact_enemies=False):
     turn = db.execute('SELECT battle_round, battle_turn_id FROM campaigns WHERE id = ?', (g.campaign_id,)).fetchone()
     for r in rows:
         r['conditions'] = [k for k in _CONDITION_KEYS if k in (r.get('conditions') or '').split(',')]
+        r['custom_conditions'] = _load_custom_conditions(r.get('custom_conditions'))
         r['is_active'] = bool(turn and turn['battle_turn_id'] == r['id'])
         r['battle_round'] = turn['battle_round'] if turn else 1
 
@@ -2016,6 +2046,7 @@ def _battle_rows(db, redact_enemies=False):
             if r['is_npc']:
                 r['hidden_stats'] = True
                 r['conditions'] = []                   # what is affecting a monster is the DM's to reveal
+                r['custom_conditions'] = []
                 r['class_key'] = None                  # ...and so is what class it is
                 r['current_hp'] = None
                 r['char_max_hp'] = None
@@ -2326,12 +2357,22 @@ def api_battle_revive(pid):
 @dm_required
 def api_battle_conditions(pid):
     """DM only. Replaces the participant's condition list (unknown names are refused)."""
-    wanted = (request.get_json(silent=True) or {}).get('conditions')
+    payload = request.get_json(silent=True) or {}
+    wanted = payload.get('conditions')
     if not isinstance(wanted, list) or any(not isinstance(k, str) or k not in _CONDITION_KEYS for k in wanted):
         return jsonify({'error': 'Unknown condition'}), 400
+    custom = None                                          # omitted = leave the participant's custom conditions alone
+    if 'custom_conditions' in payload:
+        try:
+            custom = _clean_custom_conditions(payload['custom_conditions'])
+        except ValueError:
+            return jsonify({'error': 'Custom conditions: up to %d, each 1-%d characters of plain text.'
+                                     % (MAX_CUSTOM_CONDITIONS, CUSTOM_CONDITION_MAX_LEN)}), 400
     db = get_db()
     db.execute('UPDATE battle_participants SET conditions = ? WHERE id = ?',
                (','.join(k for k in _CONDITION_KEYS if k in wanted), pid))
+    if custom is not None:
+        db.execute('UPDATE battle_participants SET custom_conditions = ? WHERE id = ?', (json.dumps(custom), pid))
     db.commit()
     rows = _battle_rows(db)
     db.close()
