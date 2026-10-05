@@ -581,7 +581,9 @@ def test_condition_chip_x_removes_it_on_hover(pw, shared_server):
     assert sorted(dpage.locator('.cond-chip').all_text_contents()) == ['Hexed', 'Poisoned']
     cc = dpage.locator('.cond-chip.cond-custom'); cbox = cc.bounding_box()
     cc.hover(); dpage.wait_for_timeout(400)
-    assert cc.bounding_box() == cbox                                                 # custom chip does not resize either
+    hbox = cc.bounding_box(); xbox = cc.locator('.cond-x').bounding_box()
+    assert hbox['width'] > cbox['width'] and hbox['height'] == cbox['height']        # snug at rest, widens on hover for the x
+    assert xbox['x'] + xbox['width'] <= hbox['x'] + hbox['width'] and xbox['x'] >= hbox['x'] + hbox['width'] - 30
     cc.locator('.cond-x').click()
     dpage.locator('.cond-chip.cond-custom').wait_for(state='detached')
     assert dpage.locator('.cond-chip').all_text_contents() == ['Poisoned']

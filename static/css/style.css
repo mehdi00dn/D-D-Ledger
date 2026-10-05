@@ -2887,8 +2887,8 @@ body.page-leaving .content {
 .cond-custom-add:active { transform: translateY(1px); }
 .cond-custom-add:focus-visible { outline: 2px solid var(--parchment); outline-offset: 2px; }
 :root[data-theme="light"] .cond-custom-add { color: var(--bg-panel); }
-/* Custom chips have no icon; the DM's "x" fades in inside reserved right padding, so hovering never resizes the chip. */
+/* Custom chips have no icon and sit snug by default; on hover the chip widens a little so the DM's "x" fits. */
 .cond-chip.cond-custom { padding-left: 10px; }
-.cond-chip.cond-custom.has-x { padding-right: 26px; }
+.cond-chip.cond-custom.has-x:hover, .cond-chip.cond-custom.has-x:focus-within { padding-right: 26px; }   /* grows only on hover, to make room for the x */
 .cond-x-end { position: absolute; right: 4px; top: 50%; margin-top: -8px; }
 @media (hover: none) { .cond-x-end { background: transparent; } }
