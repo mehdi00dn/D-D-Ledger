@@ -536,6 +536,15 @@ def test_custom_conditions_are_typed_in_place_and_capped_at_three(pw, shared_ser
     dpage.locator('[data-custom-new]').wait_for()
     assert dpage.locator('[data-custom-index]').count() == 2
 
+    dpage.click('[data-custom-new]'); dpage.fill('.cond-custom-input', 'Marked')              # the Add button commits too
+    dpage.click('[data-custom-add]')
+    dpage.wait_for_selector('[data-custom-index]:has-text("Marked")')
+    assert dpage.locator('[data-custom-index]').count() == 3
+    assert dpage.locator('[data-custom-index] svg').count() == 0 and dpage.locator('[data-custom-new]').count() == 0   # no icon on customs
+    # the custom tiles sit in the same grid as the standard ones (no separate section)
+    assert dpage.locator('#conditions-picker .cond-section-label').count() == 0
+    dpage.click('[data-custom-index="2"]'); dpage.locator('[data-custom-new]').wait_for()
+    assert dpage.locator('[data-custom-new] svg').count() == 1                                   # the "+" stays on the add tile
     dpage.click('[data-custom-new]'); dpage.fill('.cond-custom-input', 'x'); dpage.keyboard.press('Escape')   # Escape cancels
     dpage.locator('[data-custom-new]').wait_for()
     assert dpage.locator('[data-custom-index]').count() == 2
@@ -544,7 +553,7 @@ def test_custom_conditions_are_typed_in_place_and_capped_at_three(pw, shared_ser
     assert sorted(dpage.locator('.battle-row .cond-chip.cond-custom').all_text_contents()) == ['<b onclick=alert(1)>x', 'On fire']
     ppage.wait_for_selector('.battle-row .cond-chip.cond-custom', timeout=15000)           # the party sees it on a PC row
     assert ppage.locator('.battle-row .cond-chip.cond-custom').count() == 2
-    assert dpage.locator('.battle-row .cond-chip.cond-custom b').count() == 0 and dialogs == []   # markup stays text
+    assert dpage.locator('.battle-row .cond-chip.cond-custom svg').count() == 0 and dpage.locator('.battle-row .cond-chip.cond-custom b').count() == 0 and dialogs == []   # markup stays text
     assert not derrs
 
 
@@ -560,12 +569,20 @@ def test_condition_chip_x_removes_it_on_hover(pw, shared_server):
     assert ppage.locator('.cond-x').count() == 0                                     # Players never get the x
     chip = dpage.locator('.cond-chip.cond-prone')
     x = chip.locator('.cond-x')
-    assert not x.is_visible()                                                        # hidden until hover
-    chip.hover(); assert x.is_visible()
+    opacity = lambda: float(x.evaluate("(el) => getComputedStyle(el).opacity"))
+    before = chip.bounding_box(); row_before = dpage.locator('.cond-row').bounding_box()
+    assert opacity() == 0                                                            # invisible until hover
+    chip.hover(); dpage.wait_for_timeout(400)
+    assert opacity() == 1
+    assert chip.bounding_box() == before and dpage.locator('.cond-row').bounding_box() == row_before   # hovering moves/resizes nothing
+    dpage.screenshot(path='/tmp/cond-chip-hover.png', clip={**row_before, 'x': row_before['x'] - 10, 'y': row_before['y'] - 30, 'width': 420, 'height': 80})
     x.click()
     dpage.locator('.cond-chip.cond-prone').wait_for(state='detached')
     assert sorted(dpage.locator('.cond-chip').all_text_contents()) == ['Hexed', 'Poisoned']
-    dpage.locator('.cond-chip.cond-custom').hover(); dpage.locator('.cond-chip.cond-custom .cond-x').click()
+    cc = dpage.locator('.cond-chip.cond-custom'); cbox = cc.bounding_box()
+    cc.hover(); dpage.wait_for_timeout(400)
+    assert cc.bounding_box() == cbox                                                 # custom chip does not resize either
+    cc.locator('.cond-x').click()
     dpage.locator('.cond-chip.cond-custom').wait_for(state='detached')
     assert dpage.locator('.cond-chip').all_text_contents() == ['Poisoned']
     assert not derrs, derrs

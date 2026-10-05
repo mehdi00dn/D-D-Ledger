@@ -52,15 +52,29 @@
 
   const condIcon = (key, cls) => `<svg class="cond-icon ${escapeHtml(cls || '')}" aria-hidden="true"><use href="/static/icons/conditions.svg#${escapeHtml(key)}"></use></svg>`;
 
+  // Chips only animate in when they are genuinely new: the list re-renders on every refresh, so we remember what was
+  // already on screen (condSeen) and flag the difference. The first render seeds the set without animating.
+  let condSeen = null;
+  let condNow = new Set();
+
   function conditionChips(p) {
     const list = (p.conditions || []).filter((k) => CONDITION_LABEL[k]);
     const customs = p.custom_conditions || [];
-    // The DM gets an "x" on each chip (revealed on hover / keyboard focus) to clear that one condition.
-    const x = (attrs, name) => (isDM
-      ? `<button type="button" class="cond-x" ${attrs} title="Remove ${escapeHtml(name)}" aria-label="Remove ${escapeHtml(name)}"></button>`
-      : '');
-    const chips = list.map((k) => `<span class="cond-chip cond-${escapeHtml(k)}">${condIcon(k)}${escapeHtml(CONDITION_LABEL[k])}${x(`data-action="cond-remove" data-cond="${escapeHtml(k)}"`, CONDITION_LABEL[k])}</span>`).join('')
-      + customs.map((n, i) => `<span class="cond-chip cond-custom">${condIcon('custom')}${escapeHtml(n)}${x(`data-action="cond-remove" data-chip-custom="${i}"`, n)}</span>`).join('');
+    const chip = (id, cls, icon, name, removeAttrs) => {
+      condNow.add(id);
+      const isNew = condSeen && !condSeen.has(id);
+      // The icon and the DM's "x" share one slot, so hovering swaps them in place and the chip never changes size.
+      if (icon === 'custom') {   // custom conditions carry no icon: the DM's "x" sits in reserved right padding instead
+        const x = isDM ? `<button type="button" class="cond-x cond-x-end" ${removeAttrs} title="Remove ${escapeHtml(name)}" aria-label="Remove ${escapeHtml(name)}"></button>` : '';
+        return `<span class="cond-chip ${cls}${isDM ? ' has-x' : ''}${isNew ? ' is-new' : ''}"><span class="cond-name">${escapeHtml(name)}</span>${x}</span>`;
+      }
+      const slot = isDM
+        ? `<span class="cond-slot">${condIcon(icon)}<button type="button" class="cond-x" ${removeAttrs} title="Remove ${escapeHtml(name)}" aria-label="Remove ${escapeHtml(name)}"></button></span>`
+        : `<span class="cond-slot">${condIcon(icon)}</span>`;
+      return `<span class="cond-chip ${cls}${isNew ? ' is-new' : ''}">${slot}<span class="cond-name">${escapeHtml(name)}</span></span>`;
+    };
+    const chips = list.map((k) => chip(`${p.id}:s:${k}`, `cond-${escapeHtml(k)}`, k, CONDITION_LABEL[k], `data-action="cond-remove" data-cond="${escapeHtml(k)}"`)).join('')
+      + customs.map((n, i) => chip(`${p.id}:c:${n}`, 'cond-custom', 'custom', n, `data-action="cond-remove" data-chip-custom="${i}"`)).join('');
     const addBtn = isDM
       ? `<button type="button" class="cond-add" data-action="conditions" title="Conditions" aria-label="Conditions for ${escapeHtml(p.display_name)}">${ICONS.heart}${(list.length || customs.length) ? '' : '<span>Conditions</span>'}</button>`
       : '';
@@ -218,6 +232,7 @@
       html += '<div class="battle-list">' + section.items.map(rowMarkup).join('') + '</div>';
     });
     root.innerHTML = html;
+    condSeen = condNow; condNow = new Set();
   }
 
   // Round counter + the DM's Next turn button (hidden while nobody is on the field).
@@ -292,6 +307,8 @@
     } else if (action === 'conditions') {
       openConditions(pid);
     } else if (action === 'cond-remove') {
+      const chipEl = btn.closest('.cond-chip');
+      if (chipEl) { chipEl.classList.add('is-leaving'); await new Promise((r) => setTimeout(r, 170)); }
       const key = btn.dataset.cond;
       const index = btn.dataset.chipCustom;
       mutateConditions((cur) => ({
@@ -461,9 +478,8 @@
     const customs = p.custom_conditions || [];
     condPicker.innerHTML = CONDITIONS.map((c) => `
       <button type="button" class="cond-tile ${on.has(c.key) ? 'active' : ''}" data-cond="${escapeHtml(c.key)}" aria-pressed="${on.has(c.key)}">${condIcon(c.key, 'cond-icon-lg')}<span>${escapeHtml(c.label)}</span></button>`).join('')
-      + '<p class="cond-section-label">Custom</p>'
       + customs.map((n, i) => `
-      <button type="button" class="cond-tile cond-tile-custom active" data-custom-index="${i}" aria-pressed="true" title="Click to remove">${condIcon('custom', 'cond-icon-lg')}<span>${escapeHtml(n)}</span></button>`).join('')
+      <button type="button" class="cond-tile cond-tile-custom active" data-custom-index="${i}" aria-pressed="true" title="Click to remove"><span>${escapeHtml(n)}</span></button>`).join('')
       + (customs.length < MAX_CUSTOM ? `
       <button type="button" class="cond-tile cond-tile-new" data-custom-new title="Add a custom condition">${condIcon('plus', 'cond-icon-lg')}<span>Custom</span></button>` : '');
     if (condCustomHint) condCustomHint.textContent = customs.length >= MAX_CUSTOM
@@ -491,7 +507,7 @@
     if (!participants.some((x) => String(x.id) === String(condPid))) return;
     const box = document.createElement('div');
     box.className = 'cond-tile cond-tile-new is-editing';
-    box.innerHTML = `${condIcon('custom', 'cond-icon-lg')}<input type="text" class="cond-custom-input" maxlength="${CUSTOM_MAX_LEN}" placeholder="Name it" aria-label="Custom condition name" autocomplete="off">`;
+    box.innerHTML = `<input type="text" class="cond-custom-input" maxlength="${CUSTOM_MAX_LEN}" placeholder="Name it" aria-label="Custom condition name" autocomplete="off"><button type="button" class="cond-custom-add" data-custom-add>Add</button>`;
     tile.replaceWith(box);
     const input = box.querySelector('input');
     let done = false;
@@ -506,7 +522,10 @@
       if (e.key === 'Enter') { e.preventDefault(); finish(true); }
       else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish(false); }
     });
-    input.addEventListener('blur', () => finish(true));
+    const addBtn = box.querySelector('[data-custom-add]');
+    addBtn.addEventListener('click', () => finish(true));
+    // Moving focus onto the Add button is not "leaving the box"; the button's own click commits.
+    input.addEventListener('blur', (e) => { if (e.relatedTarget !== addBtn) finish(true); });
     input.focus();
   }
 
