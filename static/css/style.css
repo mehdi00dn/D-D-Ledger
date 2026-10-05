@@ -2925,3 +2925,5 @@ body.page-leaving .content {
 .tool-flyout.roster-dragging .tool-flyout-menu { opacity: 0 !important; pointer-events: none !important; }
 .roster-item { cursor: grab; }
 .roster-item:active { cursor: grabbing; }
+
+.roster-list { overscroll-behavior: contain; }

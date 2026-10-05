@@ -709,3 +709,26 @@ def test_linked_map_shares_the_roster_through_the_ui(pw, shared_server):
     page.wait_for_selector('.map-pin', state='detached', timeout=15000)
     assert not errs, errs
     ctx.close()
+
+
+def test_roster_opens_downward_and_wheel_scrolls_only_the_list(pw, shared_server):
+    base = shared_server.url; dm = Api(base); cid = dm.campaign('Wheel')
+    for i in range(25):
+        dm.character(cid, f'Hero {i:02d}')
+    mid, ctx, page, bad, errs = _open_map(pw, base, dm, cid)
+    page.set_viewport_size({'width': 1280, 'height': 640})
+    page.click('#characters-trigger'); page.wait_for_selector('.roster-item'); page.wait_for_timeout(300)
+    trigger = page.locator('#characters-trigger').bounding_box()
+    menu = page.locator('#characters-flyout .tool-flyout-menu-inner').bounding_box()
+    assert menu['y'] > trigger['y'], (menu, trigger)                              # opens below the toolbar by default
+    assert menu['y'] + menu['height'] <= 640, menu                                # and fits the window
+    items = page.locator('.roster-item').first.bounding_box()
+    page.mouse.move(items['x'] + 60, items['y'] + 10)
+    scroll_before = page.evaluate('() => window.scrollY')
+    for _ in range(12):                                                           # far past the end of the list, where the page used to take over
+        page.mouse.wheel(0, 400)
+    page.wait_for_timeout(300)
+    assert page.evaluate('() => window.scrollY') == scroll_before                 # the page/map did not move
+    assert page.locator('#roster-list').evaluate('e => e.scrollTop') > 0         # the list did
+    assert not errs, errs
+    ctx.close()

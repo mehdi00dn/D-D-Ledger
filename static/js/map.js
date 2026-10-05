@@ -2103,7 +2103,7 @@
     const r = toolbarEl.getBoundingClientRect();
     const above = r.top, below = window.innerHeight - r.bottom;
     const pinned = toolbarEl.classList.contains('is-pinned');          // pinned to the very top: it already opens downward
-    const down = pinned || (above < 300 && below > above);            // not enough room above: open downward instead
+    const down = pinned || below >= 220 || below >= above;              // opens downward by default; upward only if that is clearly roomier
     flyout.classList.toggle('flip-down', down && !pinned);
     const room = down ? below : above;
     const listMax = Math.max(72, Math.min(280, room - ROSTER_CHROME - 24));
@@ -2116,6 +2116,14 @@
     ['mouseenter', 'click', 'focusin'].forEach((ev) => rosterFlyout.addEventListener(ev, fitRosterMenu));
     window.addEventListener('resize', fitRosterMenu);
     rosterSearch.addEventListener('input', renderRoster);
+    // Wheel over the panel belongs to the list, never to the page/map behind it (scroll chaining at the list's ends
+    // used to push the page instead).
+    rosterFlyout.querySelector('.tool-flyout-menu').addEventListener('wheel', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const unit = e.deltaMode === 1 ? 16 : (e.deltaMode === 2 ? rosterList.clientHeight : 1);
+      rosterList.scrollTop += e.deltaY * unit;
+    }, { passive: false });
     // Drag a character straight from the list onto the map (no need to pick first).
     rosterList.addEventListener('dragstart', (e) => {
       const item = e.target.closest('[data-roster-id]');
