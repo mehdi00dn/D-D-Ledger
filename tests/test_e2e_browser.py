@@ -604,7 +604,14 @@ def test_dm_places_characters_on_a_map_without_a_battle(pw, shared_server):
     ppage.goto(base + f'/campaigns/{cid}/maps/{mid}'); ppage.wait_for_load_state('networkidle'); ppage.wait_for_timeout(600)
     assert ppage.locator('#characters-flyout').count() == 0                      # Players don't get the tool
 
+    page.set_viewport_size({'width': 1100, 'height': 520})                       # a short window: the panel must still fit
+    page.click('#characters-trigger'); page.wait_for_timeout(300)
+    menu = page.locator('#characters-flyout .tool-flyout-menu-inner').bounding_box()
+    page.screenshot(path='/tmp/roster-short.png')
+    assert menu['y'] >= 0 and menu['y'] + menu['height'] <= 520, menu
+    page.set_viewport_size({'width': 1280, 'height': 720})
     page.click('#characters-trigger')
+    page.click('#characters-trigger'); page.wait_for_timeout(200)
     page.fill('#roster-search', 'gob')
     assert page.locator('.roster-item').count() == 1
     page.click('.roster-item')                                                   # pick the goblin...
@@ -628,3 +635,77 @@ def test_dm_places_characters_on_a_map_without_a_battle(pw, shared_server):
     assert len(dm.get(f'/campaigns/{cid}/api/battle').json()) == 2
     assert not errs, errs
     dctx.close(); pctx.close()
+
+
+def _open_map(pw, base, api, cid, name='Arena'):
+    r = api.post(f'/campaigns/{cid}/maps/new', data={'name': name, 'blank_width': '1000', 'blank_height': '700'})
+    mid = int(re.search(r'/maps/(\d+)', r.headers['Location']).group(1))
+    ctx = api.context(pw, base); page = ctx.new_page(); bad, errs = _collect(page)
+    page.goto(base + f'/campaigns/{cid}/maps/{mid}'); page.wait_for_load_state('networkidle'); page.wait_for_timeout(800)
+    if page.locator('#setup-confirm-btn').is_visible():
+        page.click('#setup-confirm-btn'); page.wait_for_timeout(600)
+    return mid, ctx, page, bad, errs
+
+
+def test_roster_drag_and_drop_zoomed_and_snapped(pw, shared_server):
+    base = shared_server.url; dm = Api(base); cid = dm.campaign('DnD')
+    aria = dm.character(cid, 'Aria')
+    mid, ctx, page, bad, errs = _open_map(pw, base, dm, cid)
+    box = page.locator('#map-canvas').bounding_box()
+    page.click('#characters-trigger'); page.wait_for_selector('.roster-item')
+    # drag straight from the list (no picking first)
+    page.drag_and_drop('.roster-item', '#map-canvas', target_position={'x': 220, 'y': 180})
+    page.wait_for_selector('.map-pin')
+    assert page.locator('.map-pin-label').all_text_contents() == ['Aria']
+    pins = dm.get(f'/campaigns/{cid}/api/maps/{mid}/pins').json()
+    assert len(pins) == 1 and pins[0]['character_id'] == aria and pins[0]['participant_id'] is None
+    assert 150 < pins[0]['x'] < 300 and 120 < pins[0]['y'] < 250                  # it landed where it was dropped (snapped to a cell)
+    assert page.locator('#characters-flyout.roster-dragging').count() == 0       # the panel is back to normal afterwards
+    # picking + clicking after zooming in still lands under the cursor
+    page.keyboard.down('Control'); page.mouse.move(box['x'] + 400, box['y'] + 300); page.mouse.wheel(0, -300); page.keyboard.up('Control')
+    page.wait_for_timeout(300)
+    page.click('#characters-trigger'); page.click('.roster-item')
+    page.mouse.click(box['x'] + 500, box['y'] + 350); page.wait_for_timeout(600)
+    assert len(dm.get(f'/campaigns/{cid}/api/maps/{mid}/pins').json()) == 2
+    assert not errs, errs
+    ctx.close()
+
+
+def test_placing_failure_is_shown_not_swallowed(pw, shared_server):
+    base = shared_server.url; dm = Api(base); cid = dm.campaign('Fail')
+    dm.character(cid, 'Aria')
+    mid, ctx, page, bad, errs = _open_map(pw, base, dm, cid)
+    page.route('**/api/maps/*/pins', lambda route: route.fulfill(status=500, body='{}') if route.request.method == 'POST' else route.continue_())
+    page.click('#characters-trigger'); page.click('.roster-item')
+    box = page.locator('#map-canvas').bounding_box()
+    page.mouse.click(box['x'] + 200, box['y'] + 200)
+    assert "Couldn't place" in page.locator('#place-hint').inner_text() or page.wait_for_selector('#place-hint:has-text("Couldn\'t place")')
+    ctx.close()
+
+
+def test_linked_map_shares_the_roster_through_the_ui(pw, shared_server):
+    base = shared_server.url; dm = Api(base); cid = dm.campaign('Shared')
+    aria = dm.character(cid, 'Aria'); bram = dm.character(cid, 'Bram')
+    dm.post(f'/campaigns/{cid}/api/battle/add', json={'character_id': bram})
+    mid, ctx, page, bad, errs = _open_map(pw, base, dm, cid)
+    page.locator('label.toggle-switch:has(#link-battle-checkbox)').click()        # link to the battle
+    page.wait_for_selector('.map-pin')                                             # Bram, who was only in the battle, is on the map
+    assert page.locator('.map-pin-label').all_text_contents() == ['Bram']
+    page.click('#characters-trigger'); page.locator('.roster-item:has-text("Aria")').click()
+    box = page.locator('#map-canvas').bounding_box()
+    page.mouse.click(box['x'] + 300, box['y'] + 250); page.wait_for_timeout(600)
+    assert sorted(r['character_id'] for r in dm.get(f'/campaigns/{cid}/api/battle').json()) == sorted([aria, bram])   # Aria joined the battle
+    # remove Aria from the map through the pin bubble: asks first, then takes her out of the battle too
+    page.keyboard.press('Escape')
+    page.locator('.map-pin:has-text("Aria")').click(); page.wait_for_selector('#pin-action-bubble:not([hidden])')
+    page.click('#pin-delete-btn'); page.wait_for_selector('#confirm-modal:not([hidden])')
+    assert 'battle' in page.inner_text('#confirm-modal-message')
+    page.click('#confirm-modal-yes'); page.wait_for_timeout(600)
+    assert [r['character_id'] for r in dm.get(f'/campaigns/{cid}/api/battle').json()] == [bram]
+    assert page.locator('.map-pin').count() == 1
+    # and removing someone from the battle clears them from the map on the next refresh
+    row = dm.get(f'/campaigns/{cid}/api/battle').json()[0]['id']
+    dm.post(f'/campaigns/{cid}/api/battle/{row}/remove', json={})
+    page.wait_for_selector('.map-pin', state='detached', timeout=15000)
+    assert not errs, errs
+    ctx.close()

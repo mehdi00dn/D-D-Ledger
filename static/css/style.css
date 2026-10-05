@@ -2918,3 +2918,10 @@ body.page-leaving .content {
 .roster-empty { padding: 10px 4px; }
 .roster-foot { padding-top: 6px; border-top: 1px solid var(--hairline); }
 #map-canvas.tool-place { cursor: copy; }
+.roster-compact .roster-foot { display: none; }
+/* Not enough room above the toolbar: open the roster downward, like a pinned toolbar does. */
+.tool-flyout.flip-down .tool-flyout-menu { bottom: auto; top: 100%; padding-bottom: 0; padding-top: 14px; transform: translate(-50%, -4px); }
+.tool-flyout.flip-down:hover .tool-flyout-menu, .tool-flyout.flip-down.open .tool-flyout-menu { transform: translate(-50%, 0); }
+.tool-flyout.roster-dragging .tool-flyout-menu { opacity: 0 !important; pointer-events: none !important; }
+.roster-item { cursor: grab; }
+.roster-item:active { cursor: grabbing; }

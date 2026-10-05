@@ -2030,7 +2030,7 @@
     if (!ROSTER.length) { rosterList.innerHTML = '<p class="roster-empty">No characters yet. Create one first.</p>'; return; }
     if (!shown.length) { rosterList.innerHTML = '<p class="roster-empty">No character matches that name.</p>'; return; }
     rosterList.innerHTML = shown.map((c) => `
-      <button type="button" class="roster-item${placingChar && placingChar.id === c.id ? ' is-picked' : ''}" data-roster-id="${Number(c.id)}">
+      <button type="button" draggable="true" class="roster-item${placingChar && placingChar.id === c.id ? ' is-picked' : ''}" data-roster-id="${Number(c.id)}">
         <span class="roster-avatar" style="border-color:${safeColor(c.group_color, 'var(--hairline-strong)')}">${c.avatar_path ? `<img src="/uploads/${escapeHtml(c.avatar_path)}" alt="">` : USER_FALLBACK_ICON}</span>
         <span class="roster-name">${classIconHtml(c.class_key)}${escapeHtml(c.name)}</span>
         <span class="roster-meta">${c.is_npc ? '<span class="roster-tag">NPC</span>' : ''}${onMap[c.id] ? `<span class="roster-count" title="Already on this map">&times;${onMap[c.id]}</span>` : ''}</span>
@@ -2040,9 +2040,21 @@
   function updatePlaceHint() {
     if (!placeHint) return;
     placeHint.hidden = !placingChar;
-    if (placingChar) placeHintName.textContent = placingChar.name;
+    const nameEl = document.getElementById('place-hint-name');
+    if (placingChar && nameEl) nameEl.textContent = placingChar.name;
     canvas.classList.toggle('tool-place', !!placingChar);
     renderRoster();
+  }
+  let placeFlashTimer = null;
+  function flashPlaceHint(message) {                           // a short-lived message in the same hint pill
+    if (!placeHint) return;
+    placeHint.textContent = message;
+    placeHint.hidden = false;
+    clearTimeout(placeFlashTimer);
+    placeFlashTimer = setTimeout(() => {
+      placeHint.innerHTML = 'Placing <strong id="place-hint-name"></strong> &middot; click the map to drop &middot; <strong>Esc</strong> to stop';
+      updatePlaceHint();
+    }, 3500);
   }
   function stopPlacingCharacter() {
     if (!placingChar) return;
@@ -2067,21 +2079,68 @@
     updatePlaceHint();
   }
 
-  async function placeCharacter(pos) {
+  async function placeCharacter(pos, character = placingChar) {
+    if (!character) return;
     const snapped = snapPointToGridCenter(pos.x, pos.y);
     const res = await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/pins`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pin_type: 'character', character_id: placingChar.id, x: snapped.x, y: snapped.y, scale: 1.0, rotation: 0 }),
+      body: JSON.stringify({ pin_type: 'character', character_id: character.id, x: snapped.x, y: snapped.y, scale: 1.0, rotation: 0 }),
     });
-    if (!res.ok) return;
+    if (!res.ok) { flashPlaceHint("Couldn't place that character. Please try again."); return; }
     const json = await res.json();
     await loadPins();                                         // the server numbers duplicates and links the battle row
     const pin = pins.find((p) => p.id === json.id);
     if (pin) pushCommand(makeAddPinCommand(pin));
   }
 
+  // The panel opens upward from the toolbar (downward when the toolbar is pinned to the top), so size the list to the
+  // room that is actually there; on a short window it scrolls instead of running off the screen.
+  const ROSTER_CHROME = 140;                                  // search box + footnote + padding around the list
+  function fitRosterMenu() {
+    const flyout = document.getElementById('characters-flyout');
+    const toolbarEl = document.getElementById('map-toolbar');
+    if (!flyout || !toolbarEl) return;
+    const r = toolbarEl.getBoundingClientRect();
+    const above = r.top, below = window.innerHeight - r.bottom;
+    const pinned = toolbarEl.classList.contains('is-pinned');          // pinned to the very top: it already opens downward
+    const down = pinned || (above < 300 && below > above);            // not enough room above: open downward instead
+    flyout.classList.toggle('flip-down', down && !pinned);
+    const room = down ? below : above;
+    const listMax = Math.max(72, Math.min(280, room - ROSTER_CHROME - 24));
+    rosterList.style.maxHeight = `${listMax}px`;
+    flyout.classList.toggle('roster-compact', room - 24 < 260);   // very short windows drop the footnote too
+  }
+
   if (rosterList) {
+    const rosterFlyout = document.getElementById('characters-flyout');
+    ['mouseenter', 'click', 'focusin'].forEach((ev) => rosterFlyout.addEventListener(ev, fitRosterMenu));
+    window.addEventListener('resize', fitRosterMenu);
     rosterSearch.addEventListener('input', renderRoster);
+    // Drag a character straight from the list onto the map (no need to pick first).
+    rosterList.addEventListener('dragstart', (e) => {
+      const item = e.target.closest('[data-roster-id]');
+      if (!item) return;
+      e.dataTransfer.setData('application/x-ledger-character', item.dataset.rosterId);
+      e.dataTransfer.setData('text/plain', item.textContent.trim());
+      e.dataTransfer.effectAllowed = 'copy';
+      // Keep the panel "open" (so the dragged row stays rendered) but see-through, so the map underneath is a clear target.
+      // (deferred: changing the dragged row's surroundings inside dragstart itself makes Chrome cancel the drag)
+      setTimeout(() => rosterFlyout.classList.add('open', 'roster-dragging'), 0);
+    });
+    rosterList.addEventListener('dragend', () => rosterFlyout.classList.remove('open', 'roster-dragging'));
+    const isRosterDrag = (e) => Array.from(e.dataTransfer ? e.dataTransfer.types : []).includes('application/x-ledger-character');
+    stageWrap.addEventListener('dragover', (e) => {
+      if (!isRosterDrag(e)) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+    });
+    stageWrap.addEventListener('drop', (e) => {
+      if (!isRosterDrag(e)) return;
+      e.preventDefault();
+      rosterFlyout.classList.remove('open', 'roster-dragging');
+      const character = ROSTER.find((c) => c.id === Number(e.dataTransfer.getData('application/x-ledger-character')));
+      if (character) placeCharacter(eventPos(e), character);
+    });
     rosterList.addEventListener('click', (e) => {
       const item = e.target.closest('[data-roster-id]');
       if (!item) return;

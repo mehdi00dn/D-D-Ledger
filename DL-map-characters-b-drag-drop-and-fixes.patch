@@ -1,0 +1,234 @@
+diff --git a/static/css/style.css b/static/css/style.css
+index 287a0e8..57bf3ff 100644
+--- a/static/css/style.css
++++ b/static/css/style.css
+@@ -2918,3 +2918,10 @@ body.page-leaving .content {
+ .roster-empty { padding: 10px 4px; }
+ .roster-foot { padding-top: 6px; border-top: 1px solid var(--hairline); }
+ #map-canvas.tool-place { cursor: copy; }
++.roster-compact .roster-foot { display: none; }
++/* Not enough room above the toolbar: open the roster downward, like a pinned toolbar does. */
++.tool-flyout.flip-down .tool-flyout-menu { bottom: auto; top: 100%; padding-bottom: 0; padding-top: 14px; transform: translate(-50%, -4px); }
++.tool-flyout.flip-down:hover .tool-flyout-menu, .tool-flyout.flip-down.open .tool-flyout-menu { transform: translate(-50%, 0); }
++.tool-flyout.roster-dragging .tool-flyout-menu { opacity: 0 !important; pointer-events: none !important; }
++.roster-item { cursor: grab; }
++.roster-item:active { cursor: grabbing; }
+diff --git a/static/js/map.js b/static/js/map.js
+index 2a666aa..2bf32bc 100644
+--- a/static/js/map.js
++++ b/static/js/map.js
+@@ -2030,7 +2030,7 @@
+     if (!ROSTER.length) { rosterList.innerHTML = '<p class="roster-empty">No characters yet. Create one first.</p>'; return; }
+     if (!shown.length) { rosterList.innerHTML = '<p class="roster-empty">No character matches that name.</p>'; return; }
+     rosterList.innerHTML = shown.map((c) => `
+-      <button type="button" class="roster-item${placingChar && placingChar.id === c.id ? ' is-picked' : ''}" data-roster-id="${Number(c.id)}">
++      <button type="button" draggable="true" class="roster-item${placingChar && placingChar.id === c.id ? ' is-picked' : ''}" data-roster-id="${Number(c.id)}">
+         <span class="roster-avatar" style="border-color:${safeColor(c.group_color, 'var(--hairline-strong)')}">${c.avatar_path ? `<img src="/uploads/${escapeHtml(c.avatar_path)}" alt="">` : USER_FALLBACK_ICON}</span>
+         <span class="roster-name">${classIconHtml(c.class_key)}${escapeHtml(c.name)}</span>
+         <span class="roster-meta">${c.is_npc ? '<span class="roster-tag">NPC</span>' : ''}${onMap[c.id] ? `<span class="roster-count" title="Already on this map">&times;${onMap[c.id]}</span>` : ''}</span>
+@@ -2040,10 +2040,22 @@
+   function updatePlaceHint() {
+     if (!placeHint) return;
+     placeHint.hidden = !placingChar;
+-    if (placingChar) placeHintName.textContent = placingChar.name;
++    const nameEl = document.getElementById('place-hint-name');
++    if (placingChar && nameEl) nameEl.textContent = placingChar.name;
+     canvas.classList.toggle('tool-place', !!placingChar);
+     renderRoster();
+   }
++  let placeFlashTimer = null;
++  function flashPlaceHint(message) {                           // a short-lived message in the same hint pill
++    if (!placeHint) return;
++    placeHint.textContent = message;
++    placeHint.hidden = false;
++    clearTimeout(placeFlashTimer);
++    placeFlashTimer = setTimeout(() => {
++      placeHint.innerHTML = 'Placing <strong id="place-hint-name"></strong> &middot; click the map to drop &middot; <strong>Esc</strong> to stop';
++      updatePlaceHint();
++    }, 3500);
++  }
+   function stopPlacingCharacter() {
+     if (!placingChar) return;
+     placingChar = null;
+@@ -2067,21 +2079,68 @@
+     updatePlaceHint();
+   }
+ 
+-  async function placeCharacter(pos) {
++  async function placeCharacter(pos, character = placingChar) {
++    if (!character) return;
+     const snapped = snapPointToGridCenter(pos.x, pos.y);
+     const res = await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/pins`, {
+       method: 'POST', headers: { 'Content-Type': 'application/json' },
+-      body: JSON.stringify({ pin_type: 'character', character_id: placingChar.id, x: snapped.x, y: snapped.y, scale: 1.0, rotation: 0 }),
++      body: JSON.stringify({ pin_type: 'character', character_id: character.id, x: snapped.x, y: snapped.y, scale: 1.0, rotation: 0 }),
+     });
+-    if (!res.ok) return;
++    if (!res.ok) { flashPlaceHint("Couldn't place that character. Please try again."); return; }
+     const json = await res.json();
+     await loadPins();                                         // the server numbers duplicates and links the battle row
+     const pin = pins.find((p) => p.id === json.id);
+     if (pin) pushCommand(makeAddPinCommand(pin));
+   }
+ 
++  // The panel opens upward from the toolbar (downward when the toolbar is pinned to the top), so size the list to the
++  // room that is actually there; on a short window it scrolls instead of running off the screen.
++  const ROSTER_CHROME = 140;                                  // search box + footnote + padding around the list
++  function fitRosterMenu() {
++    const flyout = document.getElementById('characters-flyout');
++    const toolbarEl = document.getElementById('map-toolbar');
++    if (!flyout || !toolbarEl) return;
++    const r = toolbarEl.getBoundingClientRect();
++    const above = r.top, below = window.innerHeight - r.bottom;
++    const pinned = toolbarEl.classList.contains('is-pinned');          // pinned to the very top: it already opens downward
++    const down = pinned || (above < 300 && below > above);            // not enough room above: open downward instead
++    flyout.classList.toggle('flip-down', down && !pinned);
++    const room = down ? below : above;
++    const listMax = Math.max(72, Math.min(280, room - ROSTER_CHROME - 24));
++    rosterList.style.maxHeight = `${listMax}px`;
++    flyout.classList.toggle('roster-compact', room - 24 < 260);   // very short windows drop the footnote too
++  }
++
+   if (rosterList) {
++    const rosterFlyout = document.getElementById('characters-flyout');
++    ['mouseenter', 'click', 'focusin'].forEach((ev) => rosterFlyout.addEventListener(ev, fitRosterMenu));
++    window.addEventListener('resize', fitRosterMenu);
+     rosterSearch.addEventListener('input', renderRoster);
++    // Drag a character straight from the list onto the map (no need to pick first).
++    rosterList.addEventListener('dragstart', (e) => {
++      const item = e.target.closest('[data-roster-id]');
++      if (!item) return;
++      e.dataTransfer.setData('application/x-ledger-character', item.dataset.rosterId);
++      e.dataTransfer.setData('text/plain', item.textContent.trim());
++      e.dataTransfer.effectAllowed = 'copy';
++      // Keep the panel "open" (so the dragged row stays rendered) but see-through, so the map underneath is a clear target.
++      // (deferred: changing the dragged row's surroundings inside dragstart itself makes Chrome cancel the drag)
++      setTimeout(() => rosterFlyout.classList.add('open', 'roster-dragging'), 0);
++    });
++    rosterList.addEventListener('dragend', () => rosterFlyout.classList.remove('open', 'roster-dragging'));
++    const isRosterDrag = (e) => Array.from(e.dataTransfer ? e.dataTransfer.types : []).includes('application/x-ledger-character');
++    stageWrap.addEventListener('dragover', (e) => {
++      if (!isRosterDrag(e)) return;
++      e.preventDefault();
++      e.dataTransfer.dropEffect = 'copy';
++    });
++    stageWrap.addEventListener('drop', (e) => {
++      if (!isRosterDrag(e)) return;
++      e.preventDefault();
++      rosterFlyout.classList.remove('open', 'roster-dragging');
++      const character = ROSTER.find((c) => c.id === Number(e.dataTransfer.getData('application/x-ledger-character')));
++      if (character) placeCharacter(eventPos(e), character);
++    });
+     rosterList.addEventListener('click', (e) => {
+       const item = e.target.closest('[data-roster-id]');
+       if (!item) return;
+diff --git a/templates/map_editor.html b/templates/map_editor.html
+index 386ca32..f2ec193 100644
+--- a/templates/map_editor.html
++++ b/templates/map_editor.html
+@@ -77,7 +77,7 @@
+       <div class="tool-flyout-menu"><div class="tool-flyout-menu-inner roster-menu">
+         <label class="roster-search">{{ icon('search') }}<input type="text" id="roster-search" placeholder="Find a character" autocomplete="off" aria-label="Find a character"></label>
+         <div class="roster-list" id="roster-list"></div>
+-        <p class="roster-foot" id="roster-foot">Pick someone, then click the map to place them. Place the same character again for more copies.</p>
++        <p class="roster-foot" id="roster-foot">Drag someone onto the map, or pick them and click where they go. Place the same character again for more copies.</p>
+       </div></div>
+     </div>
+     {% endif %}
+diff --git a/tests/test_e2e_browser.py b/tests/test_e2e_browser.py
+index 96b9f2a..1ff7ce8 100644
+--- a/tests/test_e2e_browser.py
++++ b/tests/test_e2e_browser.py
+@@ -604,7 +604,14 @@ def test_dm_places_characters_on_a_map_without_a_battle(pw, shared_server):
+     ppage.goto(base + f'/campaigns/{cid}/maps/{mid}'); ppage.wait_for_load_state('networkidle'); ppage.wait_for_timeout(600)
+     assert ppage.locator('#characters-flyout').count() == 0                      # Players don't get the tool
+ 
++    page.set_viewport_size({'width': 1100, 'height': 520})                       # a short window: the panel must still fit
++    page.click('#characters-trigger'); page.wait_for_timeout(300)
++    menu = page.locator('#characters-flyout .tool-flyout-menu-inner').bounding_box()
++    page.screenshot(path='/tmp/roster-short.png')
++    assert menu['y'] >= 0 and menu['y'] + menu['height'] <= 520, menu
++    page.set_viewport_size({'width': 1280, 'height': 720})
+     page.click('#characters-trigger')
++    page.click('#characters-trigger'); page.wait_for_timeout(200)
+     page.fill('#roster-search', 'gob')
+     assert page.locator('.roster-item').count() == 1
+     page.click('.roster-item')                                                   # pick the goblin...
+@@ -628,3 +635,77 @@ def test_dm_places_characters_on_a_map_without_a_battle(pw, shared_server):
+     assert len(dm.get(f'/campaigns/{cid}/api/battle').json()) == 2
+     assert not errs, errs
+     dctx.close(); pctx.close()
++
++
++def _open_map(pw, base, api, cid, name='Arena'):
++    r = api.post(f'/campaigns/{cid}/maps/new', data={'name': name, 'blank_width': '1000', 'blank_height': '700'})
++    mid = int(re.search(r'/maps/(\d+)', r.headers['Location']).group(1))
++    ctx = api.context(pw, base); page = ctx.new_page(); bad, errs = _collect(page)
++    page.goto(base + f'/campaigns/{cid}/maps/{mid}'); page.wait_for_load_state('networkidle'); page.wait_for_timeout(800)
++    if page.locator('#setup-confirm-btn').is_visible():
++        page.click('#setup-confirm-btn'); page.wait_for_timeout(600)
++    return mid, ctx, page, bad, errs
++
++
++def test_roster_drag_and_drop_zoomed_and_snapped(pw, shared_server):
++    base = shared_server.url; dm = Api(base); cid = dm.campaign('DnD')
++    aria = dm.character(cid, 'Aria')
++    mid, ctx, page, bad, errs = _open_map(pw, base, dm, cid)
++    box = page.locator('#map-canvas').bounding_box()
++    page.click('#characters-trigger'); page.wait_for_selector('.roster-item')
++    # drag straight from the list (no picking first)
++    page.drag_and_drop('.roster-item', '#map-canvas', target_position={'x': 220, 'y': 180})
++    page.wait_for_selector('.map-pin')
++    assert page.locator('.map-pin-label').all_text_contents() == ['Aria']
++    pins = dm.get(f'/campaigns/{cid}/api/maps/{mid}/pins').json()
++    assert len(pins) == 1 and pins[0]['character_id'] == aria and pins[0]['participant_id'] is None
++    assert 150 < pins[0]['x'] < 300 and 120 < pins[0]['y'] < 250                  # it landed where it was dropped (snapped to a cell)
++    assert page.locator('#characters-flyout.roster-dragging').count() == 0       # the panel is back to normal afterwards
++    # picking + clicking after zooming in still lands under the cursor
++    page.keyboard.down('Control'); page.mouse.move(box['x'] + 400, box['y'] + 300); page.mouse.wheel(0, -300); page.keyboard.up('Control')
++    page.wait_for_timeout(300)
++    page.click('#characters-trigger'); page.click('.roster-item')
++    page.mouse.click(box['x'] + 500, box['y'] + 350); page.wait_for_timeout(600)
++    assert len(dm.get(f'/campaigns/{cid}/api/maps/{mid}/pins').json()) == 2
++    assert not errs, errs
++    ctx.close()
++
++
++def test_placing_failure_is_shown_not_swallowed(pw, shared_server):
++    base = shared_server.url; dm = Api(base); cid = dm.campaign('Fail')
++    dm.character(cid, 'Aria')
++    mid, ctx, page, bad, errs = _open_map(pw, base, dm, cid)
++    page.route('**/api/maps/*/pins', lambda route: route.fulfill(status=500, body='{}') if route.request.method == 'POST' else route.continue_())
++    page.click('#characters-trigger'); page.click('.roster-item')
++    box = page.locator('#map-canvas').bounding_box()
++    page.mouse.click(box['x'] + 200, box['y'] + 200)
++    assert "Couldn't place" in page.locator('#place-hint').inner_text() or page.wait_for_selector('#place-hint:has-text("Couldn\'t place")')
++    ctx.close()
++
++
++def test_linked_map_shares_the_roster_through_the_ui(pw, shared_server):
++    base = shared_server.url; dm = Api(base); cid = dm.campaign('Shared')
++    aria = dm.character(cid, 'Aria'); bram = dm.character(cid, 'Bram')
++    dm.post(f'/campaigns/{cid}/api/battle/add', json={'character_id': bram})
++    mid, ctx, page, bad, errs = _open_map(pw, base, dm, cid)
++    page.locator('label.toggle-switch:has(#link-battle-checkbox)').click()        # link to the battle
++    page.wait_for_selector('.map-pin')                                             # Bram, who was only in the battle, is on the map
++    assert page.locator('.map-pin-label').all_text_contents() == ['Bram']
++    page.click('#characters-trigger'); page.locator('.roster-item:has-text("Aria")').click()
++    box = page.locator('#map-canvas').bounding_box()
++    page.mouse.click(box['x'] + 300, box['y'] + 250); page.wait_for_timeout(600)
++    assert sorted(r['character_id'] for r in dm.get(f'/campaigns/{cid}/api/battle').json()) == sorted([aria, bram])   # Aria joined the battle
++    # remove Aria from the map through the pin bubble: asks first, then takes her out of the battle too
++    page.keyboard.press('Escape')
++    page.locator('.map-pin:has-text("Aria")').click(); page.wait_for_selector('#pin-action-bubble:not([hidden])')
++    page.click('#pin-delete-btn'); page.wait_for_selector('#confirm-modal:not([hidden])')
++    assert 'battle' in page.inner_text('#confirm-modal-message')
++    page.click('#confirm-modal-yes'); page.wait_for_timeout(600)
++    assert [r['character_id'] for r in dm.get(f'/campaigns/{cid}/api/battle').json()] == [bram]
++    assert page.locator('.map-pin').count() == 1
++    # and removing someone from the battle clears them from the map on the next refresh
++    row = dm.get(f'/campaigns/{cid}/api/battle').json()[0]['id']
++    dm.post(f'/campaigns/{cid}/api/battle/{row}/remove', json={})
++    page.wait_for_selector('.map-pin', state='detached', timeout=15000)
++    assert not errs, errs
++    ctx.close()
