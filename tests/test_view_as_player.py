@@ -28,7 +28,7 @@ def test_preview_sends_the_dm_exactly_what_a_player_gets(make_user):
     assert _row(dm, cid, ogre)['current_hp'] == 59 and _row(dm, cid, ogre)['conditions'] == ['charmed']
     assert _toggle(dm, cid, True).status_code == 302
     seen = _row(dm, cid, ogre)
-    assert seen['hidden_stats'] is True and seen['current_hp'] is None and seen['conditions'] == []
+    assert seen['hidden_stats'] is True and seen['current_hp'] is None and seen['conditions'] == ['charmed']
     assert _row(dm, cid, hero)['current_hp'] == 30                         # a party member is still visible
     assert dm.battle(cid) == player.battle(cid)                            # identical to a real Player's response
     assert _toggle(dm, cid, False).status_code == 302

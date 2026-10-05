@@ -159,7 +159,7 @@ def test_dm_sets_conditions_in_fixed_order_and_unknown_ones_are_refused(make_use
     assert next(x for x in r.json if x['id'] == ids['High'])['conditions'] == []
 
 
-def test_players_cannot_set_conditions_and_see_pc_but_not_npc_conditions(make_user):
+def test_players_cannot_set_conditions_but_see_them_on_pcs_and_npcs(make_user):
     dm, player, cid, ids = _fight(make_user)
     assert player.json(f'/campaigns/{cid}/api/battle/{ids["Low"]}/conditions', {'conditions': ['prone']}).status_code == 403
     npc = dm.add_to_battle(cid, dm.new_character(cid, name='Goblin', max_hp=7, is_npc='on'))
@@ -167,5 +167,5 @@ def test_players_cannot_set_conditions_and_see_pc_but_not_npc_conditions(make_us
     dm.json(f'/campaigns/{cid}/api/battle/{npc}/conditions', {'conditions': ['charmed']})
     rows = {r['id']: r for r in player.battle(cid)}
     assert rows[ids['Low']]['conditions'] == ['poisoned']          # a party member's conditions are shared
-    assert rows[npc]['conditions'] == []                           # a monster's stay with the DM
+    assert rows[npc]['conditions'] == ['charmed']                  # ...and so are a monster's: the whole table sees what is affecting it
     assert {r['id']: r for r in dm.battle(cid)}[npc]['conditions'] == ['charmed']

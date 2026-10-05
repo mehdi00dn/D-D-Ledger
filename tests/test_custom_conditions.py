@@ -52,12 +52,13 @@ def test_leaving_custom_conditions_out_keeps_them(make_user):
     assert _row(dm, cid, hero)['custom_conditions'] == []
 
 
-def test_only_the_dm_sets_them_and_players_never_see_npc_ones(make_user):
+def test_only_the_dm_sets_them_and_players_see_them_on_pcs_and_npcs(make_user):
     dm, player, cid, hero, ogre = _setup(make_user)
     assert _set(player, cid, hero, ['Sneaky']).status_code == 403
     _set(dm, cid, hero, ['Inspired']); _set(dm, cid, ogre, ['Secretly a dragon'])
-    assert _row(player, cid, hero)['custom_conditions'] == ['Inspired']                           # PCs: visible to the party
-    assert _row(player, cid, ogre)['custom_conditions'] == []                                     # NPCs: the DM's to reveal
+    assert _row(player, cid, hero)['custom_conditions'] == ['Inspired']
+    assert _row(player, cid, ogre)['custom_conditions'] == ['Secretly a dragon']                  # NPCs too: the whole table sees conditions
+    assert _row(player, cid, ogre)['hidden_stats'] is True                                        # ...while an NPC's HP/AC stay hidden
     assert _row(dm, cid, ogre)['custom_conditions'] == ['Secretly a dragon']
 
 

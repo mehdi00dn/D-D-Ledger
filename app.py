@@ -2045,8 +2045,7 @@ def _battle_rows(db, redact_enemies=False):
             # real PC) stays fully visible to its party.
             if r['is_npc']:
                 r['hidden_stats'] = True
-                r['conditions'] = []                   # what is affecting a monster is the DM's to reveal
-                r['custom_conditions'] = []
+                # conditions (standard and custom) stay visible: the table can see what is affecting a monster
                 r['class_key'] = None                  # ...and so is what class it is
                 r['current_hp'] = None
                 r['char_max_hp'] = None
