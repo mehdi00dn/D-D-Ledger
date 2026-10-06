@@ -90,6 +90,14 @@ to Production** (instant rollback). Nothing in the database changes.
 * **Schema changes.** Add `migrations/000N_name.sql`, run `python migrate.py` from a trusted
   machine *before* deploying the code that needs it, and regenerate the paste-script:
   `python migrate.py --sql > supabase_setup.sql`. CI never touches your live database.
+* **Vercel storage.** Every deployment stores its own copy of the app (about 50 MB, almost all of it
+  Pillow and the Postgres driver), and every push to a non-production branch makes a Preview
+  deployment too. To keep usage down: set **Settings -> Build and Deployment -> Deployment Retention**
+  to a short period for Preview, Canceled and Errored deployments (and a modest one for Production,
+  the live deployment is always kept); stop branches from building (Settings -> Git -> Ignored Build
+  Step, or turn Preview Deployments off); and clear old ones in bulk with
+  `vercel remove d-d-ledger --safe --yes` (`--safe` skips anything that has an alias, i.e. what is live).
+  Deploy in batches rather than once per small change.
 * **Keys.** Never paste `DATABASE_URL` or Supabase keys into chat, issues, or git. If one leaks,
   rotate it in Supabase and update Vercel, then redeploy.
 

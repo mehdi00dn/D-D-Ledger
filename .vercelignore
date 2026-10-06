@@ -13,3 +13,5 @@ uploads/*
 README.md
 VERCEL_DEPLOY.md
 requirements-dev.txt
+.env.example
+static/logo/logo.png
