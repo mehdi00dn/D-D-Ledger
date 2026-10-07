@@ -2123,6 +2123,11 @@ body.page-leaving .content {
 .map-card-body { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; }
 .map-card-name { font-family: var(--font-display); font-size: 15.5px; font-weight: 600; color: inherit; text-decoration: none; }
 
+.map-card-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.made-by { font-family: var(--font-mono); font-size: 11px; color: var(--parchment-dim); margin: 2px 0 0; }
+.group-body .made-by { margin: -6px 0 10px; }
+.dossier-card .made-by { margin: 0 0 8px; }
+
 .map-link-toggle { font-size: 13px; }
 
 .toggle-switch {

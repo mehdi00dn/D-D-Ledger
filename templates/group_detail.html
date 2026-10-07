@@ -7,7 +7,7 @@
 <div class="page-header">
   <div>
     <h1 class="page-title"><span class="group-dot" style="background:{{ group.color }}"></span>{{ group.name }}</h1>
-    <p class="page-sub">{{ members|length }} member{{ '' if members|length == 1 else 's' }}</p>
+    <p class="page-sub">{{ members|length }} member{{ '' if members|length == 1 else 's' }} &middot; Made by {{ group.made_by or 'a former member' }}</p>
   </div>
   <div style="display:flex; gap:10px; flex-wrap:wrap;">
     {% if g.is_dm %}

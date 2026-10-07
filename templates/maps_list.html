@@ -23,10 +23,15 @@
       </div>
     </a>
     <div class="map-card-body">
-      <a href="{{ url_for('map_editor', map_id=m.id) }}" class="map-card-name">{{ m.name }}</a>
+      <div class="map-card-text">
+        <a href="{{ url_for('map_editor', map_id=m.id) }}" class="map-card-name">{{ m.name }}</a>
+        <span class="made-by">Made by {{ m.made_by or 'a former member' }}</span>
+      </div>
+      {% if m.id in deletable %}
       <form method="POST" action="{{ url_for('map_delete', map_id=m.id) }}" data-confirm="Delete map '{{ m.name }}'? This removes its drawings and pins too.">{{ csrf_field() }}
         <button type="submit" class="btn-icon" title="Delete map">{{ icon('trash-2') }}</button>
       </form>
+      {% endif %}
     </div>
   </div>
   {% endfor %}

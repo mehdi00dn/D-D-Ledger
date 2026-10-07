@@ -43,6 +43,7 @@ Project -> Settings -> Environment Variables:
 | `SECRET_KEY` | A random string of **at least 32 characters**; the app refuses to start with less. `python -c "import secrets; print(secrets.token_hex(32))"`. Changing it logs everyone out. |
 | `SUPABASE_URL` | Added automatically by the Supabase integration. |
 | `SUPABASE_SECRET_KEY` | Added automatically. (`SUPABASE_SERVICE_ROLE_KEY` is accepted as a fallback; Supabase is retiring those legacy keys.) |
+| `SUPABASE_PUBLISHABLE_KEY` | **Optional - turns on real-time updates.** The project's *publishable* key (Supabase -> Project Settings -> API Keys; starts `sb_publishable_`). It is meant to be public and goes to browsers so they can listen for "something changed" pings. Without it the app simply keeps polling every few seconds, as before. `REALTIME_ENABLED=0` switches the pings off. |
 
 **Production vs Preview.** Variables are per environment. If you want Preview deployments (any
 branch other than the production branch) to run, tick **Preview** on `SECRET_KEY`, `SUPABASE_URL`

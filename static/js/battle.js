@@ -569,7 +569,7 @@
     const c = await res.json();
     detailTitle.textContent = c.name;
     const foggedStats = !!c.hidden_stats;
-    const canDeleteSheets = window.IS_DM || c.created_by === window.USER_ID;
+    const canDeleteSheets = !!c.can_delete;
     const sheetsHtml = c.sheets.length
       ? `<div class="sheet-thumbs">${c.sheets.map((s) => `<div class="sheet-thumb"><img src="/uploads/${escapeHtml(s.image_path)}" data-lightbox-src="/uploads/${escapeHtml(s.image_path)}"${canDeleteSheets ? ` data-delete-url="/campaigns/${window.CAMPAIGN_ID}/characters/${c.id}/sheets/${s.id}/delete"` : ''}></div>`).join('')}</div>`
       : `<p class="hint-text">No sheet images attached.</p>`;
@@ -579,6 +579,7 @@
         <div>
           <div class="dossier-name">${classIconHtml(c.class_key)}${escapeHtml(c.name)}</div>
           <div class="dossier-meta">Lvl ${c.level} &middot; ${escapeHtml(c.group_name || 'No Faction')}</div>
+          <div class="made-by">Made by ${escapeHtml(c.made_by || 'a former member')}</div>
         </div>
       </div>
       ${foggedStats ? `
@@ -719,7 +720,7 @@
   // The server snapshot is compared with what is ON SCREEN (not just the previous
   // snapshot), so an optimistic local edit that never reached the server is still corrected.
   let lastBattleSig = null;
-  LedgerPoll.every(async () => {
+  const battlePoll = LedgerPoll.every(async () => {
     if (scrubbing) return 'skip';
     const active = document.activeElement;
     if (active && active.tagName === 'INPUT' && (root.contains(active) || (addModal && addModal.contains(active)))) return 'skip';
@@ -735,4 +736,9 @@
     }
     return serverChanged;
   }, { base: 3000, max: 12000 });
+
+  // Real-time: a ping from the server means "something changed" -> refresh right now.  Polling above stays as the safety net.
+  if (window.LEDGER_REALTIME && window.LedgerRealtime) {
+    LedgerRealtime.connect(window.LEDGER_REALTIME, (p) => { if (p.s !== 'map') battlePoll.poke(); });
+  }
 })();

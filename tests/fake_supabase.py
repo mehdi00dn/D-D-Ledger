@@ -38,6 +38,7 @@ class FakeSupabase:
         self.upload_tokens = {}               # token -> (bucket, key)
         self.download_tokens = {}
         self.calls = []                       # [(method, path)] for assertions
+        self.broadcasts = []                  # Realtime REST broadcasts received: [{'topic','event','payload','private'}]
         self.app = Flask('fake-supabase')
         self._routes()
         self.server = None
@@ -97,6 +98,19 @@ class FakeSupabase:
         @app.after_request
         def cors(resp):
             return self._cors(resp)
+
+        @app.route('/realtime/v1/api/broadcast', methods=['POST', 'OPTIONS'])
+        def realtime_broadcast():
+            """Realtime's REST broadcast: needs the API key, takes {"messages": [{topic, event, payload, private}]}, answers 202."""
+            if request.method == 'OPTIONS':
+                return Response(status=204)
+            if not self._auth_ok():
+                return jsonify({'message': 'Invalid API key'}), 401
+            msgs = (request.get_json(silent=True) or {}).get('messages')
+            if not isinstance(msgs, list) or not msgs or any(not (m.get('topic') and m.get('event')) for m in msgs):
+                return jsonify({'message': 'invalid payload'}), 422
+            self.broadcasts.extend(msgs)
+            return Response(status=202)
 
         @app.route('/storage/v1/<path:rest>', methods=list(ANY))
         def storage(rest):

@@ -29,6 +29,7 @@
     <div>
       <div class="dossier-name">{% if not stats_hidden %}{{ class_icon(character.class_key) }}{% endif %}{{ character.name }}</div>
       <div class="dossier-meta">Lvl {{ character.level }} &middot; {{ character.group_name or 'Ungrouped' }}</div>
+      <div class="made-by">Made by {{ character.made_by or 'a former member' }}</div>
     </div>
   </div>
 
@@ -72,8 +73,8 @@
     <div class="sheet-thumb">
       <img src="{{ url_for('uploaded_file', filename=s.image_path) }}" alt="sheet"
            data-lightbox-src="{{ url_for('uploaded_file', filename=s.image_path) }}"
-           {% if can_edit %}data-delete-url="{{ url_for('sheet_delete', char_id=character.id, sheet_id=s.id) }}"{% endif %}>
-      {% if can_edit %}
+           {% if can_delete %}data-delete-url="{{ url_for('sheet_delete', char_id=character.id, sheet_id=s.id) }}"{% endif %}>
+      {% if can_delete %}
       <button type="button" class="btn-icon" title="Remove"
               data-sheet-delete-url="{{ url_for('sheet_delete', char_id=character.id, sheet_id=s.id) }}"
               data-confirm-msg="Remove this sheet image?">{{ icon('x') }}</button>

@@ -140,10 +140,12 @@
           <div class="sheet-thumb">
             <img src="{{ url_for('uploaded_file', filename=s.image_path) }}" alt="sheet"
                  data-lightbox-src="{{ url_for('uploaded_file', filename=s.image_path) }}"
-                 data-delete-url="{{ url_for('sheet_delete', char_id=character.id, sheet_id=s.id) }}">
+                 {% if can_delete_sheets %}data-delete-url="{{ url_for('sheet_delete', char_id=character.id, sheet_id=s.id) }}"{% endif %}>
+            {% if can_delete_sheets %}
             <button type="button" class="btn-icon" title="Remove"
                     data-sheet-delete-url="{{ url_for('sheet_delete', char_id=character.id, sheet_id=s.id) }}"
                     data-confirm-msg="Remove this sheet image?">{{ icon('x') }}</button>
+            {% endif %}
           </div>
           {% endfor %}
         </div>

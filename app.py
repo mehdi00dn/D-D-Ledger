@@ -19,6 +19,7 @@ import nh3
 import psycopg.errors as pgerr
 from markupsafe import Markup
 import security
+import realtime
 from concurrent.futures import ThreadPoolExecutor
 from flask import Response
 import images
@@ -490,6 +491,16 @@ def dm_required(view_func):
             abort(403)
         return view_func(*args, **kwargs)
     return wrapped
+
+
+def can_delete(created_by):
+    """Deleting is for the campaign's owner and for whoever made the thing -- nobody else, DMs included."""
+    return g.campaign_role == 'owner' or (created_by is not None and created_by == session.get('user_id'))
+
+
+def require_can_delete(created_by):
+    if not can_delete(created_by):
+        abort(403)
 
 
 # ---------------- CAMPAIGNS (Phase D) ----------------
@@ -1382,7 +1393,7 @@ def local_download(token):
 
 
 def _csp():
-    connect = ["'self'"]
+    connect = ["'self'"] + realtime.csp_origins()
     supa = os.environ.get('SUPABASE_URL', '')
     if supa and os.environ.get('STORAGE_BACKEND', 'supabase') == 'supabase':
         p = urlparse(supa)
@@ -1432,6 +1443,18 @@ def _version_static_urls(endpoint, values):
         v = _static_version(values['filename'])
         if v:
             values['v'] = v
+
+
+@app.after_request
+def realtime_ping(resp):
+    """After any successful change inside a campaign, tell open pages to refresh (see realtime.py).  Done in one place,
+    not per route, so a new route cannot forget it.  Runs after the response has gone out, so it never slows a request."""
+    campaign_id = getattr(g, 'campaign_id', None)
+    if (campaign_id is not None and request.method in ('POST', 'PUT', 'PATCH', 'DELETE') and resp.status_code < 400
+            and realtime.config()):
+        scope, secret = realtime.scope_for(request.path), app.secret_key
+        resp.call_on_close(lambda: realtime.publish(campaign_id, scope, secret))
+    return resp
 
 
 @app.after_request
@@ -1499,15 +1522,17 @@ def index():
 def characters_list():
     db = get_db()
     characters = db.execute('''
-        SELECT c.*, g.name AS group_name, g.color AS group_color
+        SELECT c.*, g.name AS group_name, g.color AS group_color, mk.username AS made_by
         FROM characters c
         LEFT JOIN groups g ON c.group_id = g.id
+        LEFT JOIN users mk ON mk.id = c.created_by
         WHERE c.is_temp_familiar = 0 AND c.campaign_id = ?
         ORDER BY lower(c.name) ASC
     ''', (g.campaign_id,)).fetchall()
     groups = db.execute('SELECT * FROM groups WHERE campaign_id = ? ORDER BY lower(name) ASC', (g.campaign_id,)).fetchall()
     db.close()
-    return render_template('characters_list.html', characters=characters, groups=groups)
+    return render_template('characters_list.html', characters=characters, groups=groups,
+                           deletable={c['id'] for c in characters if can_delete(c['created_by'])})
 
 
 @app.route('/campaigns/<int:campaign_id>/characters/new', methods=['GET', 'POST'])
@@ -1531,8 +1556,9 @@ def character_new():
 def character_detail(char_id):
     db = get_db()
     character = db.execute('''
-        SELECT c.*, g.name AS group_name, g.color AS group_color
+        SELECT c.*, g.name AS group_name, g.color AS group_color, mk.username AS made_by
         FROM characters c LEFT JOIN groups g ON c.group_id = g.id
+        LEFT JOIN users mk ON mk.id = c.created_by
         WHERE c.id = ? AND c.campaign_id = ?
     ''', (char_id, g.campaign_id)).fetchone()
     if character is None:
@@ -1548,7 +1574,7 @@ def character_detail(char_id):
     can_edit = g.is_dm or character['created_by'] == session['user_id']
     return render_template('character_detail.html', character=character, sheets=sheets,
                             notes_html=notes_to_html(character['notes'], show_hidden=can_see_hidden_notes(character)), can_edit=can_edit,
-                            stats_hidden=stats_hidden)
+                            can_delete=can_delete(character['created_by']), stats_hidden=stats_hidden)
 
 
 @app.route('/campaigns/<int:campaign_id>/characters/<int:char_id>/edit', methods=['GET', 'POST'])
@@ -1576,7 +1602,8 @@ def character_edit(char_id):
     if character is None:
         return redirect(url_for('characters_list'))
     notes_entries = notes_parse_entries(character['notes']) or [{'t': '', 'h': False}]
-    return render_template('character_form.html', character=character, sheets=sheets, groups=groups, from_battle=False, notes_entries=notes_entries)
+    return render_template('character_form.html', character=character, sheets=sheets, groups=groups, from_battle=False, notes_entries=notes_entries,
+                           can_delete_sheets=can_delete(owner_row['created_by']))
 
 
 # Character classes (DL-43).  Optional on a character.  The text is the hover guide in the picker.
@@ -1597,6 +1624,12 @@ CHARACTER_CLASSES = [
 ]
 CLASS_KEYS = [k for k, _l, _d in CHARACTER_CLASSES]
 app.jinja_env.globals['character_classes'] = [{'key': k, 'label': l, 'desc': d} for k, l, d in CHARACTER_CLASSES]
+@app.context_processor
+def _realtime_settings():
+    cid = getattr(g, 'campaign_id', None)
+    return {'realtime_settings': realtime.browser_settings(app.secret_key, cid) if cid is not None else None}
+
+
 app.jinja_env.globals['class_labels'] = {k: l for k, l, _d in CHARACTER_CLASSES}
 
 
@@ -1670,7 +1703,7 @@ def character_delete(char_id):
     db = get_db()
     char = db.execute('SELECT avatar_path, created_by FROM characters WHERE id = ? AND campaign_id = ?',
                        (char_id, g.campaign_id)).fetchone()
-    if char and not g.is_dm and char['created_by'] != session['user_id']:
+    if char and not can_delete(char['created_by']):
         db.close()
         abort(403)
     sheets = db.execute('SELECT image_path FROM character_sheets WHERE character_id = ?', (char_id,)).fetchall()
@@ -1690,7 +1723,7 @@ def sheet_delete(char_id, sheet_id):
     db = get_db()
     owner_row = db.execute('SELECT created_by FROM characters WHERE id = ? AND campaign_id = ?',
                             (char_id, g.campaign_id)).fetchone()
-    if owner_row and not g.is_dm and owner_row['created_by'] != session['user_id']:
+    if owner_row and not can_delete(owner_row['created_by']):
         db.close()
         abort(403)
     sheet = db.execute('SELECT image_path FROM character_sheets WHERE id = ?', (sheet_id,)).fetchone()
@@ -1709,11 +1742,13 @@ def sheet_delete(char_id, sheet_id):
 def factions_list():
     db = get_db()
     groups = db.execute('''
-        SELECT g.*, (SELECT COUNT(*) FROM characters c WHERE c.group_id = g.id) AS member_count
-        FROM groups g WHERE g.campaign_id = ? ORDER BY lower(g.name) ASC
+        SELECT g.*, (SELECT COUNT(*) FROM characters c WHERE c.group_id = g.id) AS member_count, mk.username AS made_by
+        FROM groups g LEFT JOIN users mk ON mk.id = g.created_by
+        WHERE g.campaign_id = ? ORDER BY lower(g.name) ASC
     ''', (g.campaign_id,)).fetchall()
     db.close()
-    return render_template('groups_list.html', groups=groups)
+    return render_template('groups_list.html', groups=groups,
+                           deletable={x['id'] for x in groups if can_delete(x['created_by'])})
 
 
 @app.route('/campaigns/<int:campaign_id>/factions/new', methods=['GET', 'POST'])
@@ -1736,7 +1771,8 @@ def faction_detail(group_id):
     """Read-only 'Details' view of a faction: who is in it. Editing (DM only) is reached from here.
     Shows the same name/avatar/level a member can already see on the roster -- no stats."""
     db = get_db()
-    group = db.execute('SELECT * FROM groups WHERE id = ? AND campaign_id = ?', (group_id, g.campaign_id)).fetchone()
+    group = db.execute('''SELECT g.*, mk.username AS made_by FROM groups g LEFT JOIN users mk ON mk.id = g.created_by
+                          WHERE g.id = ? AND g.campaign_id = ?''', (group_id, g.campaign_id)).fetchone()
     if group is None:
         db.close()
         return redirect(url_for('factions_list'))
@@ -1815,8 +1851,8 @@ def _save_faction(db, group_id):
     remove_avatar = form.get('remove_avatar') == '1'
 
     if group_id is None:
-        group_id = db.execute('INSERT INTO groups (name, avatar_path, bio, color, campaign_id) VALUES (?, ?, ?, ?, ?)',
-                              (name, avatar_path, bio, color, g.campaign_id)).lastrowid
+        group_id = db.execute('INSERT INTO groups (name, avatar_path, bio, color, campaign_id, created_by) VALUES (?, ?, ?, ?, ?, ?)',
+                              (name, avatar_path, bio, color, g.campaign_id, session['user_id'])).lastrowid
     else:
         if avatar_path:
             old = db.execute('SELECT avatar_path FROM groups WHERE id = ?', (group_id,)).fetchone()
@@ -1847,7 +1883,10 @@ def _save_faction(db, group_id):
 @dm_required
 def faction_delete(group_id):
     db = get_db()
-    group = db.execute('SELECT avatar_path FROM groups WHERE id = ? AND campaign_id = ?', (group_id, g.campaign_id)).fetchone()
+    group = db.execute('SELECT avatar_path, created_by FROM groups WHERE id = ? AND campaign_id = ?', (group_id, g.campaign_id)).fetchone()
+    if group and not can_delete(group['created_by']):
+        db.close()
+        abort(403)
     if group:
         delete_upload(group['avatar_path'])
         db.execute('DELETE FROM groups WHERE id = ? AND campaign_id = ?', (group_id, g.campaign_id))
@@ -1889,8 +1928,9 @@ def api_characters():
 def api_character_detail(char_id):
     db = get_db()
     character = db.execute('''
-        SELECT c.*, g.name AS group_name, g.color AS group_color
+        SELECT c.*, g.name AS group_name, g.color AS group_color, mk.username AS made_by
         FROM characters c LEFT JOIN groups g ON c.group_id = g.id
+        LEFT JOIN users mk ON mk.id = c.created_by
         WHERE c.id = ? AND c.campaign_id = ?
     ''', (char_id, g.campaign_id)).fetchone()
     if character is None:
@@ -1912,11 +1952,14 @@ def api_character_detail(char_id):
             'group_color': character['group_color'],
             'notes_html': notes_to_html(character['notes'], show_hidden=can_see_hidden_notes(character)),
             'sheets': [],
+            'made_by': character['made_by'],
+            'can_delete': can_delete(character['created_by']),
             'hidden_stats': True,
         })
     sheets = db.execute('SELECT * FROM character_sheets WHERE character_id = ? ORDER BY sort_order', (char_id,)).fetchall()
     db.close()
     data = dict(character)
+    data['can_delete'] = can_delete(character['created_by'])
     can_see_hidden = can_see_hidden_notes(character)
     data['notes'] = notes_for_viewer(character['notes'], can_see_hidden)   # raw JSON must not carry hidden notes
     data['sheets'] = [dict(s) for s in sheets]
@@ -2108,9 +2151,9 @@ def _create_familiar_participant(db, icon_key, custom_name):
     the participant row too."""
     display_name = custom_name or (icon_key or 'familiar').capitalize()
     cur = db.execute(
-        '''INSERT INTO characters (name, level, max_hp, armor_class, is_npc, is_temp_familiar, familiar_icon_key, campaign_id)
-           VALUES (?, 1, 4, 10, 0, 1, ?, ?)''',
-        (display_name, icon_key, g.campaign_id)
+        '''INSERT INTO characters (name, level, max_hp, armor_class, is_npc, is_temp_familiar, familiar_icon_key, campaign_id, created_by)
+           VALUES (?, 1, 4, 10, 0, 1, ?, ?, ?)''',
+        (display_name, icon_key, g.campaign_id, session['user_id'])
     )
     char_id = cur.lastrowid
     cur2 = db.execute('INSERT INTO battle_participants (character_id, current_hp) VALUES (?, 4)', (char_id,))
@@ -2687,8 +2730,8 @@ def import_data():
         if key in group_name_to_id:
             continue
         avatar_path = extract_image(grp['avatar_file'], 'avatars')
-        cur = db.execute('INSERT INTO groups (name, avatar_path, bio, color, campaign_id) VALUES (?, ?, ?, ?, ?)',
-                          (grp['name'], avatar_path, grp['bio'], grp['color'], g.campaign_id))
+        cur = db.execute('INSERT INTO groups (name, avatar_path, bio, color, campaign_id, created_by) VALUES (?, ?, ?, ?, ?, ?)',
+                          (grp['name'], avatar_path, grp['bio'], grp['color'], g.campaign_id, session['user_id']))
         group_name_to_id[key] = cur.lastrowid
 
     # Characters: always inserted as new records (never merged/overwritten)
@@ -2752,9 +2795,11 @@ def maps_list():
                 return redirect(url_for('map_editor', map_id=last_id))
 
     db = get_db()
-    maps = db.execute('SELECT * FROM maps WHERE campaign_id = ? ORDER BY created_at DESC', (g.campaign_id,)).fetchall()
+    maps = db.execute('''SELECT m.*, mk.username AS made_by FROM maps m LEFT JOIN users mk ON mk.id = m.created_by
+                          WHERE m.campaign_id = ? ORDER BY m.created_at DESC''', (g.campaign_id,)).fetchall()
     db.close()
-    return render_template('maps_list.html', maps=[dict(m) for m in maps])
+    return render_template('maps_list.html', maps=[dict(m) for m in maps],
+                           deletable={m['id'] for m in maps if can_delete(m['created_by'])})
 
 
 @app.route('/campaigns/<int:campaign_id>/maps/new', methods=['POST'])
@@ -2776,8 +2821,8 @@ def map_new():
 
     db = get_db()
     cur = db.execute(
-        'INSERT INTO maps (name, image_path, image_width, image_height, campaign_id) VALUES (?, ?, ?, ?, ?)',
-        (name, image_path, width, height, g.campaign_id)
+        'INSERT INTO maps (name, image_path, image_width, image_height, campaign_id, created_by) VALUES (?, ?, ?, ?, ?, ?)',
+        (name, image_path, width, height, g.campaign_id, session['user_id'])
     )
     map_id = cur.lastrowid
     db.commit()
@@ -2818,7 +2863,10 @@ def map_editor(map_id):
 @campaign_access_required
 def map_delete(map_id):
     db = get_db()
-    m = db.execute('SELECT image_path FROM maps WHERE id = ? AND campaign_id = ?', (map_id, g.campaign_id)).fetchone()
+    m = db.execute('SELECT image_path, created_by FROM maps WHERE id = ? AND campaign_id = ?', (map_id, g.campaign_id)).fetchone()
+    if m and not can_delete(m['created_by']):
+        db.close()
+        abort(403)
     if m:
         _cleanup_familiar_participants(db, map_id)
         delete_upload(m['image_path'])

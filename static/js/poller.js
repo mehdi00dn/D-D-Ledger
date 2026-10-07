@@ -34,7 +34,7 @@
   function every(task, opts) {
     var cfg = tuning(opts || {});
     var timer = null, running = false, stopped = false;
-    var unchanged = 0, failures = 0, lastActivity = 0;
+    var unchanged = 0, failures = 0, lastActivity = 0, again = false;
 
     function nextDelay() {
       if (failures) return Math.min(30000, cfg.base * Math.pow(2, failures));
@@ -61,13 +61,14 @@
           if (result) unchanged = 0; else unchanged += 1;
         })
         .catch(function () { failures = Math.min(failures + 1, 5); })
-        .then(function () { running = false; schedule(delay); });
+        .then(function () { running = false; var soon = again; again = false; schedule(soon ? 150 : delay); });
     }
 
     function poke() {                                 // refresh soon, at full speed
       unchanged = 0;
       failures = 0;
-      if (!running) schedule(150);
+      if (running) again = true;                      // the answer in flight may predate this change: ask again right after
+      else schedule(150);
     }
 
     function onVisibility() {
