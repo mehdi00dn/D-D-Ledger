@@ -47,12 +47,12 @@
   </div>
   {% else %}
   <div class="dossier-stats" style="margin-top:18px;">
-    <div class="stat-pill"><span class="val">{{ character.str_score }}</span><span class="lbl">STR</span></div>
-    <div class="stat-pill"><span class="val">{{ character.dex_score }}</span><span class="lbl">DEX</span></div>
-    <div class="stat-pill"><span class="val">{{ character.con_score }}</span><span class="lbl">CON</span></div>
-    <div class="stat-pill"><span class="val">{{ character.int_score }}</span><span class="lbl">INT</span></div>
-    <div class="stat-pill"><span class="val">{{ character.wis_score }}</span><span class="lbl">WIS</span></div>
-    <div class="stat-pill"><span class="val">{{ character.cha_score }}</span><span class="lbl">CHA</span></div>
+    <div class="stat-pill"><span class="val">{{ character.str_score }}</span><span class="mod">{{ sheet.abilities[0].text }}</span><span class="lbl">STR</span></div>
+    <div class="stat-pill"><span class="val">{{ character.dex_score }}</span><span class="mod">{{ sheet.abilities[1].text }}</span><span class="lbl">DEX</span></div>
+    <div class="stat-pill"><span class="val">{{ character.con_score }}</span><span class="mod">{{ sheet.abilities[2].text }}</span><span class="lbl">CON</span></div>
+    <div class="stat-pill"><span class="val">{{ character.int_score }}</span><span class="mod">{{ sheet.abilities[3].text }}</span><span class="lbl">INT</span></div>
+    <div class="stat-pill"><span class="val">{{ character.wis_score }}</span><span class="mod">{{ sheet.abilities[4].text }}</span><span class="lbl">WIS</span></div>
+    <div class="stat-pill"><span class="val">{{ character.cha_score }}</span><span class="mod">{{ sheet.abilities[5].text }}</span><span class="lbl">CHA</span></div>
   </div>
 
   <div class="dossier-hp-ac" style="margin-top:14px;">
@@ -60,6 +60,7 @@
     <span class="badge-ac">{{ icon('shield') }} AC {{ character.armor_class }}</span>
   </div>
 
+  {% with d = sheet %}{% include '_character_sheet.html' %}{% endwith %}
   {% endif %}
 
   <div class="form-section-title" style="margin-top:22px;">Notes</div>

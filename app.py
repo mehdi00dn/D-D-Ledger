@@ -24,6 +24,7 @@ from concurrent.futures import ThreadPoolExecutor
 from flask import Response
 import images
 import fog
+import dnd5e
 import importer
 from storage import get_storage, StorageError, UPLOADS, TEMP
 from database import get_db, init_db, init_app as init_database_app, UniqueViolation
@@ -1574,7 +1575,8 @@ def character_detail(char_id):
     can_edit = g.is_dm or character['created_by'] == session['user_id']
     return render_template('character_detail.html', character=character, sheets=sheets,
                             notes_html=notes_to_html(character['notes'], show_hidden=can_see_hidden_notes(character)), can_edit=can_edit,
-                            can_delete=can_delete(character['created_by']), stats_hidden=stats_hidden)
+                            can_delete=can_delete(character['created_by']), stats_hidden=stats_hidden,
+                            sheet=None if stats_hidden else dnd5e.derive(character))
 
 
 @app.route('/campaigns/<int:campaign_id>/characters/<int:char_id>/edit', methods=['GET', 'POST'])
@@ -1603,7 +1605,9 @@ def character_edit(char_id):
         return redirect(url_for('characters_list'))
     notes_entries = notes_parse_entries(character['notes']) or [{'t': '', 'h': False}]
     return render_template('character_form.html', character=character, sheets=sheets, groups=groups, from_battle=False, notes_entries=notes_entries,
-                           can_delete_sheets=can_delete(owner_row['created_by']))
+                           can_delete_sheets=can_delete(owner_row['created_by']),
+                           character_save_prof=dnd5e.clean_save_prof(character['save_prof']),
+                           character_skill_prof=dnd5e.clean_skill_prof(character['skill_prof']))
 
 
 # Character classes (DL-43).  Optional on a character.  The text is the hover guide in the picker.
@@ -1633,6 +1637,15 @@ def _realtime_settings():
 app.jinja_env.globals['class_labels'] = {k: l for k, l, _d in CHARACTER_CLASSES}
 
 
+app.jinja_env.globals['sheet_abilities'] = dnd5e.ABILITIES
+app.jinja_env.globals['sheet_skills'] = [{'key': k, 'label': l, 'ability': dnd5e.ABILITY_SHORT[a]} for k, l, a in dnd5e.SKILLS]
+
+
+def _character_sheet_html(character):
+    """The derived-stats block (modifiers, saves, skills ...) as HTML, rendered once for the details page and both popups."""
+    return render_template('_character_sheet.html', d=dnd5e.derive(character))
+
+
 def _clean_class(raw):
     """A known class key, or None (a class is optional)."""
     raw = (raw or '').strip().lower() if isinstance(raw, str) else ''
@@ -1655,6 +1668,9 @@ def _save_character(db, char_id):
     notes = sanitize_notes_payload(form.get('notes', ''))
     group_id = _campaign_faction_id(db, form.get('group_id'))
     class_key = _clean_class(form.get('class_key'))
+    speed = dnd5e.clean_speed(form.get('speed'))
+    skill_prof = json.dumps(dnd5e.clean_skill_prof({k: form.get('skill_' + k) for k in dnd5e.SKILL_KEYS}))
+    save_prof = json.dumps(dnd5e.clean_save_prof([a for a in dnd5e.ABILITY_KEYS if form.get('save_' + a) == 'on']))
 
     avatar_path = save_upload_field('avatar', 'avatars')
     remove_avatar = form.get('remove_avatar') == '1'
@@ -1663,10 +1679,12 @@ def _save_character(db, char_id):
         cur = db.execute('''
             INSERT INTO characters
             (name, is_npc, level, max_hp, str_score, dex_score, con_score, int_score,
-             wis_score, cha_score, armor_class, avatar_path, notes, group_id, class_key, campaign_id, created_by)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             wis_score, cha_score, armor_class, avatar_path, notes, group_id, class_key, campaign_id, created_by,
+             speed, skill_prof, save_prof)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (name, is_npc, level, max_hp, str_score, dex_score, con_score, int_score,
-              wis_score, cha_score, armor_class, avatar_path, notes, group_id, class_key, g.campaign_id, session['user_id']))
+              wis_score, cha_score, armor_class, avatar_path, notes, group_id, class_key, g.campaign_id, session['user_id'],
+              speed, skill_prof, save_prof))
         char_id = cur.lastrowid
     else:
         if avatar_path:
@@ -1681,10 +1699,11 @@ def _save_character(db, char_id):
             db.execute('UPDATE characters SET avatar_path = NULL WHERE id = ?', (char_id,))
         db.execute('''
             UPDATE characters SET name=?, is_npc=?, level=?, max_hp=?, str_score=?, dex_score=?,
-                con_score=?, int_score=?, wis_score=?, cha_score=?, armor_class=?, notes=?, group_id=?, class_key=?
+                con_score=?, int_score=?, wis_score=?, cha_score=?, armor_class=?, notes=?, group_id=?, class_key=?,
+                speed=?, skill_prof=?, save_prof=?
             WHERE id=?
         ''', (name, is_npc, level, max_hp, str_score, dex_score, con_score, int_score,
-              wis_score, cha_score, armor_class, notes, group_id, class_key, char_id))
+              wis_score, cha_score, armor_class, notes, group_id, class_key, speed, skill_prof, save_prof, char_id))
 
     # multiple sheet images
     max_order = db.execute('SELECT COALESCE(MAX(sort_order), -1) AS m FROM character_sheets WHERE character_id = ?', (char_id,)).fetchone()['m']
@@ -1964,6 +1983,7 @@ def api_character_detail(char_id):
     data['notes'] = notes_for_viewer(character['notes'], can_see_hidden)   # raw JSON must not carry hidden notes
     data['sheets'] = [dict(s) for s in sheets]
     data['notes_html'] = notes_to_html(character['notes'], show_hidden=can_see_hidden)
+    data['sheet_html'] = _character_sheet_html(character)
     return jsonify(data)
 
 
@@ -2593,6 +2613,9 @@ def _build_export_zip(campaign_id, group_ids=None, character_ids=None, download_
                 'cha_score': c['cha_score'],
                 'armor_class': c['armor_class'],
                 'class_key': c['class_key'],
+                'speed': dnd5e.clean_speed(c['speed']),
+                'skill_prof': dnd5e.clean_skill_prof(c['skill_prof']),
+                'save_prof': dnd5e.clean_save_prof(c['save_prof']),
                 'notes': notes_for_viewer(c['notes'], can_see_hidden_notes(c)),
                 'group_name': group_id_to_name.get(c['group_id']),
                 'avatar_file': c['avatar_path'],
@@ -2741,12 +2764,15 @@ def import_data():
         cur = db.execute('''
             INSERT INTO characters
             (name, is_npc, level, max_hp, str_score, dex_score, con_score, int_score,
-             wis_score, cha_score, armor_class, avatar_path, notes, group_id, class_key, campaign_id, created_by)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             wis_score, cha_score, armor_class, avatar_path, notes, group_id, class_key, campaign_id, created_by,
+             speed, skill_prof, save_prof)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (c['name'], c['is_npc'], c['level'], c['max_hp'],
               c['str_score'], c['dex_score'], c['con_score'], c['int_score'],
               c['wis_score'], c['cha_score'], c['armor_class'],
-              avatar_path, c['notes'], group_id, _clean_class(c.get('class_key')), g.campaign_id, session['user_id']))
+              avatar_path, c['notes'], group_id, _clean_class(c.get('class_key')), g.campaign_id, session['user_id'],
+              dnd5e.clean_speed(c.get('speed')), json.dumps(dnd5e.clean_skill_prof(c.get('skill_prof'))),
+              json.dumps(dnd5e.clean_save_prof(c.get('save_prof')))))
         new_char_id = cur.lastrowid
 
         for i, sheet_rel_path in enumerate(c['sheet_files']):

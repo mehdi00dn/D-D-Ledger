@@ -1302,18 +1302,18 @@
         <span class="badge-ac" aria-hidden="true">AC 00</span>
       </div>` : `
       <div class="dossier-stats" style="margin-top:16px;">
-        <div class="stat-pill"><span class="val">${c.str_score}</span><span class="lbl">STR</span></div>
-        <div class="stat-pill"><span class="val">${c.dex_score}</span><span class="lbl">DEX</span></div>
-        <div class="stat-pill"><span class="val">${c.con_score}</span><span class="lbl">CON</span></div>
-        <div class="stat-pill"><span class="val">${c.int_score}</span><span class="lbl">INT</span></div>
-        <div class="stat-pill"><span class="val">${c.wis_score}</span><span class="lbl">WIS</span></div>
-        <div class="stat-pill"><span class="val">${c.cha_score}</span><span class="lbl">CHA</span></div>
+        <div class="stat-pill"><span class="val">${c.str_score}</span><span class="mod">${(function(s){const m=Math.floor((s-10)/2);return m>=0?'+'+m:String(m);})(c.str_score)}</span><span class="lbl">STR</span></div>
+        <div class="stat-pill"><span class="val">${c.dex_score}</span><span class="mod">${(function(s){const m=Math.floor((s-10)/2);return m>=0?'+'+m:String(m);})(c.dex_score)}</span><span class="lbl">DEX</span></div>
+        <div class="stat-pill"><span class="val">${c.con_score}</span><span class="mod">${(function(s){const m=Math.floor((s-10)/2);return m>=0?'+'+m:String(m);})(c.con_score)}</span><span class="lbl">CON</span></div>
+        <div class="stat-pill"><span class="val">${c.int_score}</span><span class="mod">${(function(s){const m=Math.floor((s-10)/2);return m>=0?'+'+m:String(m);})(c.int_score)}</span><span class="lbl">INT</span></div>
+        <div class="stat-pill"><span class="val">${c.wis_score}</span><span class="mod">${(function(s){const m=Math.floor((s-10)/2);return m>=0?'+'+m:String(m);})(c.wis_score)}</span><span class="lbl">WIS</span></div>
+        <div class="stat-pill"><span class="val">${c.cha_score}</span><span class="mod">${(function(s){const m=Math.floor((s-10)/2);return m>=0?'+'+m:String(m);})(c.cha_score)}</span><span class="lbl">CHA</span></div>
       </div>
       <div class="dossier-hp-ac" style="margin-top:12px;">
         <span class="badge-hp">${c.max_hp} HP</span>
         <span class="badge-ac">AC ${c.armor_class}</span>
       </div>
-      `}
+      ${c.sheet_html || ''}`}
       <div class="detail-notes">${c.notes_html || '<em>No notes recorded.</em>'}</div>
       ${foggedStats ? '' : `<div class="form-section-title" style="margin-top:18px;">Sheets</div>
       ${sheetsHtml}`}

@@ -1,0 +1,33 @@
+{# The derived part of a character sheet: speed, proficiency, initiative, passive perception, saves and skills.
+   `d` comes from dnd5e.derive().  Rendered on the details page and (as sheet_html) inside the battle/map popups. #}
+<div class="sheet-extras">
+  <div class="sheet-chips">
+    <span class="sheet-chip" title="Walking speed"><span class="lbl">Speed</span> {{ d.speed }} ft</span>
+    <span class="sheet-chip" title="Proficiency bonus (from level)"><span class="lbl">Prof.</span> {{ d.prof_text }}</span>
+    <span class="sheet-chip" title="Initiative bonus (Dexterity modifier)"><span class="lbl">Init.</span> {{ d.initiative_text }}</span>
+    <span class="sheet-chip" title="Passive Perception: 10 + Perception bonus"><span class="lbl">Passive Perc.</span> {{ d.passive_perception }}</span>
+  </div>
+
+  <div class="form-section-title sheet-sub">Saving throws</div>
+  <div class="sheet-saves">
+    {% for s in d.saves %}
+    <div class="sheet-save{{ ' is-prof' if s.proficient }}" title="{{ s.label }} saving throw{{ ' (proficient)' if s.proficient }}">
+      <span class="mark" aria-hidden="true">{{ '●' if s.proficient else '○' }}</span><span class="lbl">{{ s.label }}</span><span class="val">{{ s.text }}</span>
+    </div>
+    {% endfor %}
+  </div>
+
+  <details class="sheet-skills-wrap">
+    <summary class="form-section-title sheet-sub">Skills</summary>
+    <div class="sheet-skills">
+      {% for s in d.skills %}
+      <div class="sheet-skill{{ ' is-prof' if s.level == 1 }}{{ ' is-expert' if s.level == 2 }}"
+           title="{{ s.label }} ({{ s.ability }}){{ ' - proficient' if s.level == 1 }}{{ ' - expertise' if s.level == 2 }}">
+        <span class="mark" aria-hidden="true">{{ '◆' if s.level == 2 else ('●' if s.level == 1 else '○') }}</span>
+        <span class="lbl">{{ s.label }} <small>{{ s.ability }}</small></span><span class="val">{{ s.text }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    <p class="hint-text sheet-legend">○ untrained &nbsp;● proficient &nbsp;◆ expertise (double proficiency)</p>
+  </details>
+</div>
