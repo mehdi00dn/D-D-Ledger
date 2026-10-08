@@ -25,6 +25,8 @@
     let painting = null;                       // {before, last, changed}
     let renderQueued = false;
     let saving = Promise.resolve();
+    let liveUntil = 0, liveTimer = 0;          // another person is painting right now (see liveStroke)
+    const liveLast = {};                       // per remote painter: where their brush was last
 
     layer.classList.toggle('is-dm', !!host.isDM);
 
@@ -191,31 +193,64 @@
     function queueRender() {
       if (renderQueued) return;
       renderQueued = true;
-      requestAnimationFrame(() => render(!!painting));
+      requestAnimationFrame(() => render(!!painting || liveUntil > Date.now()));
     }
 
     // ---- painting ----
-    function stamp(x, y) {
-      const r = brush / 2;
+    // Puts one round dab of fog (value 1) or clear (value 0) into the mask; true if any cell changed.
+    function dab(x, y, diameter, v) {
+      const r = diameter / 2;
+      let changed = false;
       const x0 = Math.max(0, Math.floor((x - r) / cell)), x1 = Math.min(cols - 1, Math.floor((x + r) / cell));
       const y0 = Math.max(0, Math.floor((y - r) / cell)), y1 = Math.min(rows - 1, Math.floor((y + r) / cell));
-      const v = mode === 'paint' ? 1 : 0;
       for (let cy = y0; cy <= y1; cy++) {
         for (let cx = x0; cx <= x1; cx++) {
           const dx = (cx + 0.5) * cell - x, dy = (cy + 0.5) * cell - y;
-          if (dx * dx + dy * dy <= r * r && mask[cy * cols + cx] !== v) { mask[cy * cols + cx] = v; painting.changed = true; }
+          if (dx * dx + dy * dy <= r * r && mask[cy * cols + cx] !== v) { mask[cy * cols + cx] = v; changed = true; }
         }
       }
+      return changed;
+    }
+    // Dabs along a straight line so a fast drag leaves no gaps.
+    function dabLine(from, to, diameter, v) {
+      const dist = Math.hypot(to.x - from.x, to.y - from.y);
+      const step = Math.max(cell, diameter / 4);
+      const n = Math.max(1, Math.ceil(dist / step));
+      let changed = false;
+      for (let i = 1; i <= n; i++) if (dab(from.x + (to.x - from.x) * i / n, from.y + (to.y - from.y) * i / n, diameter, v)) changed = true;
+      return changed;
+    }
+    function stamp(x, y) {
+      if (dab(x, y, brush, mode === 'paint' ? 1 : 0)) painting.changed = true;
     }
     function strokeTo(pos) {
-      const last = painting.last;
-      const dist = Math.hypot(pos.x - last.x, pos.y - last.y);
-      const step = Math.max(cell, brush / 4);
-      const n = Math.max(1, Math.ceil(dist / step));
-      for (let i = 1; i <= n; i++) stamp(last.x + (pos.x - last.x) * i / n, last.y + (pos.y - last.y) * i / n);
+      if (dabLine(painting.last, pos, brush, mode === 'paint' ? 1 : 0)) painting.changed = true;
       painting.last = pos;
       queueRender();
+      if (host.live) host.live.fogMoved(mode, brush, pos.x, pos.y);
     }
+    // Somebody else's brush, seen as they paint.  Nothing is saved from here -- the saved mask replaces this
+    // when they let go.  A Player only sees fog being ADDED live: the picture underneath is still hidden for
+    // them until the saved version arrives, so showing a reveal early would just show a black hole.
+    function liveStroke(who, strokeMode, diameter, pts) {
+      const v = strokeMode === 'erase' ? 0 : 1;
+      if (v === 0 && !host.isDM) return;
+      if (painting) return;                            // never fight this person's own brush
+      const d = Math.max(20, Math.min(400, diameter || 100));
+      pts.forEach((p) => {
+        if (!Array.isArray(p)) return;
+        const x = Number(p[0]), y = Number(p[1]);
+        if (!isFinite(x) || !isFinite(y)) return;
+        const here = { x, y }, last = liveLast[who];
+        if (last) dabLine(last, here, d, v); else dab(x, y, d, v);
+        liveLast[who] = here;
+      });
+      liveUntil = Date.now() + 400;
+      clearTimeout(liveTimer);
+      liveTimer = setTimeout(() => { if (!painting) render(); }, 450);      // one smooth render once the strokes stop
+      queueRender();
+    }
+    function liveEnd(who) { delete liveLast[who]; }
     function moveRing(pos) {
       if (!ring) return;
       ring.style.left = (pos.x / W * 100) + '%';
@@ -263,6 +298,8 @@
         return mask[cy * cols + cx] === 1;
       },
       isPainting: () => !!painting,
+      liveStroke,
+      liveEnd,
       setMode(m) { mode = m === 'erase' ? 'erase' : 'paint'; },
       setBrush(px) { brush = Math.max(20, Math.min(400, parseInt(px, 10) || 100)); },
       showRing(on) { if (ring && !on) ring.hidden = true; },
@@ -272,6 +309,7 @@
         stamp(pos.x, pos.y);
         queueRender();
         moveRing(pos);
+        if (host.live) host.live.fogMoved(mode, brush, pos.x, pos.y);
       },
       move(e) {
         const pos = host.eventPos(e);
@@ -282,6 +320,7 @@
         if (!painting) return;
         const { before, changed } = painting;
         painting = null;
+        if (host.live) host.live.fogEnded();
         render();
         if (!changed) return;
         const after = mask.slice();

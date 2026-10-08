@@ -253,5 +253,6 @@
 {% block extra_scripts %}
 {% if g.is_dm %}<script id="map-roster-data" type="application/json">{{ roster | tojson }}</script>{% endif %}
 <script src="{{ url_for('static', filename='js/map-fog.js') }}"></script>
+<script src="{{ url_for('static', filename='js/map-live.js') }}"></script>
 <script src="{{ url_for('static', filename='js/map.js') }}"></script>
 {% endblock %}

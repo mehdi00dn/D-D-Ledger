@@ -5,13 +5,16 @@
  * through its normal, permission-checked endpoints.  Polling keeps running underneath, so if this socket
  * cannot connect, drops, or is blocked, the page still updates -- just at polling speed.
  *
- *   LedgerRealtime.connect({url, key, channel}, function (payload) { ... });
+ *   var rt = LedgerRealtime.connect({url, key, channel}, onPing, onLive);
+ *   rt.send({...})      // live, throwaway messages to everyone else on the channel (e.g. a token being dragged)
+ *
+ * "Live" messages are for looks only: they never change what is stored, and the saved state always wins.
  */
 (function () {
   'use strict';
 
-  function connect(cfg, onPing) {
-    if (!cfg || !cfg.url || !cfg.key || !cfg.channel || typeof WebSocket === 'undefined') return { stop: function () {}, state: function () { return 'off'; } };
+  function connect(cfg, onPing, onLive) {
+    if (!cfg || !cfg.url || !cfg.key || !cfg.channel || typeof WebSocket === 'undefined') return { stop: function () {}, state: function () { return 'off'; }, send: function () { return false; } };
     var ws = null, heartbeat = null, retry = 0, ref = 0, stopped = false, state = 'connecting', timer = null;
     var topic = 'realtime:' + cfg.channel;
 
@@ -43,6 +46,8 @@
           else { state = 'rejected'; }
         } else if (m.event === 'broadcast' && m.topic === topic && m.payload && m.payload.event === 'changed') {
           try { onPing(m.payload.payload || {}); } catch (e) { /* a page handler must not kill the socket */ }
+        } else if (m.event === 'broadcast' && m.topic === topic && m.payload && m.payload.event === 'live' && onLive) {
+          try { onLive(m.payload.payload || {}); } catch (e) { /* ditto */ }
         }
       };
 
@@ -56,8 +61,15 @@
       timer = setTimeout(open, wait);
     }
 
+    function sendLive(payload) {                         // false when the socket is not joined (the message is simply dropped)
+      if (!ws || ws.readyState !== 1 || state !== 'joined') return false;
+      send({ topic: topic, event: 'broadcast', ref: String(++ref), payload: { type: 'broadcast', event: 'live', payload: payload } });
+      return true;
+    }
+
     open();
     return {
+      send: sendLive,
       stop: function () { stopped = true; clearTimeout(timer); clearInterval(heartbeat); try { ws.close(); } catch (e) { /* ignore */ } },
       state: function () { return state; }
     };

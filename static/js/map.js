@@ -96,6 +96,7 @@
   const fogOptions = document.getElementById('fog-options-group');
   const fogBrushInput = document.getElementById('fog-brush-size');
   const fogToggle = document.getElementById('setup-fog-toggle');
+  let live = null;      // other people's movements, shown as they happen (map-live.js)
   const fog = window.MapFog ? window.MapFog.create({
     mapId, campaignId: window.CAMPAIGN_ID, isDM: !!window.IS_DM,
     naturalWidth, naturalHeight, initialVersion: initData.fog_version || 0,
@@ -105,6 +106,7 @@
     pushCommand: (cmd) => pushCommand(cmd),
     onChange: (active) => { if (fogToggle) fogToggle.checked = active; },
     onRefresh: () => markFoggedPins(),
+    live: { fogMoved: (...a) => live && live.fogMoved(...a), fogEnded: () => live && live.fogEnded() },
     reloadImage: (v) => {
       const next = new Image();
       next.onload = () => { bgImage = next; bgLoaded = true; redraw(); };
@@ -525,6 +527,7 @@
     if (!layer) return;
     const angleShapes = drawings.filter((d) => d.kind === 'angle');
     if (previewShape && previewShape.kind === 'angle') angleShapes.push(previewShape);
+    if (live) live.drafts().forEach((d) => { if (d.kind === 'angle') angleShapes.push(d); });
     layer.innerHTML = angleShapes.map((d) => {
       const sweepDeg = Math.round((d.data && d.data.sweepDeg) || 60);
       const labelPos = localOffsetToNatural(d, d.w * 0.45, 0);
@@ -538,7 +541,8 @@
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     if (bgLoaded) ctx.drawImage(bgImage, 0, 0, canvas.width, canvas.height);
     drawGrid();
-    drawings.forEach(drawShape);
+    drawings.forEach((d) => drawShape(live ? live.shapeView(d) : d));
+    if (live) live.drafts().forEach(drawShape);                 // other people's shapes while they are still drawing them
     if (previewShape) drawShape(previewShape);
     drawSelectionOverlay();
     drawLockHoverIcon();
@@ -1544,6 +1548,7 @@
 
     if (!(activeDrag || previewShape) && JSON.stringify(d.drawings) !== JSON.stringify(drawings)) {
       drawings = d.drawings;
+      if (live) live.savedStateArrived();
       redraw();
     }
     const draggingPin = activeDrag && (activeDrag.type === 'move-pin' || activeDrag.type === 'resize-pin' || activeDrag.type === 'rotate-pin');
@@ -1556,8 +1561,40 @@
 
   // Real-time: a ping from the server means "something changed" -> refresh right now.  Polling above stays as the safety net.
   if (window.LEDGER_REALTIME && window.LedgerRealtime) {
-    LedgerRealtime.connect(window.LEDGER_REALTIME, () => syncPoll.poke());
+    if (window.MapLive) {
+      live = window.MapLive.create({
+        mapId, fog,
+        pins: () => pins, drawings: () => drawings,
+        pinEl: (id) => pinLayer.querySelector(`[data-pin-id="${Number(id)}"]`),
+        stylePin: (id, el, p) => {
+          applyPinStyle(p, el);
+          el.dataset.x = p.x; el.dataset.y = p.y;
+          if (fog && !window.IS_DM) el.classList.toggle('pin-in-fog', fog.pointFogged(p.x, p.y));
+        },
+        restorePin: () => renderPins(),
+        draggingPin: (id) => !!(activeDrag && activeDrag.pin && activeDrag.pin.id === id),
+        draggingShape: (id) => !!(activeDrag && ((activeDrag.d && activeDrag.d.id === id) || (activeDrag.ids && activeDrag.ids.includes(id)))),
+        safeColor, finalizePenShape,
+        redraw: () => redraw(),
+      });
+    }
+    const conn = LedgerRealtime.connect(window.LEDGER_REALTIME, () => syncPoll.poke(), live ? (m) => live.receive(m) : null);
+    if (live) live.attach(conn);
   }
+
+  // What this person is moving or drawing is sent to everyone else as it happens (see map-live.js).  These two
+  // listeners only OBSERVE the gesture handlers above/below -- they never change what a gesture does.
+  window.addEventListener('mousemove', () => {
+    if (!live) return;
+    if (activeDrag) live.dragMoved(activeDrag);
+    else if (drawState && previewShape) live.draftMoved(previewShape, drawState.tool, drawState.points);
+    else if (angleDrawState && previewShape) live.draftMoved(previewShape, 'angle');
+  });
+  window.addEventListener('mouseup', () => {                    // capture phase: runs before the handler that finishes the gesture
+    if (!live) return;
+    if (activeDrag) live.dragEnded(activeDrag);
+    if (live.drafting()) live.draftEnded();
+  }, true);
 
   // ---------------------------------------------------------------------
   // Shape geometry helpers for the draw tools (shift = from-center, alt = 1:1 lock)
