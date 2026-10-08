@@ -2932,3 +2932,9 @@ body.page-leaving .content {
 .roster-item:active { cursor: grabbing; }
 
 .roster-list { overscroll-behavior: contain; }
+
+/* Token ownership: tokens a Player may not move are view-only; the DM sees who each token is assigned to. */
+.map-pin.pin-not-yours { cursor: default; }
+.map-pin.pin-not-yours:active { cursor: default; }
+.pin-owner-chip { display: block; font-size: 0.7em; opacity: 0.75; font-weight: 400; }
+.pin-owner-select { max-width: 150px; font-size: 0.8rem; padding: 2px 4px; border-radius: 6px; }

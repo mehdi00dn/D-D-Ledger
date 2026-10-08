@@ -732,3 +732,44 @@ def test_roster_opens_downward_and_wheel_scrolls_only_the_list(pw, shared_server
     assert page.locator('#roster-list').evaluate('e => e.scrollTop') > 0         # the list did
     assert not errs, errs
     ctx.close()
+
+
+def test_a_player_drags_only_the_token_assigned_to_them(pw, shared_server):
+    """Token ownership in a real browser: the Player's own token follows the mouse, the others stay put, and the DM
+    sees an owner picker while the Player does not."""
+    base = shared_server.url; dm = Api(base); cid = dm.campaign('Owners')
+    pl = Api(base); dm.add_member(cid, pl)
+    r = dm.post(f'/campaigns/{cid}/maps/new', data={'name': 'Arena', 'blank_width': '1000', 'blank_height': '700'})
+    mid = int(re.search(r'/maps/(\d+)', r.headers['Location']).group(1))
+    api = f'/campaigns/{cid}/api/maps/{mid}'
+    ids = {}
+    for key, x in (('mine', 200), ('theirs', 600)):
+        rr = dm.post(f'{api}/pins', json={'pin_type': 'prop', 'icon_key': 'skull', 'custom_name': key, 'x': x, 'y': 300})
+        ids[key] = rr.json()['id']
+    pl_id = q('SELECT id FROM users WHERE username = ?', pl.name)[0]['id']
+    assert dm.post(f'{api}/pins/{ids["mine"]}/update', json={'owner_user_id': pl_id}).status_code == 200
+    ctx = pl.context(pw, base); page = ctx.new_page(); bad, errs = _collect(page)
+    page.goto(base + f'/campaigns/{cid}/maps/{mid}'); page.wait_for_load_state('networkidle'); page.wait_for_timeout(800)
+    if page.locator('#setup-confirm-btn').is_visible():
+        page.click('#setup-confirm-btn'); page.wait_for_timeout(600)
+    assert page.locator('#pin-owner-select').count() == 0                         # Players never get the assignment picker
+    assert page.locator('.map-pin.pin-not-yours').count() == 1                    # exactly the DM-only token is greyed out
+    def drag(pin_id):
+        box = page.locator(f'.map-pin[data-pin-id="{pin_id}"]').bounding_box()
+        page.mouse.move(box['x'] + box['width'] / 2, box['y'] + box['height'] / 2)
+        page.mouse.down(); page.mouse.move(box['x'] + 160, box['y'] + 120, steps=8); page.mouse.up(); page.wait_for_timeout(700)
+    def pos(pin_id):
+        return next((p['x'], p['y']) for p in dm.get(f'{api}/pins').json() if p['id'] == pin_id)
+    drag(ids['theirs'])
+    assert pos(ids['theirs']) == (600, 300)                                       # not theirs: it did not move
+    drag(ids['mine'])
+    assert pos(ids['mine'])[0] > 250                                              # theirs: it followed the mouse
+    assert not [b for b in bad if b[0] >= 500], bad
+    assert not errs, errs
+    ctx.close()
+    dctx = dm.context(pw, base); dpage = dctx.new_page()
+    dpage.goto(base + f'/campaigns/{cid}/maps/{mid}'); dpage.wait_for_load_state('networkidle'); dpage.wait_for_timeout(800)
+    if dpage.locator('#setup-confirm-btn').is_visible():
+        dpage.click('#setup-confirm-btn'); dpage.wait_for_timeout(600)
+    assert dpage.locator('#pin-owner-select').count() == 1                        # the DM can assign from the pin bubble
+    dctx.close()
