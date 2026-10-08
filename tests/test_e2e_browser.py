@@ -773,3 +773,33 @@ def test_a_player_drags_only_the_token_assigned_to_them(pw, shared_server):
         dpage.click('#setup-confirm-btn'); dpage.wait_for_timeout(600)
     assert dpage.locator('#pin-owner-select').count() == 1                        # the DM can assign from the pin bubble
     dctx.close()
+
+
+def test_character_form_previews_bonuses_live_and_the_sheet_shows_them(pw, shared_server):
+    base = shared_server.url; dm = Api(base); cid = dm.campaign('Sheets')
+    dm.post(f'/campaigns/{cid}/characters/new', data={'name': 'Vex', 'max_hp': '30', 'level': '1'})
+    ch = next(c['id'] for c in dm.get(f'/campaigns/{cid}/api/characters').json() if c['name'] == 'Vex')
+    ctx = dm.context(pw, base); page = ctx.new_page(); bad, errs = _collect(page)
+    page.goto(base + f'/campaigns/{cid}/characters/{ch}/edit'); page.wait_for_load_state('networkidle')
+    assert page.input_value('#speed') == '30'
+    page.fill('#level', '5'); page.fill('#dex_score', '14')
+    page.click('.prof-skills-wrap summary'); page.wait_for_timeout(200)
+    assert page.inner_text('[data-skill-bonus="stealth"]') == '+2'                  # DEX +2, untrained
+    page.select_option('#skill_stealth', '2')
+    assert page.inner_text('[data-skill-bonus="stealth"]') == '+8'                  # + 2 x 3 expertise at level 5
+    page.check('[data-save="dex"]')
+    assert page.inner_text('[data-save-bonus="dex"]') == '+5'
+    page.fill('#speed', '40')
+    with page.expect_navigation():
+        page.click('.form-actions button[type=submit]')
+    page.wait_for_load_state('networkidle')
+    page.goto(base + f'/campaigns/{cid}/characters/{ch}'); page.wait_for_load_state('networkidle')
+    text = page.inner_text('body')
+    for needle in ('40 ft', 'saving throws', 'passive perc.'):
+        assert needle in text.lower(), needle
+    page.click('.sheet-skills-wrap summary')
+    assert page.locator('.sheet-skill.is-expert .val').first.inner_text() == '+8'
+    assert page.locator('.stat-pill .mod').nth(1).inner_text() == '+2'               # DEX 14 -> +2 under the score
+    assert not [b for b in bad if b[0] >= 400], bad
+    assert not errs, errs
+    ctx.close()

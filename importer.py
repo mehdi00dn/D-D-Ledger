@@ -19,6 +19,8 @@ import zipfile
 import zlib
 import zlib
 
+import dnd5e
+
 MAX_ZIP_BYTES = 50 * 1024 * 1024
 MAX_ENTRIES = 3000
 MAX_TOTAL_UNCOMPRESSED = 300 * 1024 * 1024
@@ -151,6 +153,9 @@ def normalize_manifest(manifest, sanitize_notes):
             'wis_score': _int(c.get('wis_score'), 10, 0, 100),
             'cha_score': _int(c.get('cha_score'), 10, 0, 100),
             'armor_class': _int(c.get('armor_class'), 10, 0, 100),
+            'speed': dnd5e.clean_speed(c.get('speed')),
+            'skill_prof': dnd5e.clean_skill_prof(c.get('skill_prof')),
+            'save_prof': dnd5e.clean_save_prof(c.get('save_prof')),
             'class_key': _clean(c.get('class_key'), 40).strip().lower() or None,   # checked against the known classes on import
             'notes': sanitize_notes(_clean(c.get('notes'), 200000)),
             'group_name': _clean(c.get('group_name'), 120).strip() or None,

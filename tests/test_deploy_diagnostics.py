@@ -44,7 +44,7 @@ def test_healthz_ready(appmod):
     r = appmod.app.test_client().get('/healthz')
     assert r.status_code == 200 and r.get_json()['ok'] is True
     assert r.get_json()['migrations'] == ['0001_initial.sql', '0002_lock_down_data_api.sql', '0003_auth_throttle.sql',
-                                           '0004_public_ids.sql', '0005_case_insensitive_usernames.sql', '0006_map_fog.sql', '0007_battle_turns.sql', '0008_battle_conditions.sql', '0009_character_class.sql', '0010_invitations_notifications.sql', '0011_invite_links.sql', '0012_custom_conditions.sql', '0013_map_character_pins.sql', '0014_made_by.sql', '0015_token_owner.sql']
+                                           '0004_public_ids.sql', '0005_case_insensitive_usernames.sql', '0006_map_fog.sql', '0007_battle_turns.sql', '0008_battle_conditions.sql', '0009_character_class.sql', '0010_invitations_notifications.sql', '0011_invite_links.sql', '0012_custom_conditions.sql', '0013_map_character_pins.sql', '0014_made_by.sql', '0015_token_owner.sql', '0016_character_proficiencies.sql']
     assert r.headers['Cache-Control'] == 'no-store'
 
 

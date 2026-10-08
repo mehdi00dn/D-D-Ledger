@@ -81,7 +81,7 @@
 
   <div class="form-section">
     <p class="form-section-title">Vitals</p>
-    <div class="form-row cols-2">
+    <div class="form-row cols-3">
       <div class="field">
         <label for="max_hp">Max HP</label>
         <input type="number" id="max_hp" name="max_hp" min="1" value="{{ character.max_hp if character else 10 }}">
@@ -89,6 +89,10 @@
       <div class="field">
         <label for="armor_class">Armor Class</label>
         <input type="number" id="armor_class" name="armor_class" min="0" value="{{ character.armor_class if character else 10 }}">
+      </div>
+      <div class="field">
+        <label for="speed">Speed <span class="field-optional">ft</span></label>
+        <input type="number" id="speed" name="speed" min="0" max="500" step="5" value="{{ character.speed if character and character.speed is not none else 30 }}">
       </div>
     </div>
   </div>
@@ -103,6 +107,41 @@
       <div class="field"><label for="wis_score">WIS</label><input type="number" id="wis_score" name="wis_score" value="{{ character.wis_score if character else 10 }}"></div>
       <div class="field"><label for="cha_score">CHA</label><input type="number" id="cha_score" name="cha_score" value="{{ character.cha_score if character else 10 }}"></div>
     </div>
+  </div>
+
+  {% set prof_saves = character_save_prof or [] %}
+  {% set prof_skills = character_skill_prof or {} %}
+  <div class="form-section" id="proficiencies" data-proficiencies>
+    <p class="form-section-title">Saving Throws &amp; Skills <span class="field-optional">optional</span></p>
+    <p class="hint-text">Modifiers and the proficiency bonus come from the ability scores and level, so only pick what this character is trained in.</p>
+    <div class="field">
+      <label>Saving throw proficiencies</label>
+      <div class="prof-saves">
+        {% for key, short, name in sheet_abilities %}
+        <label class="prof-save" title="{{ name }}">
+          <input type="checkbox" name="save_{{ key }}" {{ 'checked' if key in prof_saves else '' }} data-save="{{ key }}">
+          <span>{{ short }}</span><span class="prof-bonus" data-save-bonus="{{ key }}"></span>
+        </label>
+        {% endfor %}
+      </div>
+    </div>
+    <details class="prof-skills-wrap" {{ 'open' if prof_skills else '' }}>
+      <summary>Skill proficiencies <span class="field-optional">{{ prof_skills|length }} chosen</span></summary>
+      <div class="prof-skills">
+        {% for sk in sheet_skills %}
+        <div class="prof-skill">
+          <label for="skill_{{ sk.key }}">{{ sk.label }} <small>{{ sk.ability }}</small></label>
+          <span class="prof-bonus" data-skill-bonus="{{ sk.key }}" data-ability="{{ sk.ability|lower }}"></span>
+          <select id="skill_{{ sk.key }}" name="skill_{{ sk.key }}" data-skill="{{ sk.key }}">
+            {% set cur = prof_skills.get(sk.key, 0) %}
+            <option value="" {{ 'selected' if cur == 0 else '' }}>Untrained</option>
+            <option value="1" {{ 'selected' if cur == 1 else '' }}>Proficient</option>
+            <option value="2" {{ 'selected' if cur == 2 else '' }}>Expertise</option>
+          </select>
+        </div>
+        {% endfor %}
+      </div>
+    </details>
   </div>
 
   <div class="form-section">
@@ -177,4 +216,8 @@
     <button type="submit" class="btn btn-primary">{{ icon('check') }} {{ 'Save Changes' if character else 'Add Character' }}</button>
   </div>
 </form>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="{{ url_for('static', filename='js/character-proficiencies.js') }}"></script>
 {% endblock %}

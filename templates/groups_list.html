@@ -51,7 +51,6 @@
     <div class="group-body">
       <h3 class="group-name"><span class="group-dot" style="background:{{ g.color }}"></span>{{ g.name }}</h3>
       <p class="group-count">{{ g.member_count }} member{{ '' if g.member_count == 1 else 's' }}</p>
-      <p class="made-by">Made by {{ g.made_by or 'a former member' }}</p>
       <p class="group-bio">{{ g.bio | preview_lines }}</p>
       <div class="group-actions">
         <a href="{{ url_for('faction_detail', group_id=g.id) }}" class="btn btn-ghost btn-sm">{{ icon('eye') }} Details</a>

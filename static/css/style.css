@@ -2938,3 +2938,52 @@ body.page-leaving .content {
 .map-pin.pin-not-yours:active { cursor: default; }
 .pin-owner-chip { display: block; font-size: 0.7em; opacity: 0.75; font-weight: 400; }
 .pin-owner-select { max-width: 150px; font-size: 0.8rem; padding: 2px 4px; border-radius: 6px; }
+
+/* ---- Character sheet extras: modifiers, speed, saves and skills ---- */
+.stat-pill .mod { display: block; color: var(--brass-bright); font-size: 11px; font-weight: 600; line-height: 1.3; }
+.sheet-extras { margin-top: 14px; }
+.sheet-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+.sheet-chip {
+  padding: 5px 10px; border-radius: var(--radius-s); background: var(--bg-panel-inset);
+  font-family: var(--font-mono); font-size: 12px; font-weight: 600; color: var(--parchment);
+}
+.sheet-chip .lbl { color: var(--parchment-faint); font-size: 9.5px; letter-spacing: 0.08em; text-transform: uppercase; margin-right: 4px; font-weight: 500; }
+.sheet-sub { margin-top: 14px; }
+.sheet-saves { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.sheet-save { background: var(--bg-panel-inset); border: 1px solid rgba(138,113,59,0.25); border-radius: var(--radius-s); padding: 4px 9px; gap: 7px; }
+.sheet-save.is-prof { border-color: var(--brass-dim); }
+.sheet-save .lbl { flex: none; }
+.sheet-skills { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px 14px; margin-top: 8px; }
+.sheet-save, .sheet-skill {
+  display: flex; align-items: baseline; gap: 6px; font-family: var(--font-mono); font-size: 11.5px;
+  color: var(--parchment-dim); padding: 3px 0;
+}
+.sheet-skill .lbl { flex: 1; }
+.sheet-skill small { color: var(--parchment-faint); font-size: 9px; letter-spacing: 0.06em; }
+.sheet-save .val, .sheet-skill .val { font-weight: 600; color: var(--parchment); }
+.sheet-save .mark, .sheet-skill .mark { color: var(--parchment-faint); font-size: 9px; }
+.sheet-save.is-prof .mark, .sheet-skill.is-prof .mark, .sheet-skill.is-expert .mark { color: var(--brass-bright); }
+.sheet-save.is-prof .val, .sheet-skill.is-prof .val, .sheet-skill.is-expert .val { color: var(--brass-bright); }
+.sheet-skills-wrap > summary { cursor: pointer; list-style: none; }
+.sheet-skills-wrap > summary::-webkit-details-marker { display: none; }
+.sheet-skills-wrap > summary::after { content: ' ▾'; color: var(--parchment-faint); }
+.sheet-skills-wrap[open] > summary::after { content: ' ▴'; }
+.sheet-legend { margin-top: 8px; font-size: 10.5px; }
+
+.prof-saves { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
+.prof-save {
+  display: flex; align-items: center; gap: 6px; padding: 7px 9px; border-radius: var(--radius-s);
+  background: var(--bg-panel-inset); font-family: var(--font-mono); font-size: 12px; cursor: pointer;
+}
+.prof-bonus { margin-left: auto; font-family: var(--font-mono); font-size: 11.5px; color: var(--parchment-faint); }
+.prof-bonus.is-prof { color: var(--brass-bright); font-weight: 600; }
+.prof-skills-wrap { margin-top: 12px; }
+.prof-skills-wrap > summary { cursor: pointer; font-size: 13px; color: var(--parchment); margin-bottom: 8px; }
+.prof-skills { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px 18px; }
+.prof-skill { display: grid; grid-template-columns: 1fr auto 118px; align-items: center; gap: 8px; font-size: 13px; }
+.prof-skill small { color: var(--parchment-faint); font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 0.06em; }
+.prof-skill select { padding: 4px 6px; font-size: 12px; }
+@media (max-width: 720px) {
+  .prof-saves { grid-template-columns: repeat(3, 1fr); }
+  .prof-skills, .sheet-skills { grid-template-columns: 1fr; }
+}
