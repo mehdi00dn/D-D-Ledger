@@ -31,10 +31,10 @@ def test_the_details_say_who_made_it(make_user):
     gid = dm.new_group(cid, 'Dm Guild')
     player.new_map(cid, 'Pip Map')
     assert f'Made by {player.name}' in owner.get(f'/campaigns/{cid}/characters/{pc}').get_data(as_text=True)
-    assert f'Made by {player.name}' in owner.get(f'/campaigns/{cid}/characters').get_data(as_text=True)
+    assert 'Made by' not in owner.get(f'/campaigns/{cid}/characters').get_data(as_text=True)      # lists stay clean: details pages only
     assert f'Made by {dm.name}' in player.get(f'/campaigns/{cid}/factions/{gid}').get_data(as_text=True)
-    assert f'Made by {dm.name}' in player.get(f'/campaigns/{cid}/factions').get_data(as_text=True)
-    assert f'Made by {player.name}' in owner.get(f'/campaigns/{cid}/maps?browse=1').get_data(as_text=True)
+    assert 'Made by' not in player.get(f'/campaigns/{cid}/factions').get_data(as_text=True)
+    assert 'Made by' not in owner.get(f'/campaigns/{cid}/maps?browse=1').get_data(as_text=True)
     detail = owner.get(f'/campaigns/{cid}/api/characters/{pc}/detail').get_json()
     assert detail['made_by'] == player.name and detail['can_delete'] is True
 

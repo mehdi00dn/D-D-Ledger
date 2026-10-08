@@ -104,8 +104,6 @@
     </div>
     {% endif %}
 
-    <div class="made-by">Made by {{ c.made_by or 'a former member' }}</div>
-
     <div class="dossier-notes">{{ c.notes | notes_preview(g.is_dm or c.created_by == session.user_id) }}</div>
 
     <div class="dossier-actions">
