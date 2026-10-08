@@ -2937,7 +2937,54 @@ body.page-leaving .content {
 .map-pin.pin-not-yours { cursor: default; }
 .map-pin.pin-not-yours:active { cursor: default; }
 .pin-owner-chip { display: block; font-size: 0.7em; opacity: 0.75; font-weight: 400; }
-.pin-owner-select { max-width: 150px; font-size: 0.8rem; padding: 2px 4px; border-radius: 6px; }
+/* ---- Radial token menu: buttons fan out on an arc around the token ---- */
+@keyframes pin-radial-out {
+  from { opacity: 0; transform: translate(-50%, -50%) translate(0, 0) scale(0.3) rotate(-90deg); }
+  to   { opacity: 1; transform: translate(-50%, -50%) translate(var(--x), var(--y)) scale(1) rotate(0); }
+}
+.pin-radial { position: absolute; width: 1px; height: 1px; z-index: 10; pointer-events: none; }
+.pin-radial[hidden] { display: none; }
+.pin-radial > * {
+  position: absolute; left: 0; top: 0;
+  transform: translate(-50%, -50%) translate(var(--x, 0), var(--y, 0));
+  animation: pin-radial-out 0.26s cubic-bezier(0.34, 1.45, 0.64, 1) both;
+  animation-delay: calc(var(--i, 0) * 24ms);
+  pointer-events: auto;
+}
+.pin-radial-btn {
+  width: 38px; height: 38px; padding: 0; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--bg-panel); color: var(--parchment-dim);
+  border: 1px solid var(--hairline-strong); box-shadow: var(--shadow-deep);
+  cursor: pointer; font: 600 11px var(--font-mono);
+  transition: background 0.15s, color 0.15s, border-color 0.15s, box-shadow 0.15s;
+}
+.pin-radial-btn svg { width: 16px; height: 16px; }
+.pin-radial-btn:hover, .pin-radial-btn:focus-visible, .pin-radial-btn.active, .pin-radial-btn.has-owner {
+  background: var(--brass); color: #21170a; border-color: var(--brass);
+}
+.pin-radial-btn:hover { box-shadow: 0 0 0 4px rgba(201,162,75,0.22), var(--shadow-deep); }
+.pin-radial-danger:hover { background: #e63946; border-color: #e63946; color: #fff; box-shadow: 0 0 0 4px rgba(230,57,70,0.22), var(--shadow-deep); }
+.pin-owner-wrap > .pin-radial-btn { position: relative; }
+.pin-owner-menu {
+  position: absolute; left: 50%; min-width: 170px; padding: 4px;
+  transform: translateX(-50%); background: var(--bg-panel);
+  border: 1px solid var(--hairline-strong); border-radius: var(--radius-s);
+  box-shadow: var(--shadow-deep); display: flex; flex-direction: column; gap: 2px;
+}
+.pin-owner-menu[hidden] { display: none; }
+.pin-owner-menu { white-space: nowrap; }
+.pin-owner-wrap:has(.pin-owner-menu:not([hidden])) { z-index: 5; }
+.pin-radial[data-side="top"] .pin-owner-menu { bottom: calc(100% + 10px); }
+.pin-radial[data-side="bottom"] .pin-owner-menu { top: calc(100% + 10px); }
+.pin-owner-opt {
+  text-align: left; background: transparent; border: none; color: var(--parchment);
+  padding: 6px 10px; border-radius: 4px; font: inherit; font-size: 0.8rem; cursor: pointer;
+}
+.pin-owner-opt:hover { background: var(--bg-panel-inset); }
+.pin-owner-opt.is-current { color: var(--brass); }
+.pin-owner-opt.is-current::before { content: '\2713  '; }
+@media (prefers-reduced-motion: reduce) { .pin-radial > * { animation: none; } }
 
 /* ---- Character sheet extras: modifiers, speed, saves and skills ---- */
 .stat-pill .mod { display: block; color: var(--brass-bright); font-size: 11px; font-weight: 600; line-height: 1.3; }

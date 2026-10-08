@@ -121,5 +121,5 @@ def test_a_dm_previewing_as_player_gets_player_rules(make_user):
 def test_the_editor_hands_the_dm_the_member_list(make_user):
     dm, alice, bob, cid, mid, base = _world(make_user)
     html = dm.get(f'/campaigns/{cid}/maps/{mid}').get_data(as_text=True)
-    assert 'id="pin-owner-select"' in html and alice.name in html
-    assert 'pin-owner-select' not in alice.get(f'/campaigns/{cid}/maps/{mid}').get_data(as_text=True)
+    assert 'id="pin-owner-btn"' in html and alice.name in html
+    assert 'pin-owner-btn' not in alice.get(f'/campaigns/{cid}/maps/{mid}').get_data(as_text=True)

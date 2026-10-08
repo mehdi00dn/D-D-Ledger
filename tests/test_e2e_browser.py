@@ -753,7 +753,7 @@ def test_a_player_drags_only_the_token_assigned_to_them(pw, shared_server):
     page.goto(base + f'/campaigns/{cid}/maps/{mid}'); page.wait_for_load_state('networkidle'); page.wait_for_timeout(800)
     if page.locator('#setup-confirm-btn').is_visible():
         page.click('#setup-confirm-btn'); page.wait_for_timeout(600)
-    assert page.locator('#pin-owner-select').count() == 0                         # Players never get the assignment picker
+    assert page.locator('#pin-owner-btn').count() == 0                         # Players never get the assignment picker
     assert page.locator('.map-pin.pin-not-yours').count() == 1                    # exactly the DM-only token is greyed out
     def drag(pin_id):
         box = page.locator(f'.map-pin[data-pin-id="{pin_id}"]').bounding_box()
@@ -772,7 +772,7 @@ def test_a_player_drags_only_the_token_assigned_to_them(pw, shared_server):
     dpage.goto(base + f'/campaigns/{cid}/maps/{mid}'); dpage.wait_for_load_state('networkidle'); dpage.wait_for_timeout(800)
     if dpage.locator('#setup-confirm-btn').is_visible():
         dpage.click('#setup-confirm-btn'); dpage.wait_for_timeout(600)
-    assert dpage.locator('#pin-owner-select').count() == 1                        # the DM can assign from the pin bubble
+    assert dpage.locator('#pin-owner-btn').count() == 1                        # the DM can assign from the pin bubble
     dctx.close()
 
 

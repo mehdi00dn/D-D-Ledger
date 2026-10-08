@@ -16,7 +16,8 @@
   const pinRotateBtn = document.getElementById('pin-rotate-btn');
   const pinLockBtn = document.getElementById('pin-lock-btn');
   const pinDeleteBtn = document.getElementById('pin-delete-btn');
-  const pinOwnerSelect = document.getElementById('pin-owner-select');
+  const pinOwnerBtn = document.getElementById('pin-owner-btn');
+  const pinOwnerMenu = document.getElementById('pin-owner-menu');
   const pinRenameBox = document.getElementById('pin-rename-box');
   const pinRenameInput = document.getElementById('pin-rename-input');
 
@@ -644,7 +645,7 @@
     const topPx = (pin.y / naturalHeight) * wrapRect.height;
     const halfHeightPx = ((gridSize * (pin.scale || 1)) / naturalHeight) * wrapRect.height / 2;
     pinBubble.style.left = `${leftPx}px`;
-    pinBubble.style.top = `${topPx - halfHeightPx - 14}px`;
+    pinBubble.style.top = `${topPx}px`;
     pinBubble.hidden = false;
     // Players can open an NPC pin's details too -- the detail endpoint
     // returns notes only for them (stats are withheld server-side).
@@ -657,7 +658,11 @@
     } else {
       [pinResizeBtn, pinRotateBtn, pinLockBtn].forEach((b) => { b.style.display = ''; });
     }
-    if (pinOwnerSelect) pinOwnerSelect.value = pin.owner_user_id == null ? '' : String(pin.owner_user_id);
+    if (pinOwnerBtn) {
+      pinOwnerBtn.classList.toggle('has-owner', pin.owner_user_id != null);
+      pinOwnerBtn.title = pin.owner_name ? `Assigned to ${pin.owner_name}` : 'Assign to a player';
+      closeOwnerMenu();
+    }
     if (pinPcNpcToggle) {
       const isFamiliar = pin.pin_type === 'prop' && !!pin.participant_id;
       pinPcNpcToggle.style.display = isFamiliar ? '' : 'none';
@@ -668,6 +673,34 @@
           : 'Currently a PC (stats visible to players) — click to make it an NPC';
       }
     }
+    layoutPinRadial(leftPx, topPx, halfHeightPx, wrapRect.height);
+  }
+
+  // Fan the visible buttons out on an arc around the token. Over the top by
+  // default; under it when the token is too close to the map's top edge.
+  function layoutPinRadial(cx, cy, halfPx, stageH) {
+    const items = Array.from(pinBubble.children).filter((c) => c.style.display !== 'none');
+    const n = items.length;
+    if (!n) return;
+    const BTN = 38, GAP = 6;
+    const span = Math.min(Math.PI * 1.35, Math.max(Math.PI * 0.5, (n - 1) * 0.5));
+    let r = Math.max(halfPx + 30, ((n - 1) * (BTN + GAP)) / span);
+    const below = cy - r - BTN < 0 && cy + r + BTN < stageH;
+    pinBubble.dataset.side = below ? 'bottom' : 'top';
+    const mid = below ? Math.PI / 2 : -Math.PI / 2;
+    items.forEach((el, i) => {
+      const t = n === 1 ? 0.5 : i / (n - 1);
+      const a = below ? mid + span / 2 - span * t : mid - span / 2 + span * t;   // always left to right
+      el.style.setProperty('--x', `${(Math.cos(a) * r).toFixed(1)}px`);
+      el.style.setProperty('--y', `${(Math.sin(a) * r).toFixed(1)}px`);
+      el.style.setProperty('--i', String(i));
+    });
+  }
+
+  function closeOwnerMenu() {
+    if (!pinOwnerMenu) return;
+    pinOwnerMenu.hidden = true;
+    pinOwnerBtn.setAttribute('aria-expanded', 'false');
   }
 
   function positionPinRenameBox(pinId) {
@@ -1234,24 +1267,44 @@
     if (pin && pin.character_id) openDetailModal(pin.character_id);
   });
 
-  if (pinOwnerSelect) {
+  if (pinOwnerBtn) {
     const members = Array.isArray(initData.members) ? initData.members : [];
-    pinOwnerSelect.innerHTML = '<option value="">Unassigned (DM only)</option>'
-      + members.map((m) => `<option value="${Number(m.id)}">${escapeHtml(m.username)}</option>`).join('');
-    pinOwnerSelect.addEventListener('change', async () => {
+    function renderOwnerMenu() {
+      const pin = pins.find((p) => p.id === selectedPinId);
+      const cur = pin && pin.owner_user_id != null ? Number(pin.owner_user_id) : null;
+      const opts = [{ id: null, name: 'Unassigned (DM only)' }, ...members.map((m) => ({ id: Number(m.id), name: m.username }))];
+      pinOwnerMenu.innerHTML = opts.map((o) =>
+        `<button type="button" role="menuitemradio" class="pin-owner-opt${o.id === cur ? ' is-current' : ''}" aria-checked="${o.id === cur}" data-owner="${o.id == null ? '' : o.id}">${escapeHtml(o.name)}</button>`).join('');
+    }
+    pinOwnerBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (!pinOwnerMenu.hidden) { closeOwnerMenu(); return; }
+      renderOwnerMenu();
+      pinOwnerMenu.hidden = false;
+      pinOwnerBtn.setAttribute('aria-expanded', 'true');
+    });
+    pinOwnerMenu.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const opt = e.target.closest('.pin-owner-opt');
+      if (!opt) return;
       const pin = pins.find((p) => p.id === selectedPinId);
       if (!pin) return;
-      const ownerId = pinOwnerSelect.value === '' ? null : Number(pinOwnerSelect.value);
+      const ownerId = opt.dataset.owner === '' ? null : Number(opt.dataset.owner);
+      closeOwnerMenu();
       const res = await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/pins/${pin.id}/update`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ owner_user_id: ownerId }),
       });
-      if (!res.ok) { pinOwnerSelect.value = pin.owner_user_id == null ? '' : String(pin.owner_user_id); return; }
+      if (!res.ok) return;
       pin.owner_user_id = ownerId;
-      const m = members.find((x) => x.id === ownerId);
+      const m = members.find((x) => Number(x.id) === ownerId);
       pin.owner_name = m ? m.username : null;
+      pinOwnerBtn.classList.toggle('has-owner', ownerId != null);
+      pinOwnerBtn.title = pin.owner_name ? `Assigned to ${pin.owner_name}` : 'Assign to a player';
       renderPins();
     });
+    document.addEventListener('click', (e) => { if (!e.target.closest('#pin-owner-wrap')) closeOwnerMenu(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeOwnerMenu(); });
   }
 
   if (pinPcNpcToggle) {

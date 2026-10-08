@@ -157,17 +157,20 @@
       <input type="text" id="pin-rename-input" maxlength="40" placeholder="Name this marker">
     </div>
 
-    <div class="pin-action-bubble" id="pin-action-bubble" hidden>
-      <button type="button" class="btn-icon" id="pin-view-btn" title="View details">{{ icon('images') }}</button>
+    <div class="pin-radial" id="pin-action-bubble" hidden>
+      <button type="button" class="pin-radial-btn" id="pin-view-btn" title="View details">{{ icon('images') }}</button>
       {% if g.is_dm %}
-      <select id="pin-owner-select" class="pin-owner-select" title="Who may move this token" aria-label="Assign this token to a player"></select>
-      <button type="button" class="btn-icon pin-pc-npc-toggle" id="pin-pc-npc-toggle" title="Toggle between PC and NPC">PC</button>
+      <div class="pin-owner-wrap" id="pin-owner-wrap">
+        <button type="button" class="pin-radial-btn" id="pin-owner-btn" title="Assign to a player" aria-haspopup="true" aria-expanded="false">{{ icon('user') }}</button>
+        <div class="pin-owner-menu" id="pin-owner-menu" role="menu" hidden></div>
+      </div>
+      <button type="button" class="pin-radial-btn pin-pc-npc-toggle" id="pin-pc-npc-toggle" title="Toggle between PC and NPC">PC</button>
       {% endif %}
-      <button type="button" class="btn-icon" id="pin-rename-btn" title="Rename">{{ icon('pencil') }}</button>
-      <button type="button" class="btn-icon" id="pin-resize-btn" title="Hold and drag to resize">{{ icon('resize') }}</button>
-      <button type="button" class="btn-icon" id="pin-rotate-btn" title="Hold and drag to rotate">{{ icon('rotate') }}</button>
-      <button type="button" class="btn-icon" id="pin-lock-btn" title="Lock in place">{{ icon('lock') }}</button>
-      <button type="button" class="btn-icon btn-icon-danger" id="pin-delete-btn" title="Delete">{{ icon('trash-2') }}</button>
+      <button type="button" class="pin-radial-btn" id="pin-rename-btn" title="Rename">{{ icon('pencil') }}</button>
+      <button type="button" class="pin-radial-btn" id="pin-resize-btn" title="Hold and drag to resize">{{ icon('resize') }}</button>
+      <button type="button" class="pin-radial-btn" id="pin-rotate-btn" title="Hold and drag to rotate">{{ icon('rotate') }}</button>
+      <button type="button" class="pin-radial-btn" id="pin-lock-btn" title="Lock in place">{{ icon('lock') }}</button>
+      <button type="button" class="pin-radial-btn pin-radial-danger" id="pin-delete-btn" title="Delete">{{ icon('trash-2') }}</button>
     </div>
 
     <!-- Shape action bubble shown when a drawn shape is selected -->
