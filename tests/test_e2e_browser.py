@@ -220,7 +220,8 @@ def test_lightbox_arrows_sit_beside_the_image(pw, shared_server):
     char_id = next(c['id'] for c in api.get(f'/campaigns/{cid}/api/characters').json() if c['name'] == 'Gallery')
     ctx = api.context(pw, base); page = ctx.new_page(); bad, errs = _collect(page)
     page.goto(base + f'/campaigns/{cid}/characters/{char_id}'); page.wait_for_load_state('networkidle')
-    page.locator('.sheet-thumbs img[data-lightbox-src]').nth(1).click()
+    page.locator('.sheet-thumbs img[data-sheet-src]').nth(1).click()           # the thumbnail picks the sheet in the viewer ...
+    page.click('#sheet-viewer-img')                                            # ... and the viewer opens the lightbox on it
     page.wait_for_selector('#image-lightbox:not([hidden])'); page.wait_for_timeout(400)
     img, prev, nxt = (page.locator(s).bounding_box() for s in ('#lightbox-img', '#lightbox-prev-btn', '#lightbox-next-btn'))
     # Each arrow hugs its side of the picture (a small gap), not the edge of the screen.

@@ -2987,3 +2987,36 @@ body.page-leaving .content {
   .prof-saves { grid-template-columns: repeat(3, 1fr); }
   .prof-skills, .sheet-skills { grid-template-columns: 1fr; }
 }
+
+/* ---- Character details: card on the left, sheet viewer on the right ---- */
+.detail-layout { display: grid; grid-template-columns: minmax(0, 780px); gap: 24px; align-items: start; }
+.detail-layout.has-viewer { grid-template-columns: minmax(380px, 1.1fr) minmax(320px, 1fr); }
+.detail-layout > .form-panel { max-width: none; }
+.character-card { position: relative; }
+.character-card.has-class .detail-header { padding-inline-end: 84px; }
+.class-badge {
+  position: absolute; top: 22px; inset-inline-end: 22px; width: 64px; height: 64px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--bg-panel-inset); border: 2px solid var(--brass); box-shadow: 0 0 0 4px rgba(201,162,75,0.1);
+}
+.class-badge .class-icon { width: 34px; height: 34px; margin: 0; color: var(--brass-bright); }
+.sheet-viewer-panel {
+  position: sticky; top: 20px; background: var(--bg-panel); border: 1px solid var(--hairline);
+  border-radius: var(--radius-l); padding: 20px; box-shadow: var(--shadow-deep);
+}
+.sheet-viewer-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.sheet-viewer-head .form-section-title { margin: 0; flex: 1; }
+.sheet-viewer-nav { display: inline-flex; align-items: center; gap: 8px; font-family: var(--font-mono); font-size: 11px; color: var(--parchment-dim); }
+.sheet-viewer-nav .btn-icon { font-size: 18px; line-height: 1; padding: 2px 9px; }
+.sheet-viewer-nav .btn-icon:disabled { opacity: 0.35; cursor: default; }
+.sheet-viewer-stage {
+  background: var(--bg-panel-inset); border-radius: var(--radius-s); padding: 8px; min-height: 360px;
+  display: flex; align-items: center; justify-content: center;
+}
+.sheet-viewer-stage img { max-width: 100%; max-height: calc(100vh - 200px); object-fit: contain; cursor: zoom-in; border-radius: 4px; }
+.detail-layout .sheet-thumb img:focus-visible { outline: 2px solid var(--brass-bright); outline-offset: 1px; }
+.detail-layout .sheet-thumb.is-active { border-color: var(--brass); box-shadow: 0 0 0 1px var(--brass); }
+@media (max-width: 1100px) {
+  .detail-layout.has-viewer { grid-template-columns: minmax(0, 1fr); }
+  .sheet-viewer-panel { position: static; }
+}

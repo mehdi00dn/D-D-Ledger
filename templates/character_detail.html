@@ -17,7 +17,11 @@
   </div>
 </div>
 
-<div class="form-panel">
+<div class="detail-layout{{ '' if stats_hidden else ' has-viewer' }}">
+<div class="form-panel character-card{{ ' has-class' if character.class_key and not stats_hidden else '' }}">
+  {% if character.class_key and not stats_hidden %}
+  <div class="class-badge">{{ class_icon(character.class_key) }}</div>
+  {% endif %}
   <div class="detail-header">
     <div class="avatar-frame" style="width:96px;height:96px;">
       {% if character.avatar_path %}
@@ -27,7 +31,7 @@
       {% endif %}
     </div>
     <div>
-      <div class="dossier-name">{% if not stats_hidden %}{{ class_icon(character.class_key) }}{% endif %}{{ character.name }}</div>
+      <div class="dossier-name">{{ character.name }}</div>
       <div class="dossier-meta">Lvl {{ character.level }} &middot; {{ character.group_name or 'Ungrouped' }}</div>
       <div class="made-by">Made by {{ character.made_by or 'a former member' }}</div>
     </div>
@@ -66,15 +70,15 @@
   <div class="form-section-title" style="margin-top:22px;">Notes</div>
   <div class="detail-notes">{% if notes_html %}{{ notes_html | safe }}{% else %}<em>No notes recorded.</em>{% endif %}</div>
 
-  {% if not stats_hidden %}
+  {% if not stats_hidden and sheets %}
   <div class="form-section-title" style="margin-top:22px;">Sheets</div>
-  {% if sheets %}
-  <div class="sheet-thumbs">
+  <div class="sheet-thumbs" data-sheet-thumbs>
     {% for s in sheets %}
-    <div class="sheet-thumb">
-      <img src="{{ url_for('uploaded_file', filename=s.image_path) }}" alt="sheet"
-           data-lightbox-src="{{ url_for('uploaded_file', filename=s.image_path) }}"
-           {% if can_delete %}data-delete-url="{{ url_for('sheet_delete', char_id=character.id, sheet_id=s.id) }}"{% endif %}>
+    <div class="sheet-thumb{{ ' is-active' if loop.first else '' }}">
+      <img src="{{ url_for('uploaded_file', filename=s.image_path) }}" alt="Sheet {{ loop.index }}"
+           role="button" tabindex="0" aria-label="Show sheet {{ loop.index }}"
+           data-sheet-src="{{ url_for('uploaded_file', filename=s.image_path) }}"
+           {% if can_delete %}data-viewer-delete-url="{{ url_for('sheet_delete', char_id=character.id, sheet_id=s.id) }}"{% endif %}>
       {% if can_delete %}
       <button type="button" class="btn-icon" title="Remove"
               data-sheet-delete-url="{{ url_for('sheet_delete', char_id=character.id, sheet_id=s.id) }}"
@@ -83,9 +87,33 @@
     </div>
     {% endfor %}
   </div>
+  {% endif %}
+</div>
+
+{% if not stats_hidden %}
+<aside class="sheet-viewer-panel" data-sheet-viewer aria-label="Character sheet viewer">
+  <div class="sheet-viewer-head">
+    <span class="form-section-title">Character sheet</span>
+    {% if sheets|length > 1 %}
+    <span class="sheet-viewer-nav">
+      <button type="button" class="btn-icon" data-sheet-prev title="Previous sheet" aria-label="Previous sheet">&#8249;</button>
+      <span class="sheet-viewer-count" data-sheet-count>1 / {{ sheets|length }}</span>
+      <button type="button" class="btn-icon" data-sheet-next title="Next sheet" aria-label="Next sheet">&#8250;</button>
+    </span>
+    {% endif %}
+  </div>
+  {% if sheets %}
+  <div class="sheet-viewer-stage">
+    <img id="sheet-viewer-img" src="{{ url_for('uploaded_file', filename=sheets[0].image_path) }}" alt="Character sheet" title="Click to enlarge">
+  </div>
   {% else %}
   <p class="hint-text">No sheet images attached.</p>
   {% endif %}
-  {% endif %}
+</aside>
+{% endif %}
 </div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="{{ url_for('static', filename='js/sheet-viewer.js') }}"></script>
 {% endblock %}
