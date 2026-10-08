@@ -43,7 +43,7 @@ def test_players_get_the_same_redacted_pin_data_from_sync(make_user):
     dm.json(f'{base}/settings', {'linked_to_battle': 1})
     via_sync = pl.get(f'{base}/sync').get_json()['pins']
     assert via_sync == pl.get(f'{base}/pins').get_json()
-    assert '59' not in str(via_sync)                              # NPC hit points never reach the player
+    assert all(p['current_hp'] is None and p['char_max_hp'] is None for p in via_sync)   # NPC hit points never reach the player
 
 
 def test_sync_is_campaign_scoped(make_user):

@@ -160,6 +160,7 @@
     <div class="pin-action-bubble" id="pin-action-bubble" hidden>
       <button type="button" class="btn-icon" id="pin-view-btn" title="View details">{{ icon('images') }}</button>
       {% if g.is_dm %}
+      <select id="pin-owner-select" class="pin-owner-select" title="Who may move this token" aria-label="Assign this token to a player"></select>
       <button type="button" class="btn-icon pin-pc-npc-toggle" id="pin-pc-npc-toggle" title="Toggle between PC and NPC">PC</button>
       {% endif %}
       <button type="button" class="btn-icon" id="pin-rename-btn" title="Rename">{{ icon('pencil') }}</button>

@@ -2848,6 +2848,12 @@ def map_editor(map_id):
     init['image_url'] = url_for('map_image', map_id=map_id)
     init['fog_active'] = m['fog_mask'] is not None
     roster = []
+    if g.is_dm:                                             # the members a token can be assigned to
+        db = get_db()
+        init['members'] = [dict(r) for r in db.execute(
+            'SELECT u.id, u.username FROM campaign_members cm JOIN users u ON u.id = cm.user_id '
+            'WHERE cm.campaign_id = ? ORDER BY lower(u.username)', (g.campaign_id,)).fetchall()]
+        db.close()
     if g.is_dm:                                             # the DM's "Characters" tool; Players never get the roster
         db = get_db()
         roster = [dict(r) for r in db.execute('''
@@ -3319,6 +3325,17 @@ def _map_pins_payload(db, map_id):
                 p['char_max_hp'] = None
                 p['class_key'] = None
         result.append(p)
+    owner_ids = sorted({p['owner_user_id'] for p in result if p.get('owner_user_id') is not None})
+    owner_names = {}
+    if owner_ids:
+        marks = ','.join('?' * len(owner_ids))
+        owner_names = {u['id']: u['username'] for u in db.execute(
+            f'SELECT id, username FROM users WHERE id IN ({marks})', owner_ids).fetchall()}
+    me = session.get('user_id')
+    for p in result:                                        # the client greys out what this person may not move
+        p['owner_name'] = owner_names.get(p.get('owner_user_id'))
+        p['can_move'] = bool(g.is_dm or (not m['locked_for_players'] and p.get('owner_user_id') is not None
+                                         and p['owner_user_id'] == me))
     return result
 
 
@@ -3367,6 +3384,17 @@ def _pin_name(value):
     return value or None
 
 
+def _pin_owned_by_me(db, map_id, pin_id):
+    """Token ownership: the DM may touch any token; a Player only the ones the DM attached to them (or that they
+    placed themselves).  Returns the pin row, or None when there is no such token on this map."""
+    return db.execute('SELECT owner_user_id FROM map_pins WHERE id = ? AND map_id = ?', (pin_id, map_id)).fetchone()
+
+
+def _may_move_pin(pin_row):
+    return bool(g.is_dm or (pin_row is not None and pin_row['owner_user_id'] is not None
+                            and pin_row['owner_user_id'] == session.get('user_id')))
+
+
 @app.route('/campaigns/<int:campaign_id>/api/maps/<int:map_id>/pins', methods=['POST'])
 @campaign_access_required
 @map_edit_allowed
@@ -3408,8 +3436,10 @@ def api_map_pins_add(map_id):
     elif linked:
         participant_id = _create_familiar_participant(db, icon_key, custom_name)
     cur = db.execute(
-        "INSERT INTO map_pins (map_id, pin_type, icon_key, custom_name, x, y, scale, rotation, locked, participant_id, character_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (map_id, pin_type, icon_key, custom_name if pin_type == 'prop' else None, x, y, scale, rotation, locked, participant_id, character_id)
+        "INSERT INTO map_pins (map_id, pin_type, icon_key, custom_name, x, y, scale, rotation, locked, participant_id, character_id, owner_user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        # A marker a Player places is theirs to move; everything the DM places starts out DM-only until assigned.
+        (map_id, pin_type, icon_key, custom_name if pin_type == 'prop' else None, x, y, scale, rotation, locked, participant_id, character_id,
+         None if g.is_dm else session['user_id'])
     )
     new_id = cur.lastrowid
     if pin_type == 'character' and linked:
@@ -3427,8 +3457,30 @@ def api_map_pins_add(map_id):
 def api_map_pin_update(map_id, pin_id):
     data = request.get_json(force=True)
     db = get_db()
+    if not g.is_dm and not _may_move_pin(_pin_owned_by_me(db, map_id, pin_id)):
+        db.close()
+        abort(403)                                          # a Player moves only the tokens assigned to them
     fields = []
     values = []
+    if 'owner_user_id' in data:
+        # Who a token is attached to is the DM's call alone, and only a member of this campaign can hold one.
+        if not g.is_dm:
+            db.close()
+            abort(403)
+        new_owner = data['owner_user_id']
+        if new_owner in (None, ''):
+            new_owner = None
+        else:
+            try:
+                new_owner = int(new_owner)
+            except (TypeError, ValueError):
+                db.close()
+                return jsonify({'error': 'Unknown member.'}), 400
+            if db.execute('SELECT 1 FROM campaign_members WHERE campaign_id = ? AND user_id = ?',
+                          (g.campaign_id, new_owner)).fetchone() is None:
+                db.close()
+                return jsonify({'error': 'That person is not a member of this campaign.'}), 400
+        fields.append('owner_user_id = ?'); values.append(new_owner)
     if 'x' in data:
         fields.append('x = ?'); values.append(float(data['x']))
     if 'y' in data:
@@ -3480,7 +3532,10 @@ def api_map_pin_update(map_id, pin_id):
 @map_edit_allowed
 def api_map_pin_delete(map_id, pin_id):
     db = get_db()
-    pin = db.execute('SELECT participant_id, pin_type FROM map_pins WHERE id = ? AND map_id = ?', (pin_id, map_id)).fetchone()
+    pin = db.execute('SELECT participant_id, pin_type, owner_user_id FROM map_pins WHERE id = ? AND map_id = ?', (pin_id, map_id)).fetchone()
+    if pin and not g.is_dm and not _may_move_pin(pin):
+        db.close()
+        abort(403)
     if pin and pin['pin_type'] == 'character':
         # Taking a character off a linked map takes them out of the battle too, so it is the DM's call alone.
         if not g.is_dm:

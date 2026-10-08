@@ -52,7 +52,10 @@ def test_only_the_dm_places_or_removes_characters_and_ids_are_checked(make_user)
     assert dm.json(url, {'pin_type': 'character', 'character_id': 'x', 'x': 1, 'y': 1}).status_code == 400
     pin = _place(dm, cid, mid, hero)['id']
     assert pl.json(f'{url}/{pin}/delete', {}).status_code == 403                  # removing a character is the DM's call
-    assert pl.json(f'{url}/{pin}/update', {'x': 99}).status_code == 200           # but a Player may still move it on an unlocked map
+    assert pl.json(f'{url}/{pin}/update', {'x': 99}).status_code == 403           # an unassigned token is DM-only
+    uid = q('SELECT id FROM users WHERE username = ?', pl.name)[0]['id']
+    assert dm.json(f'{url}/{pin}/update', {'owner_user_id': uid}).status_code == 200
+    assert pl.json(f'{url}/{pin}/update', {'x': 99}).status_code == 200           # once the DM assigns it, that Player may move it
     assert dm.json(f'{url}/{pin}/delete', {}).status_code == 200
     assert _pins(dm, cid, mid) == []
 

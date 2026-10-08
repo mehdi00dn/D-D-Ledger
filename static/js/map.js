@@ -16,6 +16,7 @@
   const pinRotateBtn = document.getElementById('pin-rotate-btn');
   const pinLockBtn = document.getElementById('pin-lock-btn');
   const pinDeleteBtn = document.getElementById('pin-delete-btn');
+  const pinOwnerSelect = document.getElementById('pin-owner-select');
   const pinRenameBox = document.getElementById('pin-rename-box');
   const pinRenameInput = document.getElementById('pin-rename-input');
 
@@ -46,6 +47,8 @@
   // The DM is never read-only on their own lock. Server-side enforcement
   // lives in app.py (map_edit_allowed); this just keeps the UI honest.
   const readOnly = () => lockedForPlayers && !window.IS_DM;
+  // Token ownership: the DM moves everything; a Player only the tokens the DM attached to them (the server decides).
+  const canMovePin = (pin) => !readOnly() && (window.IS_DM || !!pin.can_move);
 
   let bgImage = new Image();
   let bgLoaded = false;
@@ -200,7 +203,7 @@
       } else if (selectedPinId != null) {
         e.preventDefault();
         const p = pins.find((x) => x.id === selectedPinId);
-        if (p) deletePinObj(p);
+        if (p && canMovePin(p)) deletePinObj(p);
       }
     }
   });
@@ -581,17 +584,19 @@
       ? (p.avatar_path ? `<img src="/uploads/${escapeHtml(p.avatar_path)}" alt="">` : USER_FALLBACK_ICON)
       : `<img src="${PROP_ICON_SRC[p.icon_key] || PROP_ICON_SRC.paw}" alt="" class="prop-icon-img">`;
     const label = isChar ? classIconHtml(p.class_key) + escapeHtml(p.char_name || '') : escapeHtml(p.custom_name || p.icon_key || 'Marker');
-    const unlockOverlay = p.locked ? `<button type="button" class="pin-unlock-icon" data-unlock-pin="${p.id}" title="Unlock">${UNLOCK_SVG}</button>` : '';
+    const mine = canMovePin(p);
+    const ownerTip = p.owner_name ? `Assigned to ${p.owner_name}` : (window.IS_DM ? 'Not assigned: only you can move it' : '');
+    const unlockOverlay = (p.locked && mine) ? `<button type="button" class="pin-unlock-icon" data-unlock-pin="${p.id}" title="Unlock">${UNLOCK_SVG}</button>` : '';
     // The label sits on `.map-pin` itself (never rotated); only the inner
     // `.map-pin-visual` circle spins, so names stay upright and in place.
     return `
-      <div class="map-pin" data-pin-id="${p.id}" data-pin-type="${escapeHtml(p.pin_type)}" data-locked="${!!p.locked}"
+      <div class="map-pin${mine ? '' : ' pin-not-yours'}" data-pin-id="${p.id}" data-pin-type="${escapeHtml(p.pin_type)}" data-locked="${!!p.locked}" title="${escapeHtml(ownerTip)}"
            data-character-id="${escapeHtml(p.character_id || '')}" data-x="${p.x}" data-y="${p.y}"
            style="left:${leftPct}%; top:${topPct}%; width:${wPct}%; height:${hPct}%;">
         <div class="map-pin-visual ${dead ? 'is-dead' : ''}" style="border-color:${borderColor}; transform: rotate(${p.rotation || 0}deg);">
           <div class="map-pin-avatar">${avatarInner}</div>
         </div>
-        <span class="map-pin-label">${label}</span>
+        <span class="map-pin-label">${label}${p.owner_name && window.IS_DM ? `<small class="pin-owner-chip">${escapeHtml(p.owner_name)}</small>` : ''}</span>
         ${unlockOverlay}
       </div>`;
   }
@@ -646,6 +651,13 @@
     pinViewBtn.style.display = (pin.pin_type === 'character') ? '' : 'none';
     pinDeleteBtn.style.display = (pin.pin_type === 'character' && !window.IS_DM) ? 'none' : '';
     pinRenameBtn.style.display = pin.pin_type === 'character' ? 'none' : '';
+    // A token this person may not move is view-only: no resize / rotate / lock / delete / rename.
+    if (!canMovePin(pin)) {
+      [pinRenameBtn, pinResizeBtn, pinRotateBtn, pinLockBtn, pinDeleteBtn].forEach((b) => { b.style.display = 'none'; });
+    } else {
+      [pinResizeBtn, pinRotateBtn, pinLockBtn].forEach((b) => { b.style.display = ''; });
+    }
+    if (pinOwnerSelect) pinOwnerSelect.value = pin.owner_user_id == null ? '' : String(pin.owner_user_id);
     if (pinPcNpcToggle) {
       const isFamiliar = pin.pin_type === 'prop' && !!pin.participant_id;
       pinPcNpcToggle.style.display = isFamiliar ? '' : 'none';
@@ -1157,7 +1169,7 @@
       if (readOnly()) return;
       const pinId = Number(unlockBtn.dataset.unlockPin);
       const pin = pins.find((p) => p.id === pinId);
-      if (pin) unlockPin(pin);
+      if (pin && canMovePin(pin)) unlockPin(pin);
       return;
     }
     const el = e.target.closest('.map-pin');
@@ -1166,7 +1178,7 @@
     if (!pin) return;
     // A Player on a locked map can still click a pin to view it (subject
     // to the server's own NPC-detail redaction) -- just not drag/erase it.
-    if (readOnly()) { e.preventDefault(); selectPin(pin.id); return; }
+    if (readOnly() || !canMovePin(pin)) { e.preventDefault(); selectPin(pin.id); return; }
     if (pin.locked) return; // locked pins can't be selected, dragged, or erased
     if (currentTool === 'eraser') { e.preventDefault(); deletePinObj(pin); return; }
     if (currentTool !== 'select') return;
@@ -1221,6 +1233,26 @@
     const pin = pins.find((p) => p.id === selectedPinId);
     if (pin && pin.character_id) openDetailModal(pin.character_id);
   });
+
+  if (pinOwnerSelect) {
+    const members = Array.isArray(initData.members) ? initData.members : [];
+    pinOwnerSelect.innerHTML = '<option value="">Unassigned (DM only)</option>'
+      + members.map((m) => `<option value="${Number(m.id)}">${escapeHtml(m.username)}</option>`).join('');
+    pinOwnerSelect.addEventListener('change', async () => {
+      const pin = pins.find((p) => p.id === selectedPinId);
+      if (!pin) return;
+      const ownerId = pinOwnerSelect.value === '' ? null : Number(pinOwnerSelect.value);
+      const res = await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/pins/${pin.id}/update`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ owner_user_id: ownerId }),
+      });
+      if (!res.ok) { pinOwnerSelect.value = pin.owner_user_id == null ? '' : String(pin.owner_user_id); return; }
+      pin.owner_user_id = ownerId;
+      const m = members.find((x) => x.id === ownerId);
+      pin.owner_name = m ? m.username : null;
+      renderPins();
+    });
+  }
 
   if (pinPcNpcToggle) {
     pinPcNpcToggle.addEventListener('click', async () => {

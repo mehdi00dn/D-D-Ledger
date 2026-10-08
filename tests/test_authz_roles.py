@@ -132,6 +132,10 @@ class Table:
         self.clients = {'anonymous': self.anon, 'outsider': self.outsider.c, 'player': self.player.c,
                         'dm': self.dm.c, 'owner': self.owner.c}
         self.ids = dict(self.w, user_id=q('SELECT id FROM users WHERE username = ?', self.player.name)[0]['id'])
+        # Token ownership: a Player may move/delete only a token the DM assigned to them, so the table's token is theirs.
+        assigned = self.owner.json(f'/campaigns/{self.cid}/api/maps/{self.w["map_id"]}/pins/{self.w["pin_id"]}/update',
+                                   {'owner_user_id': self.ids['user_id']})
+        assert assigned.status_code == 200
 
     def url(self, rule):
         return fill(rule, self.cid, self.ids)
