@@ -805,3 +805,36 @@ def test_character_form_previews_bonuses_live_and_the_sheet_shows_them(pw, share
     assert not [b for b in bad if b[0] >= 400], bad
     assert not errs, errs
     ctx.close()
+
+
+def test_the_token_menu_stays_inside_the_map_and_the_owner_list_flips(pw, shared_server):
+    """The radial menu opens towards the side with room (never off the map), and the owner list opens downwards
+    when there is no room above the button."""
+    base = shared_server.url; dm = Api(base); cid = dm.campaign('Edges')
+    for _ in range(3): dm.add_member(cid, Api(base))
+    r = dm.post(f'/campaigns/{cid}/maps/new', data={'name': 'Arena', 'blank_width': '1000', 'blank_height': '700'})
+    mid = int(re.search(r'/maps/(\d+)', r.headers['Location']).group(1))
+    api = f'/campaigns/{cid}/api/maps/{mid}'
+    ids = {k: dm.post(f'{api}/pins', json={'pin_type': 'prop', 'icon_key': 'skull', 'custom_name': k, 'x': x, 'y': y}).json()['id']
+           for k, (x, y) in {'left': (25, 300), 'right': (975, 300), 'corner': (25, 25), 'top': (500, 40)}.items()}
+    ctx = dm.context(pw, base); page = ctx.new_page(); bad, errs = _collect(page)
+    page.set_viewport_size({'width': 1400, 'height': 900})
+    page.goto(base + f'/campaigns/{cid}/maps/{mid}'); page.wait_for_load_state('networkidle'); page.wait_for_timeout(800)
+    if page.locator('#setup-confirm-btn').is_visible():
+        page.click('#setup-confirm-btn'); page.wait_for_timeout(600)
+    stage = page.locator('#map-stage-wrap').bounding_box()
+    def inside(sel):
+        for b in page.locator(sel).all():
+            bb = b.bounding_box()
+            assert bb['x'] >= stage['x'] - 1 and bb['y'] >= stage['y'] - 1, (sel, bb, stage)
+            assert bb['x'] + bb['width'] <= stage['x'] + stage['width'] + 1 and bb['y'] + bb['height'] <= stage['y'] + stage['height'] + 1, (sel, bb, stage)
+    for key in ('left', 'right', 'corner'):
+        page.locator(f'.map-pin[data-pin-id="{ids[key]}"]').click(); page.wait_for_timeout(700)
+        inside('#pin-action-bubble > .pin-radial-btn:visible, #pin-owner-btn')
+    page.locator(f'.map-pin[data-pin-id="{ids["top"]}"]').click(); page.wait_for_timeout(700)
+    page.click('#pin-owner-btn'); page.wait_for_timeout(300)
+    assert page.locator('#pin-owner-menu').get_attribute('data-dir') == 'down'      # no room above a token at the top edge
+    menu = page.locator('#pin-owner-menu').bounding_box()
+    assert menu['y'] >= stage['y'] - 1
+    assert not errs, errs
+    ctx.close()

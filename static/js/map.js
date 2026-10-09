@@ -673,28 +673,75 @@
           : 'Currently a PC (stats visible to players) — click to make it an NPC';
       }
     }
-    layoutPinRadial(leftPx, topPx, halfHeightPx, wrapRect.height);
+    layoutPinRadial(leftPx, topPx, halfHeightPx, wrapRect.width, wrapRect.height);
   }
 
-  // Fan the visible buttons out on an arc around the token. Over the top by
-  // default; under it when the token is too close to the map's top edge.
-  function layoutPinRadial(cx, cy, halfPx, stageH) {
+  // Fan the visible buttons out on an arc around the token.  The arc opens towards whichever side has room
+  // (above, below, right, left -- in that order of preference) so no button is ever pushed off the map.
+  function layoutPinRadial(cx, cy, halfPx, stageW, stageH) {
     const items = Array.from(pinBubble.children).filter((c) => c.style.display !== 'none');
     const n = items.length;
     if (!n) return;
-    const BTN = 38, GAP = 6;
-    const span = Math.min(Math.PI * 1.35, Math.max(Math.PI * 0.5, (n - 1) * 0.5));
-    let r = Math.max(halfPx + 30, ((n - 1) * (BTN + GAP)) / span);
-    const below = cy - r - BTN < 0 && cy + r + BTN < stageH;
-    pinBubble.dataset.side = below ? 'bottom' : 'top';
-    const mid = below ? Math.PI / 2 : -Math.PI / 2;
-    items.forEach((el, i) => {
+    const BTN = 38, GAP = 6, PAD = BTN / 2 + 4;
+    const baseSpan = Math.min(Math.PI * 1.35, Math.max(Math.PI * 0.5, (n - 1) * 0.5));
+    const baseR = Math.max(halfPx + 30, ((n - 1) * (BTN + GAP)) / baseSpan);
+    const Q = Math.PI / 2, D = Math.PI / 4;
+    // [name, centre angle, reversed?, span, radius].  reversed arcs run the other way round so the order always
+    // reads left-to-right (above/below) or top-to-bottom (right/left).  Tight spots (a corner) fall back to
+    // a quarter circle on a wider radius, which fits where a wide arc cannot.
+    const tightR = Math.max(baseR, ((n - 1) * (BTN + GAP)) / Q);
+    const cands = [
+      ['top', -Q, false, baseSpan, baseR], ['bottom', Q, true, baseSpan, baseR],
+      ['right', 0, false, baseSpan, baseR], ['left', Math.PI, true, baseSpan, baseR],
+      ['top', -Q, false, Q, tightR], ['bottom', Q, true, Q, tightR], ['right', 0, false, Q, tightR], ['left', Math.PI, true, Q, tightR],
+      ['top-right', -D, false, Q, tightR], ['bottom-right', D, false, Q, tightR],
+      ['bottom-left', Math.PI - D, true, Q, tightR], ['top-left', -Math.PI + D, true, Q, tightR],
+    ];
+    const angle = (c, i) => {
       const t = n === 1 ? 0.5 : i / (n - 1);
-      const a = below ? mid + span / 2 - span * t : mid - span / 2 + span * t;   // always left to right
-      el.style.setProperty('--x', `${(Math.cos(a) * r).toFixed(1)}px`);
-      el.style.setProperty('--y', `${(Math.sin(a) * r).toFixed(1)}px`);
+      return c[2] ? c[1] + c[3] / 2 - c[3] * t : c[1] - c[3] / 2 + c[3] * t;
+    };
+    let best = null;
+    for (const c of cands) {
+      let outside = 0;
+      for (let i = 0; i < n; i++) {
+        const a = angle(c, i);
+        const x = cx + Math.cos(a) * c[4], y = cy + Math.sin(a) * c[4];
+        if (x < PAD || x > stageW - PAD || y < PAD || y > stageH - PAD) outside += 1;
+      }
+      if (!best || outside < best.outside) best = { c, outside };
+      if (outside === 0) break;
+    }
+    const c = best.c;
+    pinBubble.dataset.side = c[0];
+    items.forEach((el, i) => {
+      const a = angle(c, i);
+      el.style.setProperty('--x', `${(Math.cos(a) * c[4]).toFixed(1)}px`);
+      el.style.setProperty('--y', `${(Math.sin(a) * c[4]).toFixed(1)}px`);
       el.style.setProperty('--i', String(i));
     });
+  }
+
+  // Open the owner list above the button when it fits inside the map, otherwise below it (or whichever side
+  // has more room), and slide it sideways if it would poke out of the map.
+  function placeOwnerMenu() {
+    const stage = stageWrap.getBoundingClientRect();
+    const btn = pinOwnerBtn.getBoundingClientRect();
+    const top = Math.max(stage.top, 0), bottom = Math.min(stage.bottom, window.innerHeight);
+    const left = Math.max(stage.left, 0), right = Math.min(stage.right, window.innerWidth);
+    pinOwnerMenu.style.maxHeight = '';
+    pinOwnerMenu.style.setProperty('--shift', '0px');
+    const need = pinOwnerMenu.offsetHeight + 12;
+    const roomAbove = btn.top - top, roomBelow = bottom - btn.bottom;
+    const up = roomAbove >= need || (roomBelow < need && roomAbove >= roomBelow);
+    pinOwnerMenu.dataset.dir = up ? 'up' : 'down';
+    const room = (up ? roomAbove : roomBelow) - 12;
+    if (room < pinOwnerMenu.offsetHeight) pinOwnerMenu.style.maxHeight = `${Math.max(80, room)}px`;
+    const m = pinOwnerMenu.getBoundingClientRect();
+    let shift = 0;
+    if (m.left < left + 6) shift = left + 6 - m.left;
+    else if (m.right > right - 6) shift = right - 6 - m.right;
+    pinOwnerMenu.style.setProperty('--shift', `${shift}px`);
   }
 
   function closeOwnerMenu() {
@@ -1281,6 +1328,7 @@
       if (!pinOwnerMenu.hidden) { closeOwnerMenu(); return; }
       renderOwnerMenu();
       pinOwnerMenu.hidden = false;
+      placeOwnerMenu();
       pinOwnerBtn.setAttribute('aria-expanded', 'true');
     });
     pinOwnerMenu.addEventListener('click', async (e) => {

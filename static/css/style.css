@@ -2975,8 +2975,9 @@ body.page-leaving .content {
 .pin-owner-menu[hidden] { display: none; }
 .pin-owner-menu { white-space: nowrap; }
 .pin-owner-wrap:has(.pin-owner-menu:not([hidden])) { z-index: 5; }
-.pin-radial[data-side="top"] .pin-owner-menu { bottom: calc(100% + 10px); }
-.pin-radial[data-side="bottom"] .pin-owner-menu { top: calc(100% + 10px); }
+.pin-owner-menu { transform: translateX(calc(-50% + var(--shift, 0px))); overflow-y: auto; }
+.pin-owner-menu[data-dir="up"] { bottom: calc(100% + 10px); }
+.pin-owner-menu[data-dir="down"] { top: calc(100% + 10px); }
 .pin-owner-opt {
   text-align: left; background: transparent; border: none; color: var(--parchment);
   padding: 6px 10px; border-radius: 4px; font: inherit; font-size: 0.8rem; cursor: pointer;
