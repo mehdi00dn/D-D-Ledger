@@ -30,6 +30,15 @@
   {% set prof_saves = character_save_prof or [] %}
   {% set prof_skills = character_skill_prof or {} %}
 
+  {% if not character %}
+  <section class="cf-card cd-picker" data-monster-picker data-base="{{ url_for('reference_view')|replace('/reference', '') }}/api/reference/" aria-labelledby="cf-monster">
+    <h2 class="cf-title" id="cf-monster">Start from a monster</h2>
+    <div class="ref-search">{{ icon('search') }}<input type="search" data-ref-query placeholder="Search the monster manual (e.g. goblin, owlbear, young red dragon)…" aria-label="Search the monster manual" autocomplete="off"></div>
+    <ul class="ref-list ref-list--inline" data-ref-list hidden></ul>
+    <p class="hint-text" data-monster-status>Pick one to fill in the stats below and keep its stat block in the notes.</p>
+  </section>
+  {% endif %}
+
   <div class="cf-grid">
   <div class="cf-main">
 
@@ -229,4 +238,5 @@
 
 {% block extra_scripts %}
 <script src="{{ url_for('static', filename='js/character-proficiencies.js') }}"></script>
+{% if not character %}<script src="{{ url_for('static', filename='js/reference.js') }}"></script>{% endif %}
 {% endblock %}

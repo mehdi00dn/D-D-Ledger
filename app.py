@@ -25,6 +25,7 @@ from flask import Response
 import images
 import fog
 import dnd5e
+import srd
 import importer
 from storage import get_storage, StorageError, UPLOADS, TEMP
 from database import get_db, init_db, init_app as init_database_app, UniqueViolation
@@ -2611,6 +2612,36 @@ def api_battle_clear():
 @campaign_access_required
 def dice_view():
     return render_template('dice.html')
+
+
+# ---------------- RULES REFERENCE (spells, monsters, items: the public 5e API, 2024 rules) ----------------
+
+@app.route('/campaigns/<int:campaign_id>/reference')
+@campaign_access_required
+def reference_view():
+    return render_template('reference.html', kinds=list(srd.KINDS), version=srd.VERSION)
+
+
+def _srd_status(e):
+    return {'bad request': 400, 'not found': 404}.get(str(e), 502)
+
+
+@app.route('/campaigns/<int:campaign_id>/api/reference/search')
+@campaign_access_required
+def reference_search():
+    try:
+        return jsonify(srd.search(request.args.get('kind', ''), request.args.get('q', '')))
+    except srd.SrdError as e:
+        return jsonify({'error': str(e)}), _srd_status(e)
+
+
+@app.route('/campaigns/<int:campaign_id>/api/reference/entry')
+@campaign_access_required
+def reference_detail():
+    try:
+        return jsonify(srd.detail(request.args.get('kind', ''), request.args.get('ref', '')))
+    except srd.SrdError as e:
+        return jsonify({'error': str(e)}), _srd_status(e)
 
 
 # ---------------- EXPORT / IMPORT ----------------

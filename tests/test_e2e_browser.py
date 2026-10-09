@@ -837,3 +837,50 @@ def test_the_token_menu_stays_inside_the_map_and_the_owner_list_flips(pw, shared
     assert menu['y'] >= stage['y'] - 1
     assert not errs, errs
     ctx.close()
+
+
+def test_new_character_can_start_from_a_monster_in_the_manual(pw):
+    """Search the monster manual in "New character", pick one, and the form (scores, saves, skills, notes) is filled in."""
+    import json as _json
+    import threading
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+    import test_reference as ref
+
+    class H(BaseHTTPRequestHandler):
+        def do_GET(self):
+            path = self.path.split('?')[0].replace('/api/2024', '', 1)
+            body = ref.LISTS.get(path) or ref.DETAILS.get(path)
+            self.send_response(200 if body else 404); self.send_header('Content-Type', 'application/json'); self.end_headers()
+            self.wfile.write(_json.dumps(body or {}).encode())
+        def log_message(self, *a): pass
+    api = HTTPServer(('127.0.0.1', 0), H); threading.Thread(target=api.serve_forever, daemon=True).start()
+    from conftest import Server
+    srv = Server({'SRD_API_BASE': f'http://127.0.0.1:{api.server_port}'})
+    try:
+        base = srv.url; dm = Api(base); cid = dm.campaign('Manual')
+        ctx = dm.context(pw, base); page = ctx.new_page(); bad, errs = _collect(page)
+        page.goto(base + f'/campaigns/{cid}/characters/new'); page.wait_for_load_state('networkidle')
+        page.click('[data-monster-picker] [data-ref-query]')
+        page.fill('[data-monster-picker] [data-ref-query]', 'gob')
+        page.click('[data-monster-picker] .ref-item >> text=Goblin Warrior')
+        from playwright.sync_api import expect
+        expect(page.locator('#name')).to_have_value('Goblin Warrior')
+        assert page.input_value('#max_hp') == '10' and page.input_value('#armor_class') == '15' and page.input_value('#dex_score') == '15'
+        assert page.is_checked('[data-save="dex"]') and page.is_checked('input[name="skill_stealth"][value="2"]')
+        assert page.is_checked('input[name="is_npc"]')
+        assert 'Small humanoid' in page.inner_text('#note-blocks') and 'Nimble Escape' in page.inner_text('#note-blocks')
+        with page.expect_navigation():
+            page.click('.cf-bar button[type=submit]')
+        ch = next(c['id'] for c in dm.get(f'/campaigns/{cid}/api/characters').json() if c['name'] == 'Goblin Warrior')
+        page.goto(base + f'/campaigns/{cid}/characters/{ch}'); page.wait_for_load_state('networkidle')
+        assert 'Stealth' in page.inner_text('body') and page.locator('.sheet-skill.is-expert .val').first.inner_text() == '+6'
+        # the Reference page lists the same data
+        page.goto(base + f'/campaigns/{cid}/reference'); page.wait_for_load_state('networkidle')
+        page.click('.ref-tab[data-kind="items"]'); page.wait_for_selector('.ref-item')
+        page.click('.ref-item >> text=Bag of Holding'); page.wait_for_selector('.ref-title')
+        assert 'Uncommon' in page.inner_text('[data-ref-detail]')
+        assert not [b for b in bad if b[0] >= 400 and '/api/' not in b[1]], bad
+        assert not errs, errs
+        ctx.close()
+    finally:
+        srv.stop(); api.shutdown()

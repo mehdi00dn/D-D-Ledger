@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% set active_page = 'reference' %}
+{% block title %}Reference — Campaign Ledger{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Rules Reference</h1>
+    <p class="page-sub">Spells, monsters and items from the {{ version }} D&amp;D 5e rules.</p>
+  </div>
+</div>
+
+<div class="ref" data-reference data-base="{{ url_for('reference_view')|replace('/reference', '') }}/api/reference/">
+  <div class="ref-tabs" role="tablist">
+    <button type="button" class="ref-tab is-active" role="tab" data-kind="spells">Spells</button>
+    <button type="button" class="ref-tab" role="tab" data-kind="monsters">Monsters</button>
+    <button type="button" class="ref-tab" role="tab" data-kind="items">Items</button>
+  </div>
+  <div class="ref-body">
+    <div class="cf-card ref-list-card">
+      <div class="ref-search">{{ icon('search') }}<input type="search" data-ref-query placeholder="Search…" aria-label="Search the reference" autocomplete="off"></div>
+      <ul class="ref-list" data-ref-list aria-live="polite"></ul>
+    </div>
+    <article class="cf-card ref-detail" data-ref-detail aria-live="polite">
+      <p class="hint-text">Pick an entry to read it.</p>
+    </article>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="{{ url_for('static', filename='js/reference.js') }}"></script>
+{% endblock %}

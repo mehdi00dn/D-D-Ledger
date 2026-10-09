@@ -1,0 +1,821 @@
+diff --git a/app.py b/app.py
+index af9346e..0533af2 100644
+--- a/app.py
++++ b/app.py
+@@ -25,6 +25,7 @@ from flask import Response
+ import images
+ import fog
+ import dnd5e
++import srd
+ import importer
+ from storage import get_storage, StorageError, UPLOADS, TEMP
+ from database import get_db, init_db, init_app as init_database_app, UniqueViolation
+@@ -2613,6 +2614,36 @@ def dice_view():
+     return render_template('dice.html')
+ 
+ 
++# ---------------- RULES REFERENCE (spells, monsters, items: the public 5e API, 2024 rules) ----------------
++
++@app.route('/campaigns/<int:campaign_id>/reference')
++@campaign_access_required
++def reference_view():
++    return render_template('reference.html', kinds=list(srd.KINDS), version=srd.VERSION)
++
++
++def _srd_status(e):
++    return {'bad request': 400, 'not found': 404}.get(str(e), 502)
++
++
++@app.route('/campaigns/<int:campaign_id>/api/reference/search')
++@campaign_access_required
++def reference_search():
++    try:
++        return jsonify(srd.search(request.args.get('kind', ''), request.args.get('q', '')))
++    except srd.SrdError as e:
++        return jsonify({'error': str(e)}), _srd_status(e)
++
++
++@app.route('/campaigns/<int:campaign_id>/api/reference/entry')
++@campaign_access_required
++def reference_detail():
++    try:
++        return jsonify(srd.detail(request.args.get('kind', ''), request.args.get('ref', '')))
++    except srd.SrdError as e:
++        return jsonify({'error': str(e)}), _srd_status(e)
++
++
+ # ---------------- EXPORT / IMPORT ----------------
+ 
+ def _build_export_zip(campaign_id, group_ids=None, character_ids=None, download_name='campaign_export.zip'):
+diff --git a/srd.py b/srd.py
+new file mode 100644
+index 0000000..f8ec708
+--- /dev/null
++++ b/srd.py
+@@ -0,0 +1,258 @@
++"""Rules reference (spells, monsters, items) from the public D&D 5e API, 2024 edition (https://www.dnd5eapi.co/api/2024).
++
++The browser never talks to the API: the server fetches, normalises and caches it, so the Content-Security-Policy stays
++strict, the data is shaped once here, and a flaky API only ever costs the reference pages (never a campaign).
++Everything that comes back is plain data for the caller to escape or insert as text.
++"""
++import os
++import re
++import threading
++import time
++from html import escape
++
++import requests
++
++import dnd5e
++
++VERSION = '2024'
++BASE = os.environ.get('SRD_API_BASE', 'https://www.dnd5eapi.co').rstrip('/')      # overridable so tests can use a local stand-in
++API = f'{BASE}/api/{VERSION}'
++TIMEOUT = 8
++LIST_TTL = 24 * 3600
++DETAIL_TTL = 24 * 3600
++MAX_RESULTS = 60
++INDEX_RE = re.compile(r'^[a-z0-9][a-z0-9-]{0,80}$')
++
++# kind -> the API collections it is served from (items are two collections on the API)
++KINDS = {'spells': ['spells'], 'monsters': ['monsters'], 'items': ['equipment', 'magic-items']}
++
++
++class SrdError(Exception):
++    """The API could not be reached or answered with something unusable."""
++
++
++_lock = threading.Lock()
++_cache = {}
++
++
++def _get_json(path):
++    now = time.time()
++    with _lock:
++        hit = _cache.get(path)
++        if hit and hit[0] > now:
++            return hit[1]
++    try:
++        r = requests.get(API + path, timeout=TIMEOUT, headers={'Accept': 'application/json'})
++        if r.status_code == 404:
++            raise SrdError('not found')
++        r.raise_for_status()
++        data = r.json()
++    except SrdError:
++        raise
++    except (requests.RequestException, ValueError) as e:
++        raise SrdError('The rules reference is unavailable right now.') from e
++    with _lock:
++        if len(_cache) > 2000:
++            _cache.clear()
++        _cache[path] = (now + (LIST_TTL if path.count('/') <= 1 else DETAIL_TTL), data)
++    return data
++
++
++def clear_cache():
++    with _lock:
++        _cache.clear()
++
++
++def valid_index(value):
++    return isinstance(value, str) and bool(INDEX_RE.match(value))
++
++
++def search(kind, query='', limit=MAX_RESULTS):
++    """[{'id': 'monsters/aboleth', 'name': 'Aboleth', 'sub': ...}] -- names containing the query, best matches first."""
++    if kind not in KINDS:
++        raise SrdError('bad request')
++    q = (query or '').strip().lower()[:60]
++    out = []
++    for coll in KINDS[kind]:
++        data = _get_json('/' + coll)
++        for row in data.get('results', []):
++            name = str(row.get('name', ''))
++            index = str(row.get('index', ''))
++            if not name or not valid_index(index):
++                continue
++            low = name.lower()
++            if q and q not in low:
++                continue
++            entry = {'id': f'{coll}/{index}', 'name': name}
++            if row.get('level') is not None:
++                entry['sub'] = 'Cantrip' if row['level'] == 0 else f'Level {row["level"]}'
++            elif coll == 'magic-items':
++                entry['sub'] = 'Magic item'
++            out.append((0 if low.startswith(q) else 1, low, entry))
++    out.sort(key=lambda t: (t[0], t[1]))
++    return [e for _a, _b, e in out[:limit]]
++
++
++def _text(value):
++    if isinstance(value, list):
++        return '\n\n'.join(str(v) for v in value if v)
++    return str(value) if value else ''
++
++
++def _named(items):
++    return [str(i.get('name')) for i in (items or []) if isinstance(i, dict) and i.get('name')]
++
++
++def _cr(value):
++    return {0.125: '1/8', 0.25: '1/4', 0.5: '1/2'}.get(value, str(int(value)) if isinstance(value, (int, float)) and value == int(value) else str(value))
++
++
++def _speed_ft(raw):
++    m = re.search(r'\d+', str(raw or ''))
++    return int(m.group()) if m else dnd5e.DEFAULT_SPEED
++
++
++def _level_for_prof(pb):
++    try:
++        pb = int(pb)
++    except (TypeError, ValueError):
++        return 1
++    return max(1, min(20, (pb - 2) * 4 + 1))
++
++
++def _abilities(data):
++    return {k: int(data.get(name) or 10) for k, name in
++            (('str', 'strength'), ('dex', 'dexterity'), ('con', 'constitution'),
++             ('int', 'intelligence'), ('wis', 'wisdom'), ('cha', 'charisma'))}
++
++
++def _monster_prefill(d):
++    scores = _abilities(d)
++    pb = d.get('proficiency_bonus') or 2
++    level = _level_for_prof(pb)
++    prof = dnd5e.proficiency_bonus(level)
++    saves, skills = [], {}
++    for p in d.get('proficiencies') or []:
++        idx = str((p.get('proficiency') or {}).get('index', ''))
++        value = p.get('value')
++        if idx.startswith('saving-throw-') and idx[13:] in dnd5e.ABILITY_KEYS:
++            saves.append(idx[13:])
++        elif idx.startswith('skill-') and idx[6:] in dnd5e.SKILL_KEYS and isinstance(value, int):
++            key = idx[6:]
++            ability = next(a for k, _l, a in dnd5e.SKILLS if k == key)
++            skills[key] = 2 if value >= dnd5e.modifier(scores[ability]) + 2 * prof else 1
++    ac = d.get('armor_class')
++    ac = ac[0].get('value') if isinstance(ac, list) and ac and isinstance(ac[0], dict) else ac
++    speed = d.get('speed') if isinstance(d.get('speed'), dict) else {}
++    return {
++        'name': d.get('name', ''), 'level': level, 'is_npc': True,
++        'max_hp': int(d.get('hit_points') or 1), 'armor_class': int(ac or 10),
++        'speed': dnd5e.clean_speed(_speed_ft(speed.get('walk'))),
++        **{f'{k}_score': v for k, v in scores.items()},
++        'save_prof': saves, 'skill_prof': skills,
++    }
++
++
++def _block(title, entries):
++    rows = [f'<li><b>{escape(str(e.get("name", "")))}.</b> {escape(str(e.get("desc", "")))}</li>' for e in entries or [] if isinstance(e, dict) and e.get('name')]
++    return f'<b>{escape(title)}</b><ul>{"".join(rows)}</ul>' if rows else ''
++
++
++def _monster_notes(d):
++    """The stat block's text as note boxes (b/i/ul/li/br only -- the same whitelist the notes editor allows)."""
++    kind = ' '.join(x for x in (d.get('size'), d.get('type')) if x)
++    lines = [f'<b>{escape(kind)}, {escape(str(d.get("alignment") or "unaligned"))}</b>',
++             escape(f'Challenge {_cr(d.get("challenge_rating", 0))} ({int(d.get("xp") or 0):,} XP) - HP {d.get("hit_points_roll") or d.get("hit_dice") or ""}')]
++    speed = d.get('speed') if isinstance(d.get('speed'), dict) else {}
++    plain = []
++    if speed:
++        plain.append('Speed: ' + ', '.join(f'{k} {v}' for k, v in speed.items()))
++    senses = d.get('senses') if isinstance(d.get('senses'), dict) else {}
++    if senses:
++        plain.append('Senses: ' + ', '.join(f'{k.replace("_", " ")} {v}' for k, v in senses.items()))
++    if d.get('languages'):
++        plain.append('Languages: ' + str(d['languages']))
++    for label, key in (('Vulnerabilities', 'damage_vulnerabilities'), ('Resistances', 'damage_resistances'),
++                       ('Damage immunities', 'damage_immunities')):
++        if d.get(key):
++            plain.append(f'{label}: ' + ', '.join(str(x) for x in d[key]))
++    if d.get('condition_immunities'):
++        plain.append('Condition immunities: ' + ', '.join(_named(d['condition_immunities'])))
++    head = '<br>'.join(lines + [escape(x) for x in plain])
++    boxes = [head]
++    for title, key in (('Traits', 'special_abilities'), ('Actions', 'actions'), ('Bonus actions', 'bonus_actions'),
++                       ('Reactions', 'reactions'), ('Legendary actions', 'legendary_actions')):
++        b = _block(title, d.get(key))
++        if b:
++            boxes.append(b)
++    return boxes
++
++
++def _spell(d):
++    comps = ', '.join(d.get('components') or [])
++    if d.get('material'):
++        comps += f' ({d["material"]})'
++    level = d.get('level', 0)
++    school = (d.get('school') or {}).get('name', '')
++    sub = f'{school} cantrip' if level == 0 else f'Level {level} {school.lower()}'
++    if d.get('ritual'):
++        sub += ' (ritual)'
++    facts = [('Casting time', d.get('casting_time')), ('Range', d.get('range')), ('Components', comps),
++             ('Duration', ('Concentration, ' if d.get('concentration') else '') + str(d.get('duration') or '')),
++             ('Classes', ', '.join(_named(d.get('classes'))))]
++    body = _text(d.get('description') or d.get('desc'))
++    if d.get('higher_level'):
++        body += '\n\nUsing a higher-level spell slot: ' + _text(d['higher_level'])
++    return {'title': d.get('name', ''), 'subtitle': sub, 'facts': [(k, v) for k, v in facts if v], 'body': body}
++
++
++def _item(coll, d):
++    facts = []
++    if coll == 'magic-items':
++        sub = (d.get('equipment_category') or {}).get('name', 'Magic item')
++        if (d.get('rarity') or {}).get('name'):
++            facts.append(('Rarity', d['rarity']['name']))
++        if d.get('attunement'):
++            facts.append(('Attunement', 'Required'))
++    else:
++        cats = _named(d.get('equipment_categories'))
++        sub = cats[-1] if cats else 'Equipment'
++        cost = d.get('cost')
++        if isinstance(cost, dict) and cost.get('quantity') is not None:
++            facts.append(('Cost', f'{cost["quantity"]} {cost.get("unit", "")}'.strip()))
++        if d.get('weight'):
++            facts.append(('Weight', f'{d["weight"]} lb'))
++        dmg = d.get('damage')
++        if isinstance(dmg, dict) and dmg.get('damage_dice'):
++            facts.append(('Damage', f'{dmg["damage_dice"]} {(dmg.get("damage_type") or {}).get("name", "")}'.strip()))
++        if d.get('armor_class') and isinstance(d['armor_class'], dict):
++            ac = d['armor_class']
++            facts.append(('Armor Class', str(ac.get('base', '')) + (' + Dex' if ac.get('dex_bonus') else '')))
++        if d.get('properties'):
++            facts.append(('Properties', ', '.join(_named(d['properties']))))
++        if (d.get('mastery') or {}).get('name'):
++            facts.append(('Mastery', d['mastery']['name']))
++    body = _text(d.get('description') or d.get('desc'))
++    if coll == 'magic-items' and body.split('\n\n', 1)[0].lower().startswith(('wondrous', 'weapon', 'armor', 'ring', 'potion', 'rod', 'staff', 'wand', 'scroll')):
++        body = body.split('\n\n', 1)[1] if '\n\n' in body else ''
++    return {'title': d.get('name', ''), 'subtitle': sub, 'facts': facts, 'body': body}
++
++
++def detail(kind, ref):
++    """One entry ('spells/fireball', 'monsters/aboleth', 'equipment/longsword', 'magic-items/bag-of-holding')."""
++    if kind not in KINDS or not isinstance(ref, str) or '/' not in ref:
++        raise SrdError('bad request')
++    coll, index = ref.split('/', 1)
++    if coll not in KINDS[kind] or not valid_index(index):
++        raise SrdError('bad request')
++    d = _get_json(f'/{coll}/{index}')
++    if not isinstance(d, dict) or not d.get('name'):
++        raise SrdError('not found')
++    if kind == 'spells':
++        return _spell(d)
++    if kind == 'items':
++        return _item(coll, d)
++    return {'title': d['name'], 'subtitle': ' '.join(x for x in (d.get('size'), d.get('type')) if x),
++            'facts': [('Challenge', _cr(d.get('challenge_rating', 0))), ('Armor Class', str(_monster_prefill(d)['armor_class'])),
++                      ('Hit Points', str(d.get('hit_points', ''))), ('Speed', ', '.join(f'{k} {v}' for k, v in (d.get('speed') or {}).items()))],
++            'body': '', 'prefill': _monster_prefill(d), 'notes': _monster_notes(d)}
+diff --git a/static/css/style.css b/static/css/style.css
+index 9822937..c242ca4 100644
+--- a/static/css/style.css
++++ b/static/css/style.css
+@@ -3294,3 +3294,36 @@ body.page-leaving .content {
+   .cd-abilities { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+   .cd-skills { grid-template-columns: 1fr; }
+ }
++
++/* ==========================================================================
++   Rules reference (spells / monsters / items) and the monster picker
++   ========================================================================== */
++.ref-tabs { display: inline-flex; gap: 4px; padding: 4px; margin-bottom: 18px; border-radius: 999px; background: var(--bg-panel-inset); border: 1px solid var(--hairline); }
++.ref-tab { appearance: none; border: 0; background: transparent; color: var(--parchment-dim); padding: 7px 18px; border-radius: 999px; font: 600 13px var(--font-body, inherit); cursor: pointer; }
++.ref-tab:hover { color: var(--parchment); }
++.ref-tab.is-active { background: var(--brass); color: #1a1408; }
++.ref-body { display: grid; grid-template-columns: minmax(260px, 340px) minmax(0, 1fr); gap: 20px; align-items: start; }
++.ref-list-card { position: sticky; top: 16px; display: flex; flex-direction: column; gap: 12px; max-height: calc(100vh - 48px); }
++.ref-search { display: flex; align-items: center; gap: 8px; padding: 0 12px; border-radius: var(--radius-m); background: var(--bg-panel-inset); border: 1px solid var(--hairline-strong); }
++.ref-search svg { width: 16px; height: 16px; color: var(--parchment-faint); flex: none; }
++.ref-search input { flex: 1; border: 0; background: transparent; padding: 10px 0; color: var(--parchment); font: inherit; outline: none; min-width: 0; }
++.ref-search:focus-within { border-color: var(--brass); }
++.ref-list { list-style: none; margin: 0; padding: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
++.ref-list--inline { max-height: 260px; margin-top: 10px; }
++.ref-item { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 10px; text-align: left; padding: 8px 12px; border-radius: var(--radius-s); border: 1px solid transparent; background: transparent; color: var(--parchment); font: inherit; font-size: 13.5px; cursor: pointer; }
++.ref-item:hover { background: rgba(201,162,75,0.08); }
++.ref-item.is-active { background: rgba(201,162,75,0.14); border-color: rgba(201,162,75,0.4); }
++.ref-item-sub { font: 500 10.5px var(--font-mono); color: var(--parchment-faint); white-space: nowrap; }
++.ref-empty { padding: 12px; color: var(--parchment-faint); font-size: 13px; }
++.ref-error { color: #e08a7a; }
++.ref-detail { min-height: 200px; }
++.ref-title { margin: 0 0 4px; font-family: var(--font-display, serif); font-size: 26px; color: var(--parchment); }
++.ref-subtitle { margin: 0 0 16px; color: var(--brass); font-style: italic; font-size: 14px; }
++.ref-facts { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0 0 16px; padding: 12px 14px; border-radius: var(--radius-m); background: var(--bg-panel-inset); border: 1px solid var(--hairline); font-size: 13.5px; }
++.ref-facts dt { font: 600 10.5px var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--parchment-dim); padding-top: 2px; }
++.ref-facts dd { margin: 0; color: var(--parchment); }
++.ref-text { margin: 0 0 12px; line-height: 1.6; color: var(--parchment); white-space: pre-line; }
++.ref-notes { margin: 0 0 14px; line-height: 1.55; font-size: 14px; }
++.ref-notes ul { margin: 6px 0 0; padding-left: 20px; }
++.cd-picker .hint-text { margin: 10px 0 0; }
++@media (max-width: 860px) { .ref-body { grid-template-columns: minmax(0, 1fr); } .ref-list-card { position: static; max-height: 320px; } }
+diff --git a/static/js/reference.js b/static/js/reference.js
+new file mode 100644
+index 0000000..503e602
+--- /dev/null
++++ b/static/js/reference.js
+@@ -0,0 +1,164 @@
++// Rules reference page (spells / monsters / items) and the monster search inside "New character".
++(function () {
++  'use strict';
++
++  function el(tag, cls, text) {
++    const n = document.createElement(tag);
++    if (cls) n.className = cls;
++    if (text != null) n.textContent = text;
++    return n;
++  }
++
++  function debounce(fn, ms) {
++    let t;
++    return function () { clearTimeout(t); const a = arguments; t = setTimeout(() => fn.apply(null, a), ms); };
++  }
++
++  async function getJson(url) {
++    const r = await fetch(url, { headers: { Accept: 'application/json' }, credentials: 'same-origin' });
++    let data = null;
++    try { data = await r.json(); } catch (e) { /* not json */ }
++    if (!r.ok) throw new Error((data && data.error) || 'The rules reference is unavailable right now.');
++    return data;
++  }
++
++  // A result list bound to one kind. onPick(entry) is called with the clicked {id, name, sub}.
++  function bindSearch(opts) {
++    const { base, input, list, onPick } = opts;
++    let kind = opts.kind;
++    let seq = 0;
++
++    async function run() {
++      const mine = ++seq;
++      list.replaceChildren(el('li', 'ref-empty', 'Loading…'));
++      try {
++        const rows = await getJson(`${base}search?kind=${kind}&q=${encodeURIComponent(input.value.trim())}`);
++        if (mine !== seq) return;
++        list.replaceChildren();
++        if (!rows.length) list.append(el('li', 'ref-empty', 'No matches.'));
++        rows.forEach((row) => {
++          const li = el('li');
++          const b = el('button', 'ref-item');
++          b.type = 'button';
++          b.dataset.ref = row.id;
++          b.append(el('span', 'ref-item-name', row.name));
++          if (row.sub) b.append(el('span', 'ref-item-sub', row.sub));
++          b.addEventListener('click', () => onPick(row, b));
++          li.append(b);
++          list.append(li);
++        });
++      } catch (e) {
++        if (mine === seq) list.replaceChildren(el('li', 'ref-empty ref-error', e.message));
++      }
++    }
++
++    input.addEventListener('input', debounce(run, 180));
++    return { setKind(k) { kind = k; run(); }, run };
++  }
++
++  function renderDetail(box, d) {
++    box.replaceChildren();
++    box.append(el('h2', 'ref-title', d.title));
++    if (d.subtitle) box.append(el('p', 'ref-subtitle', d.subtitle));
++    if (d.facts && d.facts.length) {
++      const dl = el('dl', 'ref-facts');
++      d.facts.forEach(([k, v]) => { dl.append(el('dt', null, k), el('dd', null, v)); });
++      box.append(dl);
++    }
++    (d.body || '').split(/\n\n+/).filter(Boolean).forEach((p) => box.append(el('p', 'ref-text', p)));
++    // Monster notes are server-built html limited to b/ul/li/br and fully escaped; show them as plain structure.
++    (d.notes || []).forEach((html) => {
++      const div = el('div', 'ref-notes');
++      const tpl = document.createElement('template');
++      tpl.innerHTML = html;
++      tpl.content.querySelectorAll('*').forEach((n) => {
++        if (!['B', 'UL', 'LI', 'BR'].includes(n.tagName)) n.replaceWith(document.createTextNode(n.textContent));
++      });
++      div.append(tpl.content);
++      box.append(div);
++    });
++  }
++
++  // ---- the Reference page ----
++  const page = document.querySelector('[data-reference]');
++  if (page) {
++    const detail = page.querySelector('[data-ref-detail]');
++    const tabs = page.querySelectorAll('.ref-tab');
++    const input = page.querySelector('[data-ref-query]');
++    let kind = 'spells';
++    const search = bindSearch({
++      base: page.dataset.base, kind, input, list: page.querySelector('[data-ref-list]'),
++      onPick: async (row, btn) => {
++        page.querySelectorAll('.ref-item.is-active').forEach((n) => n.classList.remove('is-active'));
++        btn.classList.add('is-active');
++        detail.replaceChildren(el('p', 'hint-text', 'Loading…'));
++        try { renderDetail(detail, await getJson(`${page.dataset.base}entry?kind=${kind}&ref=${encodeURIComponent(row.id)}`)); }
++        catch (e) { detail.replaceChildren(el('p', 'hint-text ref-error', e.message)); }
++      },
++    });
++    tabs.forEach((t) => t.addEventListener('click', () => {
++      tabs.forEach((x) => x.classList.toggle('is-active', x === t));
++      kind = t.dataset.kind;
++      input.value = '';
++      detail.replaceChildren(el('p', 'hint-text', 'Pick an entry to read it.'));
++      search.setKind(kind);
++    }));
++    search.run();
++  }
++
++  // ---- "New character": search the monster manual and fill the form from a monster ----
++  const picker = document.querySelector('[data-monster-picker]');
++  if (picker) {
++    const form = picker.closest('form');
++    const status = picker.querySelector('[data-monster-status]');
++
++    function setValue(name, value) {
++      const f = form.elements[name];
++      if (!f) return;
++      f.value = value;
++      f.dispatchEvent(new Event('input', { bubbles: true }));
++    }
++
++    function fill(c, notes, name) {
++      ['name', 'level', 'max_hp', 'armor_class', 'speed', 'str_score', 'dex_score', 'con_score', 'int_score', 'wis_score', 'cha_score']
++        .forEach((k) => setValue(k, c[k]));
++      const npc = form.elements.is_npc;
++      if (npc) { npc.checked = true; npc.dispatchEvent(new Event('change', { bubbles: true })); }
++      form.querySelectorAll('input[data-save]').forEach((cb) => {
++        cb.checked = c.save_prof.includes(cb.dataset.save);
++        cb.dispatchEvent(new Event('change', { bubbles: true }));
++      });
++      form.querySelectorAll('input[type=radio][data-skill]').forEach((r) => {
++        const want = String(c.skill_prof[r.dataset.skill] || '');
++        if (r.value === want) { r.checked = true; r.dispatchEvent(new Event('change', { bubbles: true })); }
++      });
++      // Replace the note boxes with the stat block: reuse the existing boxes, add more as needed.
++      const blocks = document.getElementById('note-blocks');
++      const add = document.getElementById('add-note-btn');
++      while (blocks.querySelectorAll('[data-note-block]').length < notes.length) add.click();
++      const boxes = blocks.querySelectorAll('[data-note-block]');
++      boxes.forEach((b, i) => {
++        b.querySelector('.note-editor').innerHTML = notes[i] || '';
++        if (i >= notes.length && boxes.length > 1) b.remove();
++      });
++      status.textContent = `Filled in from ${name}. Adjust anything before saving.`;
++      status.classList.remove('ref-error');
++    }
++
++    const monsterSearch = bindSearch({
++      base: picker.dataset.base, kind: 'monsters',
++      input: picker.querySelector('[data-ref-query]'), list: picker.querySelector('[data-ref-list]'),
++      onPick: async (row) => {
++        status.textContent = 'Loading…';
++        try {
++          const d = await getJson(`${picker.dataset.base}entry?kind=monsters&ref=${encodeURIComponent(row.id)}`);
++          fill(d.prefill, d.notes, d.title);
++        } catch (e) { status.textContent = e.message; status.classList.add('ref-error'); }
++      },
++    });
++    picker.querySelector('[data-ref-query]').addEventListener('focus', () => {
++      picker.querySelector('[data-ref-list]').hidden = false;
++      monsterSearch.run();
++    }, { once: true });
++  }
++}());
+diff --git a/templates/_icons.html b/templates/_icons.html
+index 35b1b42..7822d0d 100644
+--- a/templates/_icons.html
++++ b/templates/_icons.html
+@@ -24,6 +24,8 @@
+ <?xml version="1.0" encoding="utf-8"?>
+ <svg class="icon {{ cls }}" fill="currentColor" width="800px" height="800px" viewBox="-16 0 512 512" xmlns="http://www.w3.org/2000/svg"><path d="M106.75 215.06L1.2 370.95c-3.08 5 .1 11.5 5.93 12.14l208.26 22.07-108.64-190.1zM7.41 315.43L82.7 193.08 6.06 147.1c-2.67-1.6-6.06.32-6.06 3.43v162.81c0 4.03 5.29 5.53 7.41 2.09zM18.25 423.6l194.4 87.66c5.3 2.45 11.35-1.43 11.35-7.26v-65.67l-203.55-22.3c-4.45-.5-6.23 5.59-2.2 7.57zm81.22-257.78L179.4 22.88c4.34-7.06-3.59-15.25-10.78-11.14L17.81 110.35c-2.47 1.62-2.39 5.26.13 6.78l81.53 48.69zM240 176h109.21L253.63 7.62C250.5 2.54 245.25 0 240 0s-10.5 2.54-13.63 7.62L130.79 176H240zm233.94-28.9l-76.64 45.99 75.29 122.35c2.11 3.44 7.41 1.94 7.41-2.1V150.53c0-3.11-3.39-5.03-6.06-3.43zm-93.41 18.72l81.53-48.7c2.53-1.52 2.6-5.16.13-6.78l-150.81-98.6c-7.19-4.11-15.12 4.08-10.78 11.14l79.93 142.94zm79.02 250.21L256 438.32v65.67c0 5.84 6.05 9.71 11.35 7.26l194.4-87.66c4.03-1.97 2.25-8.06-2.2-7.56zm-86.3-200.97l-108.63 190.1 208.26-22.07c5.83-.65 9.01-7.14 5.93-12.14L373.25 215.06zM240 208H139.57L240 383.75 340.43 208H240z"/></svg>
+ 
++{%- elif name == 'book-open' -%}
++<svg class="icon {{ cls }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4h6a4 4 0 0 1 4 4v13a3 3 0 0 0-3-3H2z"/><path d="M22 4h-6a4 4 0 0 0-4 4v13a3 3 0 0 1 3-3h7z"/></svg>
+ {%- elif name == 'plus' -%}
+ <svg class="icon {{ cls }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+ {%- elif name == 'pencil' -%}
+diff --git a/templates/base.html b/templates/base.html
+index 2e0cffa..e93e19f 100644
+--- a/templates/base.html
++++ b/templates/base.html
+@@ -67,6 +67,9 @@
+       <a href="{{ url_for('dice_view') }}" class="nav-tab {{ 'active' if active_page == 'dice' else '' }}" title="Dice">
+         {{ icon('dices') }}<span>Dice</span>
+       </a>
++      <a href="{{ url_for('reference_view') }}" class="nav-tab {{ 'active' if active_page == 'reference' else '' }}" title="Spells, monsters and items">
++        {{ icon('book-open') }}<span>Reference</span>
++      </a>
+       {% if g.real_is_dm %}
+       <form method="POST" action="{{ url_for('preview_as_player') }}" class="nav-form">{{ csrf_field() }}
+         <input type="hidden" name="on" value="{{ '0' if g.previewing else '1' }}">
+diff --git a/templates/character_form.html b/templates/character_form.html
+index e72961b..8f55d79 100644
+--- a/templates/character_form.html
++++ b/templates/character_form.html
+@@ -30,6 +30,15 @@
+   {% set prof_saves = character_save_prof or [] %}
+   {% set prof_skills = character_skill_prof or {} %}
+ 
++  {% if not character %}
++  <section class="cf-card cd-picker" data-monster-picker data-base="{{ url_for('reference_view')|replace('/reference', '') }}/api/reference/" aria-labelledby="cf-monster">
++    <h2 class="cf-title" id="cf-monster">Start from a monster</h2>
++    <div class="ref-search">{{ icon('search') }}<input type="search" data-ref-query placeholder="Search the monster manual (e.g. goblin, owlbear, young red dragon)…" aria-label="Search the monster manual" autocomplete="off"></div>
++    <ul class="ref-list ref-list--inline" data-ref-list hidden></ul>
++    <p class="hint-text" data-monster-status>Pick one to fill in the stats below and keep its stat block in the notes.</p>
++  </section>
++  {% endif %}
++
+   <div class="cf-grid">
+   <div class="cf-main">
+ 
+@@ -229,4 +238,5 @@
+ 
+ {% block extra_scripts %}
+ <script src="{{ url_for('static', filename='js/character-proficiencies.js') }}"></script>
++{% if not character %}<script src="{{ url_for('static', filename='js/reference.js') }}"></script>{% endif %}
+ {% endblock %}
+diff --git a/templates/reference.html b/templates/reference.html
+new file mode 100644
+index 0000000..e89793b
+--- /dev/null
++++ b/templates/reference.html
+@@ -0,0 +1,34 @@
++{% extends "base.html" %}
++{% from "_icons.html" import icon %}
++{% set active_page = 'reference' %}
++{% block title %}Reference — Campaign Ledger{% endblock %}
++
++{% block content %}
++<div class="page-header">
++  <div>
++    <h1 class="page-title">Rules Reference</h1>
++    <p class="page-sub">Spells, monsters and items from the {{ version }} D&amp;D 5e rules.</p>
++  </div>
++</div>
++
++<div class="ref" data-reference data-base="{{ url_for('reference_view')|replace('/reference', '') }}/api/reference/">
++  <div class="ref-tabs" role="tablist">
++    <button type="button" class="ref-tab is-active" role="tab" data-kind="spells">Spells</button>
++    <button type="button" class="ref-tab" role="tab" data-kind="monsters">Monsters</button>
++    <button type="button" class="ref-tab" role="tab" data-kind="items">Items</button>
++  </div>
++  <div class="ref-body">
++    <div class="cf-card ref-list-card">
++      <div class="ref-search">{{ icon('search') }}<input type="search" data-ref-query placeholder="Search…" aria-label="Search the reference" autocomplete="off"></div>
++      <ul class="ref-list" data-ref-list aria-live="polite"></ul>
++    </div>
++    <article class="cf-card ref-detail" data-ref-detail aria-live="polite">
++      <p class="hint-text">Pick an entry to read it.</p>
++    </article>
++  </div>
++</div>
++{% endblock %}
++
++{% block extra_scripts %}
++<script src="{{ url_for('static', filename='js/reference.js') }}"></script>
++{% endblock %}
+diff --git a/tests/test_authz_roles.py b/tests/test_authz_roles.py
+index b565e4e..4673673 100644
+--- a/tests/test_authz_roles.py
++++ b/tests/test_authz_roles.py
+@@ -53,7 +53,7 @@ POLICY = {
+     'factions_list': MEMBER, 'faction_detail': MEMBER,
+     'faction_new': DM, 'faction_edit': DM, 'faction_delete': OWNER, 'faction_member_remove': DM,
+     'api_characters': MEMBER, 'api_character_detail': MEMBER,
+-    'dice_view': MEMBER, 'export_data': MEMBER, 'character_export': MEMBER, 'faction_export': MEMBER,
++    'dice_view': MEMBER, 'reference_view': MEMBER, 'reference_search': MEMBER, 'reference_detail': MEMBER, 'export_data': MEMBER, 'character_export': MEMBER, 'faction_export': MEMBER,
+     'import_data': MEMBER,
+     # --- battle ---
+     'battle_view': MEMBER, 'api_battle_list': MEMBER,
+diff --git a/tests/test_e2e_browser.py b/tests/test_e2e_browser.py
+index af99de1..47c98f3 100644
+--- a/tests/test_e2e_browser.py
++++ b/tests/test_e2e_browser.py
+@@ -837,3 +837,50 @@ def test_the_token_menu_stays_inside_the_map_and_the_owner_list_flips(pw, shared
+     assert menu['y'] >= stage['y'] - 1
+     assert not errs, errs
+     ctx.close()
++
++
++def test_new_character_can_start_from_a_monster_in_the_manual(pw):
++    """Search the monster manual in "New character", pick one, and the form (scores, saves, skills, notes) is filled in."""
++    import json as _json
++    import threading
++    from http.server import BaseHTTPRequestHandler, HTTPServer
++    import test_reference as ref
++
++    class H(BaseHTTPRequestHandler):
++        def do_GET(self):
++            path = self.path.split('?')[0].replace('/api/2024', '', 1)
++            body = ref.LISTS.get(path) or ref.DETAILS.get(path)
++            self.send_response(200 if body else 404); self.send_header('Content-Type', 'application/json'); self.end_headers()
++            self.wfile.write(_json.dumps(body or {}).encode())
++        def log_message(self, *a): pass
++    api = HTTPServer(('127.0.0.1', 0), H); threading.Thread(target=api.serve_forever, daemon=True).start()
++    from conftest import Server
++    srv = Server({'SRD_API_BASE': f'http://127.0.0.1:{api.server_port}'})
++    try:
++        base = srv.url; dm = Api(base); cid = dm.campaign('Manual')
++        ctx = dm.context(pw, base); page = ctx.new_page(); bad, errs = _collect(page)
++        page.goto(base + f'/campaigns/{cid}/characters/new'); page.wait_for_load_state('networkidle')
++        page.click('[data-monster-picker] [data-ref-query]')
++        page.fill('[data-monster-picker] [data-ref-query]', 'gob')
++        page.click('[data-monster-picker] .ref-item >> text=Goblin Warrior')
++        from playwright.sync_api import expect
++        expect(page.locator('#name')).to_have_value('Goblin Warrior')
++        assert page.input_value('#max_hp') == '10' and page.input_value('#armor_class') == '15' and page.input_value('#dex_score') == '15'
++        assert page.is_checked('[data-save="dex"]') and page.is_checked('input[name="skill_stealth"][value="2"]')
++        assert page.is_checked('input[name="is_npc"]')
++        assert 'Small humanoid' in page.inner_text('#note-blocks') and 'Nimble Escape' in page.inner_text('#note-blocks')
++        with page.expect_navigation():
++            page.click('.cf-bar button[type=submit]')
++        ch = next(c['id'] for c in dm.get(f'/campaigns/{cid}/api/characters').json() if c['name'] == 'Goblin Warrior')
++        page.goto(base + f'/campaigns/{cid}/characters/{ch}'); page.wait_for_load_state('networkidle')
++        assert 'Stealth' in page.inner_text('body') and page.locator('.sheet-skill.is-expert .val').first.inner_text() == '+6'
++        # the Reference page lists the same data
++        page.goto(base + f'/campaigns/{cid}/reference'); page.wait_for_load_state('networkidle')
++        page.click('.ref-tab[data-kind="items"]'); page.wait_for_selector('.ref-item')
++        page.click('.ref-item >> text=Bag of Holding'); page.wait_for_selector('.ref-title')
++        assert 'Uncommon' in page.inner_text('[data-ref-detail]')
++        assert not [b for b in bad if b[0] >= 400 and '/api/' not in b[1]], bad
++        assert not errs, errs
++        ctx.close()
++    finally:
++        srv.stop(); api.shutdown()
+diff --git a/tests/test_reference.py b/tests/test_reference.py
+new file mode 100644
+index 0000000..e9c3cf6
+--- /dev/null
++++ b/tests/test_reference.py
+@@ -0,0 +1,130 @@
++"""Rules reference: spells, monsters and items from the 2024 D&D 5e API (faked here -- no network in tests)."""
++import pytest
++
++import srd
++from conftest import BACKEND
++
++new_code = pytest.mark.skipif(BACKEND == 'sqlite', reason='new-code tests')
++
++GOBLIN = {
++    'index': 'goblin-warrior', 'name': 'Goblin Warrior', 'size': 'Small', 'type': 'humanoid', 'alignment': 'chaotic neutral',
++    'armor_class': [{'value': 15}], 'hit_points': 10, 'hit_points_roll': '3d6', 'speed': {'walk': '30 ft.'},
++    'strength': 8, 'dexterity': 15, 'constitution': 10, 'intelligence': 10, 'wisdom': 8, 'charisma': 8,
++    'proficiencies': [{'value': 6, 'proficiency': {'index': 'skill-stealth'}}, {'value': 3, 'proficiency': {'index': 'saving-throw-dex'}},
++                      {'value': 1, 'proficiency': {'index': 'skill-bogus'}}],
++    'challenge_rating': 0.25, 'xp': 50, 'proficiency_bonus': 2, 'senses': {'darkvision': '60 ft.', 'passive_perception': 9},
++    'special_abilities': [{'name': 'Nimble Escape', 'desc': 'Disengage <script>x</script> as a bonus action.'}],
++    'actions': [{'name': 'Scimitar', 'desc': 'Melee Attack Roll: +4'}],
++}
++LISTS = {
++    '/spells': {'results': [{'index': 'fireball', 'name': 'Fireball', 'level': 3}, {'index': 'fire-bolt', 'name': 'Fire Bolt', 'level': 0},
++                            {'index': 'bless', 'name': 'Bless', 'level': 1}]},
++    '/monsters': {'results': [{'index': 'goblin-warrior', 'name': 'Goblin Warrior'}, {'index': 'aboleth', 'name': 'Aboleth'}]},
++    '/equipment': {'results': [{'index': 'longsword', 'name': 'Longsword'}]},
++    '/magic-items': {'results': [{'index': 'bag-of-holding', 'name': 'Bag of Holding'}, {'index': 'longsword-1', 'name': 'Longsword +1'}]},
++}
++DETAILS = {
++    '/monsters/goblin-warrior': GOBLIN,
++    '/spells/fireball': {'name': 'Fireball', 'level': 3, 'school': {'name': 'Evocation'}, 'casting_time': 'Action', 'range': '150 feet',
++                         'components': ['V', 'S', 'M'], 'material': 'a ball of bat guano', 'duration': 'Instantaneous', 'concentration': False,
++                         'ritual': False, 'classes': [{'name': 'Wizard'}], 'description': 'A bright streak flashes.', 'higher_level': 'More dice.'},
++    '/equipment/longsword': {'name': 'Longsword', 'cost': {'quantity': 15, 'unit': 'gp'}, 'weight': 3,
++                             'equipment_categories': [{'name': 'Weapons'}, {'name': 'Martial Melee Weapons'}],
++                             'damage': {'damage_dice': '1d8', 'damage_type': {'name': 'Slashing'}}, 'properties': [{'name': 'Versatile'}]},
++    '/magic-items/bag-of-holding': {'name': 'Bag of Holding', 'rarity': {'name': 'Uncommon'}, 'equipment_category': {'name': 'Wondrous Items'},
++                                    'desc': ['Wondrous Item', 'This bag is bigger inside.']},
++}
++
++
++@pytest.fixture(autouse=True)
++def fake_api(monkeypatch):
++    calls = []
++
++    def fake(path):
++        calls.append(path)
++        if path in LISTS:
++            return LISTS[path]
++        if path in DETAILS:
++            return DETAILS[path]
++        raise srd.SrdError('not found')
++    monkeypatch.setattr(srd, '_get_json', fake)
++    return calls
++
++
++def test_it_uses_the_2024_rules():
++    assert srd.API.endswith('/api/2024')
++
++
++def test_search_matches_names_and_ranks_prefix_matches_first():
++    assert [r['name'] for r in srd.search('spells', 'fire')] == ['Fire Bolt', 'Fireball']
++    assert srd.search('spells', 'FIREB')[0]['sub'] == 'Level 3' and srd.search('spells', 'fire bolt')[0]['sub'] == 'Cantrip'
++    assert srd.search('spells', 'zzz') == []
++    assert len(srd.search('spells', '')) == 3
++    items = srd.search('items', 'longsword')
++    assert [r['id'] for r in items] == ['equipment/longsword', 'magic-items/longsword-1']      # both collections, one list
++    with pytest.raises(srd.SrdError):
++        srd.search('bogus', 'x')
++
++
++def test_a_monster_becomes_a_ready_character():
++    c = srd.detail('monsters', 'monsters/goblin-warrior')['prefill']
++    assert (c['name'], c['max_hp'], c['armor_class'], c['speed'], c['level'], c['is_npc']) == ('Goblin Warrior', 10, 15, 30, 1, True)
++    assert (c['str_score'], c['dex_score'], c['wis_score']) == (8, 15, 8)
++    assert c['save_prof'] == ['dex'] and c['skill_prof'] == {'stealth': 2}      # +6 = DEX +2 and double proficiency; unknown skills dropped
++
++
++def test_a_big_monsters_level_gives_its_proficiency_bonus():
++    assert [srd._level_for_prof(p) for p in (2, 3, 4, 6, None)] == [1, 5, 9, 17, 1]
++
++
++def test_monster_notes_are_escaped_whitelisted_html():
++    notes = srd.detail('monsters', 'monsters/goblin-warrior')['notes']
++    text = ''.join(notes)
++    assert 'Small humanoid, chaotic neutral' in text and 'Challenge 1/4' in text and 'Speed: walk 30 ft.' in text
++    assert '<script>' not in text and '&lt;script&gt;' in text
++    assert '<b>Actions</b><ul><li><b>Scimitar.</b>' in text
++
++
++def test_spell_and_item_details_read_well():
++    s = srd.detail('spells', 'spells/fireball')
++    assert s['subtitle'] == 'Level 3 evocation' and ('Components', 'V, S, M (a ball of bat guano)') in s['facts']
++    assert 'More dice.' in s['body'] and s['body'].startswith('A bright streak')
++    i = srd.detail('items', 'equipment/longsword')
++    assert ('Cost', '15 gp') in i['facts'] and ('Damage', '1d8 Slashing') in i['facts'] and i['subtitle'] == 'Martial Melee Weapons'
++    m = srd.detail('items', 'magic-items/bag-of-holding')
++    assert ('Rarity', 'Uncommon') in m['facts'] and m['body'] == 'This bag is bigger inside.'
++
++
++@pytest.mark.parametrize('kind,ref', [('spells', 'monsters/goblin-warrior'), ('monsters', '../etc/passwd'), ('items', 'equipment/'),
++                                      ('monsters', 'monsters/Goblin'), ('nope', 'x/y'), ('monsters', 'monsters')])
++def test_bad_references_are_rejected_before_any_request(kind, ref, fake_api):
++    with pytest.raises(srd.SrdError):
++        srd.detail(kind, ref)
++    assert fake_api == []
++
++
++@new_code
++def test_the_routes_need_a_campaign_and_return_json(make_user):
++    dm, player, cid = make_user(), make_user(), None
++    cid = dm.new_campaign(); dm.add_member(cid, player)
++    for who in (dm, player):
++        assert who.get(f'/campaigns/{cid}/reference').status_code == 200
++        rows = who.get(f'/campaigns/{cid}/api/reference/search?kind=monsters&q=gob').json
++        assert [r['name'] for r in rows] == ['Goblin Warrior']
++        d = who.get(f'/campaigns/{cid}/api/reference/entry?kind=monsters&ref=monsters/goblin-warrior').json
++        assert d['prefill']['max_hp'] == 10
++    assert dm.get(f'/campaigns/{cid}/api/reference/search?kind=bogus').status_code == 400
++    assert dm.get(f'/campaigns/{cid}/api/reference/entry?kind=monsters&ref=monsters/nope').status_code == 404
++    stranger = make_user()
++    assert stranger.get(f'/campaigns/{cid}/api/reference/search?kind=monsters').status_code in (302, 403, 404)
++
++
++@new_code
++def test_an_unreachable_api_gives_a_clean_error(make_user, monkeypatch):
++    def down(path):
++        raise srd.SrdError('The rules reference is unavailable right now.')
++    monkeypatch.setattr(srd, '_get_json', down)
++    dm = make_user(); cid = dm.new_campaign()
++    r = dm.get(f'/campaigns/{cid}/api/reference/search?kind=spells&q=x')
++    assert r.status_code == 502 and 'unavailable' in r.json['error']
++    assert dm.get(f'/campaigns/{cid}/reference').status_code == 200            # the page itself never depends on the API

@@ -3294,3 +3294,36 @@ body.page-leaving .content {
   .cd-abilities { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .cd-skills { grid-template-columns: 1fr; }
 }
+
+/* ==========================================================================
+   Rules reference (spells / monsters / items) and the monster picker
+   ========================================================================== */
+.ref-tabs { display: inline-flex; gap: 4px; padding: 4px; margin-bottom: 18px; border-radius: 999px; background: var(--bg-panel-inset); border: 1px solid var(--hairline); }
+.ref-tab { appearance: none; border: 0; background: transparent; color: var(--parchment-dim); padding: 7px 18px; border-radius: 999px; font: 600 13px var(--font-body, inherit); cursor: pointer; }
+.ref-tab:hover { color: var(--parchment); }
+.ref-tab.is-active { background: var(--brass); color: #1a1408; }
+.ref-body { display: grid; grid-template-columns: minmax(260px, 340px) minmax(0, 1fr); gap: 20px; align-items: start; }
+.ref-list-card { position: sticky; top: 16px; display: flex; flex-direction: column; gap: 12px; max-height: calc(100vh - 48px); }
+.ref-search { display: flex; align-items: center; gap: 8px; padding: 0 12px; border-radius: var(--radius-m); background: var(--bg-panel-inset); border: 1px solid var(--hairline-strong); }
+.ref-search svg { width: 16px; height: 16px; color: var(--parchment-faint); flex: none; }
+.ref-search input { flex: 1; border: 0; background: transparent; padding: 10px 0; color: var(--parchment); font: inherit; outline: none; min-width: 0; }
+.ref-search:focus-within { border-color: var(--brass); }
+.ref-list { list-style: none; margin: 0; padding: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
+.ref-list--inline { max-height: 260px; margin-top: 10px; }
+.ref-item { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 10px; text-align: left; padding: 8px 12px; border-radius: var(--radius-s); border: 1px solid transparent; background: transparent; color: var(--parchment); font: inherit; font-size: 13.5px; cursor: pointer; }
+.ref-item:hover { background: rgba(201,162,75,0.08); }
+.ref-item.is-active { background: rgba(201,162,75,0.14); border-color: rgba(201,162,75,0.4); }
+.ref-item-sub { font: 500 10.5px var(--font-mono); color: var(--parchment-faint); white-space: nowrap; }
+.ref-empty { padding: 12px; color: var(--parchment-faint); font-size: 13px; }
+.ref-error { color: #e08a7a; }
+.ref-detail { min-height: 200px; }
+.ref-title { margin: 0 0 4px; font-family: var(--font-display, serif); font-size: 26px; color: var(--parchment); }
+.ref-subtitle { margin: 0 0 16px; color: var(--brass); font-style: italic; font-size: 14px; }
+.ref-facts { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0 0 16px; padding: 12px 14px; border-radius: var(--radius-m); background: var(--bg-panel-inset); border: 1px solid var(--hairline); font-size: 13.5px; }
+.ref-facts dt { font: 600 10.5px var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--parchment-dim); padding-top: 2px; }
+.ref-facts dd { margin: 0; color: var(--parchment); }
+.ref-text { margin: 0 0 12px; line-height: 1.6; color: var(--parchment); white-space: pre-line; }
+.ref-notes { margin: 0 0 14px; line-height: 1.55; font-size: 14px; }
+.ref-notes ul { margin: 6px 0 0; padding-left: 20px; }
+.cd-picker .hint-text { margin: 10px 0 0; }
+@media (max-width: 860px) { .ref-body { grid-template-columns: minmax(0, 1fr); } .ref-list-card { position: static; max-height: 320px; } }

@@ -67,6 +67,9 @@
       <a href="{{ url_for('dice_view') }}" class="nav-tab {{ 'active' if active_page == 'dice' else '' }}" title="Dice">
         {{ icon('dices') }}<span>Dice</span>
       </a>
+      <a href="{{ url_for('reference_view') }}" class="nav-tab {{ 'active' if active_page == 'reference' else '' }}" title="Spells, monsters and items">
+        {{ icon('book-open') }}<span>Reference</span>
+      </a>
       {% if g.real_is_dm %}
       <form method="POST" action="{{ url_for('preview_as_player') }}" class="nav-form">{{ csrf_field() }}
         <input type="hidden" name="on" value="{{ '0' if g.previewing else '1' }}">
