@@ -381,7 +381,7 @@ def test_class_dropdown_hover_guide_select_clear_and_icons(pw, shared_server):
     page.evaluate("() => document.documentElement.setAttribute('data-theme', 'dark')")
     page.keyboard.press('Escape')
     page.screenshot(path='/tmp/class-picker.png')
-    page.click('.form-actions button[type=submit]'); page.wait_for_timeout(1200)
+    page.click('.cf-bar button[type=submit]'); page.wait_for_timeout(1200)
     page.goto(base + f'/campaigns/{cid}/characters'); page.wait_for_selector('.dossier-name .class-icon')
     assert page.locator('.dossier-name .class-icon').get_attribute('title') == 'Bard'
     chid = next(c for c in dm.get(f'/campaigns/{cid}/api/characters').json() if c['name'] == 'Merlin')['id']
@@ -784,15 +784,16 @@ def test_character_form_previews_bonuses_live_and_the_sheet_shows_them(pw, share
     page.goto(base + f'/campaigns/{cid}/characters/{ch}/edit'); page.wait_for_load_state('networkidle')
     assert page.input_value('#speed') == '30'
     page.fill('#level', '5'); page.fill('#dex_score', '14')
-    page.click('.prof-skills-wrap summary'); page.wait_for_timeout(200)
     assert page.inner_text('[data-skill-bonus="stealth"]') == '+2'                  # DEX +2, untrained
-    page.select_option('#skill_stealth', '2')
+    page.check('input[name="skill_stealth"][value="2"]')
     assert page.inner_text('[data-skill-bonus="stealth"]') == '+8'                  # + 2 x 3 expertise at level 5
     page.check('[data-save="dex"]')
     assert page.inner_text('[data-save-bonus="dex"]') == '+5'
+    assert page.inner_text('[data-mod="dex"]') == '+2'                              # the tile's own modifier follows the score
+    assert page.inner_text('[data-skill-count]') == '1 trained'
     page.fill('#speed', '40')
     with page.expect_navigation():
-        page.click('.form-actions button[type=submit]')
+        page.click('.cf-bar button[type=submit]')
     page.wait_for_load_state('networkidle')
     page.goto(base + f'/campaigns/{cid}/characters/{ch}'); page.wait_for_load_state('networkidle')
     text = page.inner_text('body')

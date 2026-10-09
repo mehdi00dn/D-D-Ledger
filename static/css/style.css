@@ -3080,3 +3080,133 @@ body.page-leaving .content {
 .faction-pick:hover { border-color: var(--brass); color: var(--parchment); }
 .faction-pick:has(input:checked) { border-color: var(--brass); color: var(--parchment); background: rgba(201,162,75,0.14); }
 .faction-pick:has(input:focus-visible) { outline: 2px solid var(--brass); outline-offset: 2px; }
+
+/* ==========================================================================
+   Character edit page: cards in two columns, tile-style scores, themed controls
+   ========================================================================== */
+.char-form { max-width: 1120px; }
+.cf-grid { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 20px; align-items: start; }
+.cf-main, .cf-side { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+.cf-side { position: sticky; top: 20px; }
+.cf-card {
+  background: var(--bg-panel); border: 1px solid var(--hairline); border-radius: var(--radius-l);
+  padding: 22px 24px; box-shadow: var(--shadow-deep);
+}
+.cf-title {
+  display: flex; align-items: baseline; gap: 10px; margin: 0 0 16px; padding-bottom: 10px;
+  border-bottom: 1px solid var(--hairline); font: 500 11px var(--font-mono);
+  letter-spacing: 0.14em; text-transform: uppercase; color: var(--brass);
+}
+.cf-count { margin-left: auto; letter-spacing: 0.04em; text-transform: none; color: var(--parchment-faint); font-size: 11px; }
+.cf-hint { margin: -4px 0 14px; font-size: 12.5px; color: var(--parchment-dim); }
+.cf-hint b { color: var(--brass-bright); font-weight: 600; }
+.char-form .field + .field, .char-form .cf-identity-row + .cf-identity-row, .char-form .cf-identity-row + .field { margin-top: 14px; }
+
+/* identity */
+.cf-identity-row { display: grid; grid-template-columns: minmax(0, 1fr) 96px; gap: 14px; align-items: end; }
+.cf-identity-row--2 { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; }
+.cf-name input { font-family: var(--font-display, var(--font-body)); font-size: 18px; padding: 10px 12px; }
+.cf-npc-toggle { padding: 9px 0; font-size: 13px; }
+.cf-npc-toggle small { color: var(--parchment-faint); }
+
+/* vitals */
+.cf-vitals { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.cf-vital {
+  display: grid; grid-template-columns: auto 1fr; grid-template-areas: "icon label" "input input";
+  align-items: center; gap: 8px 10px; padding: 12px 14px; border-radius: var(--radius-m);
+  background: var(--bg-panel-inset); border: 1px solid var(--hairline); cursor: text;
+  transition: border-color 0.15s;
+}
+.cf-vital:focus-within { border-color: var(--brass); }
+.cf-vital-icon { grid-area: icon; display: inline-flex; color: var(--brass-dim); }
+.cf-vital-icon--hp { color: #6fbf8e; }
+.cf-vital-icon svg { width: 16px; height: 16px; }
+.cf-vital-label { grid-area: label; font: 500 10.5px var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--parchment-dim); }
+.cf-vital-label small { color: var(--parchment-faint); text-transform: none; }
+.cf-vital input { grid-area: input; width: 100%; background: transparent; border: none; padding: 0; color: var(--parchment); font: 600 26px var(--font-mono); outline: none; }
+
+/* ability tiles */
+.cf-abilities { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; }
+.ab-tile {
+  display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 12px 6px 10px;
+  background: var(--bg-panel-inset); border: 1px solid var(--hairline); border-radius: var(--radius-m);
+  transition: border-color 0.15s;
+}
+.ab-tile:focus-within { border-color: var(--brass); }
+.char-form .ab-tile .ab-name { margin: 0; font: 600 11px var(--font-mono); letter-spacing: 0.12em; color: var(--brass); }
+.char-form .ab-tile .ab-score {
+  width: 100%; text-align: center; background: transparent; border: none; padding: 0; outline: none;
+  color: var(--parchment); font: 600 26px var(--font-mono); -moz-appearance: textfield; appearance: textfield;
+}
+.ab-score::-webkit-outer-spin-button, .ab-score::-webkit-inner-spin-button,
+.cf-vital input::-webkit-outer-spin-button, .cf-vital input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.cf-vital input { -moz-appearance: textfield; appearance: textfield; }
+.ab-mod {
+  min-width: 42px; text-align: center; padding: 1px 8px; border-radius: 999px; font: 600 12px var(--font-mono);
+  color: var(--brass-bright); background: rgba(201,162,75,0.12); border: 1px solid rgba(201,162,75,0.3);
+}
+.char-form .ab-tile .ab-save {
+  position: relative; display: flex; align-items: center; gap: 5px; width: calc(100% - 8px); margin: 6px 0 0; padding: 5px 6px;
+  border-radius: var(--radius-s); border: 1px solid var(--hairline); cursor: pointer; text-transform: none;
+  font: 500 11px var(--font-mono); letter-spacing: 0.02em; color: var(--parchment-dim); user-select: none;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.ab-save input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; margin: 0; }
+.ab-save-pip { width: 9px; height: 9px; border-radius: 50%; border: 1.5px solid var(--parchment-faint); flex-shrink: 0; transition: background 0.15s, border-color 0.15s; }
+.ab-save:hover { border-color: var(--brass); color: var(--parchment); }
+.ab-save:has(input:checked) { border-color: var(--brass); color: var(--parchment); background: rgba(201,162,75,0.12); }
+.ab-save:has(input:checked) .ab-save-pip { background: var(--brass); border-color: var(--brass); }
+.ab-save:has(input:focus-visible) { outline: 2px solid var(--brass); outline-offset: 2px; }
+.ab-save .prof-bonus { margin-left: auto; }
+
+/* skills */
+.cf-legend { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: -4px 0 12px; font-size: 11.5px; color: var(--parchment-faint); }
+.tri-dot { font-style: normal; color: var(--brass); margin-right: 4px; }
+.cf-skills { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 22px; }
+.skill-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 10px;
+  padding: 5px 6px 5px 10px; border-radius: var(--radius-s); border: 1px solid transparent; font-size: 13px;
+  transition: background 0.15s, border-color 0.15s;
+}
+.skill-row:hover { background: var(--bg-panel-inset); }
+.skill-row.is-trained { background: rgba(201,162,75,0.08); border-color: rgba(201,162,75,0.28); }
+.skill-name small { margin-left: 4px; color: var(--parchment-faint); font: 500 9.5px var(--font-mono); letter-spacing: 0.06em; }
+.skill-row .prof-bonus { margin: 0; min-width: 26px; text-align: right; }
+.tri { display: inline-flex; border: 1px solid var(--hairline-strong); border-radius: 999px; overflow: hidden; background: var(--bg-panel-inset); }
+.tri label { position: relative; display: block; margin: 0; cursor: pointer; }
+.tri input { position: absolute; inset: 0; opacity: 0; cursor: pointer; margin: 0; }
+.tri span { display: block; width: 30px; padding: 3px 0; text-align: center; font-size: 12px; line-height: 1.3; color: var(--parchment-faint); transition: background 0.15s, color 0.15s; }
+.tri label:hover span { color: var(--parchment); }
+.tri input:checked + span { background: var(--brass); color: #21170a; font-weight: 700; }
+.tri label:first-child input:checked + span { background: var(--bg-panel); color: var(--parchment-dim); }
+.tri label:has(input:focus-visible) { outline: 2px solid var(--brass); outline-offset: -2px; }
+
+/* side column: portrait + sheets */
+.cf-side .avatar-preview-row { flex-direction: column; align-items: center; gap: 14px; margin-bottom: 0; }
+.cf-side .avatar-preview-row .avatar-frame { width: 150px; height: 150px; }
+.cf-side .avatar-preview-row .file-drop { flex: 0 0 auto; width: 100%; }
+.cf-side .sheet-thumbs { margin-bottom: 12px; }
+
+/* the save bar stays in reach on a long form */
+.cf-bar {
+  position: sticky; bottom: 0; z-index: 20; display: flex; justify-content: flex-end; gap: 10px;
+  margin-top: 20px; padding: 14px 18px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-m);
+  background: var(--bg-panel); box-shadow: 0 -10px 30px rgba(0,0,0,0.25);
+}
+
+@media (max-width: 1100px) {
+  .cf-grid { grid-template-columns: minmax(0, 1fr); }
+  .cf-side { position: static; }
+}
+@media (max-width: 720px) {
+  .cf-card { padding: 18px 16px; }
+  .cf-abilities { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .cf-vitals { grid-template-columns: 1fr; }
+  .cf-skills { grid-template-columns: 1fr; }
+  .cf-identity-row--2 { grid-template-columns: 1fr; }
+}
+/* the generic `.field label` look (block, mono, uppercase) must not flatten these controls */
+.char-form .field label.toggle-switch { display: inline-flex; margin: 0; font: 400 13px var(--font-body); letter-spacing: 0; text-transform: none; color: var(--parchment-dim); }
+.char-form .field label.toggle-switch input:checked ~ .toggle-switch-label { color: var(--parchment); }
+.char-form .field label.faction-pick { display: inline-flex; margin: 0; font: 500 12px var(--font-mono); letter-spacing: 0.04em; text-transform: none; }
+.char-form .note-hidden-toggle input { accent-color: var(--brass); }

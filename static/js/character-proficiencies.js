@@ -19,22 +19,27 @@
   function refresh() {
     var prof = profBonus(num('level', 1));
     var mods = {};
-    ABILITIES.forEach(function (a) { mods[a] = mod(num(a + '_score', 10)); });
+    ABILITIES.forEach(function (a) {
+      mods[a] = mod(num(a + '_score', 10));
+      var m = root.querySelector('[data-mod="' + a + '"]');
+      if (m) m.textContent = signed(mods[a]);
+    });
     root.querySelectorAll('[data-save]').forEach(function (box) {
       var out = root.querySelector('[data-save-bonus="' + box.dataset.save + '"]');
       if (out) out.textContent = signed(mods[box.dataset.save] + (box.checked ? prof : 0));
     });
-    root.querySelectorAll('[data-skill]').forEach(function (sel) {
-      var out = root.querySelector('[data-skill-bonus="' + sel.dataset.skill + '"]');
-      if (!out) return;
-      var lvl = parseInt(sel.value, 10) || 0;
+    var trained = 0;
+    document.querySelectorAll('[data-skill-bonus]').forEach(function (out) {
+      var pick = document.querySelector('input[data-skill="' + out.dataset.skillBonus + '"]:checked');
+      var lvl = pick ? (parseInt(pick.value, 10) || 0) : 0;
       out.textContent = signed(mods[out.dataset.ability] + prof * lvl);
       out.classList.toggle('is-prof', lvl > 0);
+      var row = out.closest('.skill-row');
+      if (row) row.classList.toggle('is-trained', lvl > 0);
+      if (lvl > 0) trained += 1;
     });
-    var chosen = root.querySelectorAll('[data-skill]');
-    var n = 0; chosen.forEach(function (s) { if (s.value) n += 1; });
-    var counter = root.querySelector('.prof-skills-wrap summary .field-optional');
-    if (counter) counter.textContent = n + ' chosen';
+    var counter = document.querySelector('[data-skill-count]');
+    if (counter) counter.textContent = trained + ' trained';
   }
 
   form.addEventListener('input', refresh);

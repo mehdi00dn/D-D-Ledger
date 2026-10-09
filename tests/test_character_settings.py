@@ -1,6 +1,7 @@
 """Extra character settings: speed, saving-throw and skill proficiencies, and the modifiers derived from them."""
 import io
 import json
+import re
 import zipfile
 
 import pytest
@@ -90,9 +91,9 @@ def test_settings_are_saved_and_edited_through_the_form(make_user):
     assert r['speed'] == 35 and json.loads(r['skill_prof']) == {'stealth': 2, 'perception': 1}
     assert json.loads(r['save_prof']) == ['dex', 'int']
     form = dm.get(f'/campaigns/{cid}/characters/{ch}/edit').get_data(as_text=True)
-    assert 'name="speed"' in form and 'value="35"' in form and form.count('name="skill_') == 18
+    assert 'name="speed"' in form and 'value="35"' in form and form.count('name="skill_') == 18 * 3      # one tri-state radio group per skill
     assert 'name="save_dex" checked' in form and 'name="save_wis" checked' not in form
-    assert '<option value="2" selected>' in form                                     # the stealth expertise comes back selected
+    assert re.search(r'name="skill_stealth" value="2" data-skill="stealth" checked', form)      # the stealth expertise comes back ticked
     # editing replaces the choices (an unticked box is removed) and bad values never reach the database
     resp = dm.post(f'/campaigns/{cid}/characters/{ch}/edit', data={
         'name': 'Rogue', 'level': '5', 'max_hp': '30', 'speed': 'fast', 'skill_arcana': '1', 'skill_stealth': '9',
