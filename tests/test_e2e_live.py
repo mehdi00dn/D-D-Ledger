@@ -7,7 +7,7 @@ the sender's messages, the receiver's gliding and drawing, safety against hostil
 still has the last word."""
 import json, re, time
 import pytest
-from conftest import BACKEND
+from conftest import BACKEND, q
 from test_e2e_browser import Api, pw                       # noqa: F401  (fixtures/helpers reused from the browser suite)
 from test_e2e_realtime import FakeRealtimeSocket, rt_server, SLOW_POLL, _wait, _record   # noqa: F401
 
@@ -101,9 +101,14 @@ def is_red(px): return px[0] > 200 and px[1] < 70 and px[2] < 70
 def pin_left(page): return page.eval_on_selector('.map-pin', "e => parseFloat(e.style.left)")
 
 
-def add_pin(w, x=300, y=300):
+def add_pin(w, x=300, y=300, owner=False):
+    """A prop token.  owner=True hands it to the Player (a Player may only move tokens assigned to them)."""
     r = w.dm.post(f'{w.api}/pins', json={'pin_type': 'prop', 'icon_key': 'paw', 'x': x, 'y': y}); assert r.status_code == 200, r.text
-    return r.json()['id']
+    pid = r.json()['id']
+    if owner:
+        uid = q('SELECT id FROM users WHERE username = ?', w.pl.name)[0]['id']
+        assert w.dm.post(f'{w.api}/pins/{pid}/update', json={'owner_user_id': uid}).status_code == 200
+    return pid
 
 
 def add_rect(w, cx=300, cy=300, size=80):
@@ -147,7 +152,7 @@ def test_a_dragged_token_glides_across_the_other_page_before_it_is_dropped(world
 
 
 def test_the_player_can_move_a_token_and_the_dm_sees_it_live_too(world):
-    w = world; add_pin(w)
+    w = world; add_pin(w, owner=True)
     page_dm, sock_dm, err_dm, page_pl, sock_pl, err_pl = open_pages(w)
     page_dm.wait_for_selector('.map-pin'); page_pl.wait_for_selector('.map-pin')
     start = pin_left(page_dm)
