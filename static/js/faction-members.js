@@ -57,9 +57,9 @@
       nm.appendChild(document.createTextNode(c.name));
       row.appendChild(nm);
       row.appendChild(el('span', 'dossier-tag' + (c.is_npc ? ' npc' : ''), c.is_npc ? 'NPC' : 'PC'));
-      const inThis = c.group_id === groupId;
+      const inThis = (c.group_ids || []).includes(groupId);
       row.appendChild(el('span', 'member-result-meta',
-        inThis ? 'Already in this faction' : (c.group_name ? 'In ' + c.group_name + ' — will move' : 'No faction')));
+        inThis ? 'Already in this faction' : ((c.group_names || []).length ? 'Also in ' + c.group_names.join(', ') : 'No faction')));
       const btn = el('button', 'btn btn-ghost btn-sm');
       btn.type = 'button';
       if (inThis) { btn.textContent = 'Member'; btn.disabled = true; }

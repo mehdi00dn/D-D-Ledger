@@ -36,13 +36,16 @@
         <input type="text" id="name" name="name" value="{{ character.name if character else '' }}" placeholder="e.g. Sylas Thorne" required>
       </div>
       <div class="field">
-        <label for="group_id">Faction</label>
-        <select id="group_id" name="group_id">
-          <option value="">— None —</option>
+        <label>Factions</label>
+        {% if groups %}
+        <div class="faction-picks">
           {% for g in groups %}
-          <option value="{{ g.id }}" {{ 'selected' if character and character.group_id == g.id else '' }}>{{ g.name }}</option>
+          <label class="faction-pick"><input type="checkbox" name="group_ids" value="{{ g.id }}" {{ 'checked' if g.id in (character_faction_ids or []) else '' }}><span class="group-dot" style="background:{{ g.color }}"></span>{{ g.name }}</label>
           {% endfor %}
-        </select>
+        </div>
+        {% else %}
+        <p class="hint-text">No factions yet.</p>
+        {% endif %}
       </div>
     </div>
     <div class="form-row cols-2">

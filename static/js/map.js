@@ -1342,7 +1342,7 @@
         <div class="avatar-frame" style="width:72px;height:72px;">${c.avatar_path ? `<img src="/uploads/${escapeHtml(c.avatar_path)}">` : ''}</div>
         <div>
           <div class="dossier-name">${classIconHtml(c.class_key)}${escapeHtml(c.name)}</div>
-          <div class="dossier-meta">Lvl ${c.level} &middot; ${escapeHtml(c.group_name || 'Ungrouped')}</div>
+          <div class="dossier-meta">Lvl ${c.level} &middot; ${escapeHtml((c.factions || []).map((f) => f.name).join(', ') || c.group_name || 'Ungrouped')}</div>
           <div class="made-by">Made by ${escapeHtml(c.made_by || 'a former member')}</div>
         </div>
       </div>

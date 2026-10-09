@@ -240,6 +240,10 @@ def test_hidden_flag_round_trips_through_the_editor(make_user):
 
 # ---------------- DL-63: faction Details view + add characters from the edit form ----------------
 
+def _members_of(char_id):
+    return {r['group_id'] for r in q('SELECT group_id FROM character_groups WHERE character_id = ?', char_id)}
+
+
 def _group_of(char_id):
     return q('SELECT group_id FROM characters WHERE id = ?', char_id)[0]['group_id']
 
@@ -299,7 +303,8 @@ def test_faction_edit_adds_characters_scoped_to_the_campaign(make_user):
                 data={'name': 'Guild', 'color': '#336699', 'bio': '',
                       'add_character_ids': [str(free), str(moving), str(free), 'oops', str(foreign), '999999']})
     assert r.status_code == 302 and r.headers['Location'].endswith(f'/factions/{gid}')
-    assert _group_of(free) == gid and _group_of(moving) == gid       # added; Defector left Rivals
+    assert _group_of(free) == gid and _group_of(moving) == other      # added; Defector keeps Rivals as his main faction
+    assert _members_of(moving) == {gid, other}                       # ...and is now also in Guild
     assert _group_of(foreign) is None                                # another campaign's character untouched
     assert 'Defector' in dm.get(f'/campaigns/{cid}/factions/{gid}').data.decode()
 
@@ -388,7 +393,78 @@ def test_members_can_be_picked_while_creating_a_faction(make_user):
     assert r.status_code == 302
     gid = q('SELECT id FROM groups WHERE campaign_id = ? AND name = ?', cid, 'New Order')[0]['id']
     assert q('SELECT group_id FROM characters WHERE id = ?', free)[0]['group_id'] == gid
-    assert q('SELECT group_id FROM characters WHERE id = ?', moving)[0]['group_id'] == gid      # moved out of Old Guard
+    assert q('SELECT group_id FROM characters WHERE id = ?', moving)[0]['group_id'] != gid      # kept Old Guard as his main faction ...
+    assert _members_of(moving) >= {gid}                                                          # ... and is now also in the new one
     assert q('SELECT group_id FROM characters WHERE id = ?', foreign)[0]['group_id'] is None    # other campaign: untouched
     # a faction made with no members still works
     assert dm.post(f'/campaigns/{cid}/factions/new', content_type='multipart/form-data', data={'name': 'Empty'}).status_code == 302
+
+
+def _char_in(user, cid, name, group_ids):
+    """A character ticked into several factions at once (the shared helper only sends one value per field)."""
+    r = user.post(f'/campaigns/{cid}/characters/new', content_type='multipart/form-data',
+                  data={'name': name, 'level': '1', 'max_hp': '30', 'group_ids': [str(i) for i in group_ids]})
+    assert r.status_code == 302
+    return q('SELECT id FROM characters WHERE campaign_id = ? AND name = ? ORDER BY id DESC', cid, name)[0]['id']
+
+
+def test_a_character_can_be_in_several_factions(make_user):
+    dm = make_user(); cid = dm.new_campaign()
+    guild = dm.new_group(cid, name='Guild'); rivals = dm.new_group(cid, name='Rivals'); cult = dm.new_group(cid, name='Cult')
+    c = _char_in(dm, cid, 'Double Agent', [guild])
+    assert _members_of(c) == {guild} and _group_of(c) == guild
+    # the form takes any number of ticks; the main faction stays while it is still ticked
+    r = dm.post(f'/campaigns/{cid}/characters/{c}/edit', content_type='multipart/form-data',
+                data={'name': 'Double Agent', 'level': '1', 'max_hp': '30', 'group_ids': [str(rivals), str(guild), str(rivals), 'junk', '999999']})
+    assert r.status_code == 302
+    assert _members_of(c) == {guild, rivals} and _group_of(c) == guild
+    page = dm.get(f'/campaigns/{cid}/characters/{c}').data.decode()
+    assert 'Guild, Rivals' in page
+    lst = dm.get(f'/campaigns/{cid}/characters').data.decode()
+    assert f'data-group="{guild} {rivals}"' in lst
+    detail = dm.get(f'/campaigns/{cid}/api/characters').json
+    assert [f['name'] for f in next(x for x in detail if x['id'] == c)['factions']] == ['Guild', 'Rivals']
+    # both faction pages list him, and the member counts agree
+    for gid in (guild, rivals):
+        assert 'Double Agent' in dm.get(f'/campaigns/{cid}/factions/{gid}').data.decode()
+    # removing him from the main faction promotes the next one; the other faction page is unaffected
+    assert dm.post(f'/campaigns/{cid}/factions/{guild}/members/{c}/remove').status_code == 302
+    assert _members_of(c) == {rivals} and _group_of(c) == rivals
+    # unticking everything clears the lot
+    dm.post(f'/campaigns/{cid}/characters/{c}/edit', content_type='multipart/form-data', data={'name': 'Double Agent', 'level': '1', 'max_hp': '30'})
+    assert _members_of(c) == set() and _group_of(c) is None
+
+
+def test_deleting_a_faction_keeps_the_other_memberships(make_user):
+    dm = make_user(); cid = dm.new_campaign()
+    a = dm.new_group(cid, name='A'); b = dm.new_group(cid, name='B')
+    c = _char_in(dm, cid, 'Two Hats', [a, b])
+    assert _group_of(c) == a
+    dm.post(f'/campaigns/{cid}/factions/{a}/delete')
+    assert _members_of(c) == {b} and _group_of(c) == b
+
+
+def test_battle_add_faction_uses_every_member_and_other_campaigns_stay_out(make_user):
+    dm = make_user(); cid = dm.new_campaign()
+    a = dm.new_group(cid, name='A'); b = dm.new_group(cid, name='B')
+    only_a = _char_in(dm, cid, 'OnlyA', [a])
+    both = _char_in(dm, cid, 'Both', [a, b])
+    r = dm.post(f'/campaigns/{cid}/api/battle/add-group', json={'group_id': b})
+    assert [p['character_id'] for p in r.json] == [both]
+    r = dm.post(f'/campaigns/{cid}/api/battle/add-group', json={'group_id': a})
+    assert sorted(p['character_id'] for p in r.json) == sorted([only_a, both, both])
+
+
+def test_export_and_import_carry_every_faction(make_user):
+    import io, json as _json, zipfile
+    dm = make_user(); cid = dm.new_campaign()
+    a = dm.new_group(cid, name='Alpha'); b = dm.new_group(cid, name='Beta')
+    _char_in(dm, cid, 'Multi', [a, b])
+    z = zipfile.ZipFile(io.BytesIO(dm.get(f'/campaigns/{cid}/export/data').data))
+    manifest = _json.loads(z.read([n for n in z.namelist() if n.endswith('.json')][0]))
+    assert manifest['characters'][0]['group_names'] == ['Alpha', 'Beta'] and manifest['characters'][0]['group_name'] == 'Alpha'
+    cid2 = dm.new_campaign()
+    r = dm.post(f'/campaigns/{cid2}/import/data', data={'import_file': (io.BytesIO(dm.get(f'/campaigns/{cid}/export/data').data), 'x.zip')}, content_type='multipart/form-data')
+    assert r.status_code == 302
+    row = q('SELECT id FROM characters WHERE campaign_id = ? AND name = ?', cid2, 'Multi')[0]
+    assert len(_members_of(row['id'])) == 2

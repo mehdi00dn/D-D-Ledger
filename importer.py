@@ -159,6 +159,7 @@ def normalize_manifest(manifest, sanitize_notes):
             'class_key': _clean(c.get('class_key'), 40).strip().lower() or None,   # checked against the known classes on import
             'notes': sanitize_notes(_clean(c.get('notes'), 200000)),
             'group_name': _clean(c.get('group_name'), 120).strip() or None,
+            'group_names': [n for n in (_clean(x, 120).strip() for x in (c.get('group_names') if isinstance(c.get('group_names'), list) else [])[:20]) if n],
             'avatar_file': _image_ref(c.get('avatar_file')),
             'sheet_files': [r for r in (_image_ref(s) for s in sheets[:MAX_SHEETS_PER_CHARACTER]) if r],
         })

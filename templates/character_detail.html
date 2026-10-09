@@ -7,7 +7,7 @@
 <div class="page-header">
   <div>
     <h1 class="page-title">{{ character.name }}</h1>
-    <p class="page-sub">Lvl {{ character.level }} &middot; {{ 'NPC' if character.is_npc else 'PC' }}{% if character.group_name %} &middot; {{ character.group_name }}{% endif %}</p>
+    <p class="page-sub">Lvl {{ character.level }} &middot; {{ 'NPC' if character.is_npc else 'PC' }}{% if factions %} &middot; {{ factions|map(attribute='name')|join(', ') }}{% endif %}</p>
   </div>
   <div style="display:flex; gap:10px; flex-wrap:wrap;">
     {% if can_edit %}
@@ -32,7 +32,7 @@
     </div>
     <div>
       <div class="dossier-name">{{ character.name }}</div>
-      <div class="dossier-meta">Lvl {{ character.level }} &middot; {{ character.group_name or 'Ungrouped' }}</div>
+      <div class="dossier-meta">Lvl {{ character.level }} &middot; {{ factions|map(attribute='name')|join(', ') or 'Ungrouped' }}</div>
       <div class="made-by">Made by {{ character.made_by or 'a former member' }}</div>
     </div>
   </div>

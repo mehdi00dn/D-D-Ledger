@@ -384,9 +384,7 @@
   function distinctGroups() {
     const map = new Map();
     allCharacters.forEach((c) => {
-      if (c.group_id && !map.has(c.group_id)) {
-        map.set(c.group_id, { id: c.group_id, name: c.group_name, color: c.group_color });
-      }
+      (c.factions || []).forEach((f) => { if (!map.has(f.id)) map.set(f.id, { id: f.id, name: f.name, color: f.color }); });
     });
     return [...map.values()];
   }
@@ -429,7 +427,7 @@
         <div class="battle-avatar" style="width:36px;height:36px;border-color:${safeColor(c.group_color, 'var(--brass)')};">${c.avatar_path ? `<img src="/uploads/${escapeHtml(c.avatar_path)}" alt="">` : ICONS.user}</div>
         <div class="battle-name-block">
           <div class="battle-name" style="font-size:14px;">${classIconHtml(c.class_key)}${escapeHtml(c.name)}</div>
-          <div class="battle-meta">${c.group_name ? escapeHtml(c.group_name) : 'No Faction'}</div>
+          <div class="battle-meta">${(c.factions || []).length ? escapeHtml(c.factions.map((f) => f.name).join(', ')) : 'No Faction'}</div>
         </div>
         <button type="button" class="btn btn-primary btn-sm" data-add-char="${c.id}">Add</button>
       </div>
@@ -578,7 +576,7 @@
         <div class="avatar-frame" style="width:72px;height:72px;">${c.avatar_path ? `<img src="/uploads/${escapeHtml(c.avatar_path)}">` : ICONS.user}</div>
         <div>
           <div class="dossier-name">${classIconHtml(c.class_key)}${escapeHtml(c.name)}</div>
-          <div class="dossier-meta">Lvl ${c.level} &middot; ${escapeHtml(c.group_name || 'No Faction')}</div>
+          <div class="dossier-meta">Lvl ${c.level} &middot; ${escapeHtml((c.factions || []).map((f) => f.name).join(', ') || c.group_name || 'No Faction')}</div>
           <div class="made-by">Made by ${escapeHtml(c.made_by || 'a former member')}</div>
         </div>
       </div>

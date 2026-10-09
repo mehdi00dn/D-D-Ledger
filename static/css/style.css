@@ -3067,3 +3067,16 @@ body.page-leaving .content {
   .detail-layout.has-viewer { grid-template-columns: minmax(0, 1fr); }
   .sheet-viewer-panel { position: static; }
 }
+
+/* ---- Character form: tick any number of factions ---- */
+.faction-picks { display: flex; flex-wrap: wrap; gap: 8px; }
+.faction-pick {
+  display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; cursor: pointer;
+  border: 1px solid var(--hairline-strong); border-radius: 999px; background: var(--bg-panel-inset);
+  color: var(--parchment-dim); font-size: 0.85rem; user-select: none;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.faction-pick input { position: absolute; opacity: 0; pointer-events: none; }
+.faction-pick:hover { border-color: var(--brass); color: var(--parchment); }
+.faction-pick:has(input:checked) { border-color: var(--brass); color: var(--parchment); background: rgba(201,162,75,0.14); }
+.faction-pick:has(input:focus-visible) { outline: 2px solid var(--brass); outline-offset: 2px; }

@@ -1531,6 +1531,8 @@ def characters_list():
         ORDER BY lower(c.name) ASC
     ''', (g.campaign_id,)).fetchall()
     groups = db.execute('SELECT * FROM groups WHERE campaign_id = ? ORDER BY lower(name) ASC', (g.campaign_id,)).fetchall()
+    by_char = _factions_by_character(db, g.campaign_id)
+    characters = [dict(c, factions=by_char.get(c['id'], [])) for c in characters]
     db.close()
     return render_template('characters_list.html', characters=characters, groups=groups,
                            deletable={c['id'] for c in characters if can_delete(c['created_by'])})
@@ -1571,9 +1573,10 @@ def character_detail(char_id):
     stats_hidden = bool(character['is_npc']) and not g.is_dm
     sheets = [] if stats_hidden else db.execute(
         'SELECT * FROM character_sheets WHERE character_id = ? ORDER BY sort_order', (char_id,)).fetchall()
+    factions = _factions_by_character(db, g.campaign_id).get(char_id, [])
     db.close()
     can_edit = g.is_dm or character['created_by'] == session['user_id']
-    return render_template('character_detail.html', character=character, sheets=sheets,
+    return render_template('character_detail.html', character=character, sheets=sheets, factions=factions,
                             notes_html=notes_to_html(character['notes'], show_hidden=can_see_hidden_notes(character)), can_edit=can_edit,
                             can_delete=can_delete(character['created_by']), stats_hidden=stats_hidden,
                             sheet=None if stats_hidden else dnd5e.derive(character))
@@ -1600,12 +1603,13 @@ def character_edit(char_id):
     character = db.execute('SELECT * FROM characters WHERE id = ? AND campaign_id = ?', (char_id, g.campaign_id)).fetchone()
     sheets = db.execute('SELECT * FROM character_sheets WHERE character_id = ? ORDER BY sort_order', (char_id,)).fetchall()
     groups = db.execute('SELECT * FROM groups WHERE campaign_id = ? ORDER BY lower(name) ASC', (g.campaign_id,)).fetchall()
+    faction_ids = [f['id'] for f in _factions_by_character(db, g.campaign_id).get(char_id, [])]
     db.close()
     if character is None:
         return redirect(url_for('characters_list'))
     notes_entries = notes_parse_entries(character['notes']) or [{'t': '', 'h': False}]
     return render_template('character_form.html', character=character, sheets=sheets, groups=groups, from_battle=False, notes_entries=notes_entries,
-                           can_delete_sheets=can_delete(owner_row['created_by']),
+                           can_delete_sheets=can_delete(owner_row['created_by']), character_faction_ids=faction_ids,
                            character_save_prof=dnd5e.clean_save_prof(character['save_prof']),
                            character_skill_prof=dnd5e.clean_skill_prof(character['skill_prof']))
 
@@ -1652,6 +1656,58 @@ def _clean_class(raw):
     return raw if raw in CLASS_KEYS else None
 
 
+def _faction_ids_from_form(db, form):
+    """Faction ids ticked on the character form (the old single `group_id` field still works), campaign-checked."""
+    ids = []
+    for raw in form.getlist('group_ids') or form.getlist('group_id'):
+        gid = _campaign_faction_id(db, raw)
+        if gid is not None and gid not in ids:
+            ids.append(gid)
+    return ids
+
+
+def _set_character_factions(db, char_id, ids):
+    """Replace a character's factions with `ids` and keep the MAIN faction (characters.group_id) one of them:
+    the current main faction stays main while it is still ticked, otherwise the first ticked one takes over."""
+    row = db.execute('SELECT group_id FROM characters WHERE id = ?', (char_id,)).fetchone()
+    main = row['group_id'] if row and row['group_id'] in ids else (ids[0] if ids else None)
+    db.execute('DELETE FROM character_groups WHERE character_id = ?', (char_id,))
+    for pos, gid in enumerate(([main] + [i for i in ids if i != main]) if main is not None else []):
+        db.execute('INSERT INTO character_groups (character_id, group_id, position) VALUES (?, ?, ?) RETURNING character_id', (char_id, gid, pos))
+    db.execute('UPDATE characters SET group_id = ? WHERE id = ?', (main, char_id))
+
+
+def _add_character_to_faction(db, char_id, group_id):
+    """One more faction for a character; their other factions are left alone."""
+    if db.execute('SELECT 1 FROM character_groups WHERE character_id = ? AND group_id = ?', (char_id, group_id)).fetchone():
+        return
+    pos = db.execute('SELECT COALESCE(MAX(position), -1) + 1 AS p FROM character_groups WHERE character_id = ?', (char_id,)).fetchone()['p']
+    db.execute('INSERT INTO character_groups (character_id, group_id, position) VALUES (?, ?, ?) RETURNING character_id', (char_id, group_id, pos))
+    db.execute('UPDATE characters SET group_id = ? WHERE id = ? AND group_id IS NULL', (group_id, char_id))
+
+
+def _resync_main_faction(db, char_id):
+    """After a membership disappeared: if the main faction is no longer one of them, fall back to the next, or none."""
+    row = db.execute('SELECT group_id FROM characters WHERE id = ?', (char_id,)).fetchone()
+    if row and row['group_id'] is not None and db.execute(
+            'SELECT 1 FROM character_groups WHERE character_id = ? AND group_id = ?', (char_id, row['group_id'])).fetchone():
+        return
+    nxt = db.execute('SELECT group_id FROM character_groups WHERE character_id = ? ORDER BY position, group_id LIMIT 1', (char_id,)).fetchone()
+    db.execute('UPDATE characters SET group_id = ? WHERE id = ?', (nxt['group_id'] if nxt else None, char_id))
+
+
+def _factions_by_character(db, campaign_id):
+    """{character id: [{'id', 'name', 'color'}, ...]} for the whole campaign, main faction first."""
+    out = {}
+    for r in db.execute('''
+        SELECT cg.character_id, gr.id, gr.name, gr.color
+        FROM character_groups cg JOIN groups gr ON gr.id = cg.group_id
+        WHERE gr.campaign_id = ? ORDER BY cg.character_id, cg.position, lower(gr.name)
+    ''', (campaign_id,)).fetchall():
+        out.setdefault(r['character_id'], []).append({'id': r['id'], 'name': r['name'], 'color': r['color']})
+    return out
+
+
 def _save_character(db, char_id):
     form = request.form
     name = form.get('name', '').strip() or 'Unnamed'
@@ -1666,7 +1722,8 @@ def _save_character(db, char_id):
     cha_score = int(form.get('cha_score') or 10)
     armor_class = int(form.get('armor_class') or 10)
     notes = sanitize_notes_payload(form.get('notes', ''))
-    group_id = _campaign_faction_id(db, form.get('group_id'))
+    faction_ids = _faction_ids_from_form(db, form)
+    group_id = faction_ids[0] if faction_ids else None
     class_key = _clean_class(form.get('class_key'))
     speed = dnd5e.clean_speed(form.get('speed'))
     skill_prof = json.dumps(dnd5e.clean_skill_prof({k: form.get('skill_' + k) for k in dnd5e.SKILL_KEYS}))
@@ -1699,11 +1756,13 @@ def _save_character(db, char_id):
             db.execute('UPDATE characters SET avatar_path = NULL WHERE id = ?', (char_id,))
         db.execute('''
             UPDATE characters SET name=?, is_npc=?, level=?, max_hp=?, str_score=?, dex_score=?,
-                con_score=?, int_score=?, wis_score=?, cha_score=?, armor_class=?, notes=?, group_id=?, class_key=?,
+                con_score=?, int_score=?, wis_score=?, cha_score=?, armor_class=?, notes=?, class_key=?,
                 speed=?, skill_prof=?, save_prof=?
             WHERE id=?
         ''', (name, is_npc, level, max_hp, str_score, dex_score, con_score, int_score,
-              wis_score, cha_score, armor_class, notes, group_id, class_key, speed, skill_prof, save_prof, char_id))
+              wis_score, cha_score, armor_class, notes, class_key, speed, skill_prof, save_prof, char_id))
+
+    _set_character_factions(db, char_id, faction_ids)
 
     # multiple sheet images
     max_order = db.execute('SELECT COALESCE(MAX(sort_order), -1) AS m FROM character_sheets WHERE character_id = ?', (char_id,)).fetchone()['m']
@@ -1761,7 +1820,7 @@ def sheet_delete(char_id, sheet_id):
 def factions_list():
     db = get_db()
     groups = db.execute('''
-        SELECT g.*, (SELECT COUNT(*) FROM characters c WHERE c.group_id = g.id) AS member_count, mk.username AS made_by
+        SELECT g.*, (SELECT COUNT(*) FROM character_groups cg JOIN characters c ON c.id = cg.character_id WHERE cg.group_id = g.id AND c.is_temp_familiar = 0) AS member_count, mk.username AS made_by
         FROM groups g LEFT JOIN users mk ON mk.id = g.created_by
         WHERE g.campaign_id = ? ORDER BY lower(g.name) ASC
     ''', (g.campaign_id,)).fetchall()
@@ -1796,9 +1855,10 @@ def faction_detail(group_id):
         db.close()
         return redirect(url_for('factions_list'))
     members = db.execute('''
-        SELECT id, name, avatar_path, is_npc, level, class_key FROM characters
-        WHERE group_id = ? AND campaign_id = ? AND is_temp_familiar = 0
-        ORDER BY lower(name) ASC
+        SELECT c.id, c.name, c.avatar_path, c.is_npc, c.level, c.class_key
+        FROM characters c JOIN character_groups cg ON cg.character_id = c.id
+        WHERE cg.group_id = ? AND c.campaign_id = ? AND c.is_temp_familiar = 0
+        ORDER BY lower(c.name) ASC
     ''', (group_id, g.campaign_id)).fetchall()
     db.close()
     return render_template('group_detail.html', group=group, members=members)
@@ -1808,10 +1868,12 @@ def faction_detail(group_id):
 @campaign_access_required
 @dm_required
 def faction_member_remove(group_id, char_id):
-    """Take one character out of a faction (they become ungrouped). Scoped to this campaign and faction."""
+    """Take one character out of a faction (their other factions stay). Scoped to this campaign and faction."""
     db = get_db()
-    db.execute('UPDATE characters SET group_id = NULL WHERE id = ? AND group_id = ? AND campaign_id = ?',
-               (char_id, group_id, g.campaign_id))
+    if db.execute('SELECT 1 FROM characters c JOIN groups gr ON gr.campaign_id = c.campaign_id '
+                  'WHERE c.id = ? AND gr.id = ? AND c.campaign_id = ?', (char_id, group_id, g.campaign_id)).fetchone():
+        db.execute('DELETE FROM character_groups WHERE character_id = ? AND group_id = ?', (char_id, group_id))
+        _resync_main_faction(db, char_id)
     db.commit()
     db.close()
     return redirect(url_for('faction_detail', group_id=group_id))
@@ -1838,12 +1900,14 @@ def faction_edit(group_id):
 def _faction_candidates(db):
     """Everyone in this campaign who could be pulled into a faction (for the search-and-add box)."""
     rows = db.execute('''
-        SELECT c.id, c.name, c.is_npc, c.avatar_path, c.group_id, c.class_key, g.name AS group_name
-        FROM characters c LEFT JOIN groups g ON c.group_id = g.id
+        SELECT c.id, c.name, c.is_npc, c.avatar_path, c.group_id, c.class_key
+        FROM characters c
         WHERE c.campaign_id = ? AND c.is_temp_familiar = 0
         ORDER BY lower(c.name) ASC
     ''', (g.campaign_id,)).fetchall()
-    return [dict(r) for r in rows]
+    by_char = _factions_by_character(db, g.campaign_id)
+    return [dict(r, group_ids=[f['id'] for f in by_char.get(r['id'], [])],
+                 group_names=[f['name'] for f in by_char.get(r['id'], [])]) for r in rows]
 
 
 _COLOR_RE = re.compile(r'^#[0-9a-fA-F]{6}$')
@@ -1884,7 +1948,7 @@ def _save_faction(db, group_id):
                 delete_upload(old['avatar_path'])
             db.execute('UPDATE groups SET avatar_path = NULL WHERE id = ?', (group_id,))
         db.execute('UPDATE groups SET name=?, bio=?, color=? WHERE id=?', (name, bio, color, group_id))
-    # Characters picked in the form's search box join this faction (moving them out of any other),
+    # Characters picked in the form's search box join this faction (keeping any others they are in),
     # on creation as well as on edit.  Only this campaign's own characters can be added;
     # foreign/garbage ids are ignored.
     for raw_id in dict.fromkeys(request.form.getlist('add_character_ids')):
@@ -1892,8 +1956,9 @@ def _save_faction(db, group_id):
             cid_to_add = int(raw_id)
         except (TypeError, ValueError):
             continue
-        db.execute('UPDATE characters SET group_id = ? WHERE id = ? AND campaign_id = ? AND is_temp_familiar = 0',
-                   (group_id, cid_to_add, g.campaign_id))
+        if db.execute('SELECT 1 FROM characters WHERE id = ? AND campaign_id = ? AND is_temp_familiar = 0',
+                      (cid_to_add, g.campaign_id)).fetchone():
+            _add_character_to_faction(db, cid_to_add, group_id)
     db.commit()
 
 
@@ -1908,7 +1973,11 @@ def faction_delete(group_id):
         abort(403)
     if group:
         delete_upload(group['avatar_path'])
+        members = [r['character_id'] for r in db.execute('SELECT character_id FROM character_groups WHERE group_id = ?', (group_id,)).fetchall()]
+        db.execute('DELETE FROM character_groups WHERE group_id = ?', (group_id,))
         db.execute('DELETE FROM groups WHERE id = ? AND campaign_id = ?', (group_id, g.campaign_id))
+        for cid_ in members:                       # anyone whose MAIN faction this was moves on to their next one
+            _resync_main_faction(db, cid_)
         db.commit()
     db.close()
     return redirect(url_for('factions_list'))
@@ -1926,15 +1995,16 @@ def api_characters():
         WHERE c.is_temp_familiar = 0 AND c.campaign_id = ?
         ORDER BY lower(c.name) ASC
     ''', (g.campaign_id,)).fetchall()
+    by_char = _factions_by_character(db, g.campaign_id)
     db.close()
     out = []
     for r in rows:
-        d = dict(r)
+        d = dict(r, factions=by_char.get(r['id'], []))
         if not g.is_dm:
             if d['is_npc']:
                 # Players never receive an NPC's numbers (same allow-list as the detail API).
                 d = {k: d[k] for k in ('id', 'name', 'avatar_path', 'level', 'is_npc',
-                                       'group_id', 'group_name', 'group_color')}
+                                       'group_id', 'group_name', 'group_color', 'factions')}
                 d['hidden_stats'] = True
             else:
                 d['notes'] = notes_for_viewer(d['notes'], can_see_hidden_notes(d))
@@ -1960,6 +2030,7 @@ def api_character_detail(char_id):
         # numbers. This is the real enforcement point -- an allow-list, so a
         # column added to `characters` later can't leak by default. No stat
         # scores, HP, AC, raw notes or sheet images are sent.
+        factions = _factions_by_character(db, g.campaign_id).get(char_id, [])
         db.close()
         return jsonify({
             'id': character['id'],
@@ -1969,6 +2040,7 @@ def api_character_detail(char_id):
             'is_npc': character['is_npc'],
             'group_name': character['group_name'],
             'group_color': character['group_color'],
+            'factions': factions,
             'notes_html': notes_to_html(character['notes'], show_hidden=can_see_hidden_notes(character)),
             'sheets': [],
             'made_by': character['made_by'],
@@ -1976,8 +2048,10 @@ def api_character_detail(char_id):
             'hidden_stats': True,
         })
     sheets = db.execute('SELECT * FROM character_sheets WHERE character_id = ? ORDER BY sort_order', (char_id,)).fetchall()
+    factions = _factions_by_character(db, g.campaign_id).get(char_id, [])
     db.close()
     data = dict(character)
+    data['factions'] = factions
     data['can_delete'] = can_delete(character['created_by'])
     can_see_hidden = can_see_hidden_notes(character)
     data['notes'] = notes_for_viewer(character['notes'], can_see_hidden)   # raw JSON must not carry hidden notes
@@ -1999,8 +2073,9 @@ def battle_view():
         WHERE c.is_temp_familiar = 0 AND c.campaign_id = ?
         ORDER BY lower(c.name) ASC
     ''', (g.campaign_id,)).fetchall()
+    by_char = _factions_by_character(db, g.campaign_id)
     db.close()
-    characters = [dict(c) for c in characters]
+    characters = [dict(c, factions=by_char.get(c['id'], [])) for c in characters]
     if not g.is_dm:
         # A Player can't add anyone to the battle anyway (the "Add Character"
         # modal is DM-only), but don't hand the roster's stat block to the
@@ -2008,7 +2083,7 @@ def battle_view():
         characters = [{
             'id': c['id'], 'name': c['name'], 'avatar_path': c['avatar_path'],
             'group_id': c['group_id'], 'group_name': c['group_name'], 'group_color': c['group_color'],
-            'is_npc': c['is_npc'],
+            'factions': c['factions'], 'is_npc': c['is_npc'],
         } for c in characters]
     return render_template('battle.html', characters=characters,
                             conditions=[{'key': k, 'label': label} for k, label in BATTLE_CONDITIONS],
@@ -2239,7 +2314,8 @@ def api_battle_add_group():
     data = request.get_json(force=True)
     group_id = data.get('group_id')
     db = get_db()
-    members = db.execute('SELECT id, max_hp FROM characters WHERE group_id = ? AND campaign_id = ?', (group_id, g.campaign_id)).fetchall()
+    members = db.execute('SELECT c.id, c.max_hp FROM characters c JOIN character_groups cg ON cg.character_id = c.id '
+                         'WHERE cg.group_id = ? AND c.campaign_id = ? ORDER BY c.id', (group_id, g.campaign_id)).fetchall()
     max_order = db.execute('SELECT COALESCE(MAX(sort_order), -1) AS m FROM battle_participants').fetchone()['m']
     for i, m in enumerate(members):
         db.execute('''
@@ -2570,7 +2646,13 @@ def _build_export_zip(campaign_id, group_ids=None, character_ids=None, download_
 
     # Pull in any group referenced by an exported character but not already included
     existing_group_ids = {g['id'] for g in groups}
-    referenced_group_ids = {c['group_id'] for c in characters if c['group_id']} - existing_group_ids
+    member_rows = db.execute('SELECT character_id, group_id FROM character_groups ORDER BY character_id, position').fetchall() if characters else []
+    char_id_set = {c['id'] for c in characters}
+    groups_of = {}
+    for r in member_rows:
+        if r['character_id'] in char_id_set:
+            groups_of.setdefault(r['character_id'], []).append(r['group_id'])
+    referenced_group_ids = {gid for ids in groups_of.values() for gid in ids} - existing_group_ids
     if referenced_group_ids:
         placeholders = ','.join('?' * len(referenced_group_ids))
         extra_groups = db.execute(f'SELECT * FROM groups WHERE id IN ({placeholders})', list(referenced_group_ids)).fetchall()
@@ -2618,6 +2700,7 @@ def _build_export_zip(campaign_id, group_ids=None, character_ids=None, download_
                 'save_prof': dnd5e.clean_save_prof(c['save_prof']),
                 'notes': notes_for_viewer(c['notes'], can_see_hidden_notes(c)),
                 'group_name': group_id_to_name.get(c['group_id']),
+                'group_names': [group_id_to_name[i] for i in groups_of.get(c['id'], []) if i in group_id_to_name],
                 'avatar_file': c['avatar_path'],
                 'sheet_files': sheets_by_char.get(c['id'], []),
             }
@@ -2759,7 +2842,13 @@ def import_data():
 
     # Characters: always inserted as new records (never merged/overwritten)
     for c in manifest['characters']:
-        group_id = group_name_to_id.get((c['group_name'] or '').lower())
+        wanted = c.get('group_names') or ([c['group_name']] if c.get('group_name') else [])
+        import_group_ids = []
+        for nm in wanted:
+            gid_ = group_name_to_id.get((nm or '').lower())
+            if gid_ is not None and gid_ not in import_group_ids:
+                import_group_ids.append(gid_)
+        group_id = import_group_ids[0] if import_group_ids else None
         avatar_path = extract_image(c['avatar_file'], 'avatars')
         cur = db.execute('''
             INSERT INTO characters
@@ -2774,6 +2863,8 @@ def import_data():
               dnd5e.clean_speed(c.get('speed')), json.dumps(dnd5e.clean_skill_prof(c.get('skill_prof'))),
               json.dumps(dnd5e.clean_save_prof(c.get('save_prof')))))
         new_char_id = cur.lastrowid
+        for pos, gid_ in enumerate(import_group_ids):
+            db.execute('INSERT INTO character_groups (character_id, group_id, position) VALUES (?, ?, ?) RETURNING character_id', (new_char_id, gid_, pos))
 
         for i, sheet_rel_path in enumerate(c['sheet_files']):
             sheet_path = extract_image(sheet_rel_path, 'sheets')
