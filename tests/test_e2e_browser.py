@@ -799,7 +799,6 @@ def test_character_form_previews_bonuses_live_and_the_sheet_shows_them(pw, share
     text = page.inner_text('body')
     for needle in ('40 ft', 'saving throws', 'passive perc.'):
         assert needle in text.lower(), needle
-    page.click('.sheet-skills-wrap summary')
     assert page.locator('.sheet-skill.is-expert .val').first.inner_text() == '+8'
     assert page.locator('.stat-pill .mod').nth(1).inner_text() == '+2'               # DEX 14 -> +2 under the score
     assert not [b for b in bad if b[0] >= 400], bad

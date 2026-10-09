@@ -3211,3 +3211,86 @@ body.page-leaving .content {
 .char-form .field label.toggle-switch input:checked ~ .toggle-switch-label { color: var(--parchment); }
 .char-form .field label.faction-pick { display: inline-flex; margin: 0; font: 500 12px var(--font-mono); letter-spacing: 0.04em; text-transform: none; }
 .char-form .note-hidden-toggle input { accent-color: var(--brass); }
+
+/* ==========================================================================
+   Character details page: the same card language as the edit page
+   ========================================================================== */
+.detail-layout { max-width: 1120px; }
+.detail-layout.has-viewer { grid-template-columns: minmax(0, 1.15fr) minmax(300px, 1fr); }
+.cd-main { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+
+.cd-hero { position: relative; display: flex; align-items: center; gap: 22px; padding: 26px 28px;
+  background: linear-gradient(135deg, rgba(201,162,75,0.07), transparent 55%), var(--bg-panel); }
+.cd-hero.has-class { padding-inline-end: 112px; }
+.cd-hero .class-badge { top: 50%; transform: translateY(-50%); inset-inline-end: 26px; }
+.cd-avatar { width: 112px; height: 112px; }
+.cd-avatar svg { width: 40px; height: 40px; }
+.cd-hero-text { min-width: 0; }
+.cd-name { font-size: 28px; line-height: 1.15; white-space: normal; overflow: visible; }
+.cd-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 8px; }
+.cd-chip {
+  display: inline-flex; align-items: center; gap: 6px; padding: 3px 11px; border-radius: 999px;
+  border: 1px solid var(--hairline-strong); background: var(--bg-panel-inset); color: var(--parchment);
+  font: 500 11.5px var(--font-mono); letter-spacing: 0.03em;
+}
+.cd-chip--pc { color: var(--brass-bright); border-color: rgba(201,162,75,0.4); }
+.cd-chip--npc { color: var(--moss-bright); border-color: rgba(95,145,116,0.45); }
+.cd-chip--faint { color: var(--parchment-faint); }
+.cd-hero .made-by { margin: 0; }
+
+.cd-vitals { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.cd-vital {
+  display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border-radius: var(--radius-m);
+  background: var(--bg-panel-inset); border: 1px solid var(--hairline);
+}
+.cd-vital-label { display: inline-flex; align-items: center; gap: 6px; font: 500 10px var(--font-mono); letter-spacing: 0.09em; text-transform: uppercase; color: var(--parchment-dim); }
+.cd-vital-label svg { width: 14px; height: 14px; color: var(--brass-dim); }
+.cd-vital--hp .cd-vital-label svg { color: #6fbf8e; }
+.cd-vital-val { font: 600 24px var(--font-mono); color: var(--parchment); }
+
+.cd-abilities { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; }
+.cd-ab {
+  display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 12px 6px 10px; text-align: center;
+  background: var(--bg-panel-inset); border: 1px solid var(--hairline); border-radius: var(--radius-m);
+}
+.cd-ab .cd-ab-name { font: 600 11px var(--font-mono); letter-spacing: 0.12em; color: var(--brass); }
+.cd-ab .val { font: 600 26px var(--font-mono); color: var(--parchment); line-height: 1.1; }
+.cd-ab .cd-ab-mod {
+  display: inline-block; min-width: 42px; padding: 1px 8px; border-radius: 999px; font: 600 12px var(--font-mono);
+  color: var(--brass-bright); background: rgba(201,162,75,0.12); border: 1px solid rgba(201,162,75,0.3);
+}
+.cd-ab-save {
+  display: flex; align-items: center; justify-content: center; gap: 5px; width: calc(100% - 8px); margin-top: 6px; padding: 5px 4px;
+  border-radius: var(--radius-s); border: 1px solid var(--hairline); font: 500 11px var(--font-mono); color: var(--parchment-faint);
+}
+.cd-ab-save .mark { font-size: 9px; }
+.cd-ab-save b { color: var(--parchment); font-weight: 600; }
+.cd-ab-save.is-prof { border-color: var(--brass); background: rgba(201,162,75,0.12); color: var(--parchment); }
+.cd-ab-save.is-prof .mark, .cd-ab-save.is-prof b { color: var(--brass-bright); }
+
+.cd-skills { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 22px; }
+.cd-skills .sheet-skill {
+  display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: var(--radius-s);
+  border: 1px solid transparent; font-size: 13px; color: var(--parchment-dim);
+}
+.cd-skills .sheet-skill .lbl { flex: 1; }
+.cd-skills .sheet-skill small { margin-left: 4px; color: var(--parchment-faint); font: 500 9.5px var(--font-mono); letter-spacing: 0.06em; }
+.cd-skills .sheet-skill .val { font: 600 12.5px var(--font-mono); color: var(--parchment-faint); }
+.cd-skills .sheet-skill.is-prof, .cd-skills .sheet-skill.is-expert { background: rgba(201,162,75,0.08); border-color: rgba(201,162,75,0.28); color: var(--parchment); }
+.cd-skills .sheet-skill.is-prof .val, .cd-skills .sheet-skill.is-expert .val { color: var(--brass-bright); }
+.cd-legend { margin: 12px 0 0; font-size: 11px; color: var(--parchment-faint); }
+
+/* the sheet viewer shares the card look */
+.sheet-viewer-panel { border-radius: var(--radius-l); padding: 22px 24px; }
+.sheet-viewer-head { padding-bottom: 10px; margin-bottom: 14px; border-bottom: 1px solid var(--hairline); }
+.sheet-viewer-head .cf-title { margin: 0; padding: 0; border: 0; flex: 1; }
+
+@media (max-width: 1100px) { .detail-layout.has-viewer { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 720px) {
+  .cd-hero { flex-direction: column; align-items: flex-start; padding: 22px 18px; }
+  .cd-hero.has-class { padding-inline-end: 18px; }
+  .cd-hero .class-badge { top: 18px; transform: none; inset-inline-end: 18px; width: 52px; height: 52px; }
+  .cd-name { font-size: 24px; }
+  .cd-abilities { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .cd-skills { grid-template-columns: 1fr; }
+}

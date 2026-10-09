@@ -18,82 +18,122 @@
 </div>
 
 <div class="detail-layout{{ '' if stats_hidden else ' has-viewer' }}">
-<div class="form-panel character-card{{ ' has-class' if character.class_key and not stats_hidden else '' }}">
-  {% if character.class_key and not stats_hidden %}
-  <div class="class-badge">{{ class_icon(character.class_key) }}</div>
-  {% endif %}
-  <div class="detail-header">
-    <div class="avatar-frame" style="width:96px;height:96px;">
+<div class="cd-main">
+
+  <section class="cf-card cd-hero{{ ' has-class' if character.class_key and not stats_hidden else '' }}" aria-label="Character summary">
+    {% if character.class_key and not stats_hidden %}
+    <div class="class-badge">{{ class_icon(character.class_key) }}</div>
+    {% endif %}
+    <div class="avatar-frame cd-avatar">
       {% if character.avatar_path %}
         <img src="{{ url_for('uploaded_file', filename=character.avatar_path) }}" alt="{{ character.name }} avatar">
       {% else %}
         {{ icon('user') }}
       {% endif %}
     </div>
-    <div>
-      <div class="dossier-name">{{ character.name }}</div>
-      <div class="dossier-meta">Lvl {{ character.level }} &middot; {{ factions|map(attribute='name')|join(', ') or 'Ungrouped' }}</div>
+    <div class="cd-hero-text">
+      <div class="dossier-name cd-name">{{ character.name }}</div>
+      <div class="cd-chips">
+        <span class="cd-chip">Lvl {{ character.level }}</span>
+        <span class="cd-chip cd-chip--{{ 'npc' if character.is_npc else 'pc' }}">{{ 'NPC' if character.is_npc else 'PC' }}</span>
+        {% for f in factions %}<span class="cd-chip cd-chip--faction"><span class="group-dot" style="background:{{ f.color }}"></span>{{ f.name }}</span>{% endfor %}
+        {% if not factions %}<span class="cd-chip cd-chip--faint">Ungrouped</span>{% endif %}
+      </div>
       <div class="made-by">Made by {{ character.made_by or 'a former member' }}</div>
     </div>
-  </div>
+  </section>
 
   {% if stats_hidden %}
   {# Placeholder digits only -- the real values are never sent to a Player. #}
-  <div class="dossier-stats stats-fogged" style="margin-top:18px;" title="The DM hasn't revealed this creature's stats" aria-label="Stats hidden">
-    {% for lbl in ['STR','DEX','CON','INT','WIS','CHA'] %}
-    <div class="stat-pill"><span class="val" aria-hidden="true">10</span><span class="lbl">{{ lbl }}</span></div>
-    {% endfor %}
-  </div>
-
-  <div class="dossier-hp-ac stats-fogged" style="margin-top:14px;" aria-label="HP and AC hidden">
-    <span class="badge-hp" aria-hidden="true">{{ icon('heart') }} 00 HP</span>
-    <span class="badge-ac" aria-hidden="true">{{ icon('shield') }} AC 00</span>
-  </div>
+  <section class="cf-card" aria-label="Combat stats">
+    <h2 class="cf-title">Vitals</h2>
+    <div class="cd-vitals stats-fogged" title="The DM hasn't revealed this creature's stats" aria-label="Stats hidden">
+      <div class="cd-vital"><span class="cd-vital-label">{{ icon('heart') }} HP</span><span class="cd-vital-val" aria-hidden="true">00</span></div>
+      <div class="cd-vital"><span class="cd-vital-label">{{ icon('shield') }} AC</span><span class="cd-vital-val" aria-hidden="true">00</span></div>
+    </div>
+  </section>
+  <section class="cf-card" aria-label="Abilities">
+    <h2 class="cf-title">Abilities</h2>
+    <div class="cd-abilities stats-fogged" title="The DM hasn't revealed this creature's stats" aria-label="Stats hidden">
+      {% for lbl in ['STR','DEX','CON','INT','WIS','CHA'] %}
+      <div class="cd-ab stat-pill"><span class="lbl cd-ab-name">{{ lbl }}</span><span class="val cd-ab-score" aria-hidden="true">10</span></div>
+      {% endfor %}
+    </div>
+  </section>
   {% else %}
-  <div class="dossier-stats" style="margin-top:18px;">
-    <div class="stat-pill"><span class="val">{{ character.str_score }}</span><span class="mod">{{ sheet.abilities[0].text }}</span><span class="lbl">STR</span></div>
-    <div class="stat-pill"><span class="val">{{ character.dex_score }}</span><span class="mod">{{ sheet.abilities[1].text }}</span><span class="lbl">DEX</span></div>
-    <div class="stat-pill"><span class="val">{{ character.con_score }}</span><span class="mod">{{ sheet.abilities[2].text }}</span><span class="lbl">CON</span></div>
-    <div class="stat-pill"><span class="val">{{ character.int_score }}</span><span class="mod">{{ sheet.abilities[3].text }}</span><span class="lbl">INT</span></div>
-    <div class="stat-pill"><span class="val">{{ character.wis_score }}</span><span class="mod">{{ sheet.abilities[4].text }}</span><span class="lbl">WIS</span></div>
-    <div class="stat-pill"><span class="val">{{ character.cha_score }}</span><span class="mod">{{ sheet.abilities[5].text }}</span><span class="lbl">CHA</span></div>
-  </div>
+  <section class="cf-card" aria-label="Combat stats">
+    <h2 class="cf-title">Vitals</h2>
+    <div class="cd-vitals">
+      <div class="cd-vital cd-vital--hp"><span class="cd-vital-label">{{ icon('heart') }} HP</span><span class="cd-vital-val">{{ character.max_hp }}</span></div>
+      <div class="cd-vital"><span class="cd-vital-label">{{ icon('shield') }} AC</span><span class="cd-vital-val">{{ character.armor_class }}</span></div>
+      <div class="cd-vital" title="Walking speed"><span class="cd-vital-label">{{ icon('move') }} Speed</span><span class="cd-vital-val">{{ sheet.speed }} ft</span></div>
+      <div class="cd-vital" title="Initiative bonus (Dexterity modifier)"><span class="cd-vital-label">Init.</span><span class="cd-vital-val">{{ sheet.initiative_text }}</span></div>
+      <div class="cd-vital" title="Proficiency bonus (from level)"><span class="cd-vital-label">Prof.</span><span class="cd-vital-val">{{ sheet.prof_text }}</span></div>
+      <div class="cd-vital" title="Passive Perception: 10 + Perception bonus"><span class="cd-vital-label">Passive Perc.</span><span class="cd-vital-val">{{ sheet.passive_perception }}</span></div>
+    </div>
+  </section>
 
-  <div class="dossier-hp-ac" style="margin-top:14px;">
-    <span class="badge-hp">{{ icon('heart') }} {{ character.max_hp }} HP</span>
-    <span class="badge-ac">{{ icon('shield') }} AC {{ character.armor_class }}</span>
-  </div>
+  <section class="cf-card" aria-label="Abilities and saving throws">
+    <h2 class="cf-title">Abilities &amp; Saving throws</h2>
+    <div class="cd-abilities">
+      {% for ab in sheet.abilities %}
+      {% set sv = sheet.saves[loop.index0] %}
+      <div class="cd-ab stat-pill" title="{{ ab.name }}">
+        <span class="lbl cd-ab-name">{{ ab.label }}</span>
+        <span class="val">{{ ab.score }}</span>
+        <span class="mod cd-ab-mod">{{ ab.text }}</span>
+        <span class="cd-ab-save{{ ' is-prof' if sv.proficient }}" title="{{ ab.name }} saving throw{{ ' (proficient)' if sv.proficient }}"><span class="mark" aria-hidden="true">{{ '●' if sv.proficient else '○' }}</span> Save <b>{{ sv.text }}</b></span>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
 
-  {% with d = sheet %}{% include '_character_sheet.html' %}{% endwith %}
+  <section class="cf-card" aria-label="Skills">
+    <h2 class="cf-title">Skills <span class="cf-count">{{ sheet.skills|selectattr('level')|list|length }} trained</span></h2>
+    <div class="cd-skills">
+      {% for sk in sheet.skills %}
+      <div class="sheet-skill{{ ' is-prof' if sk.level == 1 }}{{ ' is-expert' if sk.level == 2 }}"
+           title="{{ sk.label }} ({{ sk.ability }}){{ ' - proficient' if sk.level == 1 }}{{ ' - expertise' if sk.level == 2 }}">
+        <span class="mark" aria-hidden="true">{{ '◆' if sk.level == 2 else ('●' if sk.level == 1 else '○') }}</span>
+        <span class="lbl">{{ sk.label }} <small>{{ sk.ability }}</small></span><span class="val">{{ sk.text }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    <p class="cd-legend">○ untrained &nbsp; ● proficient &nbsp; ◆ expertise (double proficiency)</p>
+  </section>
   {% endif %}
 
-  <div class="form-section-title" style="margin-top:22px;">Notes</div>
-  <div class="detail-notes">{% if notes_html %}{{ notes_html | safe }}{% else %}<em>No notes recorded.</em>{% endif %}</div>
+  <section class="cf-card" aria-label="Notes">
+    <h2 class="cf-title">Notes</h2>
+    <div class="detail-notes">{% if notes_html %}{{ notes_html | safe }}{% else %}<em>No notes recorded.</em>{% endif %}</div>
+  </section>
 
   {% if not stats_hidden and sheets %}
-  <div class="form-section-title" style="margin-top:22px;">Sheets</div>
-  <div class="sheet-thumbs" data-sheet-thumbs>
-    {% for s in sheets %}
-    <div class="sheet-thumb{{ ' is-active' if loop.first else '' }}">
-      <img src="{{ url_for('uploaded_file', filename=s.image_path) }}" alt="Sheet {{ loop.index }}"
-           role="button" tabindex="0" aria-label="Show sheet {{ loop.index }}"
-           data-sheet-src="{{ url_for('uploaded_file', filename=s.image_path) }}"
-           {% if can_delete %}data-viewer-delete-url="{{ url_for('sheet_delete', char_id=character.id, sheet_id=s.id) }}"{% endif %}>
-      {% if can_delete %}
-      <button type="button" class="btn-icon" title="Remove"
-              data-sheet-delete-url="{{ url_for('sheet_delete', char_id=character.id, sheet_id=s.id) }}"
-              data-confirm-msg="Remove this sheet image?">{{ icon('x') }}</button>
-      {% endif %}
+  <section class="cf-card" aria-label="Sheets">
+    <h2 class="cf-title">Sheets <span class="cf-count">{{ sheets|length }}</span></h2>
+    <div class="sheet-thumbs" data-sheet-thumbs>
+      {% for s in sheets %}
+      <div class="sheet-thumb{{ ' is-active' if loop.first else '' }}">
+        <img src="{{ url_for('uploaded_file', filename=s.image_path) }}" alt="Sheet {{ loop.index }}"
+             role="button" tabindex="0" aria-label="Show sheet {{ loop.index }}"
+             data-sheet-src="{{ url_for('uploaded_file', filename=s.image_path) }}"
+             {% if can_delete %}data-viewer-delete-url="{{ url_for('sheet_delete', char_id=character.id, sheet_id=s.id) }}"{% endif %}>
+        {% if can_delete %}
+        <button type="button" class="btn-icon" title="Remove"
+                data-sheet-delete-url="{{ url_for('sheet_delete', char_id=character.id, sheet_id=s.id) }}"
+                data-confirm-msg="Remove this sheet image?">{{ icon('x') }}</button>
+        {% endif %}
+      </div>
+      {% endfor %}
     </div>
-    {% endfor %}
-  </div>
+  </section>
   {% endif %}
 </div>
 
 {% if not stats_hidden %}
 <aside class="sheet-viewer-panel" data-sheet-viewer aria-label="Character sheet viewer">
   <div class="sheet-viewer-head">
-    <span class="form-section-title">Character sheet</span>
+    <h2 class="cf-title">Character sheet</h2>
     {% if sheets|length > 1 %}
     <span class="sheet-viewer-nav">
       <button type="button" class="btn-icon" data-sheet-prev title="Previous sheet" aria-label="Previous sheet">&#8249;</button>
