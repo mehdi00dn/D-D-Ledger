@@ -67,22 +67,30 @@
       <div class="cd-vital cd-vital--hp"><span class="cd-vital-label">{{ icon('heart') }} HP</span><span class="cd-vital-val">{{ character.max_hp }}</span></div>
       <div class="cd-vital"><span class="cd-vital-label">{{ icon('shield') }} AC</span><span class="cd-vital-val">{{ character.armor_class }}</span></div>
       <div class="cd-vital" title="Walking speed"><span class="cd-vital-label">{{ icon('move') }} Speed</span><span class="cd-vital-val">{{ sheet.speed }} ft</span></div>
-      <div class="cd-vital" title="Initiative bonus (Dexterity modifier)"><span class="cd-vital-label">Init.</span><span class="cd-vital-val">{{ sheet.initiative_text }}</span></div>
+      <div class="cd-vital" title="Initiative bonus (Dexterity modifier): click to roll" data-roll-bonus="{{ sheet.initiative }}" data-roll-label="Initiative" role="button" tabindex="0"><span class="cd-vital-label">Init.</span><span class="cd-vital-val">{{ sheet.initiative_text }}</span></div>
       <div class="cd-vital" title="Proficiency bonus (from level)"><span class="cd-vital-label">Prof.</span><span class="cd-vital-val">{{ sheet.prof_text }}</span></div>
       <div class="cd-vital" title="Passive Perception: 10 + Perception bonus"><span class="cd-vital-label">Passive Perc.</span><span class="cd-vital-val">{{ sheet.passive_perception }}</span></div>
     </div>
   </section>
 
-  <section class="cf-card" aria-label="Abilities and saving throws">
+  <section class="cf-card" aria-label="Abilities and saving throws" data-roll-character="{{ character.id }}">
     <h2 class="cf-title">Abilities &amp; Saving throws</h2>
+    <div class="roll-bar" aria-label="Rolling">
+      <span class="roll-bar-hint">Click a bonus to roll it. Everyone in the campaign sees the result.</span>
+      <fieldset class="roll-mode roll-mode--small" aria-label="Roll mode">
+        <label><input type="radio" name="sheet-roll-mode" value="normal" checked> Normal</label>
+        <label title="Shift-click also rolls with advantage"><input type="radio" name="sheet-roll-mode" value="advantage"> Adv.</label>
+        <label title="Ctrl-click also rolls with disadvantage"><input type="radio" name="sheet-roll-mode" value="disadvantage"> Dis.</label>
+      </fieldset>
+    </div>
     <div class="cd-abilities">
       {% for ab in sheet.abilities %}
       {% set sv = sheet.saves[loop.index0] %}
       <div class="cd-ab stat-pill" title="{{ ab.name }}">
         <span class="lbl cd-ab-name">{{ ab.label }}</span>
         <span class="val">{{ ab.score }}</span>
-        <span class="mod cd-ab-mod">{{ ab.text }}</span>
-        <span class="cd-ab-save{{ ' is-prof' if sv.proficient }}" title="{{ ab.name }} saving throw{{ ' (proficient)' if sv.proficient }}"><span class="mark" aria-hidden="true">{{ '●' if sv.proficient else '○' }}</span> Save <b>{{ sv.text }}</b></span>
+        <span class="mod cd-ab-mod roll-target" title="Roll {{ ab.name }} check" data-roll-bonus="{{ ab.mod }}" data-roll-label="{{ ab.name }} check" role="button" tabindex="0">{{ ab.text }}</span>
+        <span class="cd-ab-save roll-target{{ ' is-prof' if sv.proficient }}" title="Roll {{ ab.name }} saving throw{{ ' (proficient)' if sv.proficient }}" data-roll-bonus="{{ sv.bonus }}" data-roll-label="{{ ab.name }} saving throw" role="button" tabindex="0"><span class="mark" aria-hidden="true">{{ '●' if sv.proficient else '○' }}</span> Save <b>{{ sv.text }}</b></span>
       </div>
       {% endfor %}
     </div>
@@ -93,7 +101,8 @@
     <div class="cd-skills">
       {% for sk in sheet.skills %}
       <div class="sheet-skill{{ ' is-prof' if sk.level == 1 }}{{ ' is-expert' if sk.level == 2 }}"
-           title="{{ sk.label }} ({{ sk.ability }}){{ ' - proficient' if sk.level == 1 }}{{ ' - expertise' if sk.level == 2 }}">
+           title="{{ sk.label }} ({{ sk.ability }}){{ ' - proficient' if sk.level == 1 }}{{ ' - expertise' if sk.level == 2 }}: click to roll"
+           data-roll-bonus="{{ sk.bonus }}" data-roll-label="{{ sk.label }}" role="button" tabindex="0">
         <span class="mark" aria-hidden="true">{{ '◆' if sk.level == 2 else ('●' if sk.level == 1 else '○') }}</span>
         <span class="lbl">{{ sk.label }} <small>{{ sk.ability }}</small></span><span class="val">{{ sk.text }}</span>
       </div>
@@ -156,4 +165,5 @@
 
 {% block extra_scripts %}
 <script src="{{ url_for('static', filename='js/sheet-viewer.js') }}"></script>
+{% if not stats_hidden %}<script src="{{ url_for('static', filename='js/character-rolls.js') }}"></script>{% endif %}
 {% endblock %}

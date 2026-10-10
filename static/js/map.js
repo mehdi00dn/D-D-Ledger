@@ -1711,7 +1711,7 @@
         redraw: () => redraw(),
       });
     }
-    const conn = LedgerRealtime.connect(window.LEDGER_REALTIME, () => syncPoll.poke(), live ? (m) => live.receive(m) : null);
+    const conn = LedgerRealtime.connect(window.LEDGER_REALTIME, (p) => { if (p.s !== 'dice') syncPoll.poke(); }, live ? (m) => live.receive(m) : null);
     if (live) live.attach(conn);
   }
 

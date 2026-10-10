@@ -1,4 +1,5 @@
 (function () {
+  window.DICE_PAGE = true;      // own rolls are already shown big on this page, so no toast for them
   const tray = document.getElementById('dice-tray');
   const resultsRoot = document.getElementById('dice-results');
   const emptyTemplate = document.getElementById('empty-results-template');
@@ -73,24 +74,57 @@
     return Object.values(queue).reduce((a, b) => a + b, 0);
   }
 
-  rollBtn.addEventListener('click', () => {
+  const labelInput = document.getElementById('roll-label');
+  const privateBox = document.getElementById('roll-private');
+  const modeRadios = Array.from(document.querySelectorAll('input[name="roll-mode"]'));
+  const logRoot = document.getElementById('roll-log-list');
+  const errorEl = document.getElementById('roll-error');
+
+  function selectedMode() {
+    const on = modeRadios.find((r) => r.checked);
+    return on ? on.value : 'normal';
+  }
+
+  // Advantage / disadvantage only make sense for a single d20.
+  function syncModes() {
+    const single = totalQueued() === 1 && queue[20] === 1;
+    modeRadios.forEach((r) => { r.disabled = !single && r.value !== 'normal'; });
+    if (!single) { const n = modeRadios.find((r) => r.value === 'normal'); if (n) n.checked = true; }
+  }
+  tray.addEventListener('click', syncModes);
+  clearTrayBtn.addEventListener('click', syncModes);
+  syncModes();
+
+  rollBtn.addEventListener('click', async () => {
     if (totalQueued() === 0) return;
+    const spec = {};
+    Object.keys(queue).forEach((d) => { if (queue[d] > 0) spec[d] = queue[d]; });
+    errorEl.textContent = '';
+    rollBtn.disabled = true;
+    let roll;
+    try {
+      roll = await LedgerDice.roll({
+        dice: spec,
+        modifier: parseInt(modifierInput.value, 10) || 0,
+        label: labelInput.value,
+        mode: selectedMode(),
+        private: !!(privateBox && privateBox.checked),
+      });
+    } catch (err) {
+      errorEl.textContent = err.message;
+      return;
+    } finally {
+      rollBtn.disabled = false;
+    }
 
-    // Build the roll plan: list of {die, final} in queue order (grouped by die type)
-    const plan = [];
-    [4, 6, 8, 10, 12, 20, 100].forEach((die) => {
-      for (let i = 0; i < queue[die]; i++) {
-        plan.push({ die, final: rollOne(die) });
-      }
-    });
+    // The server rolled; this page only shows it.
+    const plan = roll.dice.map((d) => ({ die: d.sides, final: d.value, dropped: d.dropped }));
+    const modifier = roll.modifier;
+    const grandTotal = roll.total;
 
-    const modifier = parseInt(modifierInput.value, 10) || 0;
-    const diceTotal = plan.reduce((sum, p) => sum + p.final, 0);
-    const grandTotal = diceTotal + modifier;
-
-    // group for subtotal display
+    // group for subtotal display (a dropped die is shown but not counted)
     const groups = {};
-    plan.forEach((p) => {
+    plan.filter((p) => !p.dropped).forEach((p) => {
       if (!groups[p.die]) groups[p.die] = [];
       groups[p.die].push(p.final);
     });
@@ -98,15 +132,17 @@
       .sort((a, b) => a - b)
       .map((die) => `${groups[die].length}d${die}: ${groups[die].join(' + ')}`)
       .join('  &middot;  ');
+    const dropped = plan.find((p) => p.dropped);
+    const note = dropped ? ` &middot; ${roll.mode} (dropped ${dropped.final})` : '';
 
     resultsRoot.innerHTML = `
       <div class="roll-summary">
         <div class="roll-total" id="roll-total-display">0</div>
-        <div class="roll-breakdown">${groupLines}${modifier ? ` &middot; modifier ${modifier >= 0 ? '+' : ''}${modifier}` : ''}</div>
+        <div class="roll-breakdown">${groupLines}${modifier ? ` &middot; modifier ${modifier >= 0 ? '+' : ''}${modifier}` : ''}${note}</div>
       </div>
       <div class="dice-result-grid">
         ${plan.map((p, i) => `
-          <div class="die-tile-wrap">
+          <div class="die-tile-wrap${p.dropped ? ' is-dropped' : ''}">
             <div class="die-shape d${p.die} die-tile rolling" data-final="${p.final}" data-sides="${p.die}" style="animation-delay:${i * 40}ms;">
               <span class="die-tile-number">?</span>
             </div>
@@ -160,6 +196,28 @@
       requestAnimationFrame(countUp);
     }, settleDelay);
   });
+
+  // ---- Recent rolls: the campaign's roll log (everyone's rolls, newest first) ----
+  const seenIds = new Set();
+  function addLogRow(roll, prepend) {
+    if (seenIds.has(roll.id) || !logRoot) return;
+    seenIds.add(roll.id);
+    const li = document.createElement('li');
+    li.className = 'roll-log-item' + (roll.private ? ' is-private' : '');
+    const who = document.createElement('span');
+    who.className = 'roll-log-who';
+    who.textContent = (roll.character || roll.who) + (roll.label ? ' \u00b7 ' + roll.label : '');
+    const total = document.createElement('strong');
+    total.className = 'roll-log-total';
+    total.textContent = roll.total;
+    li.append(who, LedgerDice.chips(roll), total);
+    if (prepend) logRoot.prepend(li); else logRoot.append(li);
+    while (logRoot.children.length > 30) logRoot.lastElementChild.remove();
+    const empty = document.getElementById('roll-log-empty');
+    if (empty) empty.hidden = true;
+  }
+  LedgerDice.on((roll) => addLogRow(roll, true));
+  LedgerDice.recent().then((rolls) => rolls.slice().reverse().forEach((r) => addLogRow(r, false))).catch(() => {});
 
   renderEmpty();
 })();

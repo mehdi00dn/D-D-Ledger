@@ -2614,6 +2614,140 @@ def dice_view():
     return render_template('dice.html')
 
 
+# ---------------- DICE: rolls are made on the server and shared with the whole campaign ----------------
+
+DICE_SIDES = (4, 6, 8, 10, 12, 20, 100)
+DICE_MAX_PER_ROLL = 40
+DICE_FEED_LIMIT = 30
+
+
+def _dice_error(message, status=400):
+    return jsonify({'error': message}), status
+
+
+def _roll_row_out(r, names):
+    """One stored roll as the browsers see it."""
+    try:
+        dice = json.loads(r['dice'])
+    except ValueError:
+        dice = []
+    return {'id': r['id'], 'user_id': r['user_id'], 'who': names.get(r['user_id'], 'Someone'),
+            'mine': r['user_id'] == session.get('user_id'),
+            'character_id': r['character_id'], 'character': names.get(('c', r['character_id'])),
+            'label': r['label'], 'dice': dice, 'modifier': r['modifier'], 'total': r['total'],
+            'mode': r['mode'], 'private': bool(r['private']), 'created_at': str(r['created_at'])}
+
+
+def _dice_feed(db, after=None, limit=DICE_FEED_LIMIT):
+    """Rolls this person may see, oldest first.  Private rolls go to DMs only (the roller always sees their own)."""
+    sql = 'SELECT * FROM dice_rolls WHERE campaign_id = ? AND (private = 0 OR user_id = ? OR ? = 1)'
+    params = [g.campaign_id, session['user_id'], 1 if g.is_dm else 0]
+    if after:
+        sql += ' AND id > ?'
+        params.append(after)
+    rows = db.execute(sql + ' ORDER BY id DESC LIMIT ?', params + [limit]).fetchall()
+    rows = list(reversed(rows))
+    names = {r['id']: r['username'] for r in db.execute(
+        'SELECT u.id, u.username FROM users u JOIN campaign_members cm ON cm.user_id = u.id WHERE cm.campaign_id = ?',
+        (g.campaign_id,)).fetchall()}
+    for r in db.execute('SELECT id, name FROM characters WHERE campaign_id = ?', (g.campaign_id,)).fetchall():
+        names[('c', r['id'])] = r['name']
+    return [_roll_row_out(r, names) for r in rows]
+
+
+@app.route('/campaigns/<int:campaign_id>/api/dice/roll', methods=['POST'])
+@campaign_access_required
+def dice_roll():
+    """Roll on the server (so everyone sees one honest result), store it, and return it.
+    Body: {dice: {"20": 1, "6": 2}, modifier, label, mode: normal|advantage|disadvantage, character_id, private}.
+    Advantage / disadvantage need exactly one d20 and roll a second one, keeping the higher / lower."""
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return _dice_error('bad request')
+    spec = data.get('dice')
+    if not isinstance(spec, dict) or not spec:
+        return _dice_error('Pick at least one die.')
+    plan = []
+    for key, count in spec.items():
+        try:
+            sides, count = int(key), int(count)
+        except (TypeError, ValueError):
+            return _dice_error('bad request')
+        if sides not in DICE_SIDES or count < 0 or count > DICE_MAX_PER_ROLL:
+            return _dice_error('bad request')
+        plan += [sides] * count
+    if not plan or len(plan) > DICE_MAX_PER_ROLL:
+        return _dice_error(f'Roll between 1 and {DICE_MAX_PER_ROLL} dice at a time.')
+    try:
+        modifier = int(data.get('modifier') or 0)
+    except (TypeError, ValueError):
+        return _dice_error('bad request')
+    if abs(modifier) > 999:
+        return _dice_error('That modifier is out of range.')
+    mode = data.get('mode') or 'normal'
+    if mode not in ('normal', 'advantage', 'disadvantage'):
+        return _dice_error('bad request')
+    if mode != 'normal' and plan != [20]:
+        return _dice_error('Advantage and disadvantage need exactly one d20.')
+    label = str(data.get('label') or '').strip()[:80]
+    private = bool(data.get('private')) and g.is_dm
+
+    db = get_db()
+    character_id = None
+    if data.get('character_id') not in (None, ''):
+        try:
+            cid = int(data['character_id'])
+        except (TypeError, ValueError):
+            db.close()
+            return _dice_error('bad request')
+        ch = db.execute('SELECT id, is_npc FROM characters WHERE id = ? AND campaign_id = ?', (cid, g.campaign_id)).fetchone()
+        if ch is None:
+            db.close()
+            return _dice_error('Character not found.', 404)
+        if ch['is_npc'] and not g.is_dm:
+            db.close()
+            return _dice_error('Only the DM rolls for NPCs.', 403)
+        character_id = ch['id']
+
+    rolled = [{'sides': s, 'value': secrets.randbelow(s) + 1, 'dropped': False} for s in plan]
+    if mode != 'normal':
+        rolled.append({'sides': 20, 'value': secrets.randbelow(20) + 1, 'dropped': False})
+        drop = min(rolled, key=lambda d: d['value']) if mode == 'advantage' else max(rolled, key=lambda d: d['value'])
+        drop['dropped'] = True
+    total = sum(d['value'] for d in rolled if not d['dropped']) + modifier
+    db.execute('INSERT INTO dice_rolls (campaign_id, user_id, character_id, label, dice, modifier, total, mode, private) '
+               'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+               (g.campaign_id, session['user_id'], character_id, label, json.dumps(rolled), modifier, total, mode,
+                1 if private else 0))
+    db.commit()
+    latest = db.execute('SELECT MAX(id) AS m FROM dice_rolls WHERE campaign_id = ? AND user_id = ?',
+                        (g.campaign_id, session['user_id'])).fetchone()['m']
+    rolls = _dice_feed(db, after=latest - 1, limit=1)
+    db.close()
+    return jsonify(rolls[0] if rolls else {})
+
+
+@app.route('/campaigns/<int:campaign_id>/api/dice/rolls')
+@campaign_access_required
+def dice_rolls():
+    """The roll feed.  ?after=<id> returns rolls newer than that id; ?init=1 returns nothing but the newest id
+    (so a page that has just opened does not replay old rolls as toasts); with neither, the most recent rolls."""
+    db = get_db()
+    if request.args.get('init'):
+        latest = db.execute('SELECT MAX(id) AS m FROM dice_rolls WHERE campaign_id = ?', (g.campaign_id,)).fetchone()['m'] or 0
+        db.close()
+        return jsonify({'rolls': [], 'latest': latest})
+    try:
+        after = int(request.args.get('after') or 0)
+    except ValueError:
+        db.close()
+        return _dice_error('bad request')
+    rolls = _dice_feed(db, after=after or None)
+    latest = db.execute('SELECT MAX(id) AS m FROM dice_rolls WHERE campaign_id = ?', (g.campaign_id,)).fetchone()['m'] or 0
+    db.close()
+    return jsonify({'rolls': rolls, 'latest': latest})
+
+
 # ---------------- RULES REFERENCE (spells, monsters, items: the public 5e API, 2024 rules) ----------------
 
 @app.route('/campaigns/<int:campaign_id>/reference')

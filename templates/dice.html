@@ -27,11 +27,28 @@
     <label for="modifier">Modifier</label>
     <input type="number" id="modifier" value="0">
   </div>
+  <div class="field" style="min-width:180px;flex:1;max-width:280px;">
+    <label for="roll-label">What is it for? <small>(optional)</small></label>
+    <input type="text" id="roll-label" maxlength="80" placeholder="e.g. Fireball damage">
+  </div>
+  <fieldset class="roll-mode" aria-label="Roll mode">
+    <label><input type="radio" name="roll-mode" value="normal" checked> Normal</label>
+    <label title="Roll a single d20 twice, keep the higher"><input type="radio" name="roll-mode" value="advantage"> Advantage</label>
+    <label title="Roll a single d20 twice, keep the lower"><input type="radio" name="roll-mode" value="disadvantage"> Disadvantage</label>
+  </fieldset>
+  {% if g.is_dm %}<label class="roll-private"><input type="checkbox" id="roll-private"> DM only</label>{% endif %}
   <button type="button" class="btn btn-ghost" id="clear-tray-btn">{{ icon('x') }} Clear Tray</button>
   <button type="button" class="btn btn-primary btn-lg" id="roll-btn"> Roll</button>
 </div>
 
+<p class="roll-error" id="roll-error" role="alert"></p>
 <div id="dice-results"></div>
+
+<section class="roll-log" aria-label="Recent rolls">
+  <h2 class="roll-log-title">Recent rolls <small>everyone in the campaign sees these</small></h2>
+  <p class="roll-log-empty" id="roll-log-empty">No rolls yet.</p>
+  <ol class="roll-log-list" id="roll-log-list"></ol>
+</section>
 
 <template id="empty-results-template">
   <div class="empty-state">

@@ -737,6 +737,6 @@
 
   // Real-time: a ping from the server means "something changed" -> refresh right now.  Polling above stays as the safety net.
   if (window.LEDGER_REALTIME && window.LedgerRealtime) {
-    LedgerRealtime.connect(window.LEDGER_REALTIME, (p) => { if (p.s !== 'map') battlePoll.poke(); });
+    LedgerRealtime.connect(window.LEDGER_REALTIME, (p) => { if (p.s !== 'map' && p.s !== 'dice') battlePoll.poke(); });
   }
 })();

@@ -164,7 +164,7 @@ def test_without_realtime_the_page_just_polls(pw):
         ctx = dm.context(pw, base); ctx.add_init_script("window.__LEDGER_POLL__ = {base: 250, max: 500, skip: 250};")
         page = ctx.new_page(); sockets = []
         page.on('websocket', lambda w: sockets.append(w)); reqs = _record(page, r'/api/battle$')
-        page.goto(f'{base}/campaigns/{cid}/battle'); page.wait_for_load_state('networkidle'); page.wait_for_timeout(1500)
+        page.goto(f'{base}/campaigns/{cid}/battle'); page.wait_for_load_state('load'); page.wait_for_timeout(1500)   # not networkidle: polling every 250 ms never goes quiet
         assert not page.evaluate("() => 'LEDGER_REALTIME' in window") and not sockets
         assert len(reqs) >= 3
         ctx.close()

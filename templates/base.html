@@ -198,6 +198,7 @@
 <script src="{{ url_for('static', filename='js/lightbox.js') }}"></script>
 <script src="{{ url_for('static', filename='js/confirm.js') }}"></script>
 <script src="{{ url_for('static', filename='js/class-icons.js') }}"></script>
+{% if g.campaign_id %}<script src="{{ url_for('static', filename='js/dice-feed.js') }}"></script>{% endif %}
 {% block extra_scripts %}{% endblock %}
 </body>
 </html>

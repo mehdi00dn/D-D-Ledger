@@ -884,3 +884,64 @@ def test_new_character_can_start_from_a_monster_in_the_manual(pw):
         ctx.close()
     finally:
         srv.stop(); api.shutdown()
+
+
+def test_shared_rolls_show_as_a_toast_on_every_page_and_click_to_roll_works(pw, shared_server):
+    base = shared_server.url
+    dm, pl = Api(base), Api(base); cid = dm.campaign('Dice table')
+    dm.add_member(cid, pl)
+    hero = dm.character(cid, 'Hero', dex_score=16)
+    dctx, pctx = dm.context(pw, base), pl.context(pw, base)
+    dpage, ppage = dctx.new_page(), pctx.new_page()
+    dbad, _ = _collect(dpage); pbad, _ = _collect(ppage)
+    dpage.goto(base + f'/campaigns/{cid}/characters')                 # the DM is on an ordinary page, not the dice page
+    ppage.goto(base + f'/campaigns/{cid}/characters/{hero}')
+    dpage.wait_for_load_state('networkidle'); ppage.wait_for_load_state('networkidle')
+    time.sleep(0.8)                                                  # let both pages learn the newest roll id first
+
+    # click a skill: the roller and the other person both get a toast
+    ppage.locator('.sheet-skill', has_text='Stealth').click()
+    playwright.expect(ppage.locator('.dice-toast').first).to_contain_text('Stealth')
+    playwright.expect(ppage.locator('.dice-toast').first).to_contain_text('Hero')
+    playwright.expect(dpage.locator('.dice-toast').first).to_contain_text('Stealth', timeout=15000)
+    playwright.expect(dpage.locator('.dice-toast').first).to_contain_text(pl.name)
+
+    # shift-click rolls with advantage: two d20 chips, one dropped
+    ppage.locator('.cd-vital', has_text='Init.').click(modifiers=['Shift'])
+    playwright.expect(ppage.locator('.dice-toast').last).to_contain_text('advantage')
+    playwright.expect(ppage.locator('.dice-toast').last.locator('.roll-chip.is-dropped')).to_have_count(1)
+    # the touch-friendly switch does the same without a modifier key
+    ppage.locator('label', has_text='Dis.').click()
+    ppage.locator('.cd-ab-save').first.click()
+    playwright.expect(ppage.locator('.dice-toast').last).to_contain_text('disadvantage')
+    assert not [b for b in dbad + pbad if b[0] >= 400], (dbad, pbad)
+    dctx.close(); pctx.close()
+
+
+def test_dice_page_rolls_on_the_server_and_keeps_a_shared_log(pw, shared_server):
+    base = shared_server.url
+    dm, pl = Api(base), Api(base); cid = dm.campaign('Dice page')
+    dm.add_member(cid, pl)
+    dctx, pctx = dm.context(pw, base), pl.context(pw, base)
+    dpage, ppage = dctx.new_page(), pctx.new_page()
+    dbad, _ = _collect(dpage); pbad, _ = _collect(ppage)
+    dpage.goto(base + f'/campaigns/{cid}/dice'); ppage.goto(base + f'/campaigns/{cid}/dice')
+    dpage.wait_for_load_state('networkidle'); ppage.wait_for_load_state('networkidle')
+    time.sleep(0.8)
+    dpage.fill('#roll-label', 'Sneak attack')
+    dpage.locator('.die-selector[data-die="6"]').click()
+    dpage.locator('.die-selector[data-die="6"]').click()
+    dpage.fill('#modifier', '4')
+    dpage.click('#roll-btn')
+    playwright.expect(dpage.locator('.roll-summary')).to_be_visible()
+    playwright.expect(dpage.locator('#roll-log-list .roll-log-item').first).to_contain_text('Sneak attack')
+    assert dpage.locator('.dice-toast').count() == 0                 # your own roll is on screen already: no toast on this page
+    playwright.expect(ppage.locator('.dice-toast').first).to_contain_text('Sneak attack', timeout=15000)
+    playwright.expect(ppage.locator('#roll-log-list .roll-log-item').first).to_contain_text('Sneak attack')
+    assert dpage.locator('#roll-private').count() == 1 and ppage.locator('#roll-private').count() == 0
+    # advantage is only offered for one lone d20
+    assert dpage.locator('input[value="advantage"]').is_disabled()
+    dpage.click('#clear-tray-btn'); dpage.locator('.die-selector[data-die="20"]').click()
+    assert not dpage.locator('input[value="advantage"]').is_disabled()
+    assert not [b for b in dbad + pbad if b[0] >= 400], (dbad, pbad)
+    dctx.close(); pctx.close()

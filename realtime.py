@@ -65,9 +65,11 @@ def csp_origins():
 
 
 def scope_for(path):
-    """Which pages care: 'battle' (battle pages), 'map' (map pages only) or 'both'."""
+    """Which pages care: 'battle' (battle pages), 'map' (map pages only), 'dice' (the roll feed) or 'both'."""
     if '/api/battle' in path:
         return 'battle'
+    if '/api/dice' in path:
+        return 'dice'
     if '/api/maps/' in path and ('/drawings' in path or '/fog' in path):
         return 'map'
     return 'both'

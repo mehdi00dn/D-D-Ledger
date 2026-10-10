@@ -3327,3 +3327,61 @@ body.page-leaving .content {
 .ref-notes ul { margin: 6px 0 0; padding-left: 20px; }
 .cd-picker .hint-text { margin: 10px 0 0; }
 @media (max-width: 860px) { .ref-body { grid-template-columns: minmax(0, 1fr); } .ref-list-card { position: static; max-height: 320px; } }
+
+/* ---------- Shared dice: toasts, roll log, click-to-roll ---------- */
+.dice-toasts {
+  position: fixed; inset-inline-end: 16px; inset-block-end: 16px; z-index: 900;
+  display: flex; flex-direction: column; gap: 10px; align-items: flex-end;
+  max-width: min(360px, calc(100vw - 32px)); pointer-events: none;
+}
+.dice-toast {
+  position: relative; pointer-events: auto; width: 100%;
+  background: var(--bg-panel-raised); border: 1px solid var(--hairline-strong); border-radius: var(--radius-m);
+  box-shadow: var(--shadow-deep); padding: 10px 34px 10px 14px;
+  animation: dice-toast-in 0.22s ease-out;
+}
+.dice-toast.is-crit { border-color: var(--moss-bright); }
+.dice-toast.is-fumble { border-color: var(--blood-bright); }
+.dice-toast.is-private { border-style: dashed; }
+.dice-toast-head { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: baseline; font-size: 12.5px; color: var(--parchment-dim); }
+.dice-toast-head strong { color: var(--parchment); font-weight: 600; }
+.dice-toast-by { font-size: 11px; color: var(--parchment-faint); }
+.dice-toast-tag { font: 500 9px var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--brass-bright); border: 1px solid var(--hairline-strong); border-radius: 4px; padding: 1px 5px; }
+.dice-toast-body { display: flex; align-items: center; gap: 12px; margin-top: 4px; }
+.dice-toast-total { font-family: var(--font-display); font-size: 34px; font-weight: 700; line-height: 1; color: var(--brass-bright); min-width: 1.4ch; }
+.dice-toast.is-crit .dice-toast-total { color: var(--moss-bright); }
+.dice-toast.is-fumble .dice-toast-total { color: var(--blood-bright); }
+.dice-toast-close { position: absolute; inset-block-start: 4px; inset-inline-end: 6px; background: none; border: 0; color: var(--parchment-dim); font-size: 18px; line-height: 1; cursor: pointer; padding: 4px 6px; }
+.dice-toast-close:hover { color: var(--parchment); }
+@keyframes dice-toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .dice-toast { animation: none; } }
+
+.roll-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.roll-chip { font: 500 11px var(--font-mono); color: var(--parchment); background: var(--bg-panel-inset); border: 1px solid var(--hairline); border-radius: 5px; padding: 2px 6px; }
+.roll-chip.is-dropped { opacity: 0.45; text-decoration: line-through; }
+.roll-chip--mod { color: var(--brass-bright); }
+
+.roll-mode { display: inline-flex; flex-wrap: wrap; gap: 4px 14px; border: 0; padding: 0; margin: 0; font-size: 13px; color: var(--parchment-dim); }
+.roll-mode label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.roll-mode label:has(input:disabled) { opacity: 0.45; cursor: not-allowed; }
+.roll-mode--small { font-size: 12px; }
+.roll-private { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--parchment-dim); }
+.roll-error { color: var(--blood-bright); font-size: 13px; min-height: 1.2em; margin: 8px 0 0; }
+.die-tile-wrap.is-dropped { opacity: 0.4; }
+
+.roll-log { margin-top: 36px; }
+.roll-log-title { font-family: var(--font-display); font-size: 18px; margin: 0 0 10px; }
+.roll-log-title small { font: 400 12px var(--font-body); color: var(--parchment-faint); margin-inline-start: 8px; }
+.roll-log-empty { color: var(--parchment-faint); font-size: 13px; }
+.roll-log-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.roll-log-item { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; background: var(--bg-panel); border: 1px solid var(--hairline); border-radius: var(--radius-s); padding: 8px 12px; }
+.roll-log-item.is-private { border-style: dashed; }
+.roll-log-who { flex: 1 1 160px; font-size: 13px; color: var(--parchment); }
+.roll-log-total { font-family: var(--font-display); font-size: 20px; color: var(--brass-bright); min-width: 2.2ch; text-align: end; }
+
+.roll-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 16px; margin: -4px 0 12px; }
+.roll-bar-hint { font-size: 12px; color: var(--parchment-faint); }
+[data-roll-bonus] { cursor: pointer; }
+[data-roll-bonus]:hover { background: rgba(201, 162, 75, 0.12); }
+[data-roll-bonus]:focus-visible { outline: 2px solid var(--brass-bright); outline-offset: 2px; }
+[data-roll-bonus].is-rolling { opacity: 0.6; }
