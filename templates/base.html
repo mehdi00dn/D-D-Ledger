@@ -45,6 +45,7 @@
         {{ icon('sidebar-collapse') }}
       </button>
     </div>
+    {% if g.campaign_id %}<a href="{{ url_for('campaigns_list') }}" class="campaign-chip-top" title="Switch campaign">{{ icon('scroll') }}<span>{{ g.campaign.name }}</span></a>{% endif %}
 
     <nav class="sidebar-nav">
       {% if g.campaign_id %}

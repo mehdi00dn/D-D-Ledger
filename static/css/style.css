@@ -3325,6 +3325,7 @@ body.page-leaving .content {
 .ref-text { margin: 0 0 12px; line-height: 1.6; color: var(--parchment); white-space: pre-line; }
 .ref-notes { margin: 0 0 14px; line-height: 1.55; font-size: 14px; }
 .ref-notes ul { margin: 6px 0 0; padding-left: 20px; }
+.cd-picker { margin-bottom: 20px; }
 .cd-picker .hint-text { margin: 10px 0 0; }
 @media (max-width: 860px) { .ref-body { grid-template-columns: minmax(0, 1fr); } .ref-list-card { position: static; max-height: 320px; } }
 
@@ -3385,3 +3386,70 @@ body.page-leaving .content {
 [data-roll-bonus]:hover { background: rgba(201, 162, 75, 0.12); }
 [data-roll-bonus]:focus-visible { outline: 2px solid var(--brass-bright); outline-offset: 2px; }
 [data-roll-bonus].is-rolling { opacity: 0.6; }
+
+
+/* ==========================================================================
+   Phones and portrait tablets (DL-122): top bar + bottom tab bar, content that never overflows, touch-sized controls
+   ========================================================================== */
+.campaign-chip-top { display: none; }
+.content { min-width: 0; }
+.battle-toolbar { flex-wrap: wrap; }
+
+@media (max-width: 880px) {
+  .app-shell, :root[data-sidebar="collapsed"] .app-shell { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+  .sidebar, :root[data-sidebar="collapsed"] .sidebar { position: sticky; top: 0; z-index: 60; gap: 10px; padding: 10px 14px; overflow: visible; }
+  .sidebar-brand { padding: 0; flex: 0 0 auto; }
+  .sidebar-toggle-btn { display: none; }
+  .campaign-chip-top {
+    display: inline-flex; align-items: center; gap: 8px; min-width: 0; flex: 0 1 auto;
+    padding: 7px 12px; border: 1px solid var(--hairline); border-radius: var(--radius-s);
+    color: var(--parchment-dim); font-size: 13px; font-weight: 500;
+  }
+  .campaign-chip-top svg { width: 15px; height: 15px; flex-shrink: 0; }
+  .campaign-chip-top span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 28vw; }
+  .sidebar-foot { display: flex; align-items: center; gap: 8px; margin-inline-start: auto; padding: 0; border: 0; flex: 0 0 auto; }
+  .sidebar-foot .user-row { padding: 0; border: 0; background: none; }
+  .sidebar-foot .user-name, .sidebar-foot .foot-line, .sidebar-foot .foot-label { display: none; }
+  .sidebar-foot .foot-actions { gap: 8px; }
+  .sidebar-foot .theme-toggle-btn, .sidebar-foot .foot-bell, .sidebar-foot .btn-icon { width: 40px; height: 40px; }
+
+  /* the tabs become a bar at the bottom of the screen, where a thumb reaches */
+  .sidebar-nav {
+    position: fixed; inset-inline: 0; bottom: 0; z-index: 70; flex-direction: row; justify-content: space-around; gap: 0;
+    padding: 6px 6px calc(6px + env(safe-area-inset-bottom)); background: var(--bg-void-2); border-top: 1px solid var(--hairline-strong);
+  }
+  .sidebar-nav .campaign-switcher { display: none; }
+  .sidebar-nav .nav-form { flex: 1 1 0; min-width: 0; display: flex; }
+  .sidebar-nav .nav-tab, :root[data-sidebar="collapsed"] .sidebar-nav .nav-tab {
+    flex: 1 1 0; min-width: 0; flex-direction: column; justify-content: center; gap: 3px; padding: 7px 2px; font-size: 10.5px; text-align: center;
+    border-radius: var(--radius-s);
+  }
+  .sidebar-nav .nav-tab span, :root[data-sidebar="collapsed"] .sidebar-nav .nav-tab span { max-width: 100%; text-overflow: ellipsis; opacity: 1; }
+  .sidebar-nav .nav-tab svg { width: 20px; height: 20px; }
+  .sidebar-nav .nav-tab.active::before, :root[data-sidebar="collapsed"] .sidebar-nav .nav-tab.active::before { left: 25%; right: 25%; top: -7px; bottom: auto; width: auto; height: 3px; border-radius: 0 0 3px 3px; }
+  .content { padding-bottom: calc(92px + env(safe-area-inset-bottom)); }
+  .dice-toasts { inset-block-end: calc(84px + env(safe-area-inset-bottom)); }
+}
+
+@media (max-width: 640px) {
+  .content { padding: 18px 14px calc(92px + env(safe-area-inset-bottom)); }
+  .page-header { align-items: flex-start; }
+  .battle-toolbar .hint-text { display: none; }
+  .battle-row { gap: 10px; }
+  .battle-name-block { flex-basis: calc(100% - 70px); }
+  .battle-remove { margin-inline-start: auto; }
+  .map-toolbar { position: static; }
+  .cd-vitals { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cd-vital-val { white-space: nowrap; }
+  .roll-bar { flex-direction: column; align-items: flex-start; }
+  .dice-controls { gap: 12px; }
+}
+
+/* fingers need bigger targets than a mouse pointer does */
+@media (pointer: coarse) {
+  .btn-icon, .map-tool-btn, .turn-btn { min-width: 40px; min-height: 40px; }
+  .sort-option { padding: 9px 16px; }
+  .stat-chip-input { min-height: 40px; }
+  [data-roll-bonus] { min-height: 36px; }
+  .map-stage-wrap { touch-action: none; }          /* the map handles its own drag, pinch and pan */
+}

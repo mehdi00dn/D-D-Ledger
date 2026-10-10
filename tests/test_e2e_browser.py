@@ -945,3 +945,87 @@ def test_dice_page_rolls_on_the_server_and_keeps_a_shared_log(pw, shared_server)
     assert not dpage.locator('input[value="advantage"]').is_disabled()
     assert not [b for b in dbad + pbad if b[0] >= 400], (dbad, pbad)
     dctx.close(); pctx.close()
+
+
+# ---------------------------------------------------------------- phones and tablets (DL-122)
+
+def _touch_context(browser, api, base, width=390, height=844):
+    ctx = browser.new_context(viewport={'width': width, 'height': height}, has_touch=True, is_mobile=True)
+    ctx.add_cookies([{'name': SESSION_COOKIE, 'value': api.s.cookies.get(SESSION_COOKIE), 'url': base}])
+    return ctx
+
+
+@pytest.mark.parametrize('size', [(390, 844), (820, 1180)])
+def test_phone_and_tablet_pages_fit_the_screen_with_a_bottom_tab_bar(pw, shared_server, size):
+    base = shared_server.url; dm = Api(base); cid = dm.campaign('Pocket')
+    hero = dm.character(cid, 'Hero', dex_score=14); dm.character(cid, 'Ogre', is_npc='on')
+    dm.post(f'/campaigns/{cid}/api/battle/add', json={'character_id': hero})
+    r = dm.post(f'/campaigns/{cid}/maps/new', data={'name': 'Cave', 'blank_width': '800', 'blank_height': '600'})
+    mid = int(re.search(r'/maps/(\d+)', r.headers['Location']).group(1))
+    ctx = _touch_context(pw, dm, base, *size); page = ctx.new_page(); bad, errs = _collect(page)
+    w, h = size
+    paths = ['/campaigns', f'/campaigns/{cid}/characters', f'/campaigns/{cid}/characters/{hero}', f'/campaigns/{cid}/characters/new',
+             f'/campaigns/{cid}/factions', f'/campaigns/{cid}/battle', f'/campaigns/{cid}/maps', f'/campaigns/{cid}/maps/{mid}',
+             f'/campaigns/{cid}/dice', f'/campaigns/{cid}/reference']
+    for path in paths:
+        page.goto(base + path); page.wait_for_load_state('load'); page.wait_for_timeout(400)
+        sideways = page.evaluate('() => document.documentElement.scrollWidth - document.documentElement.clientWidth')
+        assert sideways <= 1, f'{path} scrolls sideways by {sideways}px at {w}px'
+        bar = page.locator('.sidebar-nav').bounding_box()
+        assert bar and abs(bar['y'] + bar['height'] - h) <= 1 and bar['width'] >= w - 2, (path, bar)   # the tab bar sits on the bottom edge
+        assert page.locator('.sidebar').bounding_box()['height'] < 90, path                          # a slim top bar, not a tall block
+    # every tab of the campaign is on screen at once and one tap goes there
+    page.goto(base + f'/campaigns/{cid}/characters')
+    tabs = page.locator('.sidebar-nav .nav-tab')
+    assert tabs.count() >= 6
+    for i in range(tabs.count()):
+        box = tabs.nth(i).bounding_box()
+        assert box and 0 <= box['x'] and box['x'] + box['width'] <= w + 1 and box['height'] >= 40
+    page.locator('.sidebar-nav .nav-tab', has_text='Dice').tap()
+    page.wait_for_url(re.compile(r'/dice$'))
+    page.locator('.die-selector[data-die="20"]').tap(); page.locator('#roll-btn').tap()
+    playwright.expect(page.locator('#roll-log-list .roll-log-item').first).to_be_visible()
+    assert not [b for b in bad if b[0] >= 400 and '/api/reference/' not in b[1]], bad      # (the reference page asks the real 5e API, which a sandbox may block)
+    assert not errs, errs
+    ctx.close()
+
+
+def test_phone_map_touch_drag_moves_a_token_and_pinch_zooms(pw, shared_server):
+    base = shared_server.url; dm = Api(base); cid = dm.campaign('Touch')
+    r = dm.post(f'/campaigns/{cid}/maps/new', data={'name': 'Arena', 'blank_width': '1000', 'blank_height': '700'})
+    mid = int(re.search(r'/maps/(\d+)', r.headers['Location']).group(1))
+    api = f'/campaigns/{cid}/api/maps/{mid}'
+    pin = dm.post(f'{api}/pins', json={'pin_type': 'prop', 'icon_key': 'skull', 'custom_name': 'Trap', 'x': 200, 'y': 200}).json()['id']
+    ctx = _touch_context(pw, dm, base); page = ctx.new_page(); bad, errs = _collect(page)
+    page.goto(base + f'/campaigns/{cid}/maps/{mid}'); page.wait_for_load_state('load'); page.wait_for_timeout(800)
+    if page.locator('#setup-confirm-btn').is_visible():
+        page.locator('#setup-confirm-btn').tap(); page.wait_for_timeout(600)
+    playwright.expect(page.locator('#nav-hint')).to_contain_text('Pinch')                  # touch wording, not Ctrl/Space
+    assert page.locator('#hold-space-hint').is_hidden()
+    cdp = ctx.new_cdp_session(page)
+    def touch(kind, *pts):
+        cdp.send('Input.dispatchTouchEvent', {'type': kind, 'touchPoints': [{'x': x, 'y': y, 'id': i} for i, (x, y) in enumerate(pts)]})
+
+    page.locator(f'.map-pin[data-pin-id="{pin}"]').scroll_into_view_if_needed(); page.wait_for_timeout(300)
+    box = page.locator(f'.map-pin[data-pin-id="{pin}"]').bounding_box()
+    sx, sy = box['x'] + box['width'] / 2, box['y'] + box['height'] / 2
+    touch('touchStart', (sx, sy))
+    for step in range(1, 9):
+        touch('touchMove', (sx + step * 8, sy + step * 5)); page.wait_for_timeout(30)
+    touch('touchEnd'); page.wait_for_timeout(900)
+    x, y = next((p['x'], p['y']) for p in dm.get(f'{api}/pins').json() if p['id'] == pin)
+    assert x > 215 and y > 205, (x, y)                                                     # one finger dragged the token
+
+    before = page.inner_text('#zoom-level-label')
+    stage = page.locator('#map-stage-wrap, .map-stage-wrap').first.bounding_box()
+    cx, cy = stage['x'] + stage['width'] / 2, max(stage['y'], 0) + min(stage['height'], 300) / 2
+    touch('touchStart', (cx - 20, cy), (cx + 20, cy))
+    for step in range(1, 9):
+        touch('touchMove', (cx - 20 - step * 6, cy), (cx + 20 + step * 6, cy)); page.wait_for_timeout(30)
+    touch('touchEnd'); page.wait_for_timeout(300)
+    after = page.inner_text('#zoom-level-label')
+    assert before == '100%' and int(after.rstrip('%')) > 150, (before, after)               # two fingers spread: zoomed in
+    assert len(dm.get(f'{api}/pins').json()) == 1 and not dm.get(f'{api}/drawings').json()  # the pinch drew nothing and moved nothing else
+    assert not [b for b in bad if b[0] >= 500], bad
+    assert not errs, errs
+    ctx.close()

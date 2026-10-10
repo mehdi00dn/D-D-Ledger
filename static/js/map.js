@@ -2577,6 +2577,86 @@
   });
 
   // ---------------------------------------------------------------------
+  // Touch.  The whole editor speaks mouse events, so one finger is turned into them: a tap already produces
+  // mouse events by itself, and once a finger has really moved (more than a few pixels) it acts as a mouse
+  // drag from where it first touched (draw, move a token).  Two fingers pinch-zoom and pan.
+  // ---------------------------------------------------------------------
+  const TOUCH_SLOP = 8;
+  let touchMode = null;                  // null | 'maybe' | 'mouse' | 'pinch'
+  let touchStart = null, pinch = null;
+
+  function fireMouse(type, x, y, target) {
+    const ev = new MouseEvent(type, { bubbles: true, cancelable: true, view: window, clientX: x, clientY: y, button: 0, buttons: type === 'mouseup' ? 0 : 1 });
+    (target || document.body).dispatchEvent(ev);
+  }
+  function touchTarget(x, y, fallback) { return document.elementFromPoint(x, y) || fallback; }
+  function endMouseDrag(x, y) {
+    fireMouse('mouseup', x, y, touchTarget(x, y, touchStart && touchStart.target));
+  }
+  function pinchMetrics(ts) {
+    const a = ts[0], b = ts[1];
+    return { dist: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY) || 1, x: (a.clientX + b.clientX) / 2, y: (a.clientY + b.clientY) / 2 };
+  }
+
+  stageWrap.addEventListener('touchstart', (e) => {
+    if (e.touches.length >= 2) {
+      if (touchMode === 'mouse' && touchStart) endMouseDrag(touchStart.lastX, touchStart.lastY);   // a second finger ends the drag
+      touchMode = 'pinch';
+      pinch = pinchMetrics(e.touches);
+      dismissNavHintForGood();
+      return;
+    }
+    const t = e.touches[0];
+    touchMode = 'maybe';
+    touchStart = { x: t.clientX, y: t.clientY, lastX: t.clientX, lastY: t.clientY, target: e.target };
+  }, { passive: true });
+
+  window.addEventListener('touchmove', (e) => {
+    if (!touchMode) return;
+    if (touchMode === 'pinch' && e.touches.length >= 2) {
+      e.preventDefault();
+      const m = pinchMetrics(e.touches);
+      const rect = stageWrap.getBoundingClientRect();
+      const newZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, zoomLevel * (m.dist / pinch.dist)));
+      const factor = newZoom / zoomLevel;
+      const vx = pinch.x - rect.left, vy = pinch.y - rect.top;
+      panX = vx - (vx - panX) * factor + (m.x - pinch.x);        // zoom about the fingers, and follow them
+      panY = vy - (vy - panY) * factor + (m.y - pinch.y);
+      zoomLevel = newZoom;
+      pinch = m;
+      applyZoomTransform();
+      return;
+    }
+    if (e.touches.length !== 1 || !touchStart) return;
+    const t = e.touches[0];
+    if (touchMode === 'maybe') {
+      if (Math.hypot(t.clientX - touchStart.x, t.clientY - touchStart.y) < TOUCH_SLOP) return;
+      touchMode = 'mouse';
+      fireMouse('mousedown', touchStart.x, touchStart.y, touchStart.target);
+    }
+    if (touchMode === 'mouse') {
+      e.preventDefault();
+      touchStart.lastX = t.clientX; touchStart.lastY = t.clientY;
+      fireMouse('mousemove', t.clientX, t.clientY, touchTarget(t.clientX, t.clientY, touchStart.target));
+    }
+  }, { passive: false });
+
+  function touchFinished(e) {
+    if (!touchMode) return;
+    if (touchMode === 'mouse' && touchStart) { e.preventDefault(); endMouseDrag(touchStart.lastX, touchStart.lastY); }
+    if (e.touches.length === 0) { touchMode = null; touchStart = null; pinch = null; }
+    else if (touchMode === 'pinch' && e.touches.length === 1) { touchMode = null; touchStart = null; pinch = null; }   // lifted one of two fingers: stop, do not draw
+  }
+  window.addEventListener('touchend', touchFinished, { passive: false });
+  window.addEventListener('touchcancel', touchFinished, { passive: false });
+
+  // On a touch screen the keyboard hints make no sense: say what works instead.
+  if (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) {
+    if (navHintEl) navHintEl.innerHTML = '<strong>Pinch</strong> to zoom &middot; <strong>two fingers</strong> to pan';
+    if (holdSpaceHintEl) holdSpaceHintEl.hidden = true;
+  }
+
+  // ---------------------------------------------------------------------
   // Sticky toolbar: detaches with a shadow once it hits the top of the
   // viewport on scroll, and returns to its normal in-flow look once
   // scrolled back up. Positioning is handled by CSS (position: sticky);

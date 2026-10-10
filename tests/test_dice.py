@@ -139,3 +139,20 @@ def test_realtime_scope_for_dice():
     import realtime
     assert realtime.scope_for('/campaigns/3/api/dice/roll') == 'dice'
     assert realtime.scope_for('/campaigns/3/api/battle/1/damage') == 'battle'
+
+
+def test_a_database_without_the_dice_table_says_what_to_do(table):
+    """A deployment that has not run migration 0018 must not show a mystery error on every page."""
+    import database
+    dm, pl, cid = table
+    def rename(a, b):
+        db = database.get_db(); db.execute(f'ALTER TABLE {a} RENAME TO {b}'); db.commit(); db.close()
+    rename('dice_rolls', 'dice_rolls_off')
+    try:
+        r = roll(pl, cid, dice={'20': 1})
+        assert r.status_code == 503 and 'migrations' in r.get_json()['error']
+        got = pl.get(f'/campaigns/{cid}/api/dice/rolls?after=0')
+        assert got.status_code == 200 and got.get_json()['rolls'] == [] and got.get_json()['unavailable'] is True
+    finally:
+        rename('dice_rolls_off', 'dice_rolls')
+    assert roll(pl, cid, dice={'20': 1}).status_code == 200

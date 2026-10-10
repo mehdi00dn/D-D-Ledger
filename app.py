@@ -2619,6 +2619,7 @@ def dice_view():
 DICE_SIDES = (4, 6, 8, 10, 12, 20, 100)
 DICE_MAX_PER_ROLL = 40
 DICE_FEED_LIMIT = 30
+DICE_NEEDS_MIGRATION = 'The dice log is not set up in this database yet. Run the database migrations (python migrate.py) and try again.'
 
 
 def _dice_error(message, status=400):
@@ -2715,11 +2716,16 @@ def dice_roll():
         drop = min(rolled, key=lambda d: d['value']) if mode == 'advantage' else max(rolled, key=lambda d: d['value'])
         drop['dropped'] = True
     total = sum(d['value'] for d in rolled if not d['dropped']) + modifier
-    db.execute('INSERT INTO dice_rolls (campaign_id, user_id, character_id, label, dice, modifier, total, mode, private) '
-               'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-               (g.campaign_id, session['user_id'], character_id, label, json.dumps(rolled), modifier, total, mode,
-                1 if private else 0))
-    db.commit()
+    try:
+        db.execute('INSERT INTO dice_rolls (campaign_id, user_id, character_id, label, dice, modifier, total, mode, private) '
+                   'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                   (g.campaign_id, session['user_id'], character_id, label, json.dumps(rolled), modifier, total, mode,
+                    1 if private else 0))
+        db.commit()
+    except pgerr.UndefinedTable:
+        db.rollback()
+        db.close()
+        return _dice_error(DICE_NEEDS_MIGRATION, 503)
     latest = db.execute('SELECT MAX(id) AS m FROM dice_rolls WHERE campaign_id = ? AND user_id = ?',
                         (g.campaign_id, session['user_id'])).fetchone()['m']
     rolls = _dice_feed(db, after=latest - 1, limit=1)
@@ -2733,19 +2739,22 @@ def dice_rolls():
     """The roll feed.  ?after=<id> returns rolls newer than that id; ?init=1 returns nothing but the newest id
     (so a page that has just opened does not replay old rolls as toasts); with neither, the most recent rolls."""
     db = get_db()
-    if request.args.get('init'):
-        latest = db.execute('SELECT MAX(id) AS m FROM dice_rolls WHERE campaign_id = ?', (g.campaign_id,)).fetchone()['m'] or 0
-        db.close()
-        return jsonify({'rolls': [], 'latest': latest})
     try:
-        after = int(request.args.get('after') or 0)
-    except ValueError:
+        if request.args.get('init'):
+            latest = db.execute('SELECT MAX(id) AS m FROM dice_rolls WHERE campaign_id = ?', (g.campaign_id,)).fetchone()['m'] or 0
+            return jsonify({'rolls': [], 'latest': latest})
+        try:
+            after = int(request.args.get('after') or 0)
+        except ValueError:
+            return _dice_error('bad request')
+        rolls = _dice_feed(db, after=after or None)
+        latest = db.execute('SELECT MAX(id) AS m FROM dice_rolls WHERE campaign_id = ?', (g.campaign_id,)).fetchone()['m'] or 0
+        return jsonify({'rolls': rolls, 'latest': latest})
+    except pgerr.UndefinedTable:
+        db.rollback()
+        return jsonify({'rolls': [], 'latest': 0, 'unavailable': True})      # not migrated yet: an empty feed, not an error on every page
+    finally:
         db.close()
-        return _dice_error('bad request')
-    rolls = _dice_feed(db, after=after or None)
-    latest = db.execute('SELECT MAX(id) AS m FROM dice_rolls WHERE campaign_id = ?', (g.campaign_id,)).fetchone()['m'] or 0
-    db.close()
-    return jsonify({'rolls': rolls, 'latest': latest})
 
 
 # ---------------- RULES REFERENCE (spells, monsters, items: the public 5e API, 2024 rules) ----------------
