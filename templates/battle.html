@@ -4,16 +4,16 @@
 {% block title %}Battle — Campaign Ledger{% endblock %}
 
 {% block content %}
-<div class="page-header">
+<div class="page-header battle-header">
   <div>
     <h1 class="page-title">Battle</h1>
     <p class="page-sub">Track initiative, HP, and casualties for the current encounter.</p>
   </div>
   {% if g.is_dm %}
-  <div style="display:flex; gap:10px; flex-wrap:wrap;">
-    <a href="{{ url_for('character_new', **{'from': 'battle'}) }}" class="btn btn-ghost">{{ icon('plus') }} Create Character</a>
-    <button type="button" class="btn btn-ghost" id="open-add-modal">{{ icon('user') }} Add Character</button>
-    <button type="button" class="btn btn-danger" id="clear-battle-btn">{{ icon('trash-2') }} Clear Battle</button>
+  <div class="page-actions battle-actions">
+    <a href="{{ url_for('character_new', **{'from': 'battle'}) }}" class="btn btn-ghost">{{ icon('plus') }} <span>Create Character</span></a>
+    <button type="button" class="btn btn-ghost" id="open-add-modal">{{ icon('user') }} <span>Add Character</span></button>
+    <button type="button" class="btn btn-danger" id="clear-battle-btn">{{ icon('trash-2') }} <span>Clear Battle</span></button>
   </div>
   {% endif %}
 </div>

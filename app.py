@@ -2059,6 +2059,7 @@ def api_character_detail(char_id):
     data['sheets'] = [dict(s) for s in sheets]
     data['notes_html'] = notes_to_html(character['notes'], show_hidden=can_see_hidden)
     data['sheet_html'] = _character_sheet_html(character)
+    data['sheet'] = dnd5e.derive(character)       # the same numbers as sheet_html, as data, for the click-to-roll popup
     return jsonify(data)
 
 
@@ -2618,7 +2619,8 @@ def dice_view():
 
 DICE_SIDES = (4, 6, 8, 10, 12, 20, 100)
 DICE_MAX_PER_ROLL = 40
-DICE_FEED_LIMIT = 30
+DICE_KEEP = 20                  # rolls kept per campaign: older ones are deleted as new ones arrive, so the table stays tiny
+DICE_FEED_LIMIT = DICE_KEEP
 DICE_NEEDS_MIGRATION = 'The dice log is not set up in this database yet. Run the database migrations (python migrate.py) and try again.'
 
 
@@ -2721,6 +2723,9 @@ def dice_roll():
                    'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
                    (g.campaign_id, session['user_id'], character_id, label, json.dumps(rolled), modifier, total, mode,
                     1 if private else 0))
+        db.execute('DELETE FROM dice_rolls WHERE campaign_id = ? AND id NOT IN '
+                   '(SELECT id FROM dice_rolls WHERE campaign_id = ? ORDER BY id DESC LIMIT ?)',
+                   (g.campaign_id, g.campaign_id, DICE_KEEP))
         db.commit()
     except pgerr.UndefinedTable:
         db.rollback()

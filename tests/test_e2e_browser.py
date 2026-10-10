@@ -503,10 +503,11 @@ def test_hostile_names_never_execute_in_battle_or_map_screens(pw, shared_server)
     page.on('dialog', lambda d: (dialogs.append(d.message), d.dismiss()))
     page.goto(base + f'/campaigns/{cid}/battle'); page.wait_for_selector('.battle-row')
     page.hover('.cond-add'); page.wait_for_timeout(300)                      # would fire the injected onmouseover
-    page.click('[data-action="view"]'); page.wait_for_selector('.dossier-name')
+    page.click('[data-action="view"]'); page.wait_for_selector('.peek-chips')
     page.wait_for_timeout(500)
-    assert 'onerror' in page.inner_text('.dossier-meta')                      # the faction name is shown as literal text
-    assert page.locator('.dossier-meta img').count() == 0
+    assert 'onerror' in page.inner_text('.peek-chips')                        # the faction name is shown as literal text
+    assert page.locator('.peek-chips img').count() == 0 and page.locator('#detail-modal-title img').count() == 0
+    assert cname in page.inner_text('#detail-modal-title')
     assert dialogs == [], dialogs
     ctx.close()
 
@@ -868,6 +869,7 @@ def test_new_character_can_start_from_a_monster_in_the_manual(pw):
         assert page.input_value('#max_hp') == '10' and page.input_value('#armor_class') == '15' and page.input_value('#dex_score') == '15'
         assert page.is_checked('[data-save="dex"]') and page.is_checked('input[name="skill_stealth"][value="2"]')
         assert page.is_checked('input[name="is_npc"]')
+        assert page.locator('#note-blocks [data-note-hidden]:checked').count() == page.locator('#note-blocks [data-note-hidden]').count() >= 1   # the stat block starts hidden from Players
         assert 'Small humanoid' in page.inner_text('#note-blocks') and 'Nimble Escape' in page.inner_text('#note-blocks')
         with page.expect_navigation():
             page.click('.cf-bar button[type=submit]')
@@ -1027,5 +1029,144 @@ def test_phone_map_touch_drag_moves_a_token_and_pinch_zooms(pw, shared_server):
     assert before == '100%' and int(after.rstrip('%')) > 150, (before, after)               # two fingers spread: zoomed in
     assert len(dm.get(f'{api}/pins').json()) == 1 and not dm.get(f'{api}/drawings').json()  # the pinch drew nothing and moved nothing else
     assert not [b for b in bad if b[0] >= 500], bad
+    assert not errs, errs
+    ctx.close()
+
+
+# ---------------------------------------------------------------- character popup, phone layouts, sideways phone
+
+def _map_with_pin(dm, cid, character_id):
+    r = dm.post(f'/campaigns/{cid}/maps/new', data={'name': 'Cave', 'blank_width': '1000', 'blank_height': '700'})
+    mid = int(re.search(r'/maps/(\d+)', r.headers['Location']).group(1))
+    dm.post(f'/campaigns/{cid}/api/maps/{mid}/pins', json={'pin_type': 'character', 'character_id': character_id, 'x': 300, 'y': 300})
+    return mid
+
+
+def _confirm_grid(page):
+    if page.locator('#setup-confirm-btn').is_visible():
+        page.locator('#setup-confirm-btn').click(); page.wait_for_timeout(500)
+
+
+def test_character_popup_is_small_and_every_bonus_rolls_from_battle_and_map(pw, shared_server):
+    base = shared_server.url; dm, pl = Api(base), Api(base); cid = dm.campaign('Popup'); dm.add_member(cid, pl)
+    hero = dm.character(cid, 'Hero', dex_score=16, skill_stealth=2, save_dex='on')
+    dm.post(f'/campaigns/{cid}/api/battle/add', json={'character_id': hero})
+    mid = _map_with_pin(dm, cid, hero)
+    ctx = dm.context(pw, base); page = ctx.new_page(); bad, errs = _collect(page)
+    page.goto(base + f'/campaigns/{cid}/battle'); page.wait_for_load_state('load'); page.wait_for_timeout(600)
+    page.locator('.battle-row [data-action="view"]').first.click()
+    panel = page.locator('.peek-panel'); playwright.expect(panel).to_be_visible()
+    box = panel.bounding_box(); assert box['width'] <= 600 and box['height'] <= 900 - 30, box          # a light box, not a page
+    assert page.locator('.peek-ab').count() == 6 and page.locator('.peek-ab-save').count() == 6
+    page.locator('.peek-trained .sheet-skill', has_text='Stealth').click()                              # trained skills are one tap away
+    playwright.expect(page.locator('.dice-toast').first).to_contain_text('Stealth')
+    playwright.expect(page.locator('.dice-toast').first).to_contain_text('Hero')
+    page.locator('.peek-vital', has_text='Init.').click(modifiers=['Shift'])                            # shift = advantage, as on the full page
+    playwright.expect(page.locator('.dice-toast').last).to_contain_text('advantage')
+    page.locator('.peek-panel label', has_text='Dis.').click()
+    page.locator('.peek-ab-save', has_text='Save').nth(1).click()
+    playwright.expect(page.locator('.dice-toast').last).to_contain_text('disadvantage')
+    page.locator('.peek-panel summary', has_text='All skills').click()
+    assert page.locator('.peek-skills .sheet-skill').count() == 18
+    page.keyboard.press('Escape'); playwright.expect(panel).to_be_hidden()
+    # the same card from a map pin
+    page.goto(base + f'/campaigns/{cid}/maps/{mid}'); page.wait_for_load_state('load'); page.wait_for_timeout(700); _confirm_grid(page)
+    page.locator('.map-pin').first.click(); page.locator('#pin-view-btn').click()
+    playwright.expect(page.locator('.peek-panel')).to_be_visible()
+    page.locator('.peek-ab-mod').nth(1).click()
+    playwright.expect(page.locator('.dice-toast').last).to_contain_text('Dexterity check')
+    assert not [b for b in bad if b[0] >= 400], bad
+    assert not errs, errs
+    ctx.close()
+
+
+def test_phone_characters_battle_and_map_pages_are_compact(pw, shared_server):
+    base = shared_server.url; dm = Api(base); cid = dm.campaign('Compact')
+    ids = [dm.character(cid, n, is_npc=npc) for n, npc in (('Hero', ''), ('Ogre', 'on'), ('Goblin', 'on'))]
+    for i in ids: dm.post(f'/campaigns/{cid}/api/battle/add', json={'character_id': i})
+    mid = _map_with_pin(dm, cid, ids[0])
+    ctx = _touch_context(pw, dm, base, 390, 844); page = ctx.new_page(); bad, errs = _collect(page)
+    # characters: one row of small buttons, a search that is a button until tapped
+    page.goto(base + f'/campaigns/{cid}/characters'); page.wait_for_load_state('load')
+    ys = {round(page.locator(s).first.bounding_box()['y']) for s in ('.page-actions a[href*="export"]', '.page-actions .import-label', '.page-actions .btn-primary')}
+    assert max(ys) - min(ys) <= 3, ys                                                                  # all three on one row
+    assert page.locator('#character-search').is_hidden() and page.locator('.search-bar').bounding_box()['width'] <= 44
+    assert page.locator('.dossier-card').first.bounding_box()['y'] < 330, page.locator('.dossier-card').first.bounding_box()
+    page.locator('[data-search-open]').tap(); playwright.expect(page.locator('#character-search')).to_be_visible()
+    assert page.locator('#group-filter').is_hidden() or page.locator('.segmented-switch').is_hidden()
+    page.fill('#character-search', 'gob'); page.locator('h1').tap()                                    # typed text keeps it open
+    assert page.locator('#character-search').is_visible()
+    # battle: a row is short and nothing runs off the right edge
+    page.goto(base + f'/campaigns/{cid}/battle'); page.wait_for_load_state('load'); page.wait_for_timeout(500)
+    rows = page.locator('.battle-row')
+    for i in range(rows.count()):
+        b = rows.nth(i).bounding_box(); assert b['height'] < 185 and b['x'] + b['width'] <= 391, b
+    assert page.evaluate("() => [...document.querySelectorAll('.battle-row *')].filter(e => e.getBoundingClientRect().right > 391).length") == 0
+    tops = [page.locator('.battle-actions .btn').nth(i).bounding_box()['y'] for i in range(3)]; assert max(tops) - min(tops) <= 3
+    # map: the toolbar is a Tools menu that folds away after picking a tool
+    page.goto(base + f'/campaigns/{cid}/maps/{mid}'); page.wait_for_load_state('load'); page.wait_for_timeout(600)
+    if page.locator('#setup-confirm-btn').is_visible(): page.locator('#setup-confirm-btn').tap(); page.wait_for_timeout(400)
+    assert page.locator('#map-toolbar').bounding_box()['height'] < 70
+    assert page.locator('[data-tool="rect"]').is_hidden() and page.locator('#clear-drawings-btn').is_hidden()
+    page.locator('#map-toolbar-toggle').tap(); playwright.expect(page.locator('[data-tool="eraser"]')).to_be_visible()
+    assert page.locator('#clear-drawings-btn').is_visible() and page.locator('#grid-settings-btn').is_visible()
+    page.locator('[data-tool="eraser"]').tap(); page.wait_for_timeout(400)
+    assert page.locator('[data-tool="eraser"]').is_hidden() and page.locator('#map-toolbar').bounding_box()['height'] < 70
+    assert page.locator('#map-toolbar-toggle-icon svg, #map-toolbar-toggle-icon img').count() == 1     # the button shows the tool in use
+    assert not [b for b in bad if b[0] >= 400], bad
+    assert not errs, errs
+    ctx.close()
+
+
+def test_phone_reference_results_close_when_the_search_is_not_in_use(pw, shared_server):
+    import threading
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+    import test_reference as ref
+    class H(BaseHTTPRequestHandler):
+        def do_GET(self):
+            path = self.path.split('?')[0].replace('/api/2024', '', 1)
+            body = ref.LISTS.get(path) or ref.DETAILS.get(path)
+            self.send_response(200 if body else 404); self.send_header('Content-Type', 'application/json'); self.end_headers()
+            self.wfile.write(json.dumps(body or {}).encode())
+        def log_message(self, *a): pass
+    api = HTTPServer(('127.0.0.1', 0), H); threading.Thread(target=api.serve_forever, daemon=True).start()
+    from conftest import Server
+    srv = Server({'SRD_API_BASE': f'http://127.0.0.1:{api.server_port}'})
+    try:
+        dm = Api(srv.url); cid = dm.campaign('Ref')
+        ctx = _touch_context(pw, dm, srv.url, 390, 844); page = ctx.new_page()
+        page.goto(srv.url + f'/campaigns/{cid}/reference'); page.wait_for_load_state('load'); page.wait_for_timeout(500)
+        assert page.locator('[data-ref-list]').is_hidden()                                              # closed until the search is used
+        page.locator('[data-ref-query]').tap(); page.wait_for_selector('.ref-item'); assert page.locator('[data-ref-list]').is_visible()
+        page.locator('h1').tap(); page.wait_for_timeout(500)                                           # tap away: closed again
+        assert page.locator('[data-ref-list]').is_hidden()
+        page.locator('[data-ref-query]').tap(); page.locator('.ref-item', has_text='Fireball').tap()                  # picking an entry closes it and shows the entry
+        playwright.expect(page.locator('.ref-title')).to_be_visible(); assert page.locator('[data-ref-list]').is_hidden()
+        ctx.close()
+    finally:
+        srv.stop(); api.shutdown()
+
+
+def test_sideways_phone_bars_hide_on_scroll_and_the_dock_brings_them_back(pw, shared_server):
+    base = shared_server.url; dm = Api(base); cid = dm.campaign('Sideways')
+    for i in range(8): dm.character(cid, f'Person {i}')
+    ctx = _touch_context(pw, dm, base, 844, 390); page = ctx.new_page(); bad, errs = _collect(page)
+    page.goto(base + f'/campaigns/{cid}/characters'); page.wait_for_load_state('load'); page.wait_for_timeout(500)
+    def nav_on_screen(): return page.locator('.sidebar-nav').bounding_box()['y'] < 390 - 5
+    assert nav_on_screen() and page.locator('#mobile-dock').is_visible()
+    assert page.locator('.sidebar-nav').bounding_box()['height'] <= 60 and page.locator('.sidebar').bounding_box()['height'] <= 50   # slim bars, not a third of the screen
+    page.evaluate('() => window.scrollTo(0, 500)'); page.wait_for_timeout(500)
+    assert not nav_on_screen()                                                                          # scrolling down: out of the way
+    page.evaluate('() => window.scrollTo(0, 380)'); page.wait_for_timeout(500)
+    assert nav_on_screen()                                                                              # scrolling up: back
+    page.locator('.js-nav-toggle').tap(); page.wait_for_timeout(450); assert not nav_on_screen()        # by hand
+    page.locator('.js-nav-toggle').tap(); page.wait_for_timeout(450); assert nav_on_screen()
+    page.goto(base + f'/campaigns/{cid}/characters'); page.wait_for_load_state('load')                 # content is never hidden behind the bar
+    page.evaluate('() => window.scrollTo(0, document.body.scrollHeight)'); page.wait_for_timeout(400)
+    page.locator('.js-nav-toggle').tap(); page.wait_for_timeout(450)
+    page.evaluate('() => window.scrollTo(0, document.body.scrollHeight)'); page.wait_for_timeout(300)
+    last = page.locator('.dossier-card').last.bounding_box(); assert last['y'] + last['height'] <= 390 + 1
+    assert page.evaluate('() => document.documentElement.scrollWidth - document.documentElement.clientWidth') <= 1
+    assert not [b for b in bad if b[0] >= 400], bad
     assert not errs, errs
     ctx.close()

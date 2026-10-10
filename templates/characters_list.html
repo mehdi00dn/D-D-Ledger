@@ -9,7 +9,7 @@
     <h1 class="page-title">Characters</h1>
     <p class="page-sub">{{ characters|length }} recorded {{ 'entry' if characters|length == 1 else 'entries' }} in the ledger.</p>
   </div>
-  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+  <div class="page-actions">
     <a href="{{ url_for('export_data') }}" class="btn btn-ghost">{{ icon('upload') }} Export</a>
     <form method="POST" action="{{ url_for('import_data') }}" enctype="multipart/form-data" class="import-form">{{ csrf_field() }}
       <label class="btn btn-ghost import-label">
@@ -29,8 +29,9 @@
 <div class="banner-notice banner-error">That file couldn't be read as a Campaign Ledger export. Make sure you're uploading a .zip created by the Export button.</div>
 {% endif %}
 
-<div class="search-bar">
-  {{ icon('search') }}
+<div class="char-tools">
+<div class="search-bar" data-collapsible-search>
+  <button type="button" class="search-bar-icon" data-search-open aria-label="Search characters">{{ icon('search') }}</button>
   <input type="text" id="character-search" placeholder="Search characters…" autocomplete="off">
 </div>
 
@@ -50,6 +51,7 @@
   {% endif %}
 </div>
 {% endif %}
+</div>
 
 {% if characters %}
 <div class="card-grid" id="character-grid">

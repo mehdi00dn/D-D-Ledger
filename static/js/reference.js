@@ -86,9 +86,23 @@
     const tabs = page.querySelectorAll('.ref-tab');
     const input = page.querySelector('[data-ref-query]');
     let kind = 'spells';
+    // On a phone the result list only shows while the search box is in use: it would otherwise push the entry far down the page.
+    const card = page.querySelector('.ref-list-card');
+    const phone = window.matchMedia('(max-width: 860px)');
+    let pressing = false, closeTimer = null;
+    function closeList() { card.classList.remove('is-open'); }
+    card.addEventListener('focusin', () => { clearTimeout(closeTimer); card.classList.add('is-open'); });
+    card.addEventListener('focusout', () => {
+      clearTimeout(closeTimer);
+      closeTimer = setTimeout(() => { if (!pressing && !card.contains(document.activeElement)) closeList(); }, 200);
+    });
+    card.addEventListener('pointerdown', () => { pressing = true; });
+    document.addEventListener('pointerup', () => { setTimeout(() => { pressing = false; }, 0); });
+    document.addEventListener('pointerdown', (e) => { if (!card.contains(e.target)) { input.blur(); closeList(); } });
     const search = bindSearch({
       base: page.dataset.base, kind, input, list: page.querySelector('[data-ref-list]'),
       onPick: async (row, btn) => {
+        if (phone.matches) { input.blur(); closeList(); detail.scrollIntoView({ block: 'start', behavior: 'smooth' }); }
         page.querySelectorAll('.ref-item.is-active').forEach((n) => n.classList.remove('is-active'));
         btn.classList.add('is-active');
         detail.replaceChildren(el('p', 'hint-text', 'Loading…'));
@@ -139,6 +153,9 @@
       const boxes = blocks.querySelectorAll('[data-note-block]');
       boxes.forEach((b, i) => {
         b.querySelector('.note-editor').innerHTML = notes[i] || '';
+        // A monster's stat block is the DM's reference: hidden from Players until the DM unticks it.
+        const hide = b.querySelector('[data-note-hidden]');
+        if (hide) hide.checked = i < notes.length;
         if (i >= notes.length && boxes.length > 1) b.remove();
       });
       status.textContent = `Filled in from ${name}. Adjust anything before saving.`;

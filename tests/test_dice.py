@@ -132,7 +132,7 @@ def test_dice_page_and_details_page_offer_rolling(table):
     assert 'js/character-rolls.js' in html and 'js/dice-feed.js' in html
     ogre = dm.new_character(cid, name='Ogre', is_npc='on')
     hidden = pl.get(f'/campaigns/{cid}/characters/{ogre}').get_data(as_text=True)
-    assert 'data-roll-bonus' not in hidden and 'character-rolls.js' not in hidden   # fogged stats are not rollable
+    assert 'data-roll-bonus' not in hidden and 'data-roll-character' not in hidden   # fogged stats are not rollable
 
 
 def test_realtime_scope_for_dice():
@@ -156,3 +156,26 @@ def test_a_database_without_the_dice_table_says_what_to_do(table):
     finally:
         rename('dice_rolls_off', 'dice_rolls')
     assert roll(pl, cid, dice={'20': 1}).status_code == 200
+
+
+def test_only_the_latest_rolls_are_kept_per_campaign(table):
+    """The roll log is a convenience, not a record: old rolls are deleted as new ones arrive."""
+    import app as app_module
+    dm, pl, cid = table
+    other = dm.new_campaign()
+    roll(dm, other, dice={'6': 1})
+    ids = [roll(pl, cid, dice={'6': 1}).get_json()['id'] for _ in range(app_module.DICE_KEEP + 5)]
+    kept = [r['id'] for r in q('SELECT id FROM dice_rolls WHERE campaign_id = ? ORDER BY id', cid)]
+    assert kept == ids[-app_module.DICE_KEEP:]
+    assert q('SELECT COUNT(*) AS n FROM dice_rolls WHERE campaign_id = ?', other)[0]['n'] == 1   # another table's rolls are untouched
+    assert [r['id'] for r in feed(dm, cid)['rolls']] == kept
+
+
+def test_the_popup_gets_the_derived_sheet_as_data(table):
+    dm, pl, cid = table
+    hero = dm.new_character(cid, name='Hero', dex_score=14, level=5)
+    api = pl.get(f'/campaigns/{cid}/api/characters/{hero}/detail').get_json()
+    assert api['sheet']['initiative'] == 2 and len(api['sheet']['abilities']) == 6 and len(api['sheet']['skills']) == 18
+    ogre = dm.new_character(cid, name='Ogre', is_npc='on')
+    hidden = pl.get(f'/campaigns/{cid}/api/characters/{ogre}/detail').get_json()
+    assert 'sheet' not in hidden and hidden['hidden_stats']

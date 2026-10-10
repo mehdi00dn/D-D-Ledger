@@ -130,6 +130,14 @@
     <path d="m12.5 7.5h-8"/>
   </g>
 </svg>
+{%- elif name == 'maximize' -%} <!-- fullscreen on -->
+<svg class="icon {{ cls }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+{%- elif name == 'minimize' -%} <!-- fullscreen off -->
+<svg class="icon {{ cls }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg>
+{%- elif name == 'chevron-up' -%}
+<svg class="icon {{ cls }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 15l6-6 6 6"/></svg>
+{%- elif name == 'sliders' -%} <!-- tools menu -->
+<svg class="icon {{ cls }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg>
 {%- elif name == 'crown' -%} <!-- campaign members: promote to owner -->
 <svg class="icon {{ cls }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m3 7 4.5 4L12 5l4.5 6L21 7l-1.6 10.5a1 1 0 0 1-1 .85H5.6a1 1 0 0 1-1-.85z"/><path d="M7 21h10"/></svg>
 {%- else -%}

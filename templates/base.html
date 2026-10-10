@@ -103,6 +103,9 @@
       </div>
       {% endif %}
       <div class="foot-actions">
+        <button type="button" class="foot-fs-btn js-fullscreen" title="Full screen" aria-label="Full screen" hidden>
+          <span class="fs-on">{{ icon('maximize') }}</span><span class="fs-off">{{ icon('minimize') }}</span>
+        </button>
         <button type="button" class="theme-toggle-btn" id="theme-toggle" title="Toggle light/dark mode">
           <span class="theme-icon theme-icon-sun">{{ icon('sun') }}</span>
           <span class="theme-icon theme-icon-moon">{{ icon('moon') }}</span>
@@ -133,6 +136,15 @@
     {% endif %}
     {% block content %}{% endblock %}
   </main>
+</div>
+{# Phone held sideways: the menu bars give way to the page.  These two buttons bring the menu back and go full screen. #}
+<div class="mobile-dock" id="mobile-dock">
+  <button type="button" class="dock-btn js-nav-toggle" title="Show or hide the menu" aria-label="Show or hide the menu" aria-expanded="true">
+    <span class="nav-on">{{ icon('chevron-down') }}</span><span class="nav-off">{{ icon('chevron-up') }}</span>
+  </button>
+  <button type="button" class="dock-btn js-fullscreen" title="Full screen" aria-label="Full screen" hidden>
+    <span class="fs-on">{{ icon('maximize') }}</span><span class="fs-off">{{ icon('minimize') }}</span>
+  </button>
 </div>
 
 <div class="lightbox-overlay" id="image-lightbox" hidden>
@@ -199,7 +211,10 @@
 <script src="{{ url_for('static', filename='js/lightbox.js') }}"></script>
 <script src="{{ url_for('static', filename='js/confirm.js') }}"></script>
 <script src="{{ url_for('static', filename='js/class-icons.js') }}"></script>
-{% if g.campaign_id %}<script src="{{ url_for('static', filename='js/dice-feed.js') }}"></script>{% endif %}
+<script src="{{ url_for('static', filename='js/phone-ui.js') }}"></script>
+{% if g.campaign_id %}<script src="{{ url_for('static', filename='js/dice-feed.js') }}"></script>
+<script src="{{ url_for('static', filename='js/character-rolls.js') }}"></script>
+<script src="{{ url_for('static', filename='js/char-peek.js') }}"></script>{% endif %}
 {% block extra_scripts %}{% endblock %}
 </body>
 </html>

@@ -559,54 +559,8 @@
 
   // ---- Detail modal ----
   const detailModal = document.getElementById('detail-modal');
-  const detailTitle = document.getElementById('detail-modal-title');
-  const detailBody = document.getElementById('detail-modal-body');
 
-  async function openDetailModal(characterId) {
-    const res = await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/characters/${characterId}/detail`);
-    const c = await res.json();
-    detailTitle.textContent = c.name;
-    const foggedStats = !!c.hidden_stats;
-    const canDeleteSheets = !!c.can_delete;
-    const sheetsHtml = c.sheets.length
-      ? `<div class="sheet-thumbs">${c.sheets.map((s) => `<div class="sheet-thumb"><img src="/uploads/${escapeHtml(s.image_path)}" data-lightbox-src="/uploads/${escapeHtml(s.image_path)}"${canDeleteSheets ? ` data-delete-url="/campaigns/${window.CAMPAIGN_ID}/characters/${c.id}/sheets/${s.id}/delete"` : ''}></div>`).join('')}</div>`
-      : `<p class="hint-text">No sheet images attached.</p>`;
-    detailBody.innerHTML = `
-      <div class="detail-header">
-        <div class="avatar-frame" style="width:72px;height:72px;">${c.avatar_path ? `<img src="/uploads/${escapeHtml(c.avatar_path)}">` : ICONS.user}</div>
-        <div>
-          <div class="dossier-name">${classIconHtml(c.class_key)}${escapeHtml(c.name)}</div>
-          <div class="dossier-meta">Lvl ${c.level} &middot; ${escapeHtml((c.factions || []).map((f) => f.name).join(', ') || c.group_name || 'No Faction')}</div>
-          <div class="made-by">Made by ${escapeHtml(c.made_by || 'a former member')}</div>
-        </div>
-      </div>
-      ${foggedStats ? `
-      <div class="dossier-stats stats-fogged" style="margin-top:16px;" title="The DM hasn't revealed this creature's stats" aria-label="Stats hidden">
-        ${['STR','DEX','CON','INT','WIS','CHA'].map((l) => `<div class="stat-pill"><span class="val" aria-hidden="true">10</span><span class="lbl">${l}</span></div>`).join('')}
-      </div>
-      <div class="dossier-hp-ac stats-fogged" style="margin-top:12px;" aria-label="HP and AC hidden">
-        <span class="badge-hp" aria-hidden="true">${ICONS.heart} 00 HP</span>
-        <span class="badge-ac" aria-hidden="true">${ICONS.shield} AC 00</span>
-      </div>` : `
-      <div class="dossier-stats" style="margin-top:16px;">
-        <div class="stat-pill"><span class="val">${c.str_score}</span><span class="mod">${(function(s){const m=Math.floor((s-10)/2);return m>=0?'+'+m:String(m);})(c.str_score)}</span><span class="lbl">STR</span></div>
-        <div class="stat-pill"><span class="val">${c.dex_score}</span><span class="mod">${(function(s){const m=Math.floor((s-10)/2);return m>=0?'+'+m:String(m);})(c.dex_score)}</span><span class="lbl">DEX</span></div>
-        <div class="stat-pill"><span class="val">${c.con_score}</span><span class="mod">${(function(s){const m=Math.floor((s-10)/2);return m>=0?'+'+m:String(m);})(c.con_score)}</span><span class="lbl">CON</span></div>
-        <div class="stat-pill"><span class="val">${c.int_score}</span><span class="mod">${(function(s){const m=Math.floor((s-10)/2);return m>=0?'+'+m:String(m);})(c.int_score)}</span><span class="lbl">INT</span></div>
-        <div class="stat-pill"><span class="val">${c.wis_score}</span><span class="mod">${(function(s){const m=Math.floor((s-10)/2);return m>=0?'+'+m:String(m);})(c.wis_score)}</span><span class="lbl">WIS</span></div>
-        <div class="stat-pill"><span class="val">${c.cha_score}</span><span class="mod">${(function(s){const m=Math.floor((s-10)/2);return m>=0?'+'+m:String(m);})(c.cha_score)}</span><span class="lbl">CHA</span></div>
-      </div>
-      <div class="dossier-hp-ac" style="margin-top:12px;">
-        <span class="badge-hp">${ICONS.heart} ${c.max_hp} HP</span>
-        <span class="badge-ac">${ICONS.shield} AC ${c.armor_class}</span>
-      </div>
-      ${c.sheet_html || ''}`}
-      <div class="detail-notes">${c.notes_html || '<em>No notes recorded.</em>'}</div>
-      ${foggedStats ? '' : `<div class="form-section-title" style="margin-top:18px;">Sheets</div>
-      ${sheetsHtml}`}
-    `;
-    detailModal.hidden = false;
-  }
+  function openDetailModal(characterId) { return window.CharPeek.open(characterId); }
 
   document.getElementById('close-detail-modal').addEventListener('click', () => { detailModal.hidden = true; });
   detailModal.addEventListener('click', (e) => { if (e.target === detailModal) detailModal.hidden = true; });

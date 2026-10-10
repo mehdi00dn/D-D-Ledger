@@ -8,7 +8,7 @@
   <div>
     <h1 class="page-title">{{ map.name }}</h1>
   </div>
-  <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+  <div class="map-head-actions">
     {% if g.is_dm %}
     <label class="toggle-switch">
       <input type="checkbox" id="lock-map-checkbox" {{ 'checked' if map.locked_for_players else '' }}>
@@ -23,7 +23,7 @@
       <span class="toggle-switch-label">Link to current battle</span>
     </label>
     {% endif %}
-    <a href="{{ url_for('maps_list', browse=1) }}" class="btn btn-ghost">{{ icon('arrow-left') }} Back to maps</a>
+    <a href="{{ url_for('maps_list', browse=1) }}" class="btn btn-ghost map-back-btn">{{ icon('arrow-left') }} <span>Back to maps</span></a>
   </div>
 </div>
 
@@ -33,7 +33,10 @@
   {% if not g.is_dm %}
   <div class="map-locked-inline" id="map-locked-banner" {{ '' if map.locked_for_players else 'hidden' }}>{{ icon('lock') }} The DM has locked this map — you can look, but not edit.</div>
   {% endif %}
-  <div class="map-tool-group">
+  <button type="button" class="btn btn-ghost btn-sm map-toolbar-toggle" id="map-toolbar-toggle" aria-expanded="false" aria-controls="map-toolbar">
+    <span class="map-toolbar-toggle-icon" id="map-toolbar-toggle-icon" aria-hidden="true"></span> Tools {{ icon('chevron-down') }}
+  </button>
+  <div class="map-tool-group map-tool-group--more">
     <button type="button" class="map-tool-btn active" data-tool="select" title="Select / drag pins (V)">{{ icon('cursor') }}</button>
 
     <div class="tool-flyout" id="shapes-flyout" data-flyout-group="shapes">
@@ -128,11 +131,11 @@
     <input type="range" id="fill-opacity" min="0" max="95" value="25" title="Fill opacity (0 = no fill)">
   </div>
 
-  <div class="map-tool-group">
+  <div class="map-tool-group map-tool-group--more">
     <button type="button" class="btn btn-ghost btn-sm" id="clear-drawings-btn">{{ icon('trash-2') }} Clear Drawings</button>
   </div>
 
-  <div class="map-tool-group">
+  <div class="map-tool-group map-tool-group--more">
     <button type="button" class="btn-icon" id="grid-settings-btn" title="Grid &amp; canvas settings">{{ icon('settings') }}</button>
   </div>
 
