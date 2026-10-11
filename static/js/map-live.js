@@ -63,15 +63,15 @@
       switch (drag.type) {
         case 'move-pin': case 'resize-pin': case 'rotate-pin': {
           var p = host.pins().find(function (x) { return x.id === drag.pin.id; });
-          return p ? { k: 'pins', items: [pinItem(p)] } : null;
+          return p && !p.dm_only ? { k: 'pins', items: [pinItem(p)] } : null;     // DM-only objects are never broadcast
         }
         case 'group-move-shapes': {
           var all = host.drawings(), items = [];
-          drag.ids.forEach(function (id) { var d = all.find(function (x) { return x.id === id; }); if (d) items.push(shapeItem(d)); });
+          drag.ids.forEach(function (id) { var d = all.find(function (x) { return x.id === id; }); if (d && !d.dm_only) items.push(shapeItem(d)); });
           return items.length ? { k: 'shapes', items: items } : null;
         }
         case 'resize-shape': case 'rotate-shape': case 'resize-shape-uniform': case 'resize-angle-radius': case 'adjust-angle-sweep':
-          return drag.d ? { k: 'shapes', items: [shapeItem(drag.d)] } : null;
+          return drag.d && !drag.d.dm_only ? { k: 'shapes', items: [shapeItem(drag.d)] } : null;
         default: return null;
       }
     }
@@ -95,7 +95,7 @@
     // ---- a brand-new shape being drawn
     var penSent = 0, drafting = false;
     function draftMoved(shape, tool, points) {
-      if (!rt || !shape) return;
+      if (!rt || !shape || shape.dm_only) return;         // a hidden shape is not shown to others while it is drawn
       drafting = true;
       throttled('draft', function () {
         if (tool === 'pen' && points) {

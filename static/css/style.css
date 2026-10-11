@@ -3732,3 +3732,17 @@ body.page-leaving .content {
   .pager-info { flex: 1 1 100%; text-align: center; }
   .pager-btn { min-width: 40px; height: 40px; }
 }
+
+/* ---- DM-only (hidden) map objects ----
+   The server never sends these to Players; the DM sees them faint with a dashed edge and a small "hidden" badge. */
+.map-pin.is-dm-only .map-pin-visual { opacity: 0.55; border-style: dashed; }
+.map-pin.is-dm-only .map-pin-label { opacity: 0.7; font-style: italic; }
+.map-pin.is-dm-only::after {
+  content: ''; position: absolute; right: -4px; top: -4px; width: 16px; height: 16px; border-radius: 50%;
+  background: var(--bg-panel) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23c9a24b' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2 12s3.6-7 10-7c2 0 3.7.7 5.1 1.6M22 12s-3.6 7-10 7c-2 0-3.7-.7-5.1-1.6'/%3E%3Cpath d='M9.9 9.9a3 3 0 0 0 4.2 4.2'/%3E%3Cpath d='M3 3l18 18'/%3E%3C/svg%3E") center / 11px no-repeat;
+  border: 1px solid var(--hairline-strong); pointer-events: none; z-index: 2;
+}
+.pin-hide-btn.is-on, .shape-hide-btn.is-on, .new-hidden-toggle.is-on {
+  background: var(--brass); border-color: var(--brass); color: #21170a;
+}
+.new-hidden-toggle { transition: background 0.15s, color 0.15s, border-color 0.15s; }

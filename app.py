@@ -3500,7 +3500,9 @@ def api_map_drawings_list(map_id):
 
 
 def _map_drawings_payload(db, map_id):
-    rows = db.execute('SELECT * FROM map_drawings WHERE map_id = ? ORDER BY sort_order, id', (map_id,)).fetchall()
+    # DM-only drawings never leave the server for a Player (the same redaction pattern as hidden notes).
+    rows = db.execute('SELECT * FROM map_drawings WHERE map_id = ?' + ('' if g.is_dm else ' AND dm_only = 0')
+                      + ' ORDER BY sort_order, id', (map_id,)).fetchall()
     result = []
     for r in rows:
         d = dict(r)
@@ -3525,14 +3527,15 @@ def api_map_drawings_add(map_id):
     h = float(data.get('h', 0))
     rotation = float(data.get('rotation', 0))
     locked = 1 if data.get('locked') else 0
+    dm_only = 1 if (g.is_dm and data.get('dm_only')) else 0        # only the DM can hide an object
     if kind not in ('line', 'rect', 'oval', 'pen', 'angle'):
         return jsonify({'error': 'invalid kind'}), 400
     db = get_db()
     max_order = db.execute('SELECT COALESCE(MAX(sort_order), -1) AS m FROM map_drawings WHERE map_id = ?', (map_id,)).fetchone()['m']
     cur = db.execute(
-        '''INSERT INTO map_drawings (map_id, kind, data, cx, cy, w, h, rotation, color, fill, fill_opacity, sort_order, locked)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-        (map_id, kind, json.dumps(geometry), cx, cy, w, h, rotation, color, fill, fill_opacity, max_order + 1, locked)
+        '''INSERT INTO map_drawings (map_id, kind, data, cx, cy, w, h, rotation, color, fill, fill_opacity, sort_order, locked, dm_only)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+        (map_id, kind, json.dumps(geometry), cx, cy, w, h, rotation, color, fill, fill_opacity, max_order + 1, locked, dm_only)
     )
     db.commit()
     db.close()
@@ -3556,12 +3559,18 @@ def api_map_drawing_update(map_id, drawing_id):
         fields.append('fill = ?'); values.append(1 if data['fill'] else 0)
     if 'locked' in data:
         fields.append('locked = ?'); values.append(1 if data['locked'] else 0)
+    if 'dm_only' in data:
+        if not g.is_dm:
+            db.close()
+            abort(403)
+        fields.append('dm_only = ?'); values.append(1 if data['dm_only'] else 0)
     if 'data' in data:
         fields.append('data = ?'); values.append(json.dumps(data['data']))
     if fields:
         values.append(drawing_id)
         values.append(map_id)
-        db.execute(f'UPDATE map_drawings SET {", ".join(fields)} WHERE id = ? AND map_id = ?', values)
+        # A Player can never touch an object the DM hid, even by guessing its id.
+        db.execute(f'UPDATE map_drawings SET {", ".join(fields)} WHERE id = ? AND map_id = ?' + ('' if g.is_dm else ' AND dm_only = 0'), values)
         db.commit()
     db.close()
     return jsonify({'ok': True})
@@ -3572,7 +3581,7 @@ def api_map_drawing_update(map_id, drawing_id):
 @map_edit_allowed
 def api_map_drawing_delete(map_id, drawing_id):
     db = get_db()
-    db.execute('DELETE FROM map_drawings WHERE id = ? AND map_id = ?', (drawing_id, map_id))
+    db.execute('DELETE FROM map_drawings WHERE id = ? AND map_id = ?' + ('' if g.is_dm else ' AND dm_only = 0'), (drawing_id, map_id))
     db.commit()
     db.close()
     return jsonify({'ok': True})
@@ -3583,7 +3592,7 @@ def api_map_drawing_delete(map_id, drawing_id):
 @map_edit_allowed
 def api_map_drawings_clear(map_id):
     db = get_db()
-    db.execute('DELETE FROM map_drawings WHERE map_id = ?', (map_id,))
+    db.execute('DELETE FROM map_drawings WHERE map_id = ?' + ('' if g.is_dm else ' AND dm_only = 0'), (map_id,))
     db.commit()
     db.close()
     return jsonify({'ok': True})
@@ -3654,7 +3663,8 @@ def _map_pins_payload(db, map_id):
         _reconcile_map_battle(db, map_id)
         db.commit()
 
-    rows = [dict(r) for r in db.execute('SELECT * FROM map_pins WHERE map_id = ? ORDER BY id', (map_id,)).fetchall()]
+    rows = [dict(r) for r in db.execute('SELECT * FROM map_pins WHERE map_id = ?' + ('' if g.is_dm else ' AND dm_only = 0')
+                                        + ' ORDER BY id', (map_id,)).fetchall()]
     # Everything a token shows comes from its character (and, if it has one, its battle row), fetched in two queries.
     char_ids = sorted({r['character_id'] for r in rows if r['pin_type'] == 'character' and r['character_id']})
     chars = {}
@@ -3780,7 +3790,8 @@ def _pin_name(value):
 def _pin_owned_by_me(db, map_id, pin_id):
     """Token ownership: the DM may touch any token; a Player only the ones the DM attached to them (or that they
     placed themselves).  Returns the pin row, or None when there is no such token on this map."""
-    return db.execute('SELECT owner_user_id FROM map_pins WHERE id = ? AND map_id = ?', (pin_id, map_id)).fetchone()
+    return db.execute('SELECT owner_user_id FROM map_pins WHERE id = ? AND map_id = ?' + ('' if g.is_dm else ' AND dm_only = 0'),
+                      (pin_id, map_id)).fetchone()
 
 
 def _may_move_pin(pin_row):
@@ -3817,6 +3828,7 @@ def api_map_pins_add(map_id):
     scale = float(data.get('scale', 1.0))
     rotation = float(data.get('rotation', 0))
     locked = 1 if data.get('locked') else 0
+    dm_only = 1 if (g.is_dm and data.get('dm_only')) else 0        # only the DM can hide a token
     db = get_db()
     participant_id = None
     m = db.execute('SELECT linked_to_battle FROM maps WHERE id = ?', (map_id,)).fetchone()
@@ -3829,10 +3841,10 @@ def api_map_pins_add(map_id):
     elif linked:
         participant_id = _create_familiar_participant(db, icon_key, custom_name)
     cur = db.execute(
-        "INSERT INTO map_pins (map_id, pin_type, icon_key, custom_name, x, y, scale, rotation, locked, participant_id, character_id, owner_user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO map_pins (map_id, pin_type, icon_key, custom_name, x, y, scale, rotation, locked, participant_id, character_id, owner_user_id, dm_only) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         # A marker a Player places is theirs to move; everything the DM places starts out DM-only until assigned.
         (map_id, pin_type, icon_key, custom_name if pin_type == 'prop' else None, x, y, scale, rotation, locked, participant_id, character_id,
-         None if g.is_dm else session['user_id'])
+         None if g.is_dm else session['user_id'], dm_only)
     )
     new_id = cur.lastrowid
     if pin_type == 'character' and linked:
@@ -3884,6 +3896,11 @@ def api_map_pin_update(map_id, pin_id):
         fields.append('rotation = ?'); values.append(float(data['rotation']))
     if 'locked' in data:
         fields.append('locked = ?'); values.append(1 if data['locked'] else 0)
+    if 'dm_only' in data:
+        if not g.is_dm:
+            db.close()
+            abort(403)
+        fields.append('dm_only = ?'); values.append(1 if data['dm_only'] else 0)
     if 'custom_name' in data:
         try:
             new_custom_name = _pin_name(data['custom_name'])
@@ -3925,8 +3942,8 @@ def api_map_pin_update(map_id, pin_id):
 @map_edit_allowed
 def api_map_pin_delete(map_id, pin_id):
     db = get_db()
-    pin = db.execute('SELECT participant_id, pin_type, owner_user_id FROM map_pins WHERE id = ? AND map_id = ?', (pin_id, map_id)).fetchone()
-    if pin and not g.is_dm and not _may_move_pin(pin):
+    pin = db.execute('SELECT participant_id, pin_type, owner_user_id, dm_only FROM map_pins WHERE id = ? AND map_id = ?', (pin_id, map_id)).fetchone()
+    if pin and not g.is_dm and (pin['dm_only'] or not _may_move_pin(pin)):
         db.close()
         abort(403)
     if pin and pin['pin_type'] == 'character':

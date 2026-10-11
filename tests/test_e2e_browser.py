@@ -1335,3 +1335,47 @@ def test_character_list_sorts_pages_twelve_at_a_time_and_remembers_its_state(pw,
     page.fill('#character-search', 'zzz'); page.wait_for_timeout(200)
     assert len(visible()) == 0 and page.locator('#character-no-matches').is_visible()
     assert not bad and not errs, (bad, errs)
+
+
+def test_dm_hides_a_token_and_a_shape_from_players_in_the_browser(pw, shared_server):
+    """DL-43: the DM's hide button flips the object to a faint ghost for the DM and removes it for a Player entirely."""
+    base = shared_server.url; dm = Api(base); cid = dm.campaign('Hidden')
+    pl = Api(base); dm.add_member(cid, pl)
+    r = dm.post(f'/campaigns/{cid}/maps/new', data={'name': 'Vault', 'blank_width': '1000', 'blank_height': '700'})
+    mid = int(re.search(r'/maps/(\d+)', r.headers['Location']).group(1))
+    api = f'/campaigns/{cid}/api/maps/{mid}'
+    pin = dm.post(f'{api}/pins', json={'pin_type': 'prop', 'icon_key': 'skull', 'custom_name': 'Trap', 'x': 250, 'y': 250}).json()['id']
+    shape = dm.post(f'{api}/drawings', json={'kind': 'rect', 'cx': 650, 'cy': 400, 'w': 200, 'h': 150, 'color': '#ff0000', 'fill': True, 'fill_opacity': 0.5, 'data': {}}).json()['id']
+
+    def open_map(user):
+        ctx = user.context(pw, base); page = ctx.new_page(); bad, errs = _collect(page)
+        page.goto(base + f'/campaigns/{cid}/maps/{mid}'); page.wait_for_load_state('networkidle'); page.wait_for_timeout(800)
+        if page.locator('#setup-confirm-btn').is_visible():
+            page.click('#setup-confirm-btn'); page.wait_for_timeout(600)
+        return ctx, page, bad, errs
+
+    ctx, page, bad, errs = open_map(dm)
+    assert page.locator('#new-hidden-toggle').count() == 1
+    page.locator(f'.map-pin[data-pin-id="{pin}"]').click(); page.wait_for_timeout(500)
+    assert page.locator('#pin-hide-btn').is_visible()
+    page.click('#pin-hide-btn'); page.wait_for_timeout(600)
+    assert page.locator(f'.map-pin[data-pin-id="{pin}"].is-dm-only').count() == 1       # ghosted for the DM, not removed
+    assert q('SELECT dm_only FROM map_pins WHERE id = ?', pin)[0]['dm_only'] == 1
+    # the shape: select it by clicking inside it, then hide it
+    box = page.locator('#map-canvas').bounding_box()
+    page.mouse.click(box['x'] + box['width'] * 0.65, box['y'] + box['height'] * (400 / 700)); page.wait_for_timeout(500)
+    assert page.locator('#shape-hide-btn').is_visible()
+    page.click('#shape-hide-btn'); page.wait_for_timeout(600)
+    assert q('SELECT dm_only FROM map_drawings WHERE id = ?', shape)[0]['dm_only'] == 1
+    # the "new objects start hidden" toggle flips its pressed state
+    page.click('#new-hidden-toggle')
+    assert page.get_attribute('#new-hidden-toggle', 'aria-pressed') == 'true'
+    assert not errs, errs
+    ctx.close()
+
+    pctx, ppage, pbad, perrs = open_map(pl)
+    assert ppage.locator('.map-pin').count() == 0                                        # the Player is never sent it
+    assert ppage.locator('#pin-hide-btn, #shape-hide-btn, #new-hidden-toggle').count() == 0
+    assert pl.get(f'{api}/drawings').json() == []
+    assert not perrs, perrs
+    pctx.close()

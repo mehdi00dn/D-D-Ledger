@@ -26,6 +26,10 @@
   const shapeRotateToggle = document.getElementById('shape-rotate-toggle');
   const shapeAngleToggle = document.getElementById('shape-angle-toggle');
   const shapeLockBtn = document.getElementById('shape-lock-btn');
+  const shapeHideBtn = document.getElementById('shape-hide-btn');   // DM only: hide the selected shape from players
+  const pinHideBtn = document.getElementById('pin-hide-btn');       // DM only: hide the selected token from players
+  const newHiddenBtn = document.getElementById('new-hidden-toggle'); // DM only: everything new starts hidden
+  let newObjectsHidden = false;
   const shapeDeleteBtn = document.getElementById('shape-delete-btn');
 
   const undoBtn = document.getElementById('undo-btn');
@@ -396,6 +400,10 @@
     ctx.save();
     ctx.translate(d.cx, d.cy);
     ctx.rotate(toRad(d.rotation));
+    // A DM-only shape is drawn faint with a dashed edge, so the DM can tell it is hidden at a glance.
+    const base = d.dm_only ? 0.5 : 1;
+    ctx.globalAlpha = base;
+    if (d.dm_only) ctx.setLineDash([Math.max(6, canvas.width / 160), Math.max(5, canvas.width / 200)]);
     ctx.strokeStyle = d.color;
     ctx.fillStyle = d.color;
     ctx.lineWidth = Math.max(2, canvas.width / 450);
@@ -405,12 +413,12 @@
 
     const hasFill = (d.fill_opacity || 0) > 0.001;
     if (d.kind === 'rect') {
-      if (hasFill) { ctx.globalAlpha = d.fill_opacity; ctx.fillRect(-w / 2, -h / 2, w, h); ctx.globalAlpha = 1; }
+      if (hasFill) { ctx.globalAlpha = d.fill_opacity * base; ctx.fillRect(-w / 2, -h / 2, w, h); ctx.globalAlpha = base; }
       ctx.strokeRect(-w / 2, -h / 2, w, h);
     } else if (d.kind === 'oval') {
       ctx.beginPath();
       ctx.ellipse(0, 0, Math.max(0.01, Math.abs(w / 2)), Math.max(0.01, Math.abs(h / 2)), 0, 0, Math.PI * 2);
-      if (hasFill) { ctx.globalAlpha = d.fill_opacity; ctx.fill(); ctx.globalAlpha = 1; }
+      if (hasFill) { ctx.globalAlpha = d.fill_opacity * base; ctx.fill(); ctx.globalAlpha = base; }
       ctx.stroke();
     } else if (d.kind === 'line') {
       const g = d.data || {};
@@ -433,7 +441,7 @@
       ctx.moveTo(0, 0);
       ctx.arc(0, 0, Math.max(0.01, r), -sweep / 2, sweep / 2);
       ctx.closePath();
-      if (hasFill) { ctx.globalAlpha = d.fill_opacity; ctx.fill(); ctx.globalAlpha = 1; }
+      if (hasFill) { ctx.globalAlpha = d.fill_opacity * base; ctx.fill(); ctx.globalAlpha = base; }
       ctx.stroke();
     }
     ctx.restore();
@@ -591,7 +599,7 @@
     // The label sits on `.map-pin` itself (never rotated); only the inner
     // `.map-pin-visual` circle spins, so names stay upright and in place.
     return `
-      <div class="map-pin${mine ? '' : ' pin-not-yours'}" data-pin-id="${p.id}" data-pin-type="${escapeHtml(p.pin_type)}" data-locked="${!!p.locked}" title="${escapeHtml(ownerTip)}"
+      <div class="map-pin${mine ? '' : ' pin-not-yours'}${p.dm_only ? ' is-dm-only' : ''}" data-pin-id="${p.id}" data-pin-type="${escapeHtml(p.pin_type)}" data-locked="${!!p.locked}" title="${escapeHtml(ownerTip)}"
            data-character-id="${escapeHtml(p.character_id || '')}" data-x="${p.x}" data-y="${p.y}"
            style="left:${leftPct}%; top:${topPct}%; width:${wPct}%; height:${hPct}%;">
         <div class="map-pin-visual ${dead ? 'is-dead' : ''}" style="border-color:${borderColor}; transform: rotate(${p.rotation || 0}deg);">
@@ -647,6 +655,7 @@
     pinBubble.style.left = `${leftPx}px`;
     pinBubble.style.top = `${topPx}px`;
     pinBubble.hidden = false;
+    syncHideButton(pinHideBtn, pin.dm_only);
     // Players can open an NPC pin's details too -- the detail endpoint
     // returns notes only for them (stats are withheld server-side).
     pinViewBtn.style.display = (pin.pin_type === 'character') ? '' : 'none';
@@ -821,6 +830,7 @@
   function positionShapeBubble() {
     const d = drawings.find((s) => s.id === selectedShapeId);
     if (!d) { shapeBubble.hidden = true; return; }
+    syncHideButton(shapeHideBtn, selectedShapeIds.size > 1 ? [...selectedShapeIds].every((id) => (drawings.find((x) => x.id === id) || {}).dm_only) : d.dm_only);
     if (shapeBubble.classList.contains('is-docked')) { shapeBubble.hidden = false; return; }
     const wrapRect = stageWrap.getBoundingClientRect();
     // Angle shapes' adjust handles sit out at the full reach (radius w),
@@ -1024,7 +1034,7 @@
   // Persistence + undo/redo command factories
   // ---------------------------------------------------------------------
   function serializeShapeForCreate(d) {
-    return { kind: d.kind, data: d.data, cx: d.cx, cy: d.cy, w: d.w, h: d.h, rotation: d.rotation, color: d.color, fill: d.fill, fill_opacity: d.fill_opacity, locked: !!d.locked };
+    return { kind: d.kind, data: d.data, cx: d.cx, cy: d.cy, w: d.w, h: d.h, rotation: d.rotation, color: d.color, fill: d.fill, fill_opacity: d.fill_opacity, locked: !!d.locked, dm_only: !!d.dm_only };
   }
   async function persistShapeFields(d, fields) {
     await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/drawings/${d.id}/update`, {
@@ -1044,6 +1054,7 @@
     } else if (shapeToSave.kind !== 'angle' && Math.hypot(shapeToSave.w, shapeToSave.h) < 4) {
       return;
     }
+    if (window.IS_DM && newObjectsHidden) shapeToSave.dm_only = true;
     const res = await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/drawings`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(serializeShapeForCreate(shapeToSave)),
     });
@@ -1106,7 +1117,7 @@
   }
 
   function serializePinForCreate(p) {
-    return { pin_type: p.pin_type, icon_key: p.icon_key, character_id: p.character_id || null, custom_name: p.pin_type === 'prop' ? (p.custom_name || null) : null, x: p.x, y: p.y, scale: p.scale || 1, rotation: p.rotation || 0, locked: !!p.locked };
+    return { pin_type: p.pin_type, icon_key: p.icon_key, character_id: p.character_id || null, custom_name: p.pin_type === 'prop' ? (p.custom_name || null) : null, x: p.x, y: p.y, scale: p.scale || 1, rotation: p.rotation || 0, locked: !!p.locked, dm_only: !!p.dm_only };
   }
   async function persistPinFields(p, fields) {
     await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/pins/${p.id}/update`, {
@@ -1310,6 +1321,57 @@
     activeDrag = { type: 'rotate-pin', pin, el, centerClientX, centerClientY, startAngle, startRotation: pin.rotation || 0 };
     e.preventDefault();
     e.stopPropagation();
+  });
+
+  // ---- Hide from players (DM only).  The server never sends a hidden object to a Player; this just flips the flag.
+  const HIDE_TITLE = { on: 'Hidden from players. Click to show', off: 'Hide from players' };
+  function syncHideButton(btn, hidden) {
+    if (!btn) return;
+    btn.classList.toggle('is-on', !!hidden);
+    btn.setAttribute('aria-pressed', hidden ? 'true' : 'false');
+    btn.title = hidden ? HIDE_TITLE.on : HIDE_TITLE.off;
+  }
+  async function setShapeHidden(d, hidden) {
+    const before = { dm_only: !!d.dm_only }, after = { dm_only: !!hidden };
+    d.dm_only = !!hidden;
+    redraw();
+    await persistShapeFields(d, after);
+    pushCommand({
+      label: 'hide-shape',
+      undo: async () => { d.dm_only = before.dm_only; await persistShapeFields(d, before); redraw(); syncHideButton(shapeHideBtn, d.dm_only); },
+      redo: async () => { d.dm_only = after.dm_only; await persistShapeFields(d, after); redraw(); syncHideButton(shapeHideBtn, d.dm_only); },
+    });
+  }
+  async function setPinHidden(p, hidden) {
+    const before = { dm_only: !!p.dm_only }, after = { dm_only: !!hidden };
+    p.dm_only = !!hidden;
+    renderPins();
+    await persistPinFields(p, after);
+    pushCommand({
+      label: 'hide-pin',
+      undo: async () => { p.dm_only = before.dm_only; await persistPinFields(p, before); renderPins(); syncHideButton(pinHideBtn, p.dm_only); },
+      redo: async () => { p.dm_only = after.dm_only; await persistPinFields(p, after); renderPins(); syncHideButton(pinHideBtn, p.dm_only); },
+    });
+  }
+  if (shapeHideBtn) shapeHideBtn.addEventListener('click', async () => {
+    const ids = selectedShapeIds.size ? [...selectedShapeIds] : (selectedShapeId != null ? [selectedShapeId] : []);
+    const picked = ids.map((id) => drawings.find((s) => s.id === id)).filter(Boolean);
+    if (!picked.length) return;
+    const hide = !picked.every((d) => d.dm_only);               // a mixed selection hides everything first
+    for (const d of picked) if (!!d.dm_only !== hide) await setShapeHidden(d, hide);
+    syncHideButton(shapeHideBtn, hide);
+  });
+  if (pinHideBtn) pinHideBtn.addEventListener('click', async () => {
+    const pin = pins.find((p) => p.id === selectedPinId);
+    if (!pin) return;
+    await setPinHidden(pin, !pin.dm_only);
+    syncHideButton(pinHideBtn, pin.dm_only);
+  });
+  if (newHiddenBtn) newHiddenBtn.addEventListener('click', () => {
+    newObjectsHidden = !newObjectsHidden;
+    newHiddenBtn.classList.toggle('is-on', newObjectsHidden);
+    newHiddenBtn.setAttribute('aria-pressed', newObjectsHidden ? 'true' : 'false');
+    newHiddenBtn.title = newObjectsHidden ? 'New drawings and tokens start hidden from players. Click to turn off' : 'New drawings and tokens are visible to players. Click to start them hidden';
   });
 
   pinLockBtn.addEventListener('click', async () => {
@@ -1691,8 +1753,8 @@
   window.addEventListener('mousemove', () => {
     if (!live) return;
     if (activeDrag) live.dragMoved(activeDrag);
-    else if (drawState && previewShape) live.draftMoved(previewShape, drawState.tool, drawState.points);
-    else if (angleDrawState && previewShape) live.draftMoved(previewShape, 'angle');
+    else if (drawState && previewShape && !newObjectsHidden) live.draftMoved(previewShape, drawState.tool, drawState.points);
+    else if (angleDrawState && previewShape && !newObjectsHidden) live.draftMoved(previewShape, 'angle');
   });
   window.addEventListener('mouseup', () => {                    // capture phase: runs before the handler that finishes the gesture
     if (!live) return;
@@ -2231,7 +2293,7 @@
     const snapped = snapPointToGridCenter(pos.x, pos.y);
     const res = await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/pins`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pin_type: 'character', character_id: character.id, x: snapped.x, y: snapped.y, scale: 1.0, rotation: 0 }),
+      body: JSON.stringify({ pin_type: 'character', character_id: character.id, x: snapped.x, y: snapped.y, scale: 1.0, rotation: 0, dm_only: window.IS_DM && newObjectsHidden }),
     });
     if (!res.ok) { flashPlaceHint("Couldn't place that character. Please try again."); return; }
     const json = await res.json();
@@ -2314,10 +2376,10 @@
     const snapped = snapPointToGridCenter(pos.x, pos.y);
     const res = await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/pins`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pin_type: 'prop', icon_key: iconKey, x: snapped.x, y: snapped.y, scale: 1.0, rotation: 0 }),
+      body: JSON.stringify({ pin_type: 'prop', icon_key: iconKey, x: snapped.x, y: snapped.y, scale: 1.0, rotation: 0, dm_only: window.IS_DM && newObjectsHidden }),
     });
     const json = await res.json();
-    const pin = { id: json.id, pin_type: 'prop', icon_key: iconKey, x: snapped.x, y: snapped.y, scale: 1.0, rotation: 0, locked: false, custom_name: null };
+    const pin = { id: json.id, pin_type: 'prop', icon_key: iconKey, x: snapped.x, y: snapped.y, scale: 1.0, rotation: 0, locked: false, custom_name: null, dm_only: window.IS_DM && newObjectsHidden };
     pins.push(pin);
     renderPins();
     pushCommand(makeAddPinCommand(pin));

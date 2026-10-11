@@ -544,4 +544,13 @@ ALTER TABLE dice_rolls ADD COLUMN character_label TEXT NOT NULL DEFAULT '';
 
 INSERT INTO schema_migrations (version) VALUES ('0019_dice_roll_character_label.sql');
 
+-- ---- 0020_map_dm_only.sql ----
+
+-- DM-only map objects: a drawing or token flagged dm_only is never sent to Players (the server filters it out
+-- of every read path and refuses Player writes to it).  Everything that exists today stays visible.
+ALTER TABLE map_drawings ADD COLUMN dm_only INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE map_pins ADD COLUMN dm_only INTEGER NOT NULL DEFAULT 0;
+
+INSERT INTO schema_migrations (version) VALUES ('0020_map_dm_only.sql');
+
 COMMIT;

@@ -137,6 +137,7 @@
 
   <div class="map-tool-group map-tool-group--more">
     <button type="button" class="btn-icon" id="grid-settings-btn" title="Grid &amp; canvas settings">{{ icon('settings') }}</button>
+    {% if g.is_dm %}<button type="button" class="btn-icon new-hidden-toggle" id="new-hidden-toggle" aria-pressed="false" title="New drawings and tokens are visible to players. Click to start them hidden">{{ icon('eye-off') }}</button>{% endif %}
   </div>
 
   <div class="map-tool-group map-tool-group-persistent">
@@ -172,6 +173,7 @@
       <button type="button" class="pin-radial-btn" id="pin-rename-btn" title="Rename">{{ icon('pencil') }}</button>
       <button type="button" class="pin-radial-btn" id="pin-resize-btn" title="Hold and drag to resize">{{ icon('resize') }}</button>
       <button type="button" class="pin-radial-btn" id="pin-rotate-btn" title="Hold and drag to rotate">{{ icon('rotate') }}</button>
+      {% if g.is_dm %}<button type="button" class="pin-radial-btn pin-hide-btn" id="pin-hide-btn" title="Hide from players" aria-pressed="false">{{ icon('eye-off') }}</button>{% endif %}
       <button type="button" class="pin-radial-btn" id="pin-lock-btn" title="Lock in place">{{ icon('lock') }}</button>
       <button type="button" class="pin-radial-btn pin-radial-danger" id="pin-delete-btn" title="Delete">{{ icon('trash-2') }}</button>
     </div>
@@ -181,6 +183,7 @@
       <button type="button" class="btn-icon" id="shape-resize-toggle" title="Toggle resize handles">{{ icon('resize') }}</button>
       <button type="button" class="btn-icon" id="shape-rotate-toggle" title="Toggle rotate handle">{{ icon('rotate') }}</button>
       <button type="button" class="btn-icon" id="shape-angle-toggle" title="Toggle angle handles (widen/narrow the cone)" hidden>{{ icon('angle-tool') }}</button>
+      {% if g.is_dm %}<button type="button" class="btn-icon shape-hide-btn" id="shape-hide-btn" title="Hide from players" aria-pressed="false">{{ icon('eye-off') }}</button>{% endif %}
       <button type="button" class="btn-icon" id="shape-lock-btn" title="Lock in place">{{ icon('lock') }}</button>
       <button type="button" class="btn-icon btn-icon-danger" id="shape-delete-btn" title="Delete">{{ icon('trash-2') }}</button>
     </div>
