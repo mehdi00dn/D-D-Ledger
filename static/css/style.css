@@ -5,6 +5,7 @@
   --bg-void: #10121a;
   --bg-void-2: #0b0d13;
   --bg-panel: #1a1e2b;
+  --on-solid: #fbf7ec;                       /* light text/icons on solid coloured buttons (Heal, Damage): same cream as the light theme's --bg-panel, in both themes */
   --bg-panel-raised: #232840;
   --bg-panel-inset: #161a26;
 
@@ -1645,9 +1646,9 @@ body.page-leaving .content {
 .hp-btn svg { width: 14px; height: 14px; }
 .hp-btn:active { transform: scale(0.92); }
 .hp-btn:disabled { opacity: 0.35; cursor: default; }
-.heal-btn { background: var(--moss); color: #0e1c14; }
+.heal-btn { background: var(--moss); color: var(--on-solid); }
 .heal-btn:hover { filter: brightness(1.12); }
-.damage-btn { background: var(--blood); color: #200a09; }
+.damage-btn { background: var(--blood); color: var(--on-solid); }
 .damage-btn:hover { filter: brightness(1.12); }
 .temphp-btn { background: var(--blue); color: #200a09; }
 .temphp-btn:hover { filter: brightness(1.15); }
@@ -2510,6 +2511,12 @@ body.page-leaving .content {
   animation: pin-bubble-pop-in 0.16s ease;
 }
 .pin-action-bubble[hidden] { display: none; }
+/* phone: docked at the bottom centre of the screen, just above the tab bar */
+.pin-action-bubble.is-docked {
+  position: fixed; left: 50%; top: auto; bottom: calc(76px + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 80;
+  animation: none;
+}
+.pin-action-bubble.is-docked .btn-icon { min-width: 48px; min-height: 48px; display: inline-flex; align-items: center; justify-content: center; }
 .pin-rename-box {
   position: absolute;
   z-index: 15;
@@ -3695,3 +3702,33 @@ body.page-leaving .content {
 .add-monster .ref-list--inline { margin-top: 8px; }
 .add-monster .hint-text { margin: 8px 0 10px; }
 .ref-battle-bar { margin: 18px 0 0; padding-top: 14px; border-top: 1px solid var(--hairline); }
+
+
+/* ---- Characters page: sort control and pager ---- */
+.char-filters { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px 16px; margin-bottom: 18px; }
+.char-filters .filter-bar { margin: 0; }
+.sort-select { display: inline-flex; align-items: center; gap: 8px; margin-inline-start: auto; font: 500 11px var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--parchment-dim); }
+.sort-select select { background: var(--bg-panel-inset); border: 1px solid var(--hairline-strong); border-radius: var(--radius-s); color: var(--parchment); font: 500 13px var(--font-body, inherit); letter-spacing: 0; text-transform: none; padding: 7px 10px; min-height: 36px; }
+.sort-select select:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
+.character-no-matches { margin: 24px 0; text-align: center; }
+.pager { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px 16px; margin: 22px 0 6px; }
+.pager[hidden] { display: none; }
+.pager-info { font: 500 12px var(--font-mono); color: var(--parchment-dim); }
+.pager-pages { display: inline-flex; align-items: center; gap: 4px; }
+.pager-btn { min-width: 38px; height: 38px; padding: 0 10px; border-radius: var(--radius-s); border: 1px solid var(--hairline-strong); background: var(--bg-panel-inset); color: var(--parchment); font: 600 13px var(--font-mono); cursor: pointer; }
+.pager-btn:hover:not(:disabled):not(.is-current) { border-color: var(--brass); color: var(--brass-bright); }
+.pager-btn.is-current { background: var(--brass); border-color: var(--brass); color: #21170a; cursor: default; }
+.pager-btn:disabled { opacity: 0.35; cursor: default; }
+.pager-btn:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
+.pager-gap { padding: 0 4px; color: var(--parchment-faint); }
+@media (max-width: 640px) {
+  .char-tools .char-filters { flex: 1 1 0; min-width: 0; flex-wrap: nowrap; gap: 8px; margin-bottom: 0; }
+  .char-tools .char-filters .filter-bar { flex: 1 1 0; min-width: 0; }
+  .char-tools .sort-select { flex: 0 0 auto; margin: 0; }
+  .char-tools .sort-select > span { display: none; }
+  .char-tools .sort-select select { width: 128px; font-size: 14px; min-height: 40px; }
+  .char-tools.search-open .char-filters { display: none; }
+  .pager { justify-content: center; }
+  .pager-info { flex: 1 1 100%; text-align: center; }
+  .pager-btn { min-width: 40px; height: 40px; }
+}

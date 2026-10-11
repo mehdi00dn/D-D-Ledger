@@ -802,9 +802,26 @@
     if (selectedPinId != null) openPinRename(selectedPinId);
   });
 
+  // On a phone the shape's action bubble is docked at the bottom centre of the screen instead of floating beside
+  // the shape: it can never be cut off by the screen edge, hidden under a finger, or thrown off by zoom and pan.
+  const phoneBubbleQuery = window.matchMedia ? window.matchMedia('(max-width: 880px), (max-height: 500px) and (orientation: landscape)') : null;
+  const bubbleHome = shapeBubble.parentNode;
+  function dockShapeBubble(on) {
+    const host = on ? document.getElementById('map-content-area') : bubbleHome;
+    if (shapeBubble.parentNode !== host) host.appendChild(shapeBubble);     // out of the zoomed stage, so "fixed" means the screen
+    shapeBubble.classList.toggle('is-docked', on);
+    if (on) { shapeBubble.style.left = ''; shapeBubble.style.top = ''; shapeBubble.style.transform = ''; }
+  }
+  if (phoneBubbleQuery) {
+    dockShapeBubble(phoneBubbleQuery.matches);
+    const onChange = () => { dockShapeBubble(phoneBubbleQuery.matches); positionShapeBubble(); };
+    if (phoneBubbleQuery.addEventListener) phoneBubbleQuery.addEventListener('change', onChange);
+  }
+
   function positionShapeBubble() {
     const d = drawings.find((s) => s.id === selectedShapeId);
     if (!d) { shapeBubble.hidden = true; return; }
+    if (shapeBubble.classList.contains('is-docked')) { shapeBubble.hidden = false; return; }
     const wrapRect = stageWrap.getBoundingClientRect();
     // Angle shapes' adjust handles sit out at the full reach (radius w),
     // well beyond the shape's own small nominal bounding box — use a

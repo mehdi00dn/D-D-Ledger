@@ -1278,3 +1278,60 @@ def test_roll_initiative_button_fills_in_every_row_and_fits_the_phone_header(pw,
     vals = [int(v) for v in page.locator('input[data-action="initiative"]').evaluate_all('els => els.map(e => e.value)')]
     assert len(vals) == 2 and all(6 <= v <= 25 for v in vals), vals
     assert not bad and not errs, (bad, errs)
+
+
+def test_phone_shape_action_bubble_is_docked_bottom_centre_and_floats_on_desktop(pw, shared_server):
+    base = shared_server.url; dm = Api(base); cid = dm.campaign('Bubble')
+    r = dm.post(f'/campaigns/{cid}/maps/new', data={'name': 'Arena', 'blank_width': '1000', 'blank_height': '700'})
+    mid = int(re.search(r'/maps/(\d+)', r.headers['Location']).group(1))
+    dm.post(f'/campaigns/{cid}/api/maps/{mid}/drawings', json={'kind': 'rect', 'cx': 900, 'cy': 120, 'w': 160, 'h': 120, 'fill': True, 'data': {}})   # hard against the right edge
+    ctx = _touch_context(pw, dm, base, 390, 800); page = ctx.new_page(); bad, errs = _collect(page)
+    page.goto(base + f'/campaigns/{cid}/maps/{mid}'); page.wait_for_load_state('load'); page.wait_for_timeout(800)
+    if page.locator('#setup-confirm-btn').is_visible():
+        page.locator('#setup-confirm-btn').tap(); page.wait_for_timeout(600)
+    box = page.locator('#map-stage-wrap').bounding_box()
+    page.touchscreen.tap(box['x'] + box['width'] * 0.9, box['y'] + box['height'] * (120 / 700)); page.wait_for_timeout(400)
+    bubble = page.locator('#shape-action-bubble'); playwright.expect(bubble).to_be_visible()
+    b = bubble.bounding_box()
+    assert abs((b['x'] + b['width'] / 2) - 195) <= 3, b                      # centred on the screen
+    assert 0 <= b['x'] and b['x'] + b['width'] <= 390 and b['y'] + b['height'] <= 800 - 60, b      # fully on screen, above the tab bar
+    page.locator('#shape-delete-btn').tap(); page.wait_for_timeout(500)
+    ctx.close()
+    # on a wide screen it still floats beside the shape
+    ctx = dm.context(pw, base); page = ctx.new_page()
+    page.goto(base + f'/campaigns/{cid}/maps/{mid}'); page.wait_for_load_state('load'); page.wait_for_timeout(800)
+    assert page.evaluate("() => document.getElementById('shape-action-bubble').classList.contains('is-docked')") is False
+
+
+def test_character_list_sorts_pages_twelve_at_a_time_and_remembers_its_state(pw, shared_server):
+    base = shared_server.url; dm = Api(base); cid = dm.campaign('Roster')
+    for i in range(30):
+        dm.character(cid, f'Hero {i:02d}', level=1 + i % 7, is_npc='on' if i % 3 == 0 else '')
+    ctx = dm.context(pw, base); page = ctx.new_page(); bad, errs = _collect(page)
+    page.goto(base + f'/campaigns/{cid}/characters'); page.wait_for_load_state('load'); page.wait_for_timeout(400)
+    visible = lambda: page.locator('.dossier-card:visible .dossier-name').all_inner_texts()
+    assert len(visible()) == 12 and visible()[0] == 'Hero 00' and visible()[-1] == 'Hero 11'
+    assert page.locator('.pager-pages .pager-btn.is-current').inner_text() == '1' and 'of 30' in page.locator('.pager-info').inner_text()
+    page.locator('.pager-btn[aria-label="Next page"]').click(); page.wait_for_timeout(200)
+    assert visible()[0] == 'Hero 12' and 'page=2' in page.url
+    page.reload(); page.wait_for_load_state('load'); page.wait_for_timeout(300)           # a reload comes back to page 2
+    assert visible()[0] == 'Hero 12' and page.locator('.pager-btn.is-current').inner_text() == '2'
+    page.locator('.pager-btn[aria-label="Page 3"]').click(); page.wait_for_timeout(200)
+    assert len(visible()) == 6 and page.locator('.pager-btn[aria-label="Next page"]').is_disabled()
+    page.select_option('#character-sort', 'level-desc'); page.wait_for_timeout(200)       # changing the sort goes back to page 1
+    assert 'page=' not in page.url and 'sort=level-desc' in page.url
+    levels = [int(x.split()[1]) for x in page.locator('.dossier-card:visible .dossier-meta').all_inner_texts()]
+    assert levels == sorted(levels, reverse=True) and levels[0] == 7
+    page.select_option('#character-sort', 'newest'); page.wait_for_timeout(200)
+    assert visible()[0] == 'Hero 29'
+    page.select_option('#character-sort', 'name-desc'); page.wait_for_timeout(200)
+    assert visible()[0] == 'Hero 29'
+    page.select_option('#character-sort', 'name-asc')
+    page.locator('[data-type-switch="npc"]').click(); page.wait_for_timeout(200)           # 10 NPCs: one page, no pager
+    assert len(visible()) == 10 and page.locator('#character-pager').is_hidden() and 'type=npc' in page.url
+    page.locator('[data-type-switch="all"]').click()
+    page.fill('#character-search', 'hero 2'); page.wait_for_timeout(200)
+    assert len(visible()) == 10 and 'q=hero+2' in page.url
+    page.fill('#character-search', 'zzz'); page.wait_for_timeout(200)
+    assert len(visible()) == 0 and page.locator('#character-no-matches').is_visible()
+    assert not bad and not errs, (bad, errs)
