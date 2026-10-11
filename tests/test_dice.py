@@ -179,3 +179,18 @@ def test_the_popup_gets_the_derived_sheet_as_data(table):
     ogre = dm.new_character(cid, name='Ogre', is_npc='on')
     hidden = pl.get(f'/campaigns/{cid}/api/characters/{ogre}/detail').get_json()
     assert 'sheet' not in hidden and hidden['hidden_stats']
+
+
+def test_a_roll_for_one_copy_in_battle_keeps_its_number(table):
+    dm, pl, cid = table
+    gob = dm.new_character(cid, name='Goblin Minion', is_npc='on')
+    first = dm.add_to_battle(cid, gob)
+    second = dm.add_to_battle(cid, gob)
+    ids = [p['id'] for p in dm.get(f'/campaigns/{cid}/api/battle').get_json()]
+    out = roll(dm, cid, dice={'20': 1}, character_id=gob, participant_id=ids[1]).get_json()
+    assert out['character'] == 'Goblin Minion #2'
+    assert feed(pl, cid)['rolls'][-1]['character'] == 'Goblin Minion #2'                 # everyone reads the same name
+    assert roll(dm, cid, dice={'20': 1}, character_id=gob).get_json()['character'] == 'Goblin Minion'
+    other = dm.new_character(cid, name='Hero')
+    assert roll(dm, cid, dice={'20': 1}, character_id=other, participant_id=ids[0]).get_json()['character'] == 'Hero'   # not that row
+    assert roll(dm, cid, dice={'20': 1}, character_id=gob, participant_id='x').status_code == 400

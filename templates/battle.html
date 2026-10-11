@@ -12,6 +12,7 @@
   {% if g.is_dm %}
   <div class="page-actions battle-actions">
     <a href="{{ url_for('character_new', **{'from': 'battle'}) }}" class="btn btn-ghost">{{ icon('plus') }} <span>Create Character</span></a>
+    <button type="button" class="btn btn-ghost" id="roll-initiative-btn" title="Roll d20 + Dexterity for everyone in the battle">{{ icon('dices') }} <span>Roll Initiative</span></button>
     <button type="button" class="btn btn-ghost" id="open-add-modal">{{ icon('user') }} <span>Add Character</span></button>
     <button type="button" class="btn btn-danger" id="clear-battle-btn">{{ icon('trash-2') }} <span>Clear Battle</span></button>
   </div>
@@ -62,6 +63,18 @@
       <div class="field" style="margin-bottom:14px;">
         <input type="text" id="add-modal-search" placeholder="Search characters…" autocomplete="off">
       </div>
+      {% if g.is_dm %}
+      <details class="add-monster" data-battle-monsters data-base="{{ url_for('reference_view')|replace('/reference', '') }}/api/reference/">
+        <summary>{{ icon('swords') }} <span>Add from the monster manual</span></summary>
+        <div class="add-monster-opts">
+          <label>How many <input type="number" data-monster-count min="1" max="12" value="1" inputmode="numeric"></label>
+          <label>Hit points <select data-monster-hp><option value="average">Average</option><option value="rolled">Rolled</option></select></label>
+        </div>
+        <div class="ref-search">{{ icon('search') }}<input type="search" data-ref-query placeholder="Search monsters…" aria-label="Search the monster manual" autocomplete="off"></div>
+        <ul class="ref-list ref-list--inline" data-ref-list aria-live="polite"></ul>
+        <p class="hint-text" data-monster-status aria-live="polite">Pick a monster: it joins the battle as an NPC with its stat block (hidden from Players).</p>
+      </details>
+      {% endif %}
       <div id="add-modal-groups"></div>
       <div id="add-modal-list"></div>
     </div>
@@ -102,4 +115,5 @@
 
 {% block extra_scripts %}
 <script src="{{ url_for('static', filename='js/battle.js') }}"></script>
+{% if g.is_dm %}<script src="{{ url_for('static', filename='js/reference.js') }}"></script>{% endif %}
 {% endblock %}

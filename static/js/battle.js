@@ -115,7 +115,7 @@
     } else if (hidden) {
       // Blurred placeholder INIT/AC/HP (no real numbers ever reach the client).
       statsArea = `
-      <div class="stats-fog-wrap" title="The DM hasn't revealed this creature's stats" aria-label="Stats hidden">
+      <div class="stats-fog-wrap battle-stats" title="The DM hasn't revealed this creature's stats" aria-label="Stats hidden">
         <div class="stat-chip stats-fogged" aria-hidden="true"><label>INIT</label><input type="number" class="stat-chip-input" value="00" disabled tabindex="-1"></div>
         <div class="stat-chip stats-fogged" aria-hidden="true"><label>AC</label><input type="number" class="stat-chip-input" value="00" disabled tabindex="-1"></div>
         <div class="hp-block stats-fogged" aria-hidden="true">
@@ -125,6 +125,7 @@
       </div>`;
     } else {
       statsArea = `
+      <div class="battle-stats">
       <div class="stat-chip">
         <label>INIT</label>
         <input type="number" class="stat-chip-input" data-action="initiative" value="${p.initiative}" ${dead || !isDM ? 'disabled' : ''}>
@@ -139,15 +140,16 @@
           ${tempBarWidth > 0 ? `<div class="hp-bar-temp" style="left:${pct}%; width:${tempBarWidth}%;"></div>` : ''}
         </div>
         <span class="hp-readout">${p.current_hp} / ${p.char_max_hp}${tempHp > 0 ? ` <span class="temp-hp-badge">+${tempHp}</span>` : ''}</span>
+      </div>
       </div>`;
     }
 
     const hpControls = (isDM && !hidden) ? `
       <div class="hp-controls">
         <input type="number" class="hp-amount-input" min="0" placeholder="1" value="" ${dead ? 'disabled' : ''}>
-        <button type="button" class="hp-btn heal-btn" data-action="heal" title="Heal" ${dead ? 'disabled' : ''}>${ICONS.heart}</button>
-        <button type="button" class="hp-btn damage-btn" data-action="damage" title="Damage" ${dead ? 'disabled' : ''}>${ICONS.swords}</button>
-        <button type="button" class="hp-btn temphp-btn" data-action="temphp" title="Temporary HP" ${dead ? 'disabled' : ''}>${ICONS.shieldPlus}</button>
+        <button type="button" class="hp-btn heal-btn" data-action="heal" title="Heal" ${dead ? 'disabled' : ''}>${ICONS.heart}<span class="hp-btn-label">Heal</span></button>
+        <button type="button" class="hp-btn damage-btn" data-action="damage" title="Damage" ${dead ? 'disabled' : ''}>${ICONS.swords}<span class="hp-btn-label">Damage</span></button>
+        <button type="button" class="hp-btn temphp-btn" data-action="temphp" title="Temporary HP" ${dead ? 'disabled' : ''}>${ICONS.shieldPlus}<span class="hp-btn-label">Temp</span></button>
       </div>` : '';
 
     let detailControl = '';
@@ -155,16 +157,17 @@
       if (isDM) {
         detailControl = `<div class="stat-chip"><label>MAX HP</label><input type="number" class="stat-chip-input" data-action="max-hp" min="1" value="${p.char_max_hp}" ${dead ? 'disabled' : ''}></div>`;
       }
-    } else if (canViewDetails) {
-      detailControl = `<button type="button" class="btn-icon" data-action="view" title="View details">${ICONS.images}</button>`;
     }
+    // The picture and the name are the details button (a familiar has no sheet to open).
+    const openAttrs = (canViewDetails && !p.is_temp_familiar)
+      ? ' data-action="view" role="button" tabindex="0" title="View details"' : '';
 
     return `
     <div class="battle-row ${dead ? 'is-dead' : ''} ${p.is_active ? 'is-active' : ''}" data-pid="${p.id}"${p.is_active ? ' aria-current="true"' : ''}>
-      <div class="battle-avatar" style="border-color:${safeColor(p.group_color, 'var(--brass)')};">${avatarMarkup(p)}</div>
+      <div class="battle-avatar${openAttrs ? ' is-link' : ''}"${openAttrs} aria-label="${escapeHtml(p.display_name)}: details" style="border-color:${safeColor(p.group_color, 'var(--brass)')};">${avatarMarkup(p)}</div>
 
       <div class="battle-name-block">
-        <div class="battle-name">${classIconHtml(p.class_key)}${escapeHtml(p.display_name)}${p.is_active ? '<span class="turn-tag">Turn</span>' : ''}</div>
+        <div class="battle-name${openAttrs ? ' is-link' : ''}"${openAttrs}>${classIconHtml(p.class_key)}${escapeHtml(p.display_name)}${p.is_active ? '<span class="turn-tag">Turn</span>' : ''}</div>
         <div class="battle-meta">${groupDot}${p.group_name ? escapeHtml(p.group_name) : 'No Faction'} &middot; ${p.is_npc ? 'NPC' : 'PC'}</div>
         ${conditionChips(p)}
       </div>
@@ -273,7 +276,18 @@
     render();
   }
 
+  // Characters made elsewhere on the page (the monster manual in the Add menu) hand over the fresh battle.
+  document.addEventListener('battle:participants', (e) => { participants = e.detail; render(); });
+
   // ---- Event delegation for the battle list ----
+  // The picture / name act as buttons: Enter or Space opens the details too.
+  root.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const t = e.target.closest && e.target.closest('[data-action="view"][role="button"]');
+    if (!t) return;
+    e.preventDefault();
+    t.click();
+  });
   root.addEventListener('click', async (e) => {
     const btn = e.target.closest('[data-action]');
     if (!btn) return;
@@ -303,7 +317,7 @@
       render();
     } else if (action === 'view') {
       const p = participants.find((x) => String(x.id) === pid);
-      if (p) openDetailModal(p.character_id);
+      if (p) openDetailModal(p.character_id, p.id);
     } else if (action === 'conditions') {
       openConditions(pid);
     } else if (action === 'cond-remove') {
@@ -434,6 +448,19 @@
     `).join('');
   }
 
+  const rollInitBtn = document.getElementById('roll-initiative-btn');
+  if (rollInitBtn) {
+    rollInitBtn.addEventListener('click', async () => {
+      const standing = participants.filter((p) => !p.is_dead);
+      if (!standing.length) return;
+      if (standing.some((p) => p.initiative) && !(await window.confirmAction('Roll initiative for everyone again? The numbers already entered are replaced.'))) return;
+      rollInitBtn.disabled = true;
+      try { participants = await apiCall('/api/battle/roll-initiative', {}); render(); }
+      catch (e) { if (window.LedgerDice) LedgerDice.announceError('Could not roll initiative.'); }
+      rollInitBtn.disabled = false;
+    });
+  }
+
   const openAddModalBtn = document.getElementById('open-add-modal');
   if (openAddModalBtn) {
     openAddModalBtn.addEventListener('click', () => {
@@ -560,7 +587,7 @@
   // ---- Detail modal ----
   const detailModal = document.getElementById('detail-modal');
 
-  function openDetailModal(characterId) { return window.CharPeek.open(characterId); }
+  function openDetailModal(characterId, participantId) { return window.CharPeek.open(characterId, participantId); }
 
   document.getElementById('close-detail-modal').addEventListener('click', () => { detailModal.hidden = true; });
   detailModal.addEventListener('click', (e) => { if (e.target === detailModal) detailModal.hidden = true; });

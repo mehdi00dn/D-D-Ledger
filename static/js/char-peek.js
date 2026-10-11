@@ -2,7 +2,7 @@
  * who it is, the vitals, the six abilities with their checks and saves, skills, notes and sheet images.
  * Every bonus is click-to-roll (see character-rolls.js), exactly like on the full page.
  *
- *   CharPeek.open(characterId)      fills and shows #detail-modal
+ *   CharPeek.open(characterId, participantId?)      fills and shows #detail-modal
  *
  * What a Player may see of an NPC is decided by the server (/api/characters/<id>/detail); a hidden creature arrives
  * without numbers and gets blurred placeholders here.
@@ -15,6 +15,7 @@
   var title = document.getElementById('detail-modal-title');
   var body = document.getElementById('detail-modal-body');
   var currentId = null;
+  var currentParticipant = null;   // which battle copy was opened (so its roll says "Goblin #2")
   panel.classList.add('peek-panel');
 
   function esc(s) {
@@ -114,8 +115,9 @@
   }
 
   var token = 0;
-  function open(id) {
+  function open(id, participantId) {
     currentId = id;
+    currentParticipant = participantId || null;
     var mine = ++token;
     return fetch('/campaigns/' + window.CAMPAIGN_ID + '/api/characters/' + id + '/detail', { credentials: 'same-origin' })
       .then(function (r) { return r.json(); })
@@ -128,7 +130,7 @@
       });
   }
 
-  if (window.CharacterRolls) window.CharacterRolls.bind(body, function () { return currentId; }, 'peek-roll-mode');
+  if (window.CharacterRolls) window.CharacterRolls.bind(body, function () { return currentId; }, 'peek-roll-mode', function () { return currentParticipant; });
 
   document.addEventListener('keydown', function (ev) {
     if (ev.key === 'Escape' && !modal.hidden && !document.querySelector('.lightbox-overlay:not([hidden])')) modal.hidden = true;

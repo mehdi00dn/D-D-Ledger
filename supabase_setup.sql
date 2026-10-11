@@ -536,4 +536,12 @@ ALTER TABLE dice_rolls ENABLE ROW LEVEL SECURITY;               -- like every ta
 
 INSERT INTO schema_migrations (version) VALUES ('0018_dice_rolls.sql');
 
+-- ---- 0019_dice_roll_character_label.sql ----
+
+-- A roll made for one of several copies of a character in battle ("Goblin Minion #2") keeps that numbered name,
+-- so the roll log reads the same as the battle menu even after the battle changes.
+ALTER TABLE dice_rolls ADD COLUMN character_label TEXT NOT NULL DEFAULT '';
+
+INSERT INTO schema_migrations (version) VALUES ('0019_dice_roll_character_label.sql');
+
 COMMIT;

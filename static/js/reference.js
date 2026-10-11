@@ -22,6 +22,19 @@
     return data;
   }
 
+  // Create the monster as an NPC and put it in the battle (DM only). Resolves to the new battle rows.
+  async function addMonsterToBattle(ref, count, hp) {
+    const r = await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/battle/add-monster`, {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ ref, count, hp }),
+    });
+    let data = null;
+    try { data = await r.json(); } catch (e) { /* not json */ }
+    if (!r.ok) throw new Error((data && data.error) || 'Could not add it to the battle.');
+    return data;
+  }
+
   // A result list bound to one kind. onPick(entry) is called with the clicked {id, name, sub}.
   function bindSearch(opts) {
     const { base, input, list, onPick } = opts;
@@ -79,6 +92,27 @@
     });
   }
 
+  // "Add to battle": how many, average or rolled HP, one button.
+  function battleBar(row) {
+    const bar = el('div', 'ref-battle-bar');
+    const count = el('input'); count.type = 'number'; count.min = '1'; count.max = '12'; count.value = '1'; count.setAttribute('aria-label', 'How many');
+    const hp = el('select'); hp.setAttribute('aria-label', 'Hit points');
+    [['average', 'Average HP'], ['rolled', 'Rolled HP']].forEach(([v, t]) => { const o = el('option', null, t); o.value = v; hp.append(o); });
+    const btn = el('button', 'btn btn-primary btn-sm', 'Add to battle'); btn.type = 'button';
+    const msg = el('span', 'hint-text'); msg.setAttribute('aria-live', 'polite');
+    btn.addEventListener('click', async () => {
+      btn.disabled = true; msg.classList.remove('ref-error'); msg.textContent = 'Adding…';
+      try {
+        const n = Math.max(1, Math.min(12, parseInt(count.value, 10) || 1));
+        await addMonsterToBattle(row.id, n, hp.value);
+        msg.textContent = `Added ${n} to the battle.`;
+      } catch (e) { msg.textContent = e.message; msg.classList.add('ref-error'); }
+      btn.disabled = false;
+    });
+    bar.append(count, hp, btn, msg);
+    return bar;
+  }
+
   // ---- the Reference page ----
   const page = document.querySelector('[data-reference]');
   if (page) {
@@ -106,7 +140,10 @@
         page.querySelectorAll('.ref-item.is-active').forEach((n) => n.classList.remove('is-active'));
         btn.classList.add('is-active');
         detail.replaceChildren(el('p', 'hint-text', 'Loading…'));
-        try { renderDetail(detail, await getJson(`${page.dataset.base}entry?kind=${kind}&ref=${encodeURIComponent(row.id)}`)); }
+        try {
+          renderDetail(detail, await getJson(`${page.dataset.base}entry?kind=${kind}&ref=${encodeURIComponent(row.id)}`));
+          if (kind === 'monsters' && page.dataset.dm === '1') detail.append(battleBar(row));
+        }
         catch (e) { detail.replaceChildren(el('p', 'hint-text ref-error', e.message)); }
       },
     });
@@ -177,5 +214,27 @@
       picker.querySelector('[data-ref-list]').hidden = false;
       monsterSearch.run();
     }, { once: true });
+  }
+
+  // ---- Battle > Add: the monster manual, one tap to bring a monster (or several) into the fight ----
+  const battleBox = document.querySelector('[data-battle-monsters]');
+  if (battleBox) {
+    const status = battleBox.querySelector('[data-monster-status]');
+    const countIn = battleBox.querySelector('[data-monster-count]');
+    const hpIn = battleBox.querySelector('[data-monster-hp]');
+    const search = bindSearch({
+      base: battleBox.dataset.base, kind: 'monsters',
+      input: battleBox.querySelector('[data-ref-query]'), list: battleBox.querySelector('[data-ref-list]'),
+      onPick: async (row) => {
+        const n = Math.max(1, Math.min(12, parseInt(countIn.value, 10) || 1));
+        status.classList.remove('ref-error'); status.textContent = 'Adding…';
+        try {
+          const rows = await addMonsterToBattle(row.id, n, hpIn.value);
+          document.dispatchEvent(new CustomEvent('battle:participants', { detail: rows }));
+          status.textContent = `Added ${n > 1 ? n + ' x ' : ''}${row.name} to the battle.`;
+        } catch (e) { status.textContent = e.message; status.classList.add('ref-error'); }
+      },
+    });
+    battleBox.addEventListener('toggle', () => { if (battleBox.open) search.run(); });
   }
 }());

@@ -1,0 +1,466 @@
+diff --git a/app.py b/app.py
+index 1533743..5e1048a 100644
+--- a/app.py
++++ b/app.py
+@@ -2309,6 +2309,68 @@ def api_battle_add():
+     return jsonify(rows)
+ 
+ 
++MONSTER_COUNT_MAX = 12
++_HP_ROLL_RE = re.compile(r'^\s*(\d{1,3})\s*d\s*(\d{1,3})\s*(?:([+-])\s*(\d{1,4}))?\s*$', re.I)
++
++
++def _roll_monster_hp(expr, average):
++    """Hit points from the stat block's dice ("3d6+3"); the printed average if it cannot be read."""
++    m = _HP_ROLL_RE.match(expr or '')
++    if not m:
++        return average
++    n, sides = int(m.group(1)), int(m.group(2))
++    if not (1 <= n <= 100 and 2 <= sides <= 100):
++        return average
++    bonus = int(m.group(4) or 0) * (-1 if m.group(3) == '-' else 1)
++    return max(1, sum(secrets.randbelow(sides) + 1 for _ in range(n)) + bonus)
++
++
++@app.route('/campaigns/<int:campaign_id>/api/battle/add-monster', methods=['POST'])
++@campaign_access_required
++@dm_required
++def api_battle_add_monster():
++    """Create NPCs from a 2024 stat block and put them straight into the battle.
++    Body: {ref: 'monsters/goblin-warrior', count: 1-12, hp: 'average' | 'rolled'}.  One character per copy
++    ("Goblin 1", "Goblin 2"...), so each can have its own rolled hit points; the stat block is a note hidden from Players."""
++    data = request.get_json(silent=True)
++    if not isinstance(data, dict):
++        return jsonify({'error': 'bad request'}), 400
++    try:
++        count = 1 if data.get('count') in (None, '') else int(data['count'])
++    except (TypeError, ValueError):
++        return jsonify({'error': 'bad request'}), 400
++    if not 1 <= count <= MONSTER_COUNT_MAX:
++        return jsonify({'error': f'Add between 1 and {MONSTER_COUNT_MAX} at a time.'}), 400
++    rolled = data.get('hp') == 'rolled'
++    try:
++        entry = srd.detail('monsters', data.get('ref'))
++    except srd.SrdError as e:
++        return jsonify({'error': str(e)}), _srd_status(e)
++    c = entry['prefill']
++    notes = sanitize_notes_payload(json.dumps([{'t': n, 'h': 1} for n in entry.get('notes') or []]))
++    skill_prof = json.dumps(dnd5e.clean_skill_prof(c['skill_prof']))
++    save_prof = json.dumps(dnd5e.clean_save_prof(c['save_prof']))
++    db = get_db()
++    max_order = db.execute('SELECT COALESCE(MAX(sort_order), -1) AS m FROM battle_participants').fetchone()['m']
++    for i in range(1, count + 1):
++        hp = _roll_monster_hp(c.get('hp_roll'), c['max_hp']) if rolled else c['max_hp']
++        cur = db.execute('''
++            INSERT INTO characters
++            (name, is_npc, level, max_hp, str_score, dex_score, con_score, int_score, wis_score, cha_score,
++             armor_class, notes, campaign_id, created_by, speed, skill_prof, save_prof)
++            VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
++        ''', ((c['name'] if count == 1 else f"{c['name']} {i}")[:120], c['level'], hp, c['str_score'], c['dex_score'],
++              c['con_score'], c['int_score'], c['wis_score'], c['cha_score'], c['armor_class'], notes,
++              g.campaign_id, session['user_id'], c['speed'], skill_prof, save_prof))
++        max_order += 1
++        db.execute('INSERT INTO battle_participants (character_id, current_hp, initiative, is_dead, sort_order) VALUES (?, ?, 0, 0, ?)',
++                   (cur.lastrowid, hp, max_order))
++    db.commit()
++    rows = _battle_rows(db)
++    db.close()
++    return jsonify(rows)
++
++
+ @app.route('/campaigns/<int:campaign_id>/api/battle/add-group', methods=['POST'])
+ @campaign_access_required
+ @dm_required
+@@ -2436,6 +2498,24 @@ def api_battle_initiative(pid):
+     return jsonify(rows)
+ 
+ 
++@app.route('/campaigns/<int:campaign_id>/api/battle/roll-initiative', methods=['POST'])
++@campaign_access_required
++@dm_required
++def api_battle_roll_initiative():
++    """d20 + Dexterity modifier for everyone still standing.  Typing a number by hand keeps working afterwards."""
++    db = get_db()
++    for r in db.execute('''
++        SELECT bp.id, c.dex_score FROM battle_participants bp JOIN characters c ON c.id = bp.character_id
++        WHERE c.campaign_id = ? AND bp.is_dead = 0
++    ''', (g.campaign_id,)).fetchall():
++        total = secrets.randbelow(20) + 1 + dnd5e.modifier(r['dex_score'] if r['dex_score'] is not None else 10)
++        db.execute('UPDATE battle_participants SET initiative = ? WHERE id = ?', (total, r['id']))
++    db.commit()
++    rows = _battle_rows(db)
++    db.close()
++    return jsonify(rows)
++
++
+ @app.route('/campaigns/<int:campaign_id>/api/battle/<int:pid>/ac', methods=['POST'])
+ @campaign_access_required
+ @dm_required
+diff --git a/srd.py b/srd.py
+index f8ec708..dfed9fb 100644
+--- a/srd.py
++++ b/srd.py
+@@ -150,6 +150,7 @@ def _monster_prefill(d):
+         'speed': dnd5e.clean_speed(_speed_ft(speed.get('walk'))),
+         **{f'{k}_score': v for k, v in scores.items()},
+         'save_prof': saves, 'skill_prof': skills,
++        'hp_roll': str(d.get('hit_points_roll') or ''),
+     }
+ 
+ 
+diff --git a/static/css/style.css b/static/css/style.css
+index beaa1ed..2dc8497 100644
+--- a/static/css/style.css
++++ b/static/css/style.css
+@@ -3587,8 +3587,8 @@ body.page-leaving .content {
+ 
+   /* battle */
+   .battle-header .page-sub { display: none; }
+-  .battle-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+-  .battle-actions .btn { flex-direction: column; gap: 2px; padding: 7px 4px; font-size: 11.5px; min-height: 0; text-align: center; line-height: 1.15; }
++  .battle-actions { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
++  .battle-actions .btn { flex-direction: column; gap: 2px; padding: 7px 2px; font-size: 11px; min-height: 0; text-align: center; line-height: 1.15; }
+   .battle-actions .btn svg { width: 16px; height: 16px; }
+   .battle-toolbar { gap: 8px; margin-bottom: 12px; }
+   .battle-toolbar .turn-bar { gap: 8px; flex: 1 1 auto; flex-wrap: nowrap; }
+@@ -3678,3 +3678,20 @@ body.page-leaving .content {
+ .peek-ab-mod, .peek-ab-save { display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-height: 30px; }
+ .peek-ab-mod { min-width: 48px; }
+ @media (max-width: 520px) { .peek-vitals { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
++
++
++/* ---- Monster manual inside the battle Add menu, and the "Add to battle" bar on the Reference page ---- */
++.add-monster { margin: 0 0 14px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-m); background: var(--bg-panel-inset); padding: 0 12px; }
++.add-monster > summary { display: flex; align-items: center; gap: 8px; padding: 10px 0; cursor: pointer; font-weight: 600; color: var(--parchment); list-style: none; }
++.add-monster > summary::-webkit-details-marker { display: none; }
++.add-monster > summary svg { width: 16px; height: 16px; color: var(--brass-bright); flex: none; }
++.add-monster[open] > summary { border-bottom: 1px solid var(--hairline); margin-bottom: 10px; }
++.add-monster-opts, .ref-battle-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 10px; }
++.add-monster-opts label { display: inline-flex; align-items: center; gap: 6px; font: 500 12px var(--font-mono); color: var(--parchment-dim); }
++.add-monster-opts input, .add-monster-opts select, .ref-battle-bar input, .ref-battle-bar select {
++  background: var(--bg-panel); border: 1px solid var(--hairline-strong); border-radius: var(--radius-s); color: var(--parchment); font: inherit; padding: 6px 8px; min-height: 36px;
++}
++.add-monster-opts input, .ref-battle-bar input { width: 64px; text-align: center; }
++.add-monster .ref-list--inline { margin-top: 8px; }
++.add-monster .hint-text { margin: 8px 0 10px; }
++.ref-battle-bar { margin: 18px 0 0; padding-top: 14px; border-top: 1px solid var(--hairline); }
+diff --git a/static/js/battle.js b/static/js/battle.js
+index 4189b92..30323c0 100644
+--- a/static/js/battle.js
++++ b/static/js/battle.js
+@@ -276,6 +276,9 @@
+     render();
+   }
+ 
++  // Characters made elsewhere on the page (the monster manual in the Add menu) hand over the fresh battle.
++  document.addEventListener('battle:participants', (e) => { participants = e.detail; render(); });
++
+   // ---- Event delegation for the battle list ----
+   // The picture / name act as buttons: Enter or Space opens the details too.
+   root.addEventListener('keydown', (e) => {
+@@ -445,6 +448,19 @@
+     `).join('');
+   }
+ 
++  const rollInitBtn = document.getElementById('roll-initiative-btn');
++  if (rollInitBtn) {
++    rollInitBtn.addEventListener('click', async () => {
++      const standing = participants.filter((p) => !p.is_dead);
++      if (!standing.length) return;
++      if (standing.some((p) => p.initiative) && !(await window.confirmAction('Roll initiative for everyone again? The numbers already entered are replaced.'))) return;
++      rollInitBtn.disabled = true;
++      try { participants = await apiCall('/api/battle/roll-initiative', {}); render(); }
++      catch (e) { if (window.LedgerDice) LedgerDice.announceError('Could not roll initiative.'); }
++      rollInitBtn.disabled = false;
++    });
++  }
++
+   const openAddModalBtn = document.getElementById('open-add-modal');
+   if (openAddModalBtn) {
+     openAddModalBtn.addEventListener('click', () => {
+diff --git a/static/js/reference.js b/static/js/reference.js
+index ff69029..92711ab 100644
+--- a/static/js/reference.js
++++ b/static/js/reference.js
+@@ -22,6 +22,19 @@
+     return data;
+   }
+ 
++  // Create the monster as an NPC and put it in the battle (DM only). Resolves to the new battle rows.
++  async function addMonsterToBattle(ref, count, hp) {
++    const r = await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/battle/add-monster`, {
++      method: 'POST', credentials: 'same-origin',
++      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
++      body: JSON.stringify({ ref, count, hp }),
++    });
++    let data = null;
++    try { data = await r.json(); } catch (e) { /* not json */ }
++    if (!r.ok) throw new Error((data && data.error) || 'Could not add it to the battle.');
++    return data;
++  }
++
+   // A result list bound to one kind. onPick(entry) is called with the clicked {id, name, sub}.
+   function bindSearch(opts) {
+     const { base, input, list, onPick } = opts;
+@@ -79,6 +92,27 @@
+     });
+   }
+ 
++  // "Add to battle": how many, average or rolled HP, one button.
++  function battleBar(row) {
++    const bar = el('div', 'ref-battle-bar');
++    const count = el('input'); count.type = 'number'; count.min = '1'; count.max = '12'; count.value = '1'; count.setAttribute('aria-label', 'How many');
++    const hp = el('select'); hp.setAttribute('aria-label', 'Hit points');
++    [['average', 'Average HP'], ['rolled', 'Rolled HP']].forEach(([v, t]) => { const o = el('option', null, t); o.value = v; hp.append(o); });
++    const btn = el('button', 'btn btn-primary btn-sm', 'Add to battle'); btn.type = 'button';
++    const msg = el('span', 'hint-text'); msg.setAttribute('aria-live', 'polite');
++    btn.addEventListener('click', async () => {
++      btn.disabled = true; msg.classList.remove('ref-error'); msg.textContent = 'Adding…';
++      try {
++        const n = Math.max(1, Math.min(12, parseInt(count.value, 10) || 1));
++        await addMonsterToBattle(row.id, n, hp.value);
++        msg.textContent = `Added ${n} to the battle.`;
++      } catch (e) { msg.textContent = e.message; msg.classList.add('ref-error'); }
++      btn.disabled = false;
++    });
++    bar.append(count, hp, btn, msg);
++    return bar;
++  }
++
+   // ---- the Reference page ----
+   const page = document.querySelector('[data-reference]');
+   if (page) {
+@@ -106,7 +140,10 @@
+         page.querySelectorAll('.ref-item.is-active').forEach((n) => n.classList.remove('is-active'));
+         btn.classList.add('is-active');
+         detail.replaceChildren(el('p', 'hint-text', 'Loading…'));
+-        try { renderDetail(detail, await getJson(`${page.dataset.base}entry?kind=${kind}&ref=${encodeURIComponent(row.id)}`)); }
++        try {
++          renderDetail(detail, await getJson(`${page.dataset.base}entry?kind=${kind}&ref=${encodeURIComponent(row.id)}`));
++          if (kind === 'monsters' && page.dataset.dm === '1') detail.append(battleBar(row));
++        }
+         catch (e) { detail.replaceChildren(el('p', 'hint-text ref-error', e.message)); }
+       },
+     });
+@@ -178,4 +215,26 @@
+       monsterSearch.run();
+     }, { once: true });
+   }
++
++  // ---- Battle > Add: the monster manual, one tap to bring a monster (or several) into the fight ----
++  const battleBox = document.querySelector('[data-battle-monsters]');
++  if (battleBox) {
++    const status = battleBox.querySelector('[data-monster-status]');
++    const countIn = battleBox.querySelector('[data-monster-count]');
++    const hpIn = battleBox.querySelector('[data-monster-hp]');
++    const search = bindSearch({
++      base: battleBox.dataset.base, kind: 'monsters',
++      input: battleBox.querySelector('[data-ref-query]'), list: battleBox.querySelector('[data-ref-list]'),
++      onPick: async (row) => {
++        const n = Math.max(1, Math.min(12, parseInt(countIn.value, 10) || 1));
++        status.classList.remove('ref-error'); status.textContent = 'Adding…';
++        try {
++          const rows = await addMonsterToBattle(row.id, n, hpIn.value);
++          document.dispatchEvent(new CustomEvent('battle:participants', { detail: rows }));
++          status.textContent = `Added ${n > 1 ? n + ' x ' : ''}${row.name} to the battle.`;
++        } catch (e) { status.textContent = e.message; status.classList.add('ref-error'); }
++      },
++    });
++    battleBox.addEventListener('toggle', () => { if (battleBox.open) search.run(); });
++  }
+ }());
+diff --git a/templates/battle.html b/templates/battle.html
+index fbc620b..1651883 100644
+--- a/templates/battle.html
++++ b/templates/battle.html
+@@ -12,6 +12,7 @@
+   {% if g.is_dm %}
+   <div class="page-actions battle-actions">
+     <a href="{{ url_for('character_new', **{'from': 'battle'}) }}" class="btn btn-ghost">{{ icon('plus') }} <span>Create Character</span></a>
++    <button type="button" class="btn btn-ghost" id="roll-initiative-btn" title="Roll d20 + Dexterity for everyone in the battle">{{ icon('dices') }} <span>Roll Initiative</span></button>
+     <button type="button" class="btn btn-ghost" id="open-add-modal">{{ icon('user') }} <span>Add Character</span></button>
+     <button type="button" class="btn btn-danger" id="clear-battle-btn">{{ icon('trash-2') }} <span>Clear Battle</span></button>
+   </div>
+@@ -62,6 +63,18 @@
+       <div class="field" style="margin-bottom:14px;">
+         <input type="text" id="add-modal-search" placeholder="Search characters…" autocomplete="off">
+       </div>
++      {% if g.is_dm %}
++      <details class="add-monster" data-battle-monsters data-base="{{ url_for('reference_view')|replace('/reference', '') }}/api/reference/">
++        <summary>{{ icon('swords') }} <span>Add from the monster manual</span></summary>
++        <div class="add-monster-opts">
++          <label>How many <input type="number" data-monster-count min="1" max="12" value="1" inputmode="numeric"></label>
++          <label>Hit points <select data-monster-hp><option value="average">Average</option><option value="rolled">Rolled</option></select></label>
++        </div>
++        <div class="ref-search">{{ icon('search') }}<input type="search" data-ref-query placeholder="Search monsters…" aria-label="Search the monster manual" autocomplete="off"></div>
++        <ul class="ref-list ref-list--inline" data-ref-list aria-live="polite"></ul>
++        <p class="hint-text" data-monster-status aria-live="polite">Pick a monster: it joins the battle as an NPC with its stat block (hidden from Players).</p>
++      </details>
++      {% endif %}
+       <div id="add-modal-groups"></div>
+       <div id="add-modal-list"></div>
+     </div>
+@@ -102,4 +115,5 @@
+ 
+ {% block extra_scripts %}
+ <script src="{{ url_for('static', filename='js/battle.js') }}"></script>
++{% if g.is_dm %}<script src="{{ url_for('static', filename='js/reference.js') }}"></script>{% endif %}
+ {% endblock %}
+diff --git a/templates/reference.html b/templates/reference.html
+index e89793b..25d8692 100644
+--- a/templates/reference.html
++++ b/templates/reference.html
+@@ -11,7 +11,7 @@
+   </div>
+ </div>
+ 
+-<div class="ref" data-reference data-base="{{ url_for('reference_view')|replace('/reference', '') }}/api/reference/">
++<div class="ref" data-reference data-dm="{{ 1 if g.is_dm else 0 }}" data-base="{{ url_for('reference_view')|replace('/reference', '') }}/api/reference/">
+   <div class="ref-tabs" role="tablist">
+     <button type="button" class="ref-tab is-active" role="tab" data-kind="spells">Spells</button>
+     <button type="button" class="ref-tab" role="tab" data-kind="monsters">Monsters</button>
+diff --git a/tests/test_authz_roles.py b/tests/test_authz_roles.py
+index 4295222..322dc9f 100644
+--- a/tests/test_authz_roles.py
++++ b/tests/test_authz_roles.py
+@@ -58,7 +58,7 @@ POLICY = {
+     # --- battle ---
+     'battle_view': MEMBER, 'api_battle_list': MEMBER,
+     **{e: DM for e in (
+-        'api_battle_add', 'api_battle_add_group', 'api_battle_heal', 'api_battle_damage', 'api_battle_temphp',
++        'api_battle_add', 'api_battle_add_group', 'api_battle_add_monster', 'api_battle_roll_initiative', 'api_battle_heal', 'api_battle_damage', 'api_battle_temphp',
+         'api_battle_set_hp', 'api_battle_initiative', 'api_battle_ac', 'api_battle_max_hp', 'api_battle_die',
+         'api_battle_revive', 'api_battle_conditions', 'api_battle_next_turn', 'api_battle_prev_turn',
+         'api_battle_restart_turns', 'api_battle_remove', 'api_battle_clear')},
+diff --git a/tests/test_battle.py b/tests/test_battle.py
+index 1f8b936..714a814 100644
+--- a/tests/test_battle.py
++++ b/tests/test_battle.py
+@@ -89,3 +89,21 @@ def test_concurrent_damage_is_atomic(user):
+         results = list(ex.map(hit, clients))
+     assert all(code == 200 for codes in results for code in codes)
+     assert _hp(user, cid, pid)['current_hp'] == 500 - 8 * 6
++
++
++def test_roll_initiative_rolls_d20_plus_dex_for_everyone_standing_dm_only(make_user):
++    dm, pl = make_user(), make_user()
++    cid = dm.new_campaign(); dm.add_member(cid, pl)
++    quick = dm.new_character(cid, name='Quick', dex_score=18)        # +4
++    slow = dm.new_character(cid, name='Slow', dex_score=6)           # -2
++    dead = dm.new_character(cid, name='Dead', dex_score=10)
++    dm.add_to_battle(cid, quick); dm.add_to_battle(cid, slow)
++    dm.add_to_battle(cid, dead)
++    ids = {p['char_name']: p['id'] for p in dm.get(f'/campaigns/{cid}/api/battle').get_json()}
++    dm.json(f'/campaigns/{cid}/api/battle/{ids["Dead"]}/die', {})
++    dm.json(f'/campaigns/{cid}/api/battle/{ids["Dead"]}/initiative', {'value': 7})
++    assert pl.json(f'/campaigns/{cid}/api/battle/roll-initiative', {}).status_code in (302, 403)
++    for _ in range(25):
++        rows = {r['char_name']: r['initiative'] for r in dm.json(f'/campaigns/{cid}/api/battle/roll-initiative', {}).get_json()}
++        assert 5 <= rows['Quick'] <= 24 and -1 <= rows['Slow'] <= 18
++        assert rows['Dead'] == 7                                     # the fallen are left alone
+diff --git a/tests/test_e2e_browser.py b/tests/test_e2e_browser.py
+index 55821bd..f9a42a0 100644
+--- a/tests/test_e2e_browser.py
++++ b/tests/test_e2e_browser.py
+@@ -1224,3 +1224,57 @@ def test_phone_map_scrolls_the_page_from_empty_map_but_not_from_a_token(pw, shar
+     _swipe(page, pb['x'] + pb['width'] / 2, pb['y'] + pb['height'] / 2, 40, 0); page.wait_for_timeout(300)
+     assert page.evaluate('() => window.scrollY') < 20                             # a token drag never scrolls the page
+     assert not bad and not errs, (bad, errs)
++
++
++def test_monster_manual_in_the_battle_add_menu_brings_copies_into_the_fight(pw):
++    import json as _json
++    import threading
++    from http.server import BaseHTTPRequestHandler, HTTPServer
++    import test_reference as ref
++
++    class H(BaseHTTPRequestHandler):
++        def do_GET(self):
++            path = self.path.split('?')[0].replace('/api/2024', '', 1)
++            body = ref.LISTS.get(path) or ref.DETAILS.get(path)
++            self.send_response(200 if body else 404); self.send_header('Content-Type', 'application/json'); self.end_headers()
++            self.wfile.write(_json.dumps(body or {}).encode())
++        def log_message(self, *a): pass
++    api = HTTPServer(('127.0.0.1', 0), H); threading.Thread(target=api.serve_forever, daemon=True).start()
++    from conftest import Server
++    srv = Server({'SRD_API_BASE': f'http://127.0.0.1:{api.server_port}'})
++    try:
++        base = srv.url; dm = Api(base); cid = dm.campaign('Manual')
++        ctx = dm.context(pw, base); page = ctx.new_page(); bad, errs = _collect(page)
++        page.goto(base + f'/campaigns/{cid}/battle'); page.wait_for_load_state('load'); page.wait_for_timeout(500)
++        page.locator('#open-add-modal').click()
++        page.locator('.add-monster > summary').click()
++        page.locator('[data-monster-count]').fill('2')
++        page.locator('.add-monster [data-ref-list] .ref-item', has_text='Goblin Warrior').click()
++        playwright.expect(page.locator('.battle-row')).to_have_count(2)
++        playwright.expect(page.locator('.battle-name').first).to_contain_text('Goblin Warrior 1')
++        playwright.expect(page.locator('[data-monster-status]')).to_contain_text('Added 2 x Goblin Warrior')
++        # ...and the Monsters tab of the Reference has the same button
++        page.goto(base + f'/campaigns/{cid}/reference'); page.wait_for_load_state('load')
++        page.locator('.ref-tab[data-kind="monsters"]').click()
++        page.locator('.ref-item', has_text='Goblin Warrior').click()
++        page.locator('.ref-battle-bar select').select_option('rolled')
++        page.locator('.ref-battle-bar button').click()
++        playwright.expect(page.locator('.ref-battle-bar .hint-text')).to_contain_text('Added 1 to the battle')
++        assert len(dm.get(f'/campaigns/{cid}/api/battle').json()) == 3
++        assert not bad and not errs, (bad, errs)
++    finally:
++        srv.stop(); api.shutdown()
++
++
++def test_roll_initiative_button_fills_in_every_row_and_fits_the_phone_header(pw, shared_server):
++    base = shared_server.url; dm = Api(base); cid = dm.campaign('Initiative')
++    for n in ('Ayla', 'Brom'):
++        dm.post(f'/campaigns/{cid}/api/battle/add', json={'character_id': dm.character(cid, n, dex_score=20)})
++    ctx = _touch_context(pw, dm, base, 390, 800); page = ctx.new_page(); bad, errs = _collect(page)
++    page.goto(base + f'/campaigns/{cid}/battle'); page.wait_for_load_state('load'); page.wait_for_timeout(600)
++    ys = {round(page.locator(f'.battle-actions .btn:nth-child({i})').bounding_box()['y']) for i in (1, 2, 3, 4)}
++    assert max(ys) - min(ys) <= 2, ys                                                  # four buttons on one row
++    page.locator('#roll-initiative-btn').tap(); page.wait_for_timeout(700)
++    vals = [int(v) for v in page.locator('input[data-action="initiative"]').evaluate_all('els => els.map(e => e.value)')]
++    assert len(vals) == 2 and all(6 <= v <= 25 for v in vals), vals
++    assert not bad and not errs, (bad, errs)
+diff --git a/tests/test_reference.py b/tests/test_reference.py
+index e9c3cf6..e67d6aa 100644
+--- a/tests/test_reference.py
++++ b/tests/test_reference.py
+@@ -128,3 +128,39 @@ def test_an_unreachable_api_gives_a_clean_error(make_user, monkeypatch):
+     r = dm.get(f'/campaigns/{cid}/api/reference/search?kind=spells&q=x')
+     assert r.status_code == 502 and 'unavailable' in r.json['error']
+     assert dm.get(f'/campaigns/{cid}/reference').status_code == 200            # the page itself never depends on the API
++
++
++@new_code
++def test_a_monster_goes_straight_into_the_battle_as_an_npc(make_user):
++    from conftest import q
++    dm, player = make_user(), make_user()
++    cid = dm.new_campaign(); dm.add_member(cid, player)
++    url = f'/campaigns/{cid}/api/battle/add-monster'
++    rows = dm.json(url, {'ref': 'monsters/goblin-warrior'}).get_json()
++    assert [(r['char_name'], r['is_npc'], r['current_hp'], r['char_max_hp'], r['effective_ac']) for r in rows] == [('Goblin Warrior', 1, 10, 10, 15)]
++    note = q('SELECT notes, dex_score, save_prof FROM characters WHERE campaign_id = ?', cid)[0]
++    assert '"h": 1' in note['notes'] and 'Nimble Escape' in note['notes'] and '<script>' not in note['notes'] and note['dex_score'] == 15
++    rows = dm.json(url, {'ref': 'monsters/goblin-warrior', 'count': 3, 'hp': 'rolled'}).get_json()
++    assert [r['char_name'] for r in rows][1:] == ['Goblin Warrior 1', 'Goblin Warrior 2', 'Goblin Warrior 3']
++    assert all(3 <= r['char_max_hp'] <= 18 and r['current_hp'] == r['char_max_hp'] for r in rows[1:])      # 3d6, one roll per copy
++
++
++@new_code
++def test_adding_a_monster_is_dm_only_and_validated(make_user):
++    dm, player = make_user(), make_user()
++    cid = dm.new_campaign(); dm.add_member(cid, player)
++    url = f'/campaigns/{cid}/api/battle/add-monster'
++    assert player.json(url, {'ref': 'monsters/goblin-warrior'}).status_code in (302, 403)
++    assert dm.json(url, {'ref': 'monsters/goblin-warrior', 'count': 0}).status_code == 400
++    assert dm.json(url, {'ref': 'monsters/goblin-warrior', 'count': 13}).status_code == 400
++    assert dm.json(url, {'ref': 'monsters/goblin-warrior', 'count': 'x'}).status_code == 400
++    assert dm.json(url, {'ref': '../etc/passwd'}).status_code == 400
++    assert dm.json(url, {'ref': 'monsters/nope'}).status_code == 404
++    assert dm.get(f'/campaigns/{cid}/api/battle').get_json() == []                                  # nothing half-made
++
++
++def test_unreadable_hit_dice_fall_back_to_the_average():
++    import app as ledger
++    assert ledger._roll_monster_hp('weird', 22) == 22 and ledger._roll_monster_hp('', 22) == 22
++    assert all(5 <= ledger._roll_monster_hp('2d6+3', 0) <= 15 for _ in range(40))
++    assert ledger._roll_monster_hp('1d4-9', 0) == 1

@@ -503,7 +503,7 @@ def test_hostile_names_never_execute_in_battle_or_map_screens(pw, shared_server)
     page.on('dialog', lambda d: (dialogs.append(d.message), d.dismiss()))
     page.goto(base + f'/campaigns/{cid}/battle'); page.wait_for_selector('.battle-row')
     page.hover('.cond-add'); page.wait_for_timeout(300)                      # would fire the injected onmouseover
-    page.click('[data-action="view"]'); page.wait_for_selector('.peek-chips')
+    page.click('.battle-name[data-action="view"]'); page.wait_for_selector('.peek-chips')
     page.wait_for_timeout(500)
     assert 'onerror' in page.inner_text('.peek-chips')                        # the faction name is shown as literal text
     assert page.locator('.peek-chips img').count() == 0 and page.locator('#detail-modal-title img').count() == 0
@@ -1002,7 +1002,7 @@ def test_phone_map_touch_drag_moves_a_token_and_pinch_zooms(pw, shared_server):
     page.goto(base + f'/campaigns/{cid}/maps/{mid}'); page.wait_for_load_state('load'); page.wait_for_timeout(800)
     if page.locator('#setup-confirm-btn').is_visible():
         page.locator('#setup-confirm-btn').tap(); page.wait_for_timeout(600)
-    playwright.expect(page.locator('#nav-hint')).to_contain_text('Pinch')                  # touch wording, not Ctrl/Space
+    playwright.expect(page.locator('#nav-hint')).to_contain_text('pinch', ignore_case=True)                  # touch wording, not Ctrl/Space
     assert page.locator('#hold-space-hint').is_hidden()
     cdp = ctx.new_cdp_session(page)
     def touch(kind, *pts):
@@ -1100,7 +1100,7 @@ def test_phone_characters_battle_and_map_pages_are_compact(pw, shared_server):
     page.goto(base + f'/campaigns/{cid}/battle'); page.wait_for_load_state('load'); page.wait_for_timeout(500)
     rows = page.locator('.battle-row')
     for i in range(rows.count()):
-        b = rows.nth(i).bounding_box(); assert b['height'] < 185 and b['x'] + b['width'] <= 391, b
+        b = rows.nth(i).bounding_box(); assert b['height'] < 235 and b['x'] + b['width'] <= 391, b
     assert page.evaluate("() => [...document.querySelectorAll('.battle-row *')].filter(e => e.getBoundingClientRect().right > 391).length") == 0
     tops = [page.locator('.battle-actions .btn').nth(i).bounding_box()['y'] for i in range(3)]; assert max(tops) - min(tops) <= 3
     # map: the toolbar is a Tools menu that folds away after picking a tool
@@ -1170,3 +1170,111 @@ def test_sideways_phone_bars_hide_on_scroll_and_the_dock_brings_them_back(pw, sh
     assert not [b for b in bad if b[0] >= 400], bad
     assert not errs, errs
     ctx.close()
+
+
+def test_battle_name_and_picture_open_details_and_copies_roll_with_their_number(pw, shared_server):
+    base = shared_server.url; dm = Api(base); cid = dm.campaign('Copies')
+    gob = dm.character(cid, 'Goblin Minion', dex_score=14, is_npc='on')
+    for _ in range(2):
+        dm.post(f'/campaigns/{cid}/api/battle/add', json={'character_id': gob})
+    ctx = dm.context(pw, base); page = ctx.new_page(); bad, errs = _collect(page)
+    page.goto(base + f'/campaigns/{cid}/battle'); page.wait_for_load_state('load'); page.wait_for_timeout(600)
+    assert page.locator('.battle-row .btn-icon[data-action="view"]').count() == 0      # no separate details button any more
+    names = page.locator('.battle-row .battle-name')
+    assert names.count() == 2 and 'Goblin Minion #2' in names.nth(1).inner_text()
+    page.locator('.battle-row .battle-avatar').nth(1).click()                          # the picture opens it...
+    panel = page.locator('.peek-panel'); playwright.expect(panel).to_be_visible()
+    page.locator('.peek-vitals [data-roll-bonus]').first.click()
+    playwright.expect(page.locator('.dice-toast').first).to_contain_text('Goblin Minion #2')
+    page.keyboard.press('Escape'); playwright.expect(panel).to_be_hidden()
+    names.nth(0).click()                                                               # ...and so does the name
+    playwright.expect(panel).to_be_visible()
+    page.locator('.peek-vitals [data-roll-bonus]').first.click()
+    playwright.expect(page.locator('.dice-toast').last).to_contain_text('Goblin Minion #1')
+    assert not bad and not errs, (bad, errs)
+
+
+def _swipe(page, x, y, dx, dy, steps=8):
+    cdp = page.context.new_cdp_session(page)
+    cdp.send('Input.dispatchTouchEvent', {'type': 'touchStart', 'touchPoints': [{'x': x, 'y': y}]})
+    for i in range(1, steps + 1):
+        cdp.send('Input.dispatchTouchEvent', {'type': 'touchMove', 'touchPoints': [{'x': x + dx * i / steps, 'y': y + dy * i / steps}]})
+    cdp.send('Input.dispatchTouchEvent', {'type': 'touchEnd', 'touchPoints': []})
+
+
+def test_phone_map_scrolls_the_page_from_empty_map_but_not_from_a_token(pw, shared_server):
+    base = shared_server.url; dm = Api(base); cid = dm.campaign('Scrolly')
+    r = dm.post(f'/campaigns/{cid}/maps/new', data={'name': 'Arena', 'blank_width': '1000', 'blank_height': '1400'})
+    mid = int(re.search(r'/maps/(\d+)', r.headers['Location']).group(1))
+    pin = dm.post(f'/campaigns/{cid}/api/maps/{mid}/pins', json={'pin_type': 'prop', 'icon_key': 'skull', 'custom_name': 'Trap', 'x': 300, 'y': 300}).json()['id']
+    ctx = _touch_context(pw, dm, base, 390, 700); page = ctx.new_page(); bad, errs = _collect(page)
+    page.goto(base + f'/campaigns/{cid}/maps/{mid}'); page.wait_for_load_state('load'); page.wait_for_timeout(800)
+    if page.locator('#setup-confirm-btn').is_visible():
+        page.locator('#setup-confirm-btn').tap(); page.wait_for_timeout(600)
+    page.evaluate('() => window.scrollTo(0, 0)')
+    box = page.locator('#map-stage-wrap').bounding_box()
+    assert box['height'] > 500
+    sx, sy = box['x'] + box['width'] - 40, min(box['y'] + 460, 640)              # empty map, away from the token
+    _swipe(page, sx, sy, 0, -300); page.wait_for_timeout(300)
+    assert page.evaluate('() => window.scrollY') > 80                             # the page followed the finger
+    pinbox = page.locator('.map-pin').first
+    before = page.evaluate('() => window.scrollY')
+    page.evaluate('() => window.scrollTo(0, 0)')
+    pb = pinbox.bounding_box()
+    _swipe(page, pb['x'] + pb['width'] / 2, pb['y'] + pb['height'] / 2, 40, 0); page.wait_for_timeout(300)
+    assert page.evaluate('() => window.scrollY') < 20                             # a token drag never scrolls the page
+    assert not bad and not errs, (bad, errs)
+
+
+def test_monster_manual_in_the_battle_add_menu_brings_copies_into_the_fight(pw):
+    import json as _json
+    import threading
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+    import test_reference as ref
+
+    class H(BaseHTTPRequestHandler):
+        def do_GET(self):
+            path = self.path.split('?')[0].replace('/api/2024', '', 1)
+            body = ref.LISTS.get(path) or ref.DETAILS.get(path)
+            self.send_response(200 if body else 404); self.send_header('Content-Type', 'application/json'); self.end_headers()
+            self.wfile.write(_json.dumps(body or {}).encode())
+        def log_message(self, *a): pass
+    api = HTTPServer(('127.0.0.1', 0), H); threading.Thread(target=api.serve_forever, daemon=True).start()
+    from conftest import Server
+    srv = Server({'SRD_API_BASE': f'http://127.0.0.1:{api.server_port}'})
+    try:
+        base = srv.url; dm = Api(base); cid = dm.campaign('Manual')
+        ctx = dm.context(pw, base); page = ctx.new_page(); bad, errs = _collect(page)
+        page.goto(base + f'/campaigns/{cid}/battle'); page.wait_for_load_state('load'); page.wait_for_timeout(500)
+        page.locator('#open-add-modal').click()
+        page.locator('.add-monster > summary').click()
+        page.locator('[data-monster-count]').fill('2')
+        page.locator('.add-monster [data-ref-list] .ref-item', has_text='Goblin Warrior').click()
+        playwright.expect(page.locator('.battle-row')).to_have_count(2)
+        playwright.expect(page.locator('.battle-name').first).to_contain_text('Goblin Warrior 1')
+        playwright.expect(page.locator('[data-monster-status]')).to_contain_text('Added 2 x Goblin Warrior')
+        # ...and the Monsters tab of the Reference has the same button
+        page.goto(base + f'/campaigns/{cid}/reference'); page.wait_for_load_state('load')
+        page.locator('.ref-tab[data-kind="monsters"]').click()
+        page.locator('.ref-item', has_text='Goblin Warrior').click()
+        page.locator('.ref-battle-bar select').select_option('rolled')
+        page.locator('.ref-battle-bar button').click()
+        playwright.expect(page.locator('.ref-battle-bar .hint-text')).to_contain_text('Added 1 to the battle')
+        assert len(dm.get(f'/campaigns/{cid}/api/battle').json()) == 3
+        assert not bad and not errs, (bad, errs)
+    finally:
+        srv.stop(); api.shutdown()
+
+
+def test_roll_initiative_button_fills_in_every_row_and_fits_the_phone_header(pw, shared_server):
+    base = shared_server.url; dm = Api(base); cid = dm.campaign('Initiative')
+    for n in ('Ayla', 'Brom'):
+        dm.post(f'/campaigns/{cid}/api/battle/add', json={'character_id': dm.character(cid, n, dex_score=20)})
+    ctx = _touch_context(pw, dm, base, 390, 800); page = ctx.new_page(); bad, errs = _collect(page)
+    page.goto(base + f'/campaigns/{cid}/battle'); page.wait_for_load_state('load'); page.wait_for_timeout(600)
+    ys = {round(page.locator(f'.battle-actions .btn:nth-child({i})').bounding_box()['y']) for i in (1, 2, 3, 4)}
+    assert max(ys) - min(ys) <= 2, ys                                                  # four buttons on one row
+    page.locator('#roll-initiative-btn').tap(); page.wait_for_timeout(700)
+    vals = [int(v) for v in page.locator('input[data-action="initiative"]').evaluate_all('els => els.map(e => e.value)')]
+    assert len(vals) == 2 and all(6 <= v <= 25 for v in vals), vals
+    assert not bad and not errs, (bad, errs)

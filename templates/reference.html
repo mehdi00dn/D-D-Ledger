@@ -11,7 +11,7 @@
   </div>
 </div>
 
-<div class="ref" data-reference data-base="{{ url_for('reference_view')|replace('/reference', '') }}/api/reference/">
+<div class="ref" data-reference data-dm="{{ 1 if g.is_dm else 0 }}" data-base="{{ url_for('reference_view')|replace('/reference', '') }}/api/reference/">
   <div class="ref-tabs" role="tablist">
     <button type="button" class="ref-tab is-active" role="tab" data-kind="spells">Spells</button>
     <button type="button" class="ref-tab" role="tab" data-kind="monsters">Monsters</button>

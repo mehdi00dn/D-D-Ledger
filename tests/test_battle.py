@@ -89,3 +89,21 @@ def test_concurrent_damage_is_atomic(user):
         results = list(ex.map(hit, clients))
     assert all(code == 200 for codes in results for code in codes)
     assert _hp(user, cid, pid)['current_hp'] == 500 - 8 * 6
+
+
+def test_roll_initiative_rolls_d20_plus_dex_for_everyone_standing_dm_only(make_user):
+    dm, pl = make_user(), make_user()
+    cid = dm.new_campaign(); dm.add_member(cid, pl)
+    quick = dm.new_character(cid, name='Quick', dex_score=18)        # +4
+    slow = dm.new_character(cid, name='Slow', dex_score=6)           # -2
+    dead = dm.new_character(cid, name='Dead', dex_score=10)
+    dm.add_to_battle(cid, quick); dm.add_to_battle(cid, slow)
+    dm.add_to_battle(cid, dead)
+    ids = {p['char_name']: p['id'] for p in dm.get(f'/campaigns/{cid}/api/battle').get_json()}
+    dm.json(f'/campaigns/{cid}/api/battle/{ids["Dead"]}/die', {})
+    dm.json(f'/campaigns/{cid}/api/battle/{ids["Dead"]}/initiative', {'value': 7})
+    assert pl.json(f'/campaigns/{cid}/api/battle/roll-initiative', {}).status_code in (302, 403)
+    for _ in range(25):
+        rows = {r['char_name']: r['initiative'] for r in dm.json(f'/campaigns/{cid}/api/battle/roll-initiative', {}).get_json()}
+        assert 5 <= rows['Quick'] <= 24 and -1 <= rows['Slow'] <= 18
+        assert rows['Dead'] == 7                                     # the fallen are left alone

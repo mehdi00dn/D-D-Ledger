@@ -4,7 +4,7 @@
  * for touch screens, where there is no modifier key.  The bonus is read from the page and the server just adds it,
  * so this is a convenience: the server never treats it as a character fact.
  *
- *   CharacterRolls.bind(root, getCharacterId, modeInputName)
+ *   CharacterRolls.bind(root, getCharacterId, modeInputName, getParticipantId?)
  *       root: the element whose [data-roll-bonus] descendants roll (the document, or a popup body)
  *       getCharacterId: function returning the id of the character being shown right now
  *       modeInputName: name of the radio group holding the Normal / Adv. / Dis. choice
@@ -15,7 +15,7 @@
   'use strict';
   if (!window.LedgerDice) return;
 
-  function bind(root, getCharacterId, modeName) {
+  function bind(root, getCharacterId, modeName, getParticipantId) {
     function chosenMode(ev) {
       if (ev && ev.shiftKey) return 'advantage';
       if (ev && (ev.ctrlKey || ev.metaKey || ev.altKey)) return 'disadvantage';
@@ -31,7 +31,8 @@
         modifier: parseInt(target.getAttribute('data-roll-bonus'), 10) || 0,
         label: target.getAttribute('data-roll-label') || '',
         mode: chosenMode(ev),
-        character_id: getCharacterId()
+        character_id: getCharacterId(),
+        participant_id: getParticipantId ? getParticipantId() : null
       }).catch(function (err) { LedgerDice.announceError(err.message); })
         .then(function () { target.classList.remove('is-rolling'); });
     }

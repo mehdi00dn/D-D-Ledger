@@ -128,3 +128,39 @@ def test_an_unreachable_api_gives_a_clean_error(make_user, monkeypatch):
     r = dm.get(f'/campaigns/{cid}/api/reference/search?kind=spells&q=x')
     assert r.status_code == 502 and 'unavailable' in r.json['error']
     assert dm.get(f'/campaigns/{cid}/reference').status_code == 200            # the page itself never depends on the API
+
+
+@new_code
+def test_a_monster_goes_straight_into_the_battle_as_an_npc(make_user):
+    from conftest import q
+    dm, player = make_user(), make_user()
+    cid = dm.new_campaign(); dm.add_member(cid, player)
+    url = f'/campaigns/{cid}/api/battle/add-monster'
+    rows = dm.json(url, {'ref': 'monsters/goblin-warrior'}).get_json()
+    assert [(r['char_name'], r['is_npc'], r['current_hp'], r['char_max_hp'], r['effective_ac']) for r in rows] == [('Goblin Warrior', 1, 10, 10, 15)]
+    note = q('SELECT notes, dex_score, save_prof FROM characters WHERE campaign_id = ?', cid)[0]
+    assert '"h": 1' in note['notes'] and 'Nimble Escape' in note['notes'] and '<script>' not in note['notes'] and note['dex_score'] == 15
+    rows = dm.json(url, {'ref': 'monsters/goblin-warrior', 'count': 3, 'hp': 'rolled'}).get_json()
+    assert [r['char_name'] for r in rows][1:] == ['Goblin Warrior 1', 'Goblin Warrior 2', 'Goblin Warrior 3']
+    assert all(3 <= r['char_max_hp'] <= 18 and r['current_hp'] == r['char_max_hp'] for r in rows[1:])      # 3d6, one roll per copy
+
+
+@new_code
+def test_adding_a_monster_is_dm_only_and_validated(make_user):
+    dm, player = make_user(), make_user()
+    cid = dm.new_campaign(); dm.add_member(cid, player)
+    url = f'/campaigns/{cid}/api/battle/add-monster'
+    assert player.json(url, {'ref': 'monsters/goblin-warrior'}).status_code in (302, 403)
+    assert dm.json(url, {'ref': 'monsters/goblin-warrior', 'count': 0}).status_code == 400
+    assert dm.json(url, {'ref': 'monsters/goblin-warrior', 'count': 13}).status_code == 400
+    assert dm.json(url, {'ref': 'monsters/goblin-warrior', 'count': 'x'}).status_code == 400
+    assert dm.json(url, {'ref': '../etc/passwd'}).status_code == 400
+    assert dm.json(url, {'ref': 'monsters/nope'}).status_code == 404
+    assert dm.get(f'/campaigns/{cid}/api/battle').get_json() == []                                  # nothing half-made
+
+
+def test_unreadable_hit_dice_fall_back_to_the_average():
+    import app as ledger
+    assert ledger._roll_monster_hp('weird', 22) == 22 and ledger._roll_monster_hp('', 22) == 22
+    assert all(5 <= ledger._roll_monster_hp('2d6+3', 0) <= 15 for _ in range(40))
+    assert ledger._roll_monster_hp('1d4-9', 0) == 1

@@ -1311,7 +1311,7 @@
   pinViewBtn.addEventListener('click', () => {
     if (!selectedPinId) return;
     const pin = pins.find((p) => p.id === selectedPinId);
-    if (pin && pin.character_id) openDetailModal(pin.character_id);
+    if (pin && pin.character_id) openDetailModal(pin.character_id, pin.participant_id);
   });
 
   if (pinOwnerBtn) {
@@ -1374,7 +1374,7 @@
   // ---------------------------------------------------------------------
   const detailModal = document.getElementById('detail-modal');
 
-  function openDetailModal(characterId) { return window.CharPeek.open(characterId); }
+  function openDetailModal(characterId, participantId) { return window.CharPeek.open(characterId, participantId); }
   document.getElementById('close-detail-modal').addEventListener('click', () => { detailModal.hidden = true; });
   detailModal.addEventListener('click', (e) => { if (e.target === detailModal) detailModal.hidden = true; });
 
@@ -2536,7 +2536,19 @@
   // drag from where it first touched (draw, move a token).  Two fingers pinch-zoom and pan.
   // ---------------------------------------------------------------------
   const TOUCH_SLOP = 8;
-  let touchMode = null;                  // null | 'maybe' | 'mouse' | 'pinch'
+  let touchMode = null;                  // null | 'maybe' | 'mouse' | 'pinch' | 'scroll'
+  // A finger on empty map with the select tool grabs nothing, so it scrolls the page instead (the map can fill the screen).
+  function fingerGrabsSomething(x, y, target) {
+    if (readOnly()) return false;
+    if (target && target.closest && target.closest('.map-pin')) return true;
+    const pos = getNaturalPos(x, y);
+    for (let i = drawings.length - 1; i >= 0; i--) {
+      const d = drawings[i];
+      if (selectedShapeIds.has(d.id) && (hitTestResizeHandle(d, pos) !== null || hitTestRotateHandle(d, pos))) return true;
+      if (!d.locked && hitTestShape(d, pos)) return true;
+    }
+    return false;
+  }
   let touchStart = null, pinch = null;
 
   function fireMouse(type, x, y, target) {
@@ -2561,7 +2573,7 @@
       return;
     }
     const t = e.touches[0];
-    touchMode = 'maybe';
+    touchMode = (currentTool === 'select' && !fingerGrabsSomething(t.clientX, t.clientY, e.target)) ? 'scroll-maybe' : 'maybe';
     touchStart = { x: t.clientX, y: t.clientY, lastX: t.clientX, lastY: t.clientY, target: e.target };
   }, { passive: true });
 
@@ -2570,6 +2582,12 @@
     if (touchMode === 'pinch' && e.touches.length >= 2) {
       e.preventDefault();
       const m = pinchMetrics(e.touches);
+      // Fitted to the screen there is nothing to pan, so two fingers moving together scroll the page.
+      if (zoomLevel <= 1.01 && Math.abs(m.dist / pinch.dist - 1) < 0.04) {
+        window.scrollBy(0, pinch.y - m.y);
+        pinch.y = m.y; pinch.x = m.x;
+        return;
+      }
       const rect = stageWrap.getBoundingClientRect();
       const newZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, zoomLevel * (m.dist / pinch.dist)));
       const factor = newZoom / zoomLevel;
@@ -2583,6 +2601,13 @@
     }
     if (e.touches.length !== 1 || !touchStart) return;
     const t = e.touches[0];
+    if (touchMode === 'scroll-maybe' || touchMode === 'scroll') {
+      touchMode = 'scroll';
+      e.preventDefault();
+      window.scrollBy(touchStart.lastX - t.clientX, touchStart.lastY - t.clientY);
+      touchStart.lastX = t.clientX; touchStart.lastY = t.clientY;
+      return;
+    }
     if (touchMode === 'maybe') {
       if (Math.hypot(t.clientX - touchStart.x, t.clientY - touchStart.y) < TOUCH_SLOP) return;
       touchMode = 'mouse';
@@ -2597,6 +2622,7 @@
 
   function touchFinished(e) {
     if (!touchMode) return;
+    if (touchMode === 'scroll') e.preventDefault();
     if (touchMode === 'mouse' && touchStart) { e.preventDefault(); endMouseDrag(touchStart.lastX, touchStart.lastY); }
     if (e.touches.length === 0) { touchMode = null; touchStart = null; pinch = null; }
     else if (touchMode === 'pinch' && e.touches.length === 1) { touchMode = null; touchStart = null; pinch = null; }   // lifted one of two fingers: stop, do not draw
@@ -2606,7 +2632,7 @@
 
   // On a touch screen the keyboard hints make no sense: say what works instead.
   if (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) {
-    if (navHintEl) navHintEl.innerHTML = '<strong>Pinch</strong> to zoom &middot; <strong>two fingers</strong> to pan';
+    if (navHintEl) navHintEl.innerHTML = '<strong>Drag empty map</strong> to scroll &middot; <strong>pinch</strong> to zoom &middot; <strong>two fingers</strong> to pan';
     if (holdSpaceHintEl) holdSpaceHintEl.hidden = true;
   }
 

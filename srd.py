@@ -150,6 +150,7 @@ def _monster_prefill(d):
         'speed': dnd5e.clean_speed(_speed_ft(speed.get('walk'))),
         **{f'{k}_score': v for k, v in scores.items()},
         'save_prof': saves, 'skill_prof': skills,
+        'hp_roll': str(d.get('hit_points_roll') or ''),
     }
 
 

@@ -2309,6 +2309,68 @@ def api_battle_add():
     return jsonify(rows)
 
 
+MONSTER_COUNT_MAX = 12
+_HP_ROLL_RE = re.compile(r'^\s*(\d{1,3})\s*d\s*(\d{1,3})\s*(?:([+-])\s*(\d{1,4}))?\s*$', re.I)
+
+
+def _roll_monster_hp(expr, average):
+    """Hit points from the stat block's dice ("3d6+3"); the printed average if it cannot be read."""
+    m = _HP_ROLL_RE.match(expr or '')
+    if not m:
+        return average
+    n, sides = int(m.group(1)), int(m.group(2))
+    if not (1 <= n <= 100 and 2 <= sides <= 100):
+        return average
+    bonus = int(m.group(4) or 0) * (-1 if m.group(3) == '-' else 1)
+    return max(1, sum(secrets.randbelow(sides) + 1 for _ in range(n)) + bonus)
+
+
+@app.route('/campaigns/<int:campaign_id>/api/battle/add-monster', methods=['POST'])
+@campaign_access_required
+@dm_required
+def api_battle_add_monster():
+    """Create NPCs from a 2024 stat block and put them straight into the battle.
+    Body: {ref: 'monsters/goblin-warrior', count: 1-12, hp: 'average' | 'rolled'}.  One character per copy
+    ("Goblin 1", "Goblin 2"...), so each can have its own rolled hit points; the stat block is a note hidden from Players."""
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({'error': 'bad request'}), 400
+    try:
+        count = 1 if data.get('count') in (None, '') else int(data['count'])
+    except (TypeError, ValueError):
+        return jsonify({'error': 'bad request'}), 400
+    if not 1 <= count <= MONSTER_COUNT_MAX:
+        return jsonify({'error': f'Add between 1 and {MONSTER_COUNT_MAX} at a time.'}), 400
+    rolled = data.get('hp') == 'rolled'
+    try:
+        entry = srd.detail('monsters', data.get('ref'))
+    except srd.SrdError as e:
+        return jsonify({'error': str(e)}), _srd_status(e)
+    c = entry['prefill']
+    notes = sanitize_notes_payload(json.dumps([{'t': n, 'h': 1} for n in entry.get('notes') or []]))
+    skill_prof = json.dumps(dnd5e.clean_skill_prof(c['skill_prof']))
+    save_prof = json.dumps(dnd5e.clean_save_prof(c['save_prof']))
+    db = get_db()
+    max_order = db.execute('SELECT COALESCE(MAX(sort_order), -1) AS m FROM battle_participants').fetchone()['m']
+    for i in range(1, count + 1):
+        hp = _roll_monster_hp(c.get('hp_roll'), c['max_hp']) if rolled else c['max_hp']
+        cur = db.execute('''
+            INSERT INTO characters
+            (name, is_npc, level, max_hp, str_score, dex_score, con_score, int_score, wis_score, cha_score,
+             armor_class, notes, campaign_id, created_by, speed, skill_prof, save_prof)
+            VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', ((c['name'] if count == 1 else f"{c['name']} {i}")[:120], c['level'], hp, c['str_score'], c['dex_score'],
+              c['con_score'], c['int_score'], c['wis_score'], c['cha_score'], c['armor_class'], notes,
+              g.campaign_id, session['user_id'], c['speed'], skill_prof, save_prof))
+        max_order += 1
+        db.execute('INSERT INTO battle_participants (character_id, current_hp, initiative, is_dead, sort_order) VALUES (?, ?, 0, 0, ?)',
+                   (cur.lastrowid, hp, max_order))
+    db.commit()
+    rows = _battle_rows(db)
+    db.close()
+    return jsonify(rows)
+
+
 @app.route('/campaigns/<int:campaign_id>/api/battle/add-group', methods=['POST'])
 @campaign_access_required
 @dm_required
@@ -2430,6 +2492,24 @@ def api_battle_initiative(pid):
     value = int(data.get('value', 0))
     db = get_db()
     db.execute('UPDATE battle_participants SET initiative = ? WHERE id = ?', (value, pid))
+    db.commit()
+    rows = _battle_rows(db)
+    db.close()
+    return jsonify(rows)
+
+
+@app.route('/campaigns/<int:campaign_id>/api/battle/roll-initiative', methods=['POST'])
+@campaign_access_required
+@dm_required
+def api_battle_roll_initiative():
+    """d20 + Dexterity modifier for everyone still standing.  Typing a number by hand keeps working afterwards."""
+    db = get_db()
+    for r in db.execute('''
+        SELECT bp.id, c.dex_score FROM battle_participants bp JOIN characters c ON c.id = bp.character_id
+        WHERE c.campaign_id = ? AND bp.is_dead = 0
+    ''', (g.campaign_id,)).fetchall():
+        total = secrets.randbelow(20) + 1 + dnd5e.modifier(r['dex_score'] if r['dex_score'] is not None else 10)
+        db.execute('UPDATE battle_participants SET initiative = ? WHERE id = ?', (total, r['id']))
     db.commit()
     rows = _battle_rows(db)
     db.close()
@@ -2634,9 +2714,14 @@ def _roll_row_out(r, names):
         dice = json.loads(r['dice'])
     except ValueError:
         dice = []
+    try:
+        label_ = r['character_label']
+    except (KeyError, IndexError):         # a database that has not had migration 0019 yet
+        label_ = ''
     return {'id': r['id'], 'user_id': r['user_id'], 'who': names.get(r['user_id'], 'Someone'),
             'mine': r['user_id'] == session.get('user_id'),
-            'character_id': r['character_id'], 'character': names.get(('c', r['character_id'])),
+            'character_id': r['character_id'],
+            'character': label_ or names.get(('c', r['character_id'])),
             'label': r['label'], 'dice': dice, 'modifier': r['modifier'], 'total': r['total'],
             'mode': r['mode'], 'private': bool(r['private']), 'created_at': str(r['created_at'])}
 
@@ -2662,7 +2747,7 @@ def _dice_feed(db, after=None, limit=DICE_FEED_LIMIT):
 @campaign_access_required
 def dice_roll():
     """Roll on the server (so everyone sees one honest result), store it, and return it.
-    Body: {dice: {"20": 1, "6": 2}, modifier, label, mode: normal|advantage|disadvantage, character_id, private}.
+    Body: {dice: {"20": 1, "6": 2}, modifier, label, mode: normal|advantage|disadvantage, character_id, participant_id, private}.
     Advantage / disadvantage need exactly one d20 and roll a second one, keeping the higher / lower."""
     data = request.get_json(silent=True)
     if not isinstance(data, dict):
@@ -2711,6 +2796,18 @@ def dice_roll():
             db.close()
             return _dice_error('Only the DM rolls for NPCs.', 403)
         character_id = ch['id']
+    # Which copy in the battle rolled?  The number comes from the battle menu itself (never from the browser).
+    character_label = ''
+    if character_id and data.get('participant_id') not in (None, ''):
+        try:
+            pid_ = int(data['participant_id'])
+        except (TypeError, ValueError):
+            db.close()
+            return _dice_error('bad request')
+        for row in _battle_rows(db):
+            if row['id'] == pid_ and row['character_id'] == character_id:
+                character_label = row['display_name'][:80]
+                break
 
     rolled = [{'sides': s, 'value': secrets.randbelow(s) + 1, 'dropped': False} for s in plan]
     if mode != 'normal':
@@ -2719,15 +2816,15 @@ def dice_roll():
         drop['dropped'] = True
     total = sum(d['value'] for d in rolled if not d['dropped']) + modifier
     try:
-        db.execute('INSERT INTO dice_rolls (campaign_id, user_id, character_id, label, dice, modifier, total, mode, private) '
-                   'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                   (g.campaign_id, session['user_id'], character_id, label, json.dumps(rolled), modifier, total, mode,
+        db.execute('INSERT INTO dice_rolls (campaign_id, user_id, character_id, character_label, label, dice, modifier, total, mode, private) '
+                   'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                   (g.campaign_id, session['user_id'], character_id, character_label, label, json.dumps(rolled), modifier, total, mode,
                     1 if private else 0))
         db.execute('DELETE FROM dice_rolls WHERE campaign_id = ? AND id NOT IN '
                    '(SELECT id FROM dice_rolls WHERE campaign_id = ? ORDER BY id DESC LIMIT ?)',
                    (g.campaign_id, g.campaign_id, DICE_KEEP))
         db.commit()
-    except pgerr.UndefinedTable:
+    except (pgerr.UndefinedTable, pgerr.UndefinedColumn):
         db.rollback()
         db.close()
         return _dice_error(DICE_NEEDS_MIGRATION, 503)

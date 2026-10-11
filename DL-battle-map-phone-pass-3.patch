@@ -1,0 +1,571 @@
+diff --git a/app.py b/app.py
+index 695d130..1533743 100644
+--- a/app.py
++++ b/app.py
+@@ -2634,9 +2634,14 @@ def _roll_row_out(r, names):
+         dice = json.loads(r['dice'])
+     except ValueError:
+         dice = []
++    try:
++        label_ = r['character_label']
++    except (KeyError, IndexError):         # a database that has not had migration 0019 yet
++        label_ = ''
+     return {'id': r['id'], 'user_id': r['user_id'], 'who': names.get(r['user_id'], 'Someone'),
+             'mine': r['user_id'] == session.get('user_id'),
+-            'character_id': r['character_id'], 'character': names.get(('c', r['character_id'])),
++            'character_id': r['character_id'],
++            'character': label_ or names.get(('c', r['character_id'])),
+             'label': r['label'], 'dice': dice, 'modifier': r['modifier'], 'total': r['total'],
+             'mode': r['mode'], 'private': bool(r['private']), 'created_at': str(r['created_at'])}
+ 
+@@ -2662,7 +2667,7 @@ def _dice_feed(db, after=None, limit=DICE_FEED_LIMIT):
+ @campaign_access_required
+ def dice_roll():
+     """Roll on the server (so everyone sees one honest result), store it, and return it.
+-    Body: {dice: {"20": 1, "6": 2}, modifier, label, mode: normal|advantage|disadvantage, character_id, private}.
++    Body: {dice: {"20": 1, "6": 2}, modifier, label, mode: normal|advantage|disadvantage, character_id, participant_id, private}.
+     Advantage / disadvantage need exactly one d20 and roll a second one, keeping the higher / lower."""
+     data = request.get_json(silent=True)
+     if not isinstance(data, dict):
+@@ -2711,6 +2716,18 @@ def dice_roll():
+             db.close()
+             return _dice_error('Only the DM rolls for NPCs.', 403)
+         character_id = ch['id']
++    # Which copy in the battle rolled?  The number comes from the battle menu itself (never from the browser).
++    character_label = ''
++    if character_id and data.get('participant_id') not in (None, ''):
++        try:
++            pid_ = int(data['participant_id'])
++        except (TypeError, ValueError):
++            db.close()
++            return _dice_error('bad request')
++        for row in _battle_rows(db):
++            if row['id'] == pid_ and row['character_id'] == character_id:
++                character_label = row['display_name'][:80]
++                break
+ 
+     rolled = [{'sides': s, 'value': secrets.randbelow(s) + 1, 'dropped': False} for s in plan]
+     if mode != 'normal':
+@@ -2719,15 +2736,15 @@ def dice_roll():
+         drop['dropped'] = True
+     total = sum(d['value'] for d in rolled if not d['dropped']) + modifier
+     try:
+-        db.execute('INSERT INTO dice_rolls (campaign_id, user_id, character_id, label, dice, modifier, total, mode, private) '
+-                   'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+-                   (g.campaign_id, session['user_id'], character_id, label, json.dumps(rolled), modifier, total, mode,
++        db.execute('INSERT INTO dice_rolls (campaign_id, user_id, character_id, character_label, label, dice, modifier, total, mode, private) '
++                   'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
++                   (g.campaign_id, session['user_id'], character_id, character_label, label, json.dumps(rolled), modifier, total, mode,
+                     1 if private else 0))
+         db.execute('DELETE FROM dice_rolls WHERE campaign_id = ? AND id NOT IN '
+                    '(SELECT id FROM dice_rolls WHERE campaign_id = ? ORDER BY id DESC LIMIT ?)',
+                    (g.campaign_id, g.campaign_id, DICE_KEEP))
+         db.commit()
+-    except pgerr.UndefinedTable:
++    except (pgerr.UndefinedTable, pgerr.UndefinedColumn):
+         db.rollback()
+         db.close()
+         return _dice_error(DICE_NEEDS_MIGRATION, 503)
+diff --git a/migrations/0019_dice_roll_character_label.sql b/migrations/0019_dice_roll_character_label.sql
+new file mode 100644
+index 0000000..686b321
+--- /dev/null
++++ b/migrations/0019_dice_roll_character_label.sql
+@@ -0,0 +1,3 @@
++-- A roll made for one of several copies of a character in battle ("Goblin Minion #2") keeps that numbered name,
++-- so the roll log reads the same as the battle menu even after the battle changes.
++ALTER TABLE dice_rolls ADD COLUMN character_label TEXT NOT NULL DEFAULT '';
+diff --git a/static/css/style.css b/static/css/style.css
+index 83fc486..beaa1ed 100644
+--- a/static/css/style.css
++++ b/static/css/style.css
+@@ -1468,6 +1468,15 @@ body.page-leaving .content {
+ 
+ .battle-name-block { min-width: 130px; flex: 1 1 150px; }
+ .battle-name { font-family: var(--font-display); font-size: 16px; font-weight: 600; color: var(--parchment); }
++/* the picture and the name open the character's details */
++.battle-avatar.is-link, .battle-name.is-link { cursor: pointer; }
++.battle-avatar.is-link { transition: transform 0.12s ease, box-shadow 0.12s ease; }
++.battle-avatar.is-link:hover { transform: scale(1.06); box-shadow: 0 0 0 3px rgba(201, 162, 75, 0.25); }
++.battle-name.is-link:hover { color: var(--brass-bright); text-decoration: underline; text-decoration-color: rgba(201, 162, 75, 0.5); text-underline-offset: 3px; }
++.battle-avatar.is-link:focus-visible, .battle-name.is-link:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; border-radius: 6px; }
++.battle-avatar.is-link:focus-visible { border-radius: 50%; }
++.battle-stats:not(.stats-fog-wrap) { display: contents; }
++.hp-btn-label { display: none; }
+ .battle-meta {
+   font-family: var(--font-mono);
+   font-size: 10.5px;
+@@ -3589,23 +3598,27 @@ body.page-leaving .content {
+   .sort-option { padding: 6px 12px; font-size: 12px; }
+   .group-heading { margin: 14px 0 8px; font-size: 11px; }
+   .battle-list { gap: 8px; }
+-  .battle-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; padding: 8px 10px; }
+-  .battle-row::before { content: ''; order: 4; flex: 0 0 100%; height: 0; margin: -4px 0; }
+-  .battle-avatar { order: 1; width: 36px; height: 36px; }
+-  .battle-name-block { order: 2; flex: 1 1 0; min-width: 0; }
+-  .battle-name { font-size: 15px; line-height: 1.2; }
+-  .battle-row > .btn-icon[data-action="view"], .battle-remove { order: 3; margin: 0; width: 34px; height: 34px; min-width: 34px; min-height: 34px; }
+-  .battle-row .stats-fog-wrap { display: contents; }
+-  .battle-row .stat-chip { order: 5; flex: 0 0 auto; flex-direction: row; align-items: center; gap: 5px; }
++  /* a card per creature: who (picture + name, tap for details) / the numbers / the HP buttons */
++  .battle-row { display: grid; grid-template-columns: 48px minmax(0, 1fr) auto; grid-template-areas: "av name rm" "stats stats stats" "ctl ctl ctl"; align-items: center; gap: 8px 10px; padding: 10px; }
++  .battle-row > * { min-width: 0; }
++  .battle-avatar { grid-area: av; width: 48px; height: 48px; }
++  .battle-name-block { grid-area: name; min-width: 0; }
++  .battle-name { font-size: 16px; line-height: 1.2; overflow-wrap: anywhere; }
++  .battle-name.is-link { padding: 2px 0; }
++  .battle-remove { grid-area: rm; align-self: start; margin: 0; width: 38px; height: 38px; min-width: 38px; min-height: 38px; }
++  .battle-row .battle-stats { grid-area: stats; display: grid; grid-template-columns: auto auto minmax(0, 1fr); align-items: center; gap: 8px; padding: 6px 8px; background: var(--bg-panel-inset); border: 1px solid var(--hairline); border-radius: 10px; }
++  .battle-row .stat-chip { flex-direction: row; align-items: center; gap: 5px; }
+   .battle-row .stat-chip label { margin: 0; }
+-  .battle-row .stat-chip-input { width: 50px; min-height: 34px; padding: 4px 6px; }
+-  .battle-row .hp-block { order: 6; flex: 1 1 120px; min-width: 0; gap: 8px; }
+-  .battle-row .hp-bar-track { flex: 1 1 0; width: auto; min-width: 40px; }
+-  .battle-row .hp-readout { flex: none; font-size: 11.5px; }
+-  .battle-row .hp-controls { order: 7; flex: 1 1 100%; gap: 6px; }
+-  .battle-row .hp-amount-input { flex: 1 1 0; min-width: 0; width: auto; min-height: 34px; height: 34px; }
+-  .battle-row .hp-btn { flex: 0 0 44px; height: 34px; }
+-  .battle-row > .btn-sm, .battle-row > .stats-hidden-badge { order: 8; }
++  .battle-row .stat-chip-input { width: 48px; min-height: 36px; padding: 4px 6px; font-size: 14px; }
++  .battle-row .hp-block { min-width: 0; gap: 8px; }
++  .battle-row .hp-bar-track { flex: 1 1 0; width: auto; min-width: 36px; }
++  .battle-row .hp-readout { flex: none; font-size: 12px; }
++  .battle-row .hp-controls { grid-area: ctl; display: grid; grid-template-columns: minmax(0, 1.1fr) repeat(3, minmax(0, 1fr)); gap: 6px; }
++  .battle-row .hp-amount-input { width: auto; min-width: 0; min-height: 46px; height: 46px; font-size: 16px; border-radius: 10px; }
++  .battle-row .hp-btn { width: auto; height: 46px; border-radius: 10px; flex-direction: column; gap: 1px; font: inherit; font-size: 11px; font-weight: 600; }
++  .battle-row .hp-btn svg { width: 17px; height: 17px; }
++  .hp-btn-label { display: block; line-height: 1; }
++  .battle-row > .btn-sm, .battle-row > .stats-hidden-badge, .battle-row > .stat-chip { grid-column: 1 / -1; min-height: 42px; justify-content: center; }
+ }
+ 
+ /* phone held sideways: little height to spare, so the bars slide away and a dock brings them back */
+@@ -3642,6 +3655,22 @@ body.page-leaving .content {
+   .peek-panel { max-height: calc(100dvh - 16px); }
+   .modal-overlay:has(.peek-panel) { padding: 8px; }
+   .map-toolbar { position: static; }
++
++  /* sideways there is room for every map tool on one line: no Tools menu, no wrapping */
++  .map-toolbar { flex-wrap: nowrap; gap: 6px; padding: 5px 8px; margin-bottom: 8px; }
++  .map-toolbar .map-toolbar-toggle { display: none; }
++  .map-toolbar .map-tool-group--more, .map-toolbar.is-open .map-tool-group--more { display: flex; flex: 0 0 auto; flex-wrap: nowrap; order: 0; }
++  .map-toolbar .map-tool-group { gap: 4px; padding-right: 6px; border-right: 1px solid var(--hairline); flex: 0 0 auto; }
++  .map-toolbar .map-tool-group:last-child { border-right: 0; padding-right: 0; margin-inline-start: auto; }
++  .map-toolbar .map-tool-group-persistent { margin-inline-start: auto; }
++  .map-toolbar .map-tool-btn { width: 34px; height: 34px; min-width: 34px; min-height: 34px; }
++  .map-toolbar .map-tool-group .btn-icon { width: 34px; height: 34px; min-width: 34px; min-height: 34px; }
++  .map-toolbar #clear-drawings-btn { font-size: 0; gap: 0; padding: 0; width: 34px; height: 34px; min-height: 34px; justify-content: center; }
++  .map-toolbar #clear-drawings-btn svg { width: 17px; height: 17px; }
++  .map-toolbar #zoom-reset-btn { padding: 4px 8px; font-size: 11px; min-height: 34px; }
++  .map-toolbar .hint-text { display: none; }
++  .map-toolbar #fill-opacity, .map-toolbar #fog-brush-size { width: 64px; }
++  .map-toolbar #map-locked-banner { flex: 0 1 auto; font-size: 11px; }
+ }
+ .peek-trained { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 4px 10px; }
+ .peek-panel, .peek-panel .modal-body { min-width: 0; }
+diff --git a/static/js/battle.js b/static/js/battle.js
+index a158c04..4189b92 100644
+--- a/static/js/battle.js
++++ b/static/js/battle.js
+@@ -115,7 +115,7 @@
+     } else if (hidden) {
+       // Blurred placeholder INIT/AC/HP (no real numbers ever reach the client).
+       statsArea = `
+-      <div class="stats-fog-wrap" title="The DM hasn't revealed this creature's stats" aria-label="Stats hidden">
++      <div class="stats-fog-wrap battle-stats" title="The DM hasn't revealed this creature's stats" aria-label="Stats hidden">
+         <div class="stat-chip stats-fogged" aria-hidden="true"><label>INIT</label><input type="number" class="stat-chip-input" value="00" disabled tabindex="-1"></div>
+         <div class="stat-chip stats-fogged" aria-hidden="true"><label>AC</label><input type="number" class="stat-chip-input" value="00" disabled tabindex="-1"></div>
+         <div class="hp-block stats-fogged" aria-hidden="true">
+@@ -125,6 +125,7 @@
+       </div>`;
+     } else {
+       statsArea = `
++      <div class="battle-stats">
+       <div class="stat-chip">
+         <label>INIT</label>
+         <input type="number" class="stat-chip-input" data-action="initiative" value="${p.initiative}" ${dead || !isDM ? 'disabled' : ''}>
+@@ -139,15 +140,16 @@
+           ${tempBarWidth > 0 ? `<div class="hp-bar-temp" style="left:${pct}%; width:${tempBarWidth}%;"></div>` : ''}
+         </div>
+         <span class="hp-readout">${p.current_hp} / ${p.char_max_hp}${tempHp > 0 ? ` <span class="temp-hp-badge">+${tempHp}</span>` : ''}</span>
++      </div>
+       </div>`;
+     }
+ 
+     const hpControls = (isDM && !hidden) ? `
+       <div class="hp-controls">
+         <input type="number" class="hp-amount-input" min="0" placeholder="1" value="" ${dead ? 'disabled' : ''}>
+-        <button type="button" class="hp-btn heal-btn" data-action="heal" title="Heal" ${dead ? 'disabled' : ''}>${ICONS.heart}</button>
+-        <button type="button" class="hp-btn damage-btn" data-action="damage" title="Damage" ${dead ? 'disabled' : ''}>${ICONS.swords}</button>
+-        <button type="button" class="hp-btn temphp-btn" data-action="temphp" title="Temporary HP" ${dead ? 'disabled' : ''}>${ICONS.shieldPlus}</button>
++        <button type="button" class="hp-btn heal-btn" data-action="heal" title="Heal" ${dead ? 'disabled' : ''}>${ICONS.heart}<span class="hp-btn-label">Heal</span></button>
++        <button type="button" class="hp-btn damage-btn" data-action="damage" title="Damage" ${dead ? 'disabled' : ''}>${ICONS.swords}<span class="hp-btn-label">Damage</span></button>
++        <button type="button" class="hp-btn temphp-btn" data-action="temphp" title="Temporary HP" ${dead ? 'disabled' : ''}>${ICONS.shieldPlus}<span class="hp-btn-label">Temp</span></button>
+       </div>` : '';
+ 
+     let detailControl = '';
+@@ -155,16 +157,17 @@
+       if (isDM) {
+         detailControl = `<div class="stat-chip"><label>MAX HP</label><input type="number" class="stat-chip-input" data-action="max-hp" min="1" value="${p.char_max_hp}" ${dead ? 'disabled' : ''}></div>`;
+       }
+-    } else if (canViewDetails) {
+-      detailControl = `<button type="button" class="btn-icon" data-action="view" title="View details">${ICONS.images}</button>`;
+     }
++    // The picture and the name are the details button (a familiar has no sheet to open).
++    const openAttrs = (canViewDetails && !p.is_temp_familiar)
++      ? ' data-action="view" role="button" tabindex="0" title="View details"' : '';
+ 
+     return `
+     <div class="battle-row ${dead ? 'is-dead' : ''} ${p.is_active ? 'is-active' : ''}" data-pid="${p.id}"${p.is_active ? ' aria-current="true"' : ''}>
+-      <div class="battle-avatar" style="border-color:${safeColor(p.group_color, 'var(--brass)')};">${avatarMarkup(p)}</div>
++      <div class="battle-avatar${openAttrs ? ' is-link' : ''}"${openAttrs} aria-label="${escapeHtml(p.display_name)}: details" style="border-color:${safeColor(p.group_color, 'var(--brass)')};">${avatarMarkup(p)}</div>
+ 
+       <div class="battle-name-block">
+-        <div class="battle-name">${classIconHtml(p.class_key)}${escapeHtml(p.display_name)}${p.is_active ? '<span class="turn-tag">Turn</span>' : ''}</div>
++        <div class="battle-name${openAttrs ? ' is-link' : ''}"${openAttrs}>${classIconHtml(p.class_key)}${escapeHtml(p.display_name)}${p.is_active ? '<span class="turn-tag">Turn</span>' : ''}</div>
+         <div class="battle-meta">${groupDot}${p.group_name ? escapeHtml(p.group_name) : 'No Faction'} &middot; ${p.is_npc ? 'NPC' : 'PC'}</div>
+         ${conditionChips(p)}
+       </div>
+@@ -274,6 +277,14 @@
+   }
+ 
+   // ---- Event delegation for the battle list ----
++  // The picture / name act as buttons: Enter or Space opens the details too.
++  root.addEventListener('keydown', (e) => {
++    if (e.key !== 'Enter' && e.key !== ' ') return;
++    const t = e.target.closest && e.target.closest('[data-action="view"][role="button"]');
++    if (!t) return;
++    e.preventDefault();
++    t.click();
++  });
+   root.addEventListener('click', async (e) => {
+     const btn = e.target.closest('[data-action]');
+     if (!btn) return;
+@@ -303,7 +314,7 @@
+       render();
+     } else if (action === 'view') {
+       const p = participants.find((x) => String(x.id) === pid);
+-      if (p) openDetailModal(p.character_id);
++      if (p) openDetailModal(p.character_id, p.id);
+     } else if (action === 'conditions') {
+       openConditions(pid);
+     } else if (action === 'cond-remove') {
+@@ -560,7 +571,7 @@
+   // ---- Detail modal ----
+   const detailModal = document.getElementById('detail-modal');
+ 
+-  function openDetailModal(characterId) { return window.CharPeek.open(characterId); }
++  function openDetailModal(characterId, participantId) { return window.CharPeek.open(characterId, participantId); }
+ 
+   document.getElementById('close-detail-modal').addEventListener('click', () => { detailModal.hidden = true; });
+   detailModal.addEventListener('click', (e) => { if (e.target === detailModal) detailModal.hidden = true; });
+diff --git a/static/js/char-peek.js b/static/js/char-peek.js
+index 83ae8b7..4748a60 100644
+--- a/static/js/char-peek.js
++++ b/static/js/char-peek.js
+@@ -2,7 +2,7 @@
+  * who it is, the vitals, the six abilities with their checks and saves, skills, notes and sheet images.
+  * Every bonus is click-to-roll (see character-rolls.js), exactly like on the full page.
+  *
+- *   CharPeek.open(characterId)      fills and shows #detail-modal
++ *   CharPeek.open(characterId, participantId?)      fills and shows #detail-modal
+  *
+  * What a Player may see of an NPC is decided by the server (/api/characters/<id>/detail); a hidden creature arrives
+  * without numbers and gets blurred placeholders here.
+@@ -15,6 +15,7 @@
+   var title = document.getElementById('detail-modal-title');
+   var body = document.getElementById('detail-modal-body');
+   var currentId = null;
++  var currentParticipant = null;   // which battle copy was opened (so its roll says "Goblin #2")
+   panel.classList.add('peek-panel');
+ 
+   function esc(s) {
+@@ -114,8 +115,9 @@
+   }
+ 
+   var token = 0;
+-  function open(id) {
++  function open(id, participantId) {
+     currentId = id;
++    currentParticipant = participantId || null;
+     var mine = ++token;
+     return fetch('/campaigns/' + window.CAMPAIGN_ID + '/api/characters/' + id + '/detail', { credentials: 'same-origin' })
+       .then(function (r) { return r.json(); })
+@@ -128,7 +130,7 @@
+       });
+   }
+ 
+-  if (window.CharacterRolls) window.CharacterRolls.bind(body, function () { return currentId; }, 'peek-roll-mode');
++  if (window.CharacterRolls) window.CharacterRolls.bind(body, function () { return currentId; }, 'peek-roll-mode', function () { return currentParticipant; });
+ 
+   document.addEventListener('keydown', function (ev) {
+     if (ev.key === 'Escape' && !modal.hidden && !document.querySelector('.lightbox-overlay:not([hidden])')) modal.hidden = true;
+diff --git a/static/js/character-rolls.js b/static/js/character-rolls.js
+index 42ea508..e4af642 100644
+--- a/static/js/character-rolls.js
++++ b/static/js/character-rolls.js
+@@ -4,7 +4,7 @@
+  * for touch screens, where there is no modifier key.  The bonus is read from the page and the server just adds it,
+  * so this is a convenience: the server never treats it as a character fact.
+  *
+- *   CharacterRolls.bind(root, getCharacterId, modeInputName)
++ *   CharacterRolls.bind(root, getCharacterId, modeInputName, getParticipantId?)
+  *       root: the element whose [data-roll-bonus] descendants roll (the document, or a popup body)
+  *       getCharacterId: function returning the id of the character being shown right now
+  *       modeInputName: name of the radio group holding the Normal / Adv. / Dis. choice
+@@ -15,7 +15,7 @@
+   'use strict';
+   if (!window.LedgerDice) return;
+ 
+-  function bind(root, getCharacterId, modeName) {
++  function bind(root, getCharacterId, modeName, getParticipantId) {
+     function chosenMode(ev) {
+       if (ev && ev.shiftKey) return 'advantage';
+       if (ev && (ev.ctrlKey || ev.metaKey || ev.altKey)) return 'disadvantage';
+@@ -31,7 +31,8 @@
+         modifier: parseInt(target.getAttribute('data-roll-bonus'), 10) || 0,
+         label: target.getAttribute('data-roll-label') || '',
+         mode: chosenMode(ev),
+-        character_id: getCharacterId()
++        character_id: getCharacterId(),
++        participant_id: getParticipantId ? getParticipantId() : null
+       }).catch(function (err) { LedgerDice.announceError(err.message); })
+         .then(function () { target.classList.remove('is-rolling'); });
+     }
+diff --git a/static/js/map.js b/static/js/map.js
+index 637187f..950b9c0 100644
+--- a/static/js/map.js
++++ b/static/js/map.js
+@@ -1311,7 +1311,7 @@
+   pinViewBtn.addEventListener('click', () => {
+     if (!selectedPinId) return;
+     const pin = pins.find((p) => p.id === selectedPinId);
+-    if (pin && pin.character_id) openDetailModal(pin.character_id);
++    if (pin && pin.character_id) openDetailModal(pin.character_id, pin.participant_id);
+   });
+ 
+   if (pinOwnerBtn) {
+@@ -1374,7 +1374,7 @@
+   // ---------------------------------------------------------------------
+   const detailModal = document.getElementById('detail-modal');
+ 
+-  function openDetailModal(characterId) { return window.CharPeek.open(characterId); }
++  function openDetailModal(characterId, participantId) { return window.CharPeek.open(characterId, participantId); }
+   document.getElementById('close-detail-modal').addEventListener('click', () => { detailModal.hidden = true; });
+   detailModal.addEventListener('click', (e) => { if (e.target === detailModal) detailModal.hidden = true; });
+ 
+@@ -2536,7 +2536,19 @@
+   // drag from where it first touched (draw, move a token).  Two fingers pinch-zoom and pan.
+   // ---------------------------------------------------------------------
+   const TOUCH_SLOP = 8;
+-  let touchMode = null;                  // null | 'maybe' | 'mouse' | 'pinch'
++  let touchMode = null;                  // null | 'maybe' | 'mouse' | 'pinch' | 'scroll'
++  // A finger on empty map with the select tool grabs nothing, so it scrolls the page instead (the map can fill the screen).
++  function fingerGrabsSomething(x, y, target) {
++    if (readOnly()) return false;
++    if (target && target.closest && target.closest('.map-pin')) return true;
++    const pos = getNaturalPos(x, y);
++    for (let i = drawings.length - 1; i >= 0; i--) {
++      const d = drawings[i];
++      if (selectedShapeIds.has(d.id) && (hitTestResizeHandle(d, pos) !== null || hitTestRotateHandle(d, pos))) return true;
++      if (!d.locked && hitTestShape(d, pos)) return true;
++    }
++    return false;
++  }
+   let touchStart = null, pinch = null;
+ 
+   function fireMouse(type, x, y, target) {
+@@ -2561,7 +2573,7 @@
+       return;
+     }
+     const t = e.touches[0];
+-    touchMode = 'maybe';
++    touchMode = (currentTool === 'select' && !fingerGrabsSomething(t.clientX, t.clientY, e.target)) ? 'scroll-maybe' : 'maybe';
+     touchStart = { x: t.clientX, y: t.clientY, lastX: t.clientX, lastY: t.clientY, target: e.target };
+   }, { passive: true });
+ 
+@@ -2570,6 +2582,12 @@
+     if (touchMode === 'pinch' && e.touches.length >= 2) {
+       e.preventDefault();
+       const m = pinchMetrics(e.touches);
++      // Fitted to the screen there is nothing to pan, so two fingers moving together scroll the page.
++      if (zoomLevel <= 1.01 && Math.abs(m.dist / pinch.dist - 1) < 0.04) {
++        window.scrollBy(0, pinch.y - m.y);
++        pinch.y = m.y; pinch.x = m.x;
++        return;
++      }
+       const rect = stageWrap.getBoundingClientRect();
+       const newZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, zoomLevel * (m.dist / pinch.dist)));
+       const factor = newZoom / zoomLevel;
+@@ -2583,6 +2601,13 @@
+     }
+     if (e.touches.length !== 1 || !touchStart) return;
+     const t = e.touches[0];
++    if (touchMode === 'scroll-maybe' || touchMode === 'scroll') {
++      touchMode = 'scroll';
++      e.preventDefault();
++      window.scrollBy(touchStart.lastX - t.clientX, touchStart.lastY - t.clientY);
++      touchStart.lastX = t.clientX; touchStart.lastY = t.clientY;
++      return;
++    }
+     if (touchMode === 'maybe') {
+       if (Math.hypot(t.clientX - touchStart.x, t.clientY - touchStart.y) < TOUCH_SLOP) return;
+       touchMode = 'mouse';
+@@ -2597,6 +2622,7 @@
+ 
+   function touchFinished(e) {
+     if (!touchMode) return;
++    if (touchMode === 'scroll') e.preventDefault();
+     if (touchMode === 'mouse' && touchStart) { e.preventDefault(); endMouseDrag(touchStart.lastX, touchStart.lastY); }
+     if (e.touches.length === 0) { touchMode = null; touchStart = null; pinch = null; }
+     else if (touchMode === 'pinch' && e.touches.length === 1) { touchMode = null; touchStart = null; pinch = null; }   // lifted one of two fingers: stop, do not draw
+@@ -2606,7 +2632,7 @@
+ 
+   // On a touch screen the keyboard hints make no sense: say what works instead.
+   if (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) {
+-    if (navHintEl) navHintEl.innerHTML = '<strong>Pinch</strong> to zoom &middot; <strong>two fingers</strong> to pan';
++    if (navHintEl) navHintEl.innerHTML = '<strong>Drag empty map</strong> to scroll &middot; <strong>pinch</strong> to zoom &middot; <strong>two fingers</strong> to pan';
+     if (holdSpaceHintEl) holdSpaceHintEl.hidden = true;
+   }
+ 
+diff --git a/supabase_setup.sql b/supabase_setup.sql
+index d14a287..44c6aa8 100644
+--- a/supabase_setup.sql
++++ b/supabase_setup.sql
+@@ -536,4 +536,12 @@ ALTER TABLE dice_rolls ENABLE ROW LEVEL SECURITY;               -- like every ta
+ 
+ INSERT INTO schema_migrations (version) VALUES ('0018_dice_rolls.sql');
+ 
++-- ---- 0019_dice_roll_character_label.sql ----
++
++-- A roll made for one of several copies of a character in battle ("Goblin Minion #2") keeps that numbered name,
++-- so the roll log reads the same as the battle menu even after the battle changes.
++ALTER TABLE dice_rolls ADD COLUMN character_label TEXT NOT NULL DEFAULT '';
++
++INSERT INTO schema_migrations (version) VALUES ('0019_dice_roll_character_label.sql');
++
+ COMMIT;
+diff --git a/tests/test_deploy_diagnostics.py b/tests/test_deploy_diagnostics.py
+index af3b534..af6397e 100644
+--- a/tests/test_deploy_diagnostics.py
++++ b/tests/test_deploy_diagnostics.py
+@@ -44,7 +44,7 @@ def test_healthz_ready(appmod):
+     r = appmod.app.test_client().get('/healthz')
+     assert r.status_code == 200 and r.get_json()['ok'] is True
+     assert r.get_json()['migrations'] == ['0001_initial.sql', '0002_lock_down_data_api.sql', '0003_auth_throttle.sql',
+-                                           '0004_public_ids.sql', '0005_case_insensitive_usernames.sql', '0006_map_fog.sql', '0007_battle_turns.sql', '0008_battle_conditions.sql', '0009_character_class.sql', '0010_invitations_notifications.sql', '0011_invite_links.sql', '0012_custom_conditions.sql', '0013_map_character_pins.sql', '0014_made_by.sql', '0015_token_owner.sql', '0016_character_proficiencies.sql', '0017_character_factions.sql', '0018_dice_rolls.sql']
++                                           '0004_public_ids.sql', '0005_case_insensitive_usernames.sql', '0006_map_fog.sql', '0007_battle_turns.sql', '0008_battle_conditions.sql', '0009_character_class.sql', '0010_invitations_notifications.sql', '0011_invite_links.sql', '0012_custom_conditions.sql', '0013_map_character_pins.sql', '0014_made_by.sql', '0015_token_owner.sql', '0016_character_proficiencies.sql', '0017_character_factions.sql', '0018_dice_rolls.sql', '0019_dice_roll_character_label.sql']
+     assert r.headers['Cache-Control'] == 'no-store'
+ 
+ 
+diff --git a/tests/test_dice.py b/tests/test_dice.py
+index 737f2bd..ff51249 100644
+--- a/tests/test_dice.py
++++ b/tests/test_dice.py
+@@ -179,3 +179,18 @@ def test_the_popup_gets_the_derived_sheet_as_data(table):
+     ogre = dm.new_character(cid, name='Ogre', is_npc='on')
+     hidden = pl.get(f'/campaigns/{cid}/api/characters/{ogre}/detail').get_json()
+     assert 'sheet' not in hidden and hidden['hidden_stats']
++
++
++def test_a_roll_for_one_copy_in_battle_keeps_its_number(table):
++    dm, pl, cid = table
++    gob = dm.new_character(cid, name='Goblin Minion', is_npc='on')
++    first = dm.add_to_battle(cid, gob)
++    second = dm.add_to_battle(cid, gob)
++    ids = [p['id'] for p in dm.get(f'/campaigns/{cid}/api/battle').get_json()]
++    out = roll(dm, cid, dice={'20': 1}, character_id=gob, participant_id=ids[1]).get_json()
++    assert out['character'] == 'Goblin Minion #2'
++    assert feed(pl, cid)['rolls'][-1]['character'] == 'Goblin Minion #2'                 # everyone reads the same name
++    assert roll(dm, cid, dice={'20': 1}, character_id=gob).get_json()['character'] == 'Goblin Minion'
++    other = dm.new_character(cid, name='Hero')
++    assert roll(dm, cid, dice={'20': 1}, character_id=other, participant_id=ids[0]).get_json()['character'] == 'Hero'   # not that row
++    assert roll(dm, cid, dice={'20': 1}, character_id=gob, participant_id='x').status_code == 400
+diff --git a/tests/test_e2e_browser.py b/tests/test_e2e_browser.py
+index b8c9255..55821bd 100644
+--- a/tests/test_e2e_browser.py
++++ b/tests/test_e2e_browser.py
+@@ -503,7 +503,7 @@ def test_hostile_names_never_execute_in_battle_or_map_screens(pw, shared_server)
+     page.on('dialog', lambda d: (dialogs.append(d.message), d.dismiss()))
+     page.goto(base + f'/campaigns/{cid}/battle'); page.wait_for_selector('.battle-row')
+     page.hover('.cond-add'); page.wait_for_timeout(300)                      # would fire the injected onmouseover
+-    page.click('[data-action="view"]'); page.wait_for_selector('.peek-chips')
++    page.click('.battle-name[data-action="view"]'); page.wait_for_selector('.peek-chips')
+     page.wait_for_timeout(500)
+     assert 'onerror' in page.inner_text('.peek-chips')                        # the faction name is shown as literal text
+     assert page.locator('.peek-chips img').count() == 0 and page.locator('#detail-modal-title img').count() == 0
+@@ -1002,7 +1002,7 @@ def test_phone_map_touch_drag_moves_a_token_and_pinch_zooms(pw, shared_server):
+     page.goto(base + f'/campaigns/{cid}/maps/{mid}'); page.wait_for_load_state('load'); page.wait_for_timeout(800)
+     if page.locator('#setup-confirm-btn').is_visible():
+         page.locator('#setup-confirm-btn').tap(); page.wait_for_timeout(600)
+-    playwright.expect(page.locator('#nav-hint')).to_contain_text('Pinch')                  # touch wording, not Ctrl/Space
++    playwright.expect(page.locator('#nav-hint')).to_contain_text('pinch', ignore_case=True)                  # touch wording, not Ctrl/Space
+     assert page.locator('#hold-space-hint').is_hidden()
+     cdp = ctx.new_cdp_session(page)
+     def touch(kind, *pts):
+@@ -1100,7 +1100,7 @@ def test_phone_characters_battle_and_map_pages_are_compact(pw, shared_server):
+     page.goto(base + f'/campaigns/{cid}/battle'); page.wait_for_load_state('load'); page.wait_for_timeout(500)
+     rows = page.locator('.battle-row')
+     for i in range(rows.count()):
+-        b = rows.nth(i).bounding_box(); assert b['height'] < 185 and b['x'] + b['width'] <= 391, b
++        b = rows.nth(i).bounding_box(); assert b['height'] < 235 and b['x'] + b['width'] <= 391, b
+     assert page.evaluate("() => [...document.querySelectorAll('.battle-row *')].filter(e => e.getBoundingClientRect().right > 391).length") == 0
+     tops = [page.locator('.battle-actions .btn').nth(i).bounding_box()['y'] for i in range(3)]; assert max(tops) - min(tops) <= 3
+     # map: the toolbar is a Tools menu that folds away after picking a tool
+@@ -1170,3 +1170,57 @@ def test_sideways_phone_bars_hide_on_scroll_and_the_dock_brings_them_back(pw, sh
+     assert not [b for b in bad if b[0] >= 400], bad
+     assert not errs, errs
+     ctx.close()
++
++
++def test_battle_name_and_picture_open_details_and_copies_roll_with_their_number(pw, shared_server):
++    base = shared_server.url; dm = Api(base); cid = dm.campaign('Copies')
++    gob = dm.character(cid, 'Goblin Minion', dex_score=14, is_npc='on')
++    for _ in range(2):
++        dm.post(f'/campaigns/{cid}/api/battle/add', json={'character_id': gob})
++    ctx = dm.context(pw, base); page = ctx.new_page(); bad, errs = _collect(page)
++    page.goto(base + f'/campaigns/{cid}/battle'); page.wait_for_load_state('load'); page.wait_for_timeout(600)
++    assert page.locator('.battle-row .btn-icon[data-action="view"]').count() == 0      # no separate details button any more
++    names = page.locator('.battle-row .battle-name')
++    assert names.count() == 2 and 'Goblin Minion #2' in names.nth(1).inner_text()
++    page.locator('.battle-row .battle-avatar').nth(1).click()                          # the picture opens it...
++    panel = page.locator('.peek-panel'); playwright.expect(panel).to_be_visible()
++    page.locator('.peek-vitals [data-roll-bonus]').first.click()
++    playwright.expect(page.locator('.dice-toast').first).to_contain_text('Goblin Minion #2')
++    page.keyboard.press('Escape'); playwright.expect(panel).to_be_hidden()
++    names.nth(0).click()                                                               # ...and so does the name
++    playwright.expect(panel).to_be_visible()
++    page.locator('.peek-vitals [data-roll-bonus]').first.click()
++    playwright.expect(page.locator('.dice-toast').last).to_contain_text('Goblin Minion #1')
++    assert not bad and not errs, (bad, errs)
++
++
++def _swipe(page, x, y, dx, dy, steps=8):
++    cdp = page.context.new_cdp_session(page)
++    cdp.send('Input.dispatchTouchEvent', {'type': 'touchStart', 'touchPoints': [{'x': x, 'y': y}]})
++    for i in range(1, steps + 1):
++        cdp.send('Input.dispatchTouchEvent', {'type': 'touchMove', 'touchPoints': [{'x': x + dx * i / steps, 'y': y + dy * i / steps}]})
++    cdp.send('Input.dispatchTouchEvent', {'type': 'touchEnd', 'touchPoints': []})
++
++
++def test_phone_map_scrolls_the_page_from_empty_map_but_not_from_a_token(pw, shared_server):
++    base = shared_server.url; dm = Api(base); cid = dm.campaign('Scrolly')
++    r = dm.post(f'/campaigns/{cid}/maps/new', data={'name': 'Arena', 'blank_width': '1000', 'blank_height': '1400'})
++    mid = int(re.search(r'/maps/(\d+)', r.headers['Location']).group(1))
++    pin = dm.post(f'/campaigns/{cid}/api/maps/{mid}/pins', json={'pin_type': 'prop', 'icon_key': 'skull', 'custom_name': 'Trap', 'x': 300, 'y': 300}).json()['id']
++    ctx = _touch_context(pw, dm, base, 390, 700); page = ctx.new_page(); bad, errs = _collect(page)
++    page.goto(base + f'/campaigns/{cid}/maps/{mid}'); page.wait_for_load_state('load'); page.wait_for_timeout(800)
++    if page.locator('#setup-confirm-btn').is_visible():
++        page.locator('#setup-confirm-btn').tap(); page.wait_for_timeout(600)
++    page.evaluate('() => window.scrollTo(0, 0)')
++    box = page.locator('#map-stage-wrap').bounding_box()
++    assert box['height'] > 500
++    sx, sy = box['x'] + box['width'] - 40, min(box['y'] + 460, 640)              # empty map, away from the token
++    _swipe(page, sx, sy, 0, -300); page.wait_for_timeout(300)
++    assert page.evaluate('() => window.scrollY') > 80                             # the page followed the finger
++    pinbox = page.locator('.map-pin').first
++    before = page.evaluate('() => window.scrollY')
++    page.evaluate('() => window.scrollTo(0, 0)')
++    pb = pinbox.bounding_box()
++    _swipe(page, pb['x'] + pb['width'] / 2, pb['y'] + pb['height'] / 2, 40, 0); page.wait_for_timeout(300)
++    assert page.evaluate('() => window.scrollY') < 20                             # a token drag never scrolls the page
++    assert not bad and not errs, (bad, errs)

@@ -1468,6 +1468,15 @@ body.page-leaving .content {
 
 .battle-name-block { min-width: 130px; flex: 1 1 150px; }
 .battle-name { font-family: var(--font-display); font-size: 16px; font-weight: 600; color: var(--parchment); }
+/* the picture and the name open the character's details */
+.battle-avatar.is-link, .battle-name.is-link { cursor: pointer; }
+.battle-avatar.is-link { transition: transform 0.12s ease, box-shadow 0.12s ease; }
+.battle-avatar.is-link:hover { transform: scale(1.06); box-shadow: 0 0 0 3px rgba(201, 162, 75, 0.25); }
+.battle-name.is-link:hover { color: var(--brass-bright); text-decoration: underline; text-decoration-color: rgba(201, 162, 75, 0.5); text-underline-offset: 3px; }
+.battle-avatar.is-link:focus-visible, .battle-name.is-link:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; border-radius: 6px; }
+.battle-avatar.is-link:focus-visible { border-radius: 50%; }
+.battle-stats:not(.stats-fog-wrap) { display: contents; }
+.hp-btn-label { display: none; }
 .battle-meta {
   font-family: var(--font-mono);
   font-size: 10.5px;
@@ -3578,8 +3587,8 @@ body.page-leaving .content {
 
   /* battle */
   .battle-header .page-sub { display: none; }
-  .battle-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
-  .battle-actions .btn { flex-direction: column; gap: 2px; padding: 7px 4px; font-size: 11.5px; min-height: 0; text-align: center; line-height: 1.15; }
+  .battle-actions { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+  .battle-actions .btn { flex-direction: column; gap: 2px; padding: 7px 2px; font-size: 11px; min-height: 0; text-align: center; line-height: 1.15; }
   .battle-actions .btn svg { width: 16px; height: 16px; }
   .battle-toolbar { gap: 8px; margin-bottom: 12px; }
   .battle-toolbar .turn-bar { gap: 8px; flex: 1 1 auto; flex-wrap: nowrap; }
@@ -3589,23 +3598,27 @@ body.page-leaving .content {
   .sort-option { padding: 6px 12px; font-size: 12px; }
   .group-heading { margin: 14px 0 8px; font-size: 11px; }
   .battle-list { gap: 8px; }
-  .battle-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; padding: 8px 10px; }
-  .battle-row::before { content: ''; order: 4; flex: 0 0 100%; height: 0; margin: -4px 0; }
-  .battle-avatar { order: 1; width: 36px; height: 36px; }
-  .battle-name-block { order: 2; flex: 1 1 0; min-width: 0; }
-  .battle-name { font-size: 15px; line-height: 1.2; }
-  .battle-row > .btn-icon[data-action="view"], .battle-remove { order: 3; margin: 0; width: 34px; height: 34px; min-width: 34px; min-height: 34px; }
-  .battle-row .stats-fog-wrap { display: contents; }
-  .battle-row .stat-chip { order: 5; flex: 0 0 auto; flex-direction: row; align-items: center; gap: 5px; }
+  /* a card per creature: who (picture + name, tap for details) / the numbers / the HP buttons */
+  .battle-row { display: grid; grid-template-columns: 48px minmax(0, 1fr) auto; grid-template-areas: "av name rm" "stats stats stats" "ctl ctl ctl"; align-items: center; gap: 8px 10px; padding: 10px; }
+  .battle-row > * { min-width: 0; }
+  .battle-avatar { grid-area: av; width: 48px; height: 48px; }
+  .battle-name-block { grid-area: name; min-width: 0; }
+  .battle-name { font-size: 16px; line-height: 1.2; overflow-wrap: anywhere; }
+  .battle-name.is-link { padding: 2px 0; }
+  .battle-remove { grid-area: rm; align-self: start; margin: 0; width: 38px; height: 38px; min-width: 38px; min-height: 38px; }
+  .battle-row .battle-stats { grid-area: stats; display: grid; grid-template-columns: auto auto minmax(0, 1fr); align-items: center; gap: 8px; padding: 6px 8px; background: var(--bg-panel-inset); border: 1px solid var(--hairline); border-radius: 10px; }
+  .battle-row .stat-chip { flex-direction: row; align-items: center; gap: 5px; }
   .battle-row .stat-chip label { margin: 0; }
-  .battle-row .stat-chip-input { width: 50px; min-height: 34px; padding: 4px 6px; }
-  .battle-row .hp-block { order: 6; flex: 1 1 120px; min-width: 0; gap: 8px; }
-  .battle-row .hp-bar-track { flex: 1 1 0; width: auto; min-width: 40px; }
-  .battle-row .hp-readout { flex: none; font-size: 11.5px; }
-  .battle-row .hp-controls { order: 7; flex: 1 1 100%; gap: 6px; }
-  .battle-row .hp-amount-input { flex: 1 1 0; min-width: 0; width: auto; min-height: 34px; height: 34px; }
-  .battle-row .hp-btn { flex: 0 0 44px; height: 34px; }
-  .battle-row > .btn-sm, .battle-row > .stats-hidden-badge { order: 8; }
+  .battle-row .stat-chip-input { width: 48px; min-height: 36px; padding: 4px 6px; font-size: 14px; }
+  .battle-row .hp-block { min-width: 0; gap: 8px; }
+  .battle-row .hp-bar-track { flex: 1 1 0; width: auto; min-width: 36px; }
+  .battle-row .hp-readout { flex: none; font-size: 12px; }
+  .battle-row .hp-controls { grid-area: ctl; display: grid; grid-template-columns: minmax(0, 1.1fr) repeat(3, minmax(0, 1fr)); gap: 6px; }
+  .battle-row .hp-amount-input { width: auto; min-width: 0; min-height: 46px; height: 46px; font-size: 16px; border-radius: 10px; }
+  .battle-row .hp-btn { width: auto; height: 46px; border-radius: 10px; flex-direction: column; gap: 1px; font: inherit; font-size: 11px; font-weight: 600; }
+  .battle-row .hp-btn svg { width: 17px; height: 17px; }
+  .hp-btn-label { display: block; line-height: 1; }
+  .battle-row > .btn-sm, .battle-row > .stats-hidden-badge, .battle-row > .stat-chip { grid-column: 1 / -1; min-height: 42px; justify-content: center; }
 }
 
 /* phone held sideways: little height to spare, so the bars slide away and a dock brings them back */
@@ -3642,6 +3655,22 @@ body.page-leaving .content {
   .peek-panel { max-height: calc(100dvh - 16px); }
   .modal-overlay:has(.peek-panel) { padding: 8px; }
   .map-toolbar { position: static; }
+
+  /* sideways there is room for every map tool on one line: no Tools menu, no wrapping */
+  .map-toolbar { flex-wrap: nowrap; gap: 6px; padding: 5px 8px; margin-bottom: 8px; }
+  .map-toolbar .map-toolbar-toggle { display: none; }
+  .map-toolbar .map-tool-group--more, .map-toolbar.is-open .map-tool-group--more { display: flex; flex: 0 0 auto; flex-wrap: nowrap; order: 0; }
+  .map-toolbar .map-tool-group { gap: 4px; padding-right: 6px; border-right: 1px solid var(--hairline); flex: 0 0 auto; }
+  .map-toolbar .map-tool-group:last-child { border-right: 0; padding-right: 0; margin-inline-start: auto; }
+  .map-toolbar .map-tool-group-persistent { margin-inline-start: auto; }
+  .map-toolbar .map-tool-btn { width: 34px; height: 34px; min-width: 34px; min-height: 34px; }
+  .map-toolbar .map-tool-group .btn-icon { width: 34px; height: 34px; min-width: 34px; min-height: 34px; }
+  .map-toolbar #clear-drawings-btn { font-size: 0; gap: 0; padding: 0; width: 34px; height: 34px; min-height: 34px; justify-content: center; }
+  .map-toolbar #clear-drawings-btn svg { width: 17px; height: 17px; }
+  .map-toolbar #zoom-reset-btn { padding: 4px 8px; font-size: 11px; min-height: 34px; }
+  .map-toolbar .hint-text { display: none; }
+  .map-toolbar #fill-opacity, .map-toolbar #fog-brush-size { width: 64px; }
+  .map-toolbar #map-locked-banner { flex: 0 1 auto; font-size: 11px; }
 }
 .peek-trained { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 4px 10px; }
 .peek-panel, .peek-panel .modal-body { min-width: 0; }
@@ -3649,3 +3678,20 @@ body.page-leaving .content {
 .peek-ab-mod, .peek-ab-save { display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-height: 30px; }
 .peek-ab-mod { min-width: 48px; }
 @media (max-width: 520px) { .peek-vitals { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+
+
+/* ---- Monster manual inside the battle Add menu, and the "Add to battle" bar on the Reference page ---- */
+.add-monster { margin: 0 0 14px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-m); background: var(--bg-panel-inset); padding: 0 12px; }
+.add-monster > summary { display: flex; align-items: center; gap: 8px; padding: 10px 0; cursor: pointer; font-weight: 600; color: var(--parchment); list-style: none; }
+.add-monster > summary::-webkit-details-marker { display: none; }
+.add-monster > summary svg { width: 16px; height: 16px; color: var(--brass-bright); flex: none; }
+.add-monster[open] > summary { border-bottom: 1px solid var(--hairline); margin-bottom: 10px; }
+.add-monster-opts, .ref-battle-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 10px; }
+.add-monster-opts label { display: inline-flex; align-items: center; gap: 6px; font: 500 12px var(--font-mono); color: var(--parchment-dim); }
+.add-monster-opts input, .add-monster-opts select, .ref-battle-bar input, .ref-battle-bar select {
+  background: var(--bg-panel); border: 1px solid var(--hairline-strong); border-radius: var(--radius-s); color: var(--parchment); font: inherit; padding: 6px 8px; min-height: 36px;
+}
+.add-monster-opts input, .ref-battle-bar input { width: 64px; text-align: center; }
+.add-monster .ref-list--inline { margin-top: 8px; }
+.add-monster .hint-text { margin: 8px 0 10px; }
+.ref-battle-bar { margin: 18px 0 0; padding-top: 14px; border-top: 1px solid var(--hairline); }
