@@ -3969,3 +3969,14 @@ body.page-leaving .content {
 
 /* a bubble docked at the bottom of a phone screen takes the place of the navigation hint */
 body:has(.pin-action-bubble.is-docked:not([hidden])) #nav-hint { opacity: 0; pointer-events: none; transition: opacity 120ms ease; }
+
+/* tables inside reference entries (e.g. the Belt of Giant Strength) */
+.ref-table-wrap { margin: 4px 0 14px; overflow-x: auto; border: 1px solid var(--hairline-strong); border-radius: var(--radius-m); background: var(--bg-panel-inset); }
+.ref-table { width: 100%; border-collapse: collapse; font-size: 13.5px; color: var(--parchment); }
+.ref-table th { text-align: start; padding: 8px 12px; font: 600 10.5px var(--font-mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--brass); background: rgba(201,162,75,0.08); border-bottom: 1px solid var(--hairline-strong); white-space: nowrap; }
+.ref-table td { padding: 8px 12px; border-top: 1px solid var(--hairline); vertical-align: top; }
+.ref-table tbody tr:first-child td { border-top: 0; }
+.ref-table tbody tr:nth-child(even) td { background: rgba(255,255,255,0.02); }
+
+/* the modifier pill on the details page: centred text, one steady size (touch rules used to stretch it) */
+.cd-ab .cd-ab-mod { display: inline-flex; align-items: center; justify-content: center; min-width: 52px; min-height: 28px; padding: 0 10px; line-height: 1; box-sizing: border-box; }

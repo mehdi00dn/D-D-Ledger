@@ -69,6 +69,43 @@
     return { setKind(k) { kind = k; run(); }, run };
   }
 
+  // Some entries carry markdown-style tables ("| Belt | Str. |", then "|---|---|", then one line per row, often each
+  // separated by a blank line).  Lines like that become a real table; everything else stays a paragraph.  Text only, never HTML.
+  const isRow = (t) => /^\|.*\|$/.test(t);
+  const isRule = (t) => /^\|[\s:|-]+\|$/.test(t) && t.includes('-');
+  const cells = (t) => t.slice(1, -1).split('|').map((c) => c.trim());
+
+  function buildTable(lines) {
+    const rule = lines.findIndex(isRule);
+    const head = rule > 0 ? lines.slice(0, rule) : [];
+    const body = lines.filter((l, i) => i !== rule && !(rule > 0 && i < rule));
+    const wrap = el('div', 'ref-table-wrap');
+    const table = el('table', 'ref-table');
+    if (head.length) {
+      const tr = el('tr');
+      cells(head[0]).forEach((c) => tr.append(el('th', null, c)));
+      const thead = el('thead'); thead.append(tr); table.append(thead);
+    }
+    const tb = el('tbody');
+    body.forEach((l) => { const tr = el('tr'); cells(l).forEach((c) => tr.append(el('td', null, c))); tb.append(tr); });
+    table.append(tb); wrap.append(table);
+    return wrap;
+  }
+
+  function renderBody(box, text) {
+    // paragraphs are separated by blank lines; keep that for prose, but gather consecutive table lines into one table
+    const blocks = text.split(/\n\n+/).map((b) => b.trim()).filter(Boolean);
+    let run = [];
+    const flush = () => { if (run.length) { box.append(buildTable(run)); run = []; } };
+    blocks.forEach((b) => {
+      const ls = b.split('\n').map((l) => l.trim()).filter(Boolean);
+      if (ls.length && ls.every(isRow)) { run.push(...ls); return; }
+      flush();
+      box.append(el('p', 'ref-text', b));
+    });
+    flush();
+  }
+
   function renderDetail(box, d) {
     box.replaceChildren();
     box.append(el('h2', 'ref-title', d.title));
@@ -78,7 +115,7 @@
       d.facts.forEach(([k, v]) => { dl.append(el('dt', null, k), el('dd', null, v)); });
       box.append(dl);
     }
-    (d.body || '').split(/\n\n+/).filter(Boolean).forEach((p) => box.append(el('p', 'ref-text', p)));
+    renderBody(box, d.body || '');
     // Monster notes are server-built html limited to b/ul/li/br and fully escaped; show them as plain structure.
     (d.notes || []).forEach((html) => {
       const div = el('div', 'ref-notes');

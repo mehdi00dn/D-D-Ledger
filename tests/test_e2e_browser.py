@@ -1457,3 +1457,46 @@ def test_map_bubble_scales_with_the_screen_and_rides_with_the_bars(pw, shared_se
         assert not errs, errs
         ctx.close()
     assert k['landscape'] > k['portrait'], k                                          # bigger sideways than on the narrow phone
+
+
+def test_reference_item_tables_render_as_real_tables_and_ability_modifiers_sit_centred(pw, shared_server):
+    import copy, threading
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+    import test_reference as ref
+    lists = copy.deepcopy(ref.LISTS); details = copy.deepcopy(ref.DETAILS)
+    lists['/magic-items']['results'].append({'index': 'belt-of-giant-strength', 'name': 'Belt of Giant Strength'})
+    details['/magic-items/belt-of-giant-strength'] = {
+        'name': 'Belt of Giant Strength', 'rarity': {'name': 'Rarity Varies'}, 'equipment_category': {'name': 'Wondrous Items'},
+        'desc': ['Wondrous Item, Rarity Varies (Requires Attunement)', 'Your Strength changes to the belt\'s score.',
+                 '| Belt | Str. | Rarity |', '|---|---|---|', '| Belt of Giant Strength (hill) | 21 | Rare |', '| Belt of Giant Strength (storm) | 29 | Legendary |']}
+    class H(BaseHTTPRequestHandler):
+        def do_GET(self):
+            path = self.path.split('?')[0].replace('/api/2024', '', 1)
+            body = lists.get(path) or details.get(path)
+            self.send_response(200 if body else 404); self.send_header('Content-Type', 'application/json'); self.end_headers()
+            self.wfile.write(json.dumps(body or {}).encode())
+        def log_message(self, *a): pass
+    api = HTTPServer(('127.0.0.1', 0), H); threading.Thread(target=api.serve_forever, daemon=True).start()
+    from conftest import Server
+    srv = Server({'SRD_API_BASE': f'http://127.0.0.1:{api.server_port}'})
+    try:
+        dm = Api(srv.url); cid = dm.campaign('Tables')
+        hero = dm.character(cid, 'Hero', str_score=27, dex_score=10)
+        ctx = _touch_context(pw, dm, srv.url, 390, 844); page = ctx.new_page(); bad, errs = _collect(page)
+        page.goto(srv.url + f'/campaigns/{cid}/reference'); page.wait_for_load_state('load')
+        page.locator('.ref-tab', has_text='Items').tap(); page.locator('[data-ref-query]').fill('belt')
+        page.locator('.ref-item', has_text='Belt of Giant Strength').tap()
+        playwright.expect(page.locator('.ref-table')).to_be_visible()
+        assert [t.lower() for t in page.locator('.ref-table th').all_inner_texts()] == ['belt', 'str.', 'rarity']
+        assert page.locator('.ref-table tbody tr').count() == 2 and page.locator('.ref-table tbody tr').nth(1).inner_text().split('\t')[1:] == ['29', 'Legendary']
+        assert '|' not in page.locator('.ref-detail').inner_text()                                   # no raw table text left over
+        page.goto(srv.url + f'/campaigns/{cid}/characters/{hero}'); page.wait_for_load_state('load')
+        for mod in page.locator('.cd-ab-mod').all():
+            box = mod.bounding_box()
+            assert box['height'] <= 36, box
+            top, bottom = mod.evaluate("e => { const r = document.createRange(); r.selectNodeContents(e); const t = r.getBoundingClientRect(), b = e.getBoundingClientRect(); return [t.top - b.top, b.bottom - t.bottom]; }")
+            assert abs(top - bottom) <= 3, (top, bottom)                                             # text centred in the pill
+        assert not [b for b in bad if b[0] >= 400], bad
+        ctx.close()
+    finally:
+        srv.stop(); api.shutdown()
