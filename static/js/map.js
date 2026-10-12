@@ -641,6 +641,27 @@
     if (visual) visual.style.transform = `rotate(${pin.rotation || 0}deg)`;
   }
 
+  // ---- Bubble size follows what is on screen ----
+  // The token menu and the shape bubble used to be a fixed size, so on a narrow phone (tiny map) they swamped the
+  // tokens and sideways (bigger map) they looked small.  Both now scale with how big one grid cell really is on
+  // screen, which already includes the zoom; the bubble docked on a phone also follows the screen width.
+  const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+  function cellOnScreen() {
+    const w = stageWrap.getBoundingClientRect().width;
+    return naturalWidth && gridSize ? gridSize * (w / naturalWidth) * zoomLevel : 40;
+  }
+  function stageBubbleScale() { return clamp(cellOnScreen() / 36, 0.8, 1.25); }   // 1 = a cell of 36 screen px
+  function dockedBubbleScale() {
+    const zoomNudge = clamp(1 + (zoomLevel - 1) * 0.12, 0.92, 1.1);
+    return clamp(window.innerWidth / 430, 0.9, 1.2) * zoomNudge;
+  }
+  function applyBubbleScale() {
+    const local = stageBubbleScale() / zoomLevel;                    // the stage itself is scaled by the zoom
+    pinBubble.style.setProperty('--k', local.toFixed(3));
+    shapeBubble.style.setProperty('--k', (shapeBubble.classList.contains('is-docked') ? dockedBubbleScale() : local).toFixed(3));
+    return local;
+  }
+
   function positionPinBubble(pinId) {
     const el = pinLayer.querySelector(`[data-pin-id="${pinId}"]`);
     const pin = pins.find((p) => p.id === pinId);
@@ -682,26 +703,45 @@
           : 'Currently a PC (stats visible to players) — click to make it an NPC';
       }
     }
-    layoutPinRadial(leftPx, topPx, halfHeightPx, wrapRect.width, wrapRect.height);
+    layoutPinRadial(leftPx, topPx, halfHeightPx, wrapRect.width, wrapRect.height, applyBubbleScale());
   }
 
   // Fan the visible buttons out on an arc around the token.  The arc opens towards whichever side has room
   // (above, below, right, left -- in that order of preference) so no button is ever pushed off the map.
-  function layoutPinRadial(cx, cy, halfPx, stageW, stageH) {
+  // The part of the map that is actually on screen (zoom, pan, page scroll and the phone bars all taken into account),
+  // in the stage's own pixels -- the token menu fans out inside THIS, not just inside the whole map.
+  function visibleStageBox(stageW, stageH) {
+    const r = stageWrap.getBoundingClientRect();
+    let sTop = 0, sBottom = window.innerHeight;
+    const nav = document.querySelector('.sidebar-nav'), bar = document.querySelector('.sidebar');
+    if (nav && getComputedStyle(nav).position === 'fixed') { const t = nav.getBoundingClientRect().top; if (t > 0) sBottom = Math.min(sBottom, t); }
+    if (bar) { const br = bar.getBoundingClientRect(); if (br.width > window.innerWidth * 0.9) sTop = Math.max(0, br.bottom); }
+    const lx = (sx) => (sx - r.left - panX) / zoomLevel;
+    const ly = (sy) => (sy - r.top - panY) / zoomLevel;
+    const box = { x0: Math.max(0, lx(0)), x1: Math.min(stageW, lx(window.innerWidth)), y0: Math.max(0, ly(sTop)), y1: Math.min(stageH, ly(sBottom)) };
+    return (box.x1 - box.x0 > 60 && box.y1 - box.y0 > 60) ? box : { x0: 0, x1: stageW, y0: 0, y1: stageH };
+  }
+
+  function layoutPinRadial(cx, cy, halfPx, stageW, stageH, k = 1) {
+    const vis = visibleStageBox(stageW, stageH);
     const items = Array.from(pinBubble.children).filter((c) => c.style.display !== 'none');
     const n = items.length;
     if (!n) return;
-    const BTN = 38, GAP = 6, PAD = BTN / 2 + 4;
+    const BTN = 36 * k, GAP = 6 * k, PAD = BTN / 2 + 4;
     const baseSpan = Math.min(Math.PI * 1.35, Math.max(Math.PI * 0.5, (n - 1) * 0.5));
-    const baseR = Math.max(halfPx + 30, ((n - 1) * (BTN + GAP)) / baseSpan);
+    const baseR = Math.max(halfPx + 26 * k, ((n - 1) * (BTN + GAP)) / baseSpan);
     const Q = Math.PI / 2, D = Math.PI / 4;
     // [name, centre angle, reversed?, span, radius].  reversed arcs run the other way round so the order always
     // reads left-to-right (above/below) or top-to-bottom (right/left).  Tight spots (a corner) fall back to
     // a quarter circle on a wider radius, which fits where a wide arc cannot.
     const tightR = Math.max(baseR, ((n - 1) * (BTN + GAP)) / Q);
+    // A full ring round the token is the most compact shape of all, so it comes before the wide quarter-circle fallbacks.
+    const ringSpan = n > 1 ? (Math.PI * 2 * (n - 1)) / n : 0, ringR = Math.max(halfPx + BTN * 0.85, (n * (BTN + GAP)) / (Math.PI * 2));
+    const ring = (start) => ['ring', start + ringSpan / 2, false, ringSpan, ringR];
     const cands = [
       ['top', -Q, false, baseSpan, baseR], ['bottom', Q, true, baseSpan, baseR],
       ['right', 0, false, baseSpan, baseR], ['left', Math.PI, true, baseSpan, baseR],
+      ring(-Q), ring(0), ring(Q), ring(Math.PI),
       ['top', -Q, false, Q, tightR], ['bottom', Q, true, Q, tightR], ['right', 0, false, Q, tightR], ['left', Math.PI, true, Q, tightR],
       ['top-right', -D, false, Q, tightR], ['bottom-right', D, false, Q, tightR],
       ['bottom-left', Math.PI - D, true, Q, tightR], ['top-left', -Math.PI + D, true, Q, tightR],
@@ -716,7 +756,7 @@
       for (let i = 0; i < n; i++) {
         const a = angle(c, i);
         const x = cx + Math.cos(a) * c[4], y = cy + Math.sin(a) * c[4];
-        if (x < PAD || x > stageW - PAD || y < PAD || y > stageH - PAD) outside += 1;
+        if (x < vis.x0 + PAD || x > vis.x1 - PAD || y < vis.y0 + PAD || y > vis.y1 - PAD) outside += 1;
       }
       if (!best || outside < best.outside) best = { c, outside };
       if (outside === 0) break;
@@ -831,6 +871,7 @@
     const d = drawings.find((s) => s.id === selectedShapeId);
     if (!d) { shapeBubble.hidden = true; return; }
     syncHideButton(shapeHideBtn, selectedShapeIds.size > 1 ? [...selectedShapeIds].every((id) => (drawings.find((x) => x.id === id) || {}).dm_only) : d.dm_only);
+    applyBubbleScale();
     if (shapeBubble.classList.contains('is-docked')) { shapeBubble.hidden = false; return; }
     const wrapRect = stageWrap.getBoundingClientRect();
     // Angle shapes' adjust handles sit out at the full reach (radius w),
@@ -865,7 +906,8 @@
     }
     shapeBubble.style.left = `${left}px`;
     shapeBubble.style.top = `${midY}px`;
-    shapeBubble.style.transform = `translate(${translateX}, -50%)`;
+    shapeBubble.style.transform = `translate(${translateX}, -50%) scale(${shapeBubble.style.getPropertyValue('--k') || 1})`;
+    shapeBubble.style.transformOrigin = translateX === '0%' ? '0% 50%' : '100% 50%';
   }
 
   // ---- Selection ----
@@ -2550,7 +2592,16 @@
     stageInner.style.transform = `translate(${panX}px, ${panY}px) scale(${zoomLevel})`;
     stageInner.style.setProperty('--ledger-zoom-inv', String(1 / zoomLevel));
     if (zoomLevelLabel) zoomLevelLabel.textContent = `${Math.round(zoomLevel * 100)}%`;
+    applyBubbleScale();
+    if (selectedPinId != null) positionPinBubble(selectedPinId);
+    if (selectedShapeId != null) positionShapeBubble();
   }
+
+  window.addEventListener('resize', () => {
+    applyBubbleScale();
+    if (selectedPinId != null) positionPinBubble(selectedPinId);
+    if (selectedShapeId != null) positionShapeBubble();
+  });
 
   stageWrap.addEventListener('wheel', (e) => {
     if (!(e.ctrlKey || e.metaKey)) return; // plain scroll is left alone; Ctrl/Cmd+wheel (or trackpad pinch) zooms

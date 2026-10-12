@@ -46,6 +46,70 @@
     showActiveTool();
   }
 
+  // ---- "More" sheet: rises from the bottom; a drag down (or a quick flick), a tap outside or Escape closes it ----
+  var moreBtn = document.getElementById('nav-more-btn');
+  var sheet = document.getElementById('more-sheet');
+  var scrim = document.getElementById('more-scrim');
+  var grip = document.getElementById('more-grip');
+  if (moreBtn && sheet && scrim) {
+    var hideTimer = 0;
+    var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)');
+    var isOpen = function () { return sheet.classList.contains('is-open'); };
+    var openMore = function () {
+      clearTimeout(hideTimer);
+      sheet.hidden = false; scrim.hidden = false;
+      sheet.style.transform = '';
+      void sheet.offsetHeight;                              // let the closed position paint, so the rise animates
+      sheet.classList.add('is-open'); scrim.classList.add('is-open');
+      moreBtn.setAttribute('aria-expanded', 'true');
+      var first = sheet.querySelector('a, button');
+      if (first) try { first.focus({ preventScroll: true }); } catch (e) { /* ignore */ }
+    };
+    var closeMore = function (restoreFocus) {
+      if (!isOpen()) return;
+      sheet.classList.remove('is-open'); scrim.classList.remove('is-open');
+      sheet.style.transform = '';
+      moreBtn.setAttribute('aria-expanded', 'false');
+      hideTimer = setTimeout(function () { sheet.hidden = true; scrim.hidden = true; }, reduce && reduce.matches ? 20 : 360);
+      if (restoreFocus) moreBtn.focus({ preventScroll: true });
+    };
+    moreBtn.addEventListener('click', function () { if (isOpen()) closeMore(); else openMore(); });
+    scrim.addEventListener('click', function () { closeMore(true); });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && isOpen()) closeMore(true); });
+    sheet.addEventListener('click', function (e) { if (e.target.closest('a[href]')) closeMore(); });
+    // the sheet leaves when the layout stops being the phone one (rotate to a big window)
+    var phoneish = window.matchMedia('(max-width: 880px), (max-height: 500px) and (orientation: landscape)');
+    var onLayout = function () { if (!phoneish.matches) { sheet.classList.remove('is-open'); scrim.classList.remove('is-open'); sheet.hidden = true; scrim.hidden = true; } };
+    if (phoneish.addEventListener) phoneish.addEventListener('change', onLayout);
+
+    // drag the grip: follows the finger 1:1, resists upwards, and a flick closes it even from a short drag
+    var drag = null;
+    function endDrag(e) {
+      if (!drag) return;
+      var d = drag; drag = null;
+      sheet.classList.remove('is-dragging');
+      try { grip.releasePointerCapture(d.id); } catch (err) { /* ignore */ }
+      var dt = Math.max(1, performance.now() - d.t0), v = d.dy / dt;      // px per ms, positive = downward
+      if (d.dy > sheet.offsetHeight * 0.3 || v > 0.5) closeMore(); else sheet.style.transform = '';
+    }
+    if (grip) {
+      grip.addEventListener('pointerdown', function (e) {
+        drag = { id: e.pointerId, y0: e.clientY, t0: performance.now(), dy: 0 };
+        sheet.classList.add('is-dragging');
+        try { grip.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+      });
+      grip.addEventListener('pointermove', function (e) {
+        if (!drag || e.pointerId !== drag.id) return;
+        var raw = e.clientY - drag.y0;
+        drag.dy = raw;
+        var y = raw >= 0 ? raw : -Math.sqrt(-raw) * 2.2;                  // rubber-band when pulled up
+        sheet.style.transform = 'translateY(' + y + 'px)';
+      });
+      grip.addEventListener('pointerup', endDrag);
+      grip.addEventListener('pointercancel', endDrag);
+    }
+  }
+
   // ---- full screen ----
   var fsEl = root;
   var canFs = !!(fsEl.requestFullscreen || fsEl.webkitRequestFullscreen);

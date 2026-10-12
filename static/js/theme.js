@@ -3,8 +3,8 @@
 // just wires up the toggle button and persists the choice.
 
 (function () {
-  const btn = document.getElementById('theme-toggle');
-  if (!btn) return;
+  const btns = document.querySelectorAll('#theme-toggle, .js-theme-toggle');
+  if (!btns.length) return;
 
   function currentTheme() {
     return document.documentElement.getAttribute('data-theme') || 'dark';
@@ -15,11 +15,11 @@
     localStorage.setItem('ledger-theme', theme);
   }
 
-  btn.addEventListener('click', () => {
+  btns.forEach((btn) => btn.addEventListener('click', () => {
     // Brief pulse so the click always feels acknowledged, even though the
     // real transition is driven by the CSS custom-property animation.
     btn.classList.add('theme-toggle-pulse');
     setTimeout(() => btn.classList.remove('theme-toggle-pulse'), 400);
     setTheme(currentTheme() === 'light' ? 'dark' : 'light');
-  });
+  }));
 })();

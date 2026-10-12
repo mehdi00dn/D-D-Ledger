@@ -978,11 +978,11 @@ def test_phone_and_tablet_pages_fit_the_screen_with_a_bottom_tab_bar(pw, shared_
         assert page.locator('.sidebar').bounding_box()['height'] < 90, path                          # a slim top bar, not a tall block
     # every tab of the campaign is on screen at once and one tap goes there
     page.goto(base + f'/campaigns/{cid}/characters')
-    tabs = page.locator('.sidebar-nav .nav-tab')
-    assert tabs.count() >= 6
+    tabs = page.locator('.sidebar-nav .nav-tab:visible')                                       # four tabs and a More button; the rest live in the More sheet
+    assert tabs.count() == 5
     for i in range(tabs.count()):
         box = tabs.nth(i).bounding_box()
-        assert box and 0 <= box['x'] and box['x'] + box['width'] <= w + 1 and box['height'] >= 40
+        assert box and 0 <= box['x'] and box['x'] + box['width'] <= w + 1 and box['height'] >= 38
     page.locator('.sidebar-nav .nav-tab', has_text='Dice').tap()
     page.wait_for_url(re.compile(r'/dice$'))
     page.locator('.die-selector[data-die="20"]').tap(); page.locator('#roll-btn').tap()
@@ -1379,3 +1379,81 @@ def test_dm_hides_a_token_and_a_shape_from_players_in_the_browser(pw, shared_ser
     assert pl.get(f'{api}/drawings').json() == []
     assert not perrs, perrs
     pctx.close()
+
+
+def test_phone_more_sheet_holds_the_extras_and_closes_every_way(pw, shared_server):
+    """The phone tab bar keeps four places plus More; Factions, Reference, view-as-player, theme, full screen and
+    log out live in the sheet, which closes with Escape, a tap outside, or a drag down."""
+    base = shared_server.url; dm = Api(base); cid = dm.campaign('Sheet')
+    ctx = pw.new_context(viewport={'width': 390, 'height': 844}, has_touch=True, is_mobile=True)
+    ctx.add_cookies([{'name': SESSION_COOKIE, 'value': dm.s.cookies.get(SESSION_COOKIE), 'url': base}])
+    page = ctx.new_page(); bad, errs = _collect(page)
+    page.goto(base + f'/campaigns/{cid}/characters'); page.wait_for_load_state('networkidle')
+    tabs = page.locator('.sidebar-nav > .nav-tab:visible')
+    assert tabs.count() == 5                                                       # Characters, Battle, Maps, Dice, More
+    assert page.locator('.sidebar-foot .theme-toggle-btn').is_hidden() and page.locator('.sidebar-foot .user-row').is_hidden()
+    assert page.locator('#more-sheet').is_hidden()
+    page.click('#nav-more-btn'); page.wait_for_timeout(500)
+    assert page.locator('#more-sheet').is_visible()
+    for text in ('Factions', 'Reference', 'View as player', 'Theme', 'Log out'):
+        assert page.locator('#more-sheet').get_by_text(text).first.is_visible(), text
+    box = page.locator('#more-sheet').bounding_box()
+    assert box['y'] + box['height'] <= 844 + 1 and box['y'] > 150                  # a sheet, not a full page
+    page.keyboard.press('Escape'); page.wait_for_timeout(600)
+    assert page.locator('#more-sheet').is_hidden()
+    page.click('#nav-more-btn'); page.wait_for_timeout(500)
+    page.mouse.click(195, 60); page.wait_for_timeout(600)                           # tap on the dimmed page
+    assert page.locator('#more-sheet').is_hidden()
+    page.click('#nav-more-btn'); page.wait_for_timeout(500)
+    g = page.locator('#more-grip').bounding_box()
+    page.mouse.move(g['x'] + g['width'] / 2, g['y'] + 8); page.mouse.down()
+    page.mouse.move(g['x'] + g['width'] / 2, g['y'] + 220, steps=6); page.mouse.up(); page.wait_for_timeout(700)
+    assert page.locator('#more-sheet').is_hidden()                                  # dragged down to dismiss
+    assert not [b for b in bad if b[0] >= 400], bad
+    assert not errs, errs
+    page.click('#nav-more-btn'); page.wait_for_timeout(500)
+    page.locator('#more-sheet').get_by_text('Reference').click(); page.wait_for_load_state('domcontentloaded')
+    assert '/reference' in page.url
+    ctx.close()
+
+
+def test_map_bubble_scales_with_the_screen_and_rides_with_the_bars(pw, shared_server):
+    """The token menu is smaller on a narrow phone than sideways, and the shape bubble docked sideways moves down when
+    the bars slide away (like the full-screen button)."""
+    base = shared_server.url; dm = Api(base); cid = dm.campaign('Scale')
+    r = dm.post(f'/campaigns/{cid}/maps/new', data={'name': 'Hall', 'blank_width': '1000', 'blank_height': '700'})
+    mid = int(re.search(r'/maps/(\d+)', r.headers['Location']).group(1)); api = f'/campaigns/{cid}/api/maps/{mid}'
+    pin = dm.post(f'{api}/pins', json={'pin_type': 'prop', 'icon_key': 'skull', 'x': 300, 'y': 300}).json()['id']
+    shape = dm.post(f'{api}/drawings', json={'kind': 'rect', 'cx': 600, 'cy': 350, 'w': 200, 'h': 120, 'color': '#ff4040', 'fill': True, 'fill_opacity': 0.4, 'data': {}}).json()['id']
+    k = {}
+    for name, (w, h) in {'portrait': (390, 844), 'landscape': (844, 390)}.items():
+        ctx = pw.new_context(viewport={'width': w, 'height': h}, has_touch=True, is_mobile=True)
+        ctx.add_cookies([{'name': SESSION_COOKIE, 'value': dm.s.cookies.get(SESSION_COOKIE), 'url': base}])
+        page = ctx.new_page(); bad, errs = _collect(page)
+        page.goto(base + f'/campaigns/{cid}/maps/{mid}'); page.wait_for_load_state('networkidle'); page.wait_for_timeout(700)
+        if page.locator('#setup-confirm-btn').is_visible():
+            page.evaluate("document.getElementById('setup-confirm-btn').scrollIntoView({block:'center'})")
+            page.click('#setup-confirm-btn'); page.wait_for_timeout(900)
+        page.evaluate("window.scrollTo(0, 100)"); page.wait_for_timeout(250)
+        page.locator(f'.map-pin[data-pin-id="{pin}"]').click(); page.wait_for_timeout(500)
+        k[name] = float(page.eval_on_selector('#pin-action-bubble', 'e => e.style.getPropertyValue("--k")'))
+        btn = page.locator('#pin-action-bubble .pin-radial-btn:visible').first.bounding_box()
+        assert 24 <= btn['width'] <= 50, btn                                          # smaller than the old 38 on a phone, never tiny
+        # every visible button of the token menu is inside the part of the map that is on screen
+        for b in page.locator('#pin-action-bubble .pin-radial-btn:visible').all():
+            bb = b.bounding_box()
+            assert bb['x'] >= -1 and bb['x'] + bb['width'] <= w + 1, (name, bb)
+        if name == 'landscape':
+            page.evaluate("window.scrollTo(0, 0)"); page.wait_for_timeout(200)
+            cb = page.locator('#map-canvas').bounding_box()
+            page.evaluate(f"window.scrollBy(0, {max(0, int(cb['y'] + cb['height'] * 0.5 - 200))})"); page.wait_for_timeout(300)
+            cb = page.locator('#map-canvas').bounding_box()
+            page.mouse.click(cb['x'] + cb['width'] * 0.6, cb['y'] + cb['height'] * 0.5); page.wait_for_timeout(500)
+            if page.locator('#shape-action-bubble').is_visible():
+                shown = page.locator('#shape-action-bubble').bounding_box()['y']
+                page.click('.js-nav-toggle'); page.wait_for_timeout(600)               # the bars slide away
+                lower = page.locator('#shape-action-bubble').bounding_box()['y']
+                assert lower > shown + 20, (shown, lower)                              # the bubble rode down with them
+        assert not errs, errs
+        ctx.close()
+    assert k['landscape'] > k['portrait'], k                                          # bigger sideways than on the narrow phone

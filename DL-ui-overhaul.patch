@@ -1,0 +1,699 @@
+diff --git a/static/css/style.css b/static/css/style.css
+index 52abe35..1aa2747 100644
+--- a/static/css/style.css
++++ b/static/css/style.css
+@@ -2513,10 +2513,12 @@ body.page-leaving .content {
+ .pin-action-bubble[hidden] { display: none; }
+ /* phone: docked at the bottom centre of the screen, just above the tab bar */
+ .pin-action-bubble.is-docked {
+-  position: fixed; left: 50%; top: auto; bottom: calc(76px + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 80;
++  position: fixed; left: 50%; top: auto; bottom: calc(var(--bar-h, 64px) + 12px + env(safe-area-inset-bottom)); z-index: 80;
++  transform: translateX(-50%) scale(var(--k, 1)); transform-origin: 50% 100%;
+   animation: none;
++  transition: bottom 0.22s var(--ease-drawer, cubic-bezier(0.32, 0.72, 0, 1));
+ }
+-.pin-action-bubble.is-docked .btn-icon { min-width: 48px; min-height: 48px; display: inline-flex; align-items: center; justify-content: center; }
++.pin-action-bubble.is-docked .btn-icon { min-width: 42px; min-height: 42px; display: inline-flex; align-items: center; justify-content: center; }
+ .pin-rename-box {
+   position: absolute;
+   z-index: 15;
+@@ -2956,19 +2958,19 @@ body.page-leaving .content {
+ /* ---- Radial token menu: buttons fan out on an arc around the token ---- */
+ @keyframes pin-radial-out {
+   from { opacity: 0; transform: translate(-50%, -50%) translate(0, 0) scale(0.3) rotate(-90deg); }
+-  to   { opacity: 1; transform: translate(-50%, -50%) translate(var(--x), var(--y)) scale(1) rotate(0); }
++  to   { opacity: 1; transform: translate(-50%, -50%) translate(var(--x), var(--y)) scale(var(--k, 1)) rotate(0); }
+ }
+ .pin-radial { position: absolute; width: 1px; height: 1px; z-index: 10; pointer-events: none; }
+ .pin-radial[hidden] { display: none; }
+ .pin-radial > * {
+   position: absolute; left: 0; top: 0;
+-  transform: translate(-50%, -50%) translate(var(--x, 0), var(--y, 0));
++  transform: translate(-50%, -50%) translate(var(--x, 0), var(--y, 0)) scale(var(--k, 1));
+   animation: pin-radial-out 0.26s cubic-bezier(0.34, 1.45, 0.64, 1) both;
+   animation-delay: calc(var(--i, 0) * 24ms);
+   pointer-events: auto;
+ }
+ .pin-radial-btn {
+-  width: 38px; height: 38px; padding: 0; border-radius: 50%;
++  width: 36px; height: 36px; padding: 0; border-radius: 50%;
+   display: inline-flex; align-items: center; justify-content: center;
+   background: var(--bg-panel); color: var(--parchment-dim);
+   border: 1px solid var(--hairline-strong); box-shadow: var(--shadow-deep);
+@@ -3463,7 +3465,6 @@ body.page-leaving .content {
+ 
+ /* fingers need bigger targets than a mouse pointer does */
+ @media (pointer: coarse) {
+-  .btn-icon, .map-tool-btn, .turn-btn { min-width: 40px; min-height: 40px; }
+   .sort-option { padding: 9px 16px; }
+   .stat-chip-input { min-height: 40px; }
+   [data-roll-bonus] { min-height: 36px; }
+@@ -3746,3 +3747,225 @@ body.page-leaving .content {
+   background: var(--brass); border-color: var(--brass); color: #21170a;
+ }
+ .new-hidden-toggle { transition: background 0.15s, color 0.15s, border-color 0.15s; }
++
++
++/* ==========================================================================
++   UI refinement layer (DL-125 overhaul)
++   One control scale, a quieter sidebar, a slim phone top bar, a four-place tab bar with a "More" sheet,
++   and materials (translucent, blurred bars).  Motion: short ease-out presses, a drawer curve for the sheet,
++   nothing animated on the properties that cost layout; reduced motion keeps the fades and drops the movement.
++   Later rules deliberately win over the earlier ones above.
++   ========================================================================== */
++:root {
++  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
++  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
++  --ctl: 34px;          /* the height of a normal button */
++  --ctl-sm: 30px;       /* a compact one */
++  --ctl-r: 8px;
++  --bar-h: 0px;         /* the height of the phone tab bar, set in the phone block below */
++}
++
++/* ---- controls: smaller, one height, a press you can feel ---- */
++.btn { min-height: var(--ctl); padding: 0 14px; font-size: 13px; border-radius: var(--ctl-r); gap: 7px; justify-content: center;
++  transition: transform 160ms var(--ease-out), background 150ms ease, border-color 150ms ease, filter 150ms ease, color 150ms ease; }
++.btn:active { transform: scale(0.97); }
++.btn svg { width: 15px; height: 15px; }
++.btn-sm { min-height: var(--ctl-sm); padding: 0 11px; font-size: 12.5px; }
++.btn-icon { min-width: var(--ctl); min-height: var(--ctl); padding: 0 8px; border-radius: var(--ctl-r); display: inline-flex; align-items: center; justify-content: center; position: relative;
++  transition: transform 160ms var(--ease-out), background 150ms ease, border-color 150ms ease, color 150ms ease; }
++.btn-icon:active { transform: scale(0.94); }
++.page-title { font-size: 30px; letter-spacing: -0.01em; line-height: 1.1; }
++.page-sub { font-size: 13px; }
++.page-header { margin-bottom: 16px; gap: 14px 18px; align-items: center; }
++.page-actions, .map-head-actions { gap: 8px; }
++@media (hover: none) {
++  /* fingers: keep the look small, widen only the area that reacts */
++  .turn-btn { position: relative; }
++  .btn-icon::after, .map-tool-btn::after, .turn-btn::after { content: ''; position: absolute; inset: -4px; }
++}
++
++/* ---- desktop sidebar: calmer, tighter ---- */
++.sidebar { padding: 22px 14px; }
++:root[data-sidebar="collapsed"] .sidebar { padding: 22px 10px; }
++.sidebar-brand { padding: 0 6px 18px; gap: 10px; }
++.brand-title { font-size: 18px; letter-spacing: -0.01em; }
++.nav-tab { padding: 8px 12px; gap: 10px; font-size: 13.5px; border-radius: var(--ctl-r); }
++:root[data-sidebar="collapsed"] .nav-tab { padding: 9px 0; }
++.nav-tab svg { width: 16px; height: 16px; }
++.nav-tab.active { background: rgba(201, 162, 75, 0.12); }
++.nav-tab.active::before { left: -14px; top: 9px; bottom: 9px; }
++.sidebar-foot { padding: 0 2px; }
++.user-row { padding: 5px 6px 5px 10px; margin-bottom: 8px; border-radius: var(--ctl-r); }
++.user-row .btn-icon { min-width: 28px; min-height: 28px; padding: 0; }
++.foot-actions { gap: 6px; margin-bottom: 10px; }
++.theme-toggle-btn { flex: 1 1 0; height: 32px; padding: 0; border-radius: var(--ctl-r); }
++.foot-bell { flex: 1 1 0; width: auto; height: 32px; border-radius: var(--ctl-r); }
++.foot-line { margin-bottom: 8px; }
++.theme-icon svg, .foot-bell svg { width: 16px; height: 16px; }
++.content { padding: 32px 40px 56px; }
++
++/* ---- toolbars: compact segmented look ---- */
++.map-toolbar { padding: 6px 8px; border-radius: 12px; gap: 6px 8px; }
++.map-tool-btn, .map-tool-group .btn-icon { min-width: var(--ctl); min-height: var(--ctl); width: var(--ctl); height: var(--ctl); border-radius: var(--ctl-r); position: relative; }
++.battle-toolbar { gap: 8px 10px; }
++.turn-btn { min-width: 30px; height: 30px; }
++.round-badge { padding: 3px 10px; font-size: 11px; }
++.sort-option { padding: 5px 12px; font-size: 12px; }
++
++/* ---- phone "More" sheet: hidden everywhere except the compact shell ---- */
++.more-sheet, .more-scrim, .nav-more-btn { display: none; }
++
++@media (max-width: 880px), (max-height: 500px) and (orientation: landscape) {
++  :root { --bar-h: 54px; --ctl: 36px; --ctl-sm: 32px; }
++
++  /* top bar: a material that content slides under -- mark, campaign, bell.  Nothing else. */
++  .sidebar, :root[data-sidebar="collapsed"] .sidebar {
++    min-height: 0; height: 48px; padding: 0 12px; gap: 10px; align-items: center; box-sizing: border-box;
++    background: transparent; isolation: isolate;
++    border-right: 0; border-bottom: 1px solid var(--hairline);
++  }
++  /* the blur lives on a pseudo-element: a backdrop-filter on the bar itself would trap the fixed tab bar inside it */
++  .sidebar::before {
++    content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none;
++    background: color-mix(in srgb, var(--bg-void-2) 82%, transparent);
++    -webkit-backdrop-filter: blur(18px) saturate(160%); backdrop-filter: blur(18px) saturate(160%);
++  }
++  .sidebar-brand { padding: 0; gap: 8px; }
++  .brand-mark { width: 30px; height: 30px; }
++  .brand-text { display: none; }
++  .campaign-chip-top { padding: 0 10px; min-height: 30px; border-radius: 999px; background: var(--bg-panel-inset); border-color: transparent; font-size: 12.5px; }
++  .campaign-chip-top span { max-width: 46vw; }
++  .sidebar-foot { gap: 6px; }
++  .sidebar-foot .user-row, .sidebar-foot .theme-toggle-btn, .sidebar-foot .foot-fs-btn { display: none; }
++  .sidebar-foot .foot-actions { margin: 0; }
++  .sidebar-foot .foot-bell { flex: 0 0 auto; width: 34px; height: 34px; border-radius: 999px; border-color: transparent; background: transparent; }
++  .sidebar-foot .foot-bell:active { background: var(--bg-panel-inset); }
++
++  /* bottom bar: four places and "More", on a blurred material */
++  .sidebar-nav {
++    padding: 4px 6px calc(4px + env(safe-area-inset-bottom)); gap: 2px; justify-content: stretch;
++    background: color-mix(in srgb, var(--bg-void-2) 92%, transparent);
++    -webkit-backdrop-filter: blur(24px) saturate(160%); backdrop-filter: blur(24px) saturate(160%);
++    border-top: 1px solid var(--hairline);
++  }
++  .sidebar-nav .nav-tab[data-more], .sidebar-nav .nav-form[data-more] { display: none; }
++  .sidebar-nav .nav-more-btn { display: flex; font-family: inherit; background: transparent; border: 0; cursor: pointer; }
++  .sidebar-nav .nav-tab, :root[data-sidebar="collapsed"] .sidebar-nav .nav-tab {
++    flex: 1 1 0; min-height: 46px; padding: 5px 2px; gap: 2px; font-size: 10.5px; font-weight: 600; letter-spacing: 0.01em; color: var(--parchment-faint);
++    border-radius: 12px; justify-content: flex-start; align-items: center; padding-top: 6px;
++    transition: color 150ms ease, background 150ms ease, transform 160ms var(--ease-out);
++  }
++  .sidebar-nav .nav-tab:active { transform: scale(0.94); }
++  .sidebar-nav .nav-tab > svg, .sidebar-nav .nav-tab > .icon { width: 21px; height: 21px; flex: none; stroke-width: 1.75; }
++  .sidebar-nav .nav-tab.active, :root[data-sidebar="collapsed"] .sidebar-nav .nav-tab.active { background: transparent; color: var(--brass-bright); }
++  .sidebar-nav .nav-tab.active svg { filter: drop-shadow(0 0 6px rgba(201, 162, 75, 0.35)); }
++  .sidebar-nav .nav-tab.active::before, :root[data-sidebar="collapsed"] .sidebar-nav .nav-tab.active::before {
++    left: 50%; right: auto; top: 1px; bottom: auto; width: 16px; height: 3px; margin-left: -8px; border-radius: 3px;
++  }
++  .content { padding-bottom: calc(var(--bar-h) + 28px + env(safe-area-inset-bottom)); }
++  .dice-toasts { inset-block-end: calc(var(--bar-h) + 12px + env(safe-area-inset-bottom)); }
++
++  /* the More sheet */
++  .more-scrim {
++    display: block; position: fixed; inset: 0; z-index: 90; background: rgba(5, 8, 14, 0.5); opacity: 0;
++    -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px); transition: opacity 240ms ease;
++  }
++  .more-scrim[hidden], .more-sheet[hidden] { display: none; }
++  .more-scrim.is-open { opacity: 1; }
++  .more-sheet {
++    display: flex; flex-direction: column; gap: 14px; position: fixed; z-index: 91; inset-inline: 0; bottom: 0;
++    max-height: 86dvh; overflow-y: auto; overscroll-behavior: contain; padding: 0 14px calc(16px + env(safe-area-inset-bottom));
++    background: color-mix(in srgb, var(--bg-panel) 92%, transparent);
++    -webkit-backdrop-filter: blur(28px) saturate(170%); backdrop-filter: blur(28px) saturate(170%);
++    border: 1px solid var(--hairline-strong); border-bottom: 0; border-radius: 20px 20px 0 0; box-shadow: 0 -18px 50px rgba(0, 0, 0, 0.45);
++    transform: translateY(100%); transition: transform 340ms var(--ease-drawer); will-change: transform; touch-action: pan-y;
++  }
++  .more-sheet.is-open { transform: translateY(0); }
++  .more-sheet.is-dragging { transition: none; }
++  .more-grip { padding: 10px 0 2px; display: flex; justify-content: center; touch-action: none; cursor: grab; }
++  .more-grabber { width: 38px; height: 4px; border-radius: 4px; background: var(--hairline-strong); }
++  .more-links { display: flex; flex-direction: column; border: 1px solid var(--hairline); border-radius: 14px; background: var(--bg-panel-inset); overflow: hidden; }
++  .more-links form { display: contents; }
++  .more-link {
++    display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 0 14px; width: 100%; box-sizing: border-box; font: 500 14px var(--font-body);
++    color: var(--parchment); background: transparent; border: 0; border-top: 1px solid var(--hairline); cursor: pointer; text-align: left;
++    transition: background 120ms ease;
++  }
++  .more-links > :first-child { border-top: 0; }
++  .more-link:active { background: rgba(201, 162, 75, 0.14); }
++  .more-link svg { width: 18px; height: 18px; color: var(--brass-bright); flex: none; }
++  .more-link.active { color: var(--brass-bright); }
++  .more-quick { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
++  .more-chip {
++    display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 38px; padding: 0 12px; position: relative; overflow: hidden;
++    border: 1px solid var(--hairline); border-radius: 12px; background: var(--bg-panel-inset); color: var(--parchment); font: 600 13px var(--font-body); cursor: pointer;
++    transition: transform 160ms var(--ease-out), background 120ms ease;
++  }
++  .more-chip:active { transform: scale(0.97); }
++  .more-chip[hidden] { display: none; }
++  .more-chip-ico { position: relative; width: 18px; height: 18px; flex: none; color: var(--brass-bright); }
++  .more-chip-ico .theme-icon { position: absolute; inset: 0; }
++  .more-chip .icon, .more-chip-ico svg { width: 18px; height: 18px; color: var(--brass-bright); }
++  .more-user { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-top: 12px; border-top: 1px solid var(--hairline); }
++  .more-user-name { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 13px; color: var(--parchment-dim); }
++  .more-user-name svg { width: 15px; height: 15px; flex: none; }
++  .more-user-name span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
++  .more-logout { display: inline-flex; align-items: center; gap: 6px; min-height: 34px; padding: 0 12px; border-radius: 999px; border: 1px solid rgba(179, 69, 63, 0.45); background: transparent; color: var(--blood-bright); font: 600 12.5px var(--font-body); cursor: pointer; }
++  .more-logout svg { width: 15px; height: 15px; }
++}
++
++/* the phone page header: one tidy row, then the tools -- nothing wraps into a staircase */
++@media (max-width: 640px) {
++  .content { padding: 14px 14px calc(var(--bar-h) + 28px + env(safe-area-inset-bottom)); }
++  .page-title { font-size: 26px; }
++  .page-header { margin-bottom: 12px; align-items: flex-end; }
++  .page-actions { gap: 6px; }
++}
++@media (orientation: landscape) and (max-height: 500px) {
++  :root { --bar-h: 44px; --ctl: 32px; --ctl-sm: 30px; }
++  .sidebar, :root[data-sidebar="collapsed"] .sidebar { position: relative; height: 44px; padding: 0 12px; }
++  .bars-hidden .sidebar { margin-top: -44px; }
++  .sidebar-nav { padding: 2px 6px calc(2px + env(safe-area-inset-bottom)); }
++  .sidebar-nav .nav-tab, :root[data-sidebar="collapsed"] .sidebar-nav .nav-tab { flex-direction: row; min-height: 36px; gap: 6px; font-size: 11.5px; padding: 4px 6px; }
++  .sidebar-nav .nav-tab svg { width: 17px; height: 17px; }
++  .sidebar-nav .nav-tab.active::before, :root[data-sidebar="collapsed"] .sidebar-nav .nav-tab.active::before { top: -2px; }
++  .content { padding: 10px 16px calc(var(--bar-h) + 14px + env(safe-area-inset-bottom)); }
++  .more-sheet { max-height: 94dvh; display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); align-items: start; gap: 10px 14px; padding-inline: 18px; }
++  .more-grip { grid-column: 1 / -1; }
++  .more-links { grid-row: span 2; }
++  .more-quick { grid-template-columns: 1fr 1fr; }
++  .more-user { border-top: 0; padding-top: 0; }
++  /* the dock and the shape bubble follow the bars: both ride down when the bars slide away */
++  .mobile-dock { inset-block-end: calc(var(--bar-h) + 10px + env(safe-area-inset-bottom)); transition: inset-block-end 0.28s var(--ease-drawer); }
++  .bars-hidden .mobile-dock { inset-block-end: calc(10px + env(safe-area-inset-bottom)); }
++  .pin-action-bubble.is-docked { bottom: calc(var(--bar-h) + 10px + env(safe-area-inset-bottom)); }
++  .bars-hidden .pin-action-bubble.is-docked { bottom: calc(10px + env(safe-area-inset-bottom)); }
++  .dock-btn { width: 34px; height: 34px; }
++  .dock-btn .icon { width: 16px; height: 16px; }
++}
++@media (prefers-reduced-motion: reduce) {
++  .more-sheet, .more-scrim, .pin-action-bubble.is-docked, .mobile-dock { transition-duration: 0.01ms; }
++  .btn:active, .btn-icon:active, .more-chip:active, .sidebar-nav .nav-tab:active { transform: none; }
++}
++
++/* ---- phone content: smaller, aligned controls ---- */
++@media (max-width: 640px) {
++  .battle-actions { gap: 6px; grid-auto-rows: 52px; align-items: stretch; }
++  .battle-actions .btn, .battle-actions > * { height: 52px; min-height: 52px; box-sizing: border-box; padding: 4px 4px; flex-direction: column; gap: 3px; font-size: 11px; line-height: 1.15; white-space: normal; text-align: center; border-radius: 10px; }
++  .battle-actions .btn svg { width: 16px; height: 16px; }
++  .battle-row { padding: 10px; border-radius: 14px; }
++  .battle-avatar { width: 44px; height: 44px; }
++  .battle-row { grid-template-columns: 44px minmax(0, 1fr) auto; }
++  .battle-row .hp-amount-input, .battle-row .hp-btn { height: 40px; min-height: 40px; border-radius: 9px; }
++  .battle-row .hp-btn svg { width: 15px; height: 15px; }
++  .battle-row .stat-chip-input { min-height: 32px; width: 44px; }
++  .battle-remove { width: 32px; height: 32px; min-width: 32px; min-height: 32px; }
++  .battle-toolbar { gap: 8px; }
++  .modifier-hint { font-size: 11.5px; max-width: calc(100vw - 24px); }
++  .map-head-actions .toggle-switch-label { font-size: 12px; }
++  .dossier-card { padding: 14px; }
++  .char-tools .btn, .char-tools .sort-select { min-height: 34px; }
++}
++
++/* a bubble docked at the bottom of a phone screen takes the place of the navigation hint */
++body:has(.pin-action-bubble.is-docked:not([hidden])) #nav-hint { opacity: 0; pointer-events: none; transition: opacity 120ms ease; }
+diff --git a/static/js/map.js b/static/js/map.js
+index 8d0417c..564f5ba 100644
+--- a/static/js/map.js
++++ b/static/js/map.js
+@@ -641,6 +641,27 @@
+     if (visual) visual.style.transform = `rotate(${pin.rotation || 0}deg)`;
+   }
+ 
++  // ---- Bubble size follows what is on screen ----
++  // The token menu and the shape bubble used to be a fixed size, so on a narrow phone (tiny map) they swamped the
++  // tokens and sideways (bigger map) they looked small.  Both now scale with how big one grid cell really is on
++  // screen, which already includes the zoom; the bubble docked on a phone also follows the screen width.
++  const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
++  function cellOnScreen() {
++    const w = stageWrap.getBoundingClientRect().width;
++    return naturalWidth && gridSize ? gridSize * (w / naturalWidth) * zoomLevel : 40;
++  }
++  function stageBubbleScale() { return clamp(cellOnScreen() / 36, 0.8, 1.25); }   // 1 = a cell of 36 screen px
++  function dockedBubbleScale() {
++    const zoomNudge = clamp(1 + (zoomLevel - 1) * 0.12, 0.92, 1.1);
++    return clamp(window.innerWidth / 430, 0.9, 1.2) * zoomNudge;
++  }
++  function applyBubbleScale() {
++    const local = stageBubbleScale() / zoomLevel;                    // the stage itself is scaled by the zoom
++    pinBubble.style.setProperty('--k', local.toFixed(3));
++    shapeBubble.style.setProperty('--k', (shapeBubble.classList.contains('is-docked') ? dockedBubbleScale() : local).toFixed(3));
++    return local;
++  }
++
+   function positionPinBubble(pinId) {
+     const el = pinLayer.querySelector(`[data-pin-id="${pinId}"]`);
+     const pin = pins.find((p) => p.id === pinId);
+@@ -682,26 +703,45 @@
+           : 'Currently a PC (stats visible to players) — click to make it an NPC';
+       }
+     }
+-    layoutPinRadial(leftPx, topPx, halfHeightPx, wrapRect.width, wrapRect.height);
++    layoutPinRadial(leftPx, topPx, halfHeightPx, wrapRect.width, wrapRect.height, applyBubbleScale());
+   }
+ 
+   // Fan the visible buttons out on an arc around the token.  The arc opens towards whichever side has room
+   // (above, below, right, left -- in that order of preference) so no button is ever pushed off the map.
+-  function layoutPinRadial(cx, cy, halfPx, stageW, stageH) {
++  // The part of the map that is actually on screen (zoom, pan, page scroll and the phone bars all taken into account),
++  // in the stage's own pixels -- the token menu fans out inside THIS, not just inside the whole map.
++  function visibleStageBox(stageW, stageH) {
++    const r = stageWrap.getBoundingClientRect();
++    let sTop = 0, sBottom = window.innerHeight;
++    const nav = document.querySelector('.sidebar-nav'), bar = document.querySelector('.sidebar');
++    if (nav && getComputedStyle(nav).position === 'fixed') { const t = nav.getBoundingClientRect().top; if (t > 0) sBottom = Math.min(sBottom, t); }
++    if (bar) { const br = bar.getBoundingClientRect(); if (br.width > window.innerWidth * 0.9) sTop = Math.max(0, br.bottom); }
++    const lx = (sx) => (sx - r.left - panX) / zoomLevel;
++    const ly = (sy) => (sy - r.top - panY) / zoomLevel;
++    const box = { x0: Math.max(0, lx(0)), x1: Math.min(stageW, lx(window.innerWidth)), y0: Math.max(0, ly(sTop)), y1: Math.min(stageH, ly(sBottom)) };
++    return (box.x1 - box.x0 > 60 && box.y1 - box.y0 > 60) ? box : { x0: 0, x1: stageW, y0: 0, y1: stageH };
++  }
++
++  function layoutPinRadial(cx, cy, halfPx, stageW, stageH, k = 1) {
++    const vis = visibleStageBox(stageW, stageH);
+     const items = Array.from(pinBubble.children).filter((c) => c.style.display !== 'none');
+     const n = items.length;
+     if (!n) return;
+-    const BTN = 38, GAP = 6, PAD = BTN / 2 + 4;
++    const BTN = 36 * k, GAP = 6 * k, PAD = BTN / 2 + 4;
+     const baseSpan = Math.min(Math.PI * 1.35, Math.max(Math.PI * 0.5, (n - 1) * 0.5));
+-    const baseR = Math.max(halfPx + 30, ((n - 1) * (BTN + GAP)) / baseSpan);
++    const baseR = Math.max(halfPx + 26 * k, ((n - 1) * (BTN + GAP)) / baseSpan);
+     const Q = Math.PI / 2, D = Math.PI / 4;
+     // [name, centre angle, reversed?, span, radius].  reversed arcs run the other way round so the order always
+     // reads left-to-right (above/below) or top-to-bottom (right/left).  Tight spots (a corner) fall back to
+     // a quarter circle on a wider radius, which fits where a wide arc cannot.
+     const tightR = Math.max(baseR, ((n - 1) * (BTN + GAP)) / Q);
++    // A full ring round the token is the most compact shape of all, so it comes before the wide quarter-circle fallbacks.
++    const ringSpan = n > 1 ? (Math.PI * 2 * (n - 1)) / n : 0, ringR = Math.max(halfPx + BTN * 0.85, (n * (BTN + GAP)) / (Math.PI * 2));
++    const ring = (start) => ['ring', start + ringSpan / 2, false, ringSpan, ringR];
+     const cands = [
+       ['top', -Q, false, baseSpan, baseR], ['bottom', Q, true, baseSpan, baseR],
+       ['right', 0, false, baseSpan, baseR], ['left', Math.PI, true, baseSpan, baseR],
++      ring(-Q), ring(0), ring(Q), ring(Math.PI),
+       ['top', -Q, false, Q, tightR], ['bottom', Q, true, Q, tightR], ['right', 0, false, Q, tightR], ['left', Math.PI, true, Q, tightR],
+       ['top-right', -D, false, Q, tightR], ['bottom-right', D, false, Q, tightR],
+       ['bottom-left', Math.PI - D, true, Q, tightR], ['top-left', -Math.PI + D, true, Q, tightR],
+@@ -716,7 +756,7 @@
+       for (let i = 0; i < n; i++) {
+         const a = angle(c, i);
+         const x = cx + Math.cos(a) * c[4], y = cy + Math.sin(a) * c[4];
+-        if (x < PAD || x > stageW - PAD || y < PAD || y > stageH - PAD) outside += 1;
++        if (x < vis.x0 + PAD || x > vis.x1 - PAD || y < vis.y0 + PAD || y > vis.y1 - PAD) outside += 1;
+       }
+       if (!best || outside < best.outside) best = { c, outside };
+       if (outside === 0) break;
+@@ -831,6 +871,7 @@
+     const d = drawings.find((s) => s.id === selectedShapeId);
+     if (!d) { shapeBubble.hidden = true; return; }
+     syncHideButton(shapeHideBtn, selectedShapeIds.size > 1 ? [...selectedShapeIds].every((id) => (drawings.find((x) => x.id === id) || {}).dm_only) : d.dm_only);
++    applyBubbleScale();
+     if (shapeBubble.classList.contains('is-docked')) { shapeBubble.hidden = false; return; }
+     const wrapRect = stageWrap.getBoundingClientRect();
+     // Angle shapes' adjust handles sit out at the full reach (radius w),
+@@ -865,7 +906,8 @@
+     }
+     shapeBubble.style.left = `${left}px`;
+     shapeBubble.style.top = `${midY}px`;
+-    shapeBubble.style.transform = `translate(${translateX}, -50%)`;
++    shapeBubble.style.transform = `translate(${translateX}, -50%) scale(${shapeBubble.style.getPropertyValue('--k') || 1})`;
++    shapeBubble.style.transformOrigin = translateX === '0%' ? '0% 50%' : '100% 50%';
+   }
+ 
+   // ---- Selection ----
+@@ -2550,8 +2592,17 @@
+     stageInner.style.transform = `translate(${panX}px, ${panY}px) scale(${zoomLevel})`;
+     stageInner.style.setProperty('--ledger-zoom-inv', String(1 / zoomLevel));
+     if (zoomLevelLabel) zoomLevelLabel.textContent = `${Math.round(zoomLevel * 100)}%`;
++    applyBubbleScale();
++    if (selectedPinId != null) positionPinBubble(selectedPinId);
++    if (selectedShapeId != null) positionShapeBubble();
+   }
+ 
++  window.addEventListener('resize', () => {
++    applyBubbleScale();
++    if (selectedPinId != null) positionPinBubble(selectedPinId);
++    if (selectedShapeId != null) positionShapeBubble();
++  });
++
+   stageWrap.addEventListener('wheel', (e) => {
+     if (!(e.ctrlKey || e.metaKey)) return; // plain scroll is left alone; Ctrl/Cmd+wheel (or trackpad pinch) zooms
+     e.preventDefault();
+diff --git a/static/js/phone-ui.js b/static/js/phone-ui.js
+index 2cbfd10..d6b4847 100644
+--- a/static/js/phone-ui.js
++++ b/static/js/phone-ui.js
+@@ -46,6 +46,70 @@
+     showActiveTool();
+   }
+ 
++  // ---- "More" sheet: rises from the bottom; a drag down (or a quick flick), a tap outside or Escape closes it ----
++  var moreBtn = document.getElementById('nav-more-btn');
++  var sheet = document.getElementById('more-sheet');
++  var scrim = document.getElementById('more-scrim');
++  var grip = document.getElementById('more-grip');
++  if (moreBtn && sheet && scrim) {
++    var hideTimer = 0;
++    var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)');
++    var isOpen = function () { return sheet.classList.contains('is-open'); };
++    var openMore = function () {
++      clearTimeout(hideTimer);
++      sheet.hidden = false; scrim.hidden = false;
++      sheet.style.transform = '';
++      void sheet.offsetHeight;                              // let the closed position paint, so the rise animates
++      sheet.classList.add('is-open'); scrim.classList.add('is-open');
++      moreBtn.setAttribute('aria-expanded', 'true');
++      var first = sheet.querySelector('a, button');
++      if (first) try { first.focus({ preventScroll: true }); } catch (e) { /* ignore */ }
++    };
++    var closeMore = function (restoreFocus) {
++      if (!isOpen()) return;
++      sheet.classList.remove('is-open'); scrim.classList.remove('is-open');
++      sheet.style.transform = '';
++      moreBtn.setAttribute('aria-expanded', 'false');
++      hideTimer = setTimeout(function () { sheet.hidden = true; scrim.hidden = true; }, reduce && reduce.matches ? 20 : 360);
++      if (restoreFocus) moreBtn.focus({ preventScroll: true });
++    };
++    moreBtn.addEventListener('click', function () { if (isOpen()) closeMore(); else openMore(); });
++    scrim.addEventListener('click', function () { closeMore(true); });
++    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && isOpen()) closeMore(true); });
++    sheet.addEventListener('click', function (e) { if (e.target.closest('a[href]')) closeMore(); });
++    // the sheet leaves when the layout stops being the phone one (rotate to a big window)
++    var phoneish = window.matchMedia('(max-width: 880px), (max-height: 500px) and (orientation: landscape)');
++    var onLayout = function () { if (!phoneish.matches) { sheet.classList.remove('is-open'); scrim.classList.remove('is-open'); sheet.hidden = true; scrim.hidden = true; } };
++    if (phoneish.addEventListener) phoneish.addEventListener('change', onLayout);
++
++    // drag the grip: follows the finger 1:1, resists upwards, and a flick closes it even from a short drag
++    var drag = null;
++    function endDrag(e) {
++      if (!drag) return;
++      var d = drag; drag = null;
++      sheet.classList.remove('is-dragging');
++      try { grip.releasePointerCapture(d.id); } catch (err) { /* ignore */ }
++      var dt = Math.max(1, performance.now() - d.t0), v = d.dy / dt;      // px per ms, positive = downward
++      if (d.dy > sheet.offsetHeight * 0.3 || v > 0.5) closeMore(); else sheet.style.transform = '';
++    }
++    if (grip) {
++      grip.addEventListener('pointerdown', function (e) {
++        drag = { id: e.pointerId, y0: e.clientY, t0: performance.now(), dy: 0 };
++        sheet.classList.add('is-dragging');
++        try { grip.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
++      });
++      grip.addEventListener('pointermove', function (e) {
++        if (!drag || e.pointerId !== drag.id) return;
++        var raw = e.clientY - drag.y0;
++        drag.dy = raw;
++        var y = raw >= 0 ? raw : -Math.sqrt(-raw) * 2.2;                  // rubber-band when pulled up
++        sheet.style.transform = 'translateY(' + y + 'px)';
++      });
++      grip.addEventListener('pointerup', endDrag);
++      grip.addEventListener('pointercancel', endDrag);
++    }
++  }
++
+   // ---- full screen ----
+   var fsEl = root;
+   var canFs = !!(fsEl.requestFullscreen || fsEl.webkitRequestFullscreen);
+diff --git a/static/js/theme.js b/static/js/theme.js
+index cab542b..bc9d7a7 100644
+--- a/static/js/theme.js
++++ b/static/js/theme.js
+@@ -3,8 +3,8 @@
+ // just wires up the toggle button and persists the choice.
+ 
+ (function () {
+-  const btn = document.getElementById('theme-toggle');
+-  if (!btn) return;
++  const btns = document.querySelectorAll('#theme-toggle, .js-theme-toggle');
++  if (!btns.length) return;
+ 
+   function currentTheme() {
+     return document.documentElement.getAttribute('data-theme') || 'dark';
+@@ -15,11 +15,11 @@
+     localStorage.setItem('ledger-theme', theme);
+   }
+ 
+-  btn.addEventListener('click', () => {
++  btns.forEach((btn) => btn.addEventListener('click', () => {
+     // Brief pulse so the click always feels acknowledged, even though the
+     // real transition is driven by the CSS custom-property animation.
+     btn.classList.add('theme-toggle-pulse');
+     setTimeout(() => btn.classList.remove('theme-toggle-pulse'), 400);
+     setTheme(currentTheme() === 'light' ? 'dark' : 'light');
+-  });
++  }));
+ })();
+diff --git a/templates/_icons.html b/templates/_icons.html
+index a604900..a4bc458 100644
+--- a/templates/_icons.html
++++ b/templates/_icons.html
+@@ -91,6 +91,10 @@
+ <svg class="icon {{ cls }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6.28571 19C3.91878 19 2 17.1038 2 14.7647C2 12.4256 3.91878 10.5294 6.28571 10.5294C6.56983 10.5294 6.8475 10.5567 7.11616 10.6089M14.381 8.02721C14.9767 7.81911 15.6178 7.70588 16.2857 7.70588C16.9404 7.70588 17.5693 7.81468 18.1551 8.01498M7.11616 10.6089C6.88706 9.9978 6.7619 9.33687 6.7619 8.64706C6.7619 5.52827 9.32028 3 12.4762 3C15.4159 3 17.8371 5.19371 18.1551 8.01498M7.11616 10.6089C7.68059 10.7184 8.20528 10.9374 8.66667 11.2426M18.1551 8.01498C20.393 8.78024 22 10.8811 22 13.3529C22 16.0599 20.0726 18.3221 17.5 18.8722"/><path d="M14 19H12L10 19"/></svg>
+ {%- elif name == 'eraser' -%}
+ <svg class="icon {{ cls }}" viewBox="0 0 24 24" fill="currentColor"><path d="m21.891 20.506c-.044.005-4.209.455-8.381.491 1.145-.966 2.538-2.203 3.934-3.599 1.915-1.915 3.536-3.829 4.559-5.097 1.373-1.701 1.396-4.112.059-5.863-.731-.958-1.431-1.772-2.079-2.42-.647-.646-1.461-1.347-2.42-2.08-1.751-1.336-4.162-1.313-5.863.059-1.269 1.023-3.183 2.646-5.096 4.56-1.914 1.913-3.536 3.827-4.559 5.096-1.373 1.701-1.397 4.112-.059 5.864.735.961 1.435 1.775 2.08 2.42.65.649 1.464 1.35 2.419 2.078.862.66 1.884.988 2.903.988.122-.006 3.486 0 3.612-.002 4.448 0 8.921-.485 9.109-.506.549-.061.945-.555.885-1.104-.061-.548-.559-.944-1.103-.885zm-8.936-16.953c.497-.4 1.099-.602 1.704-.602.592 0 1.187.192 1.689.576.889.679 1.636 1.32 2.221 1.904.586.586 1.227 1.332 1.904 2.22.776 1.016.766 2.411-.026 3.393-.869 1.077-2.182 2.634-3.739 4.249l-8.001-8c1.614-1.556 3.17-2.87 4.248-3.74zm-7.476 14.969c-.583-.583-1.224-1.33-1.905-2.221-.776-1.017-.766-2.412.026-3.394.86-1.067 2.157-2.603 3.693-4.199l7.998 7.998c-1.597 1.536-3.134 2.833-4.2 3.693-.981.79-2.376.805-3.394.025-.885-.676-1.632-1.316-2.22-1.903z"/></svg>
++{%- elif name == 'more' -%} <!-- overflow menu -->
++<svg class="icon {{ cls }}" viewBox="0 0 24 24" fill="currentColor"><circle cx="5.5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="18.5" cy="12" r="1.8"/></svg>
++{%- elif name == 'log-out' -%}
++<svg class="icon {{ cls }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>
+ {%- elif name == 'eye-off' -%} <!-- hidden from players -->
+ <svg class="icon {{ cls }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7c2 0 3.7.7 5.1 1.6M22 12s-3.6 7-10 7c-2 0-3.7-.7-5.1-1.6"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/><path d="M3 3l18 18"/></svg>
+ {%- elif name == 'lock' -%}
+diff --git a/templates/base.html b/templates/base.html
+index 417fe6e..2aaad76 100644
+--- a/templates/base.html
++++ b/templates/base.html
+@@ -56,7 +56,7 @@
+       <a href="{{ url_for('characters_list') }}" class="nav-tab {{ 'active' if active_page == 'characters' else '' }}" title="Characters">
+         {{ icon('scroll-text') }}<span>Characters</span>
+       </a>
+-      <a href="{{ url_for('factions_list') }}" class="nav-tab {{ 'active' if active_page == 'factions' else '' }}" title="Factions">
++      <a href="{{ url_for('factions_list') }}" data-more class="nav-tab {{ 'active' if active_page == 'factions' else '' }}" title="Factions">
+         {{ icon('faction') }}<span>Factions</span>
+       </a>
+       <a href="{{ url_for('battle_view') }}" class="nav-tab {{ 'active' if active_page == 'battle' else '' }}" title="Battle">
+@@ -68,11 +68,11 @@
+       <a href="{{ url_for('dice_view') }}" class="nav-tab {{ 'active' if active_page == 'dice' else '' }}" title="Dice">
+         {{ icon('dices') }}<span>Dice</span>
+       </a>
+-      <a href="{{ url_for('reference_view') }}" class="nav-tab {{ 'active' if active_page == 'reference' else '' }}" title="Spells, monsters and items">
++      <a href="{{ url_for('reference_view') }}" data-more class="nav-tab {{ 'active' if active_page == 'reference' else '' }}" title="Spells, monsters and items">
+         {{ icon('book-open') }}<span>Reference</span>
+       </a>
+       {% if g.real_is_dm %}
+-      <form method="POST" action="{{ url_for('preview_as_player') }}" class="nav-form">{{ csrf_field() }}
++      <form method="POST" action="{{ url_for('preview_as_player') }}" class="nav-form" data-more>{{ csrf_field() }}
+         <input type="hidden" name="on" value="{{ '0' if g.previewing else '1' }}">
+         <button type="submit" class="nav-tab nav-tab-button {{ 'active' if g.previewing else '' }}" title="{{ 'Stop viewing as a Player' if g.previewing else 'See this campaign exactly as a Player does' }}">
+           {{ icon('eye') }}<span>{{ 'Exit player view' if g.previewing else 'View as player' }}</span>
+@@ -91,6 +91,10 @@
+       </a>
+       {% endif %}
+       {% endif %}
++      {# Phone only: the bar keeps four places; everything else (and the quick settings) lives in this sheet. #}
++      <button type="button" class="nav-tab nav-more-btn {{ 'active' if active_page in ('factions', 'reference') else '' }}" id="nav-more-btn" aria-haspopup="dialog" aria-expanded="false" aria-controls="more-sheet" title="More">
++        {{ icon('more') }}<span>More</span>
++      </button>
+     </nav>
+ 
+     <div class="sidebar-foot">
+@@ -147,6 +151,37 @@
+   </button>
+ </div>
+ 
++{# Phone: the "More" sheet.  Rises from the bottom, dismisses with a drag down, a tap outside or Escape. #}
++<div class="more-scrim" id="more-scrim" hidden></div>
++<div class="more-sheet" id="more-sheet" role="dialog" aria-modal="true" aria-label="More" hidden>
++  <div class="more-grip" id="more-grip"><span class="more-grabber"></span></div>
++  {% if g.campaign_id %}
++  <div class="more-links">
++    <a href="{{ url_for('factions_list') }}" class="more-link {{ 'active' if active_page == 'factions' else '' }}">{{ icon('faction') }}<span>Factions</span></a>
++    <a href="{{ url_for('reference_view') }}" class="more-link {{ 'active' if active_page == 'reference' else '' }}">{{ icon('book-open') }}<span>Reference</span></a>
++    {% if g.real_is_dm %}
++    <form method="POST" action="{{ url_for('preview_as_player') }}">{{ csrf_field() }}
++      <input type="hidden" name="on" value="{{ '0' if g.previewing else '1' }}">
++      <button type="submit" class="more-link {{ 'active' if g.previewing else '' }}">{{ icon('eye') }}<span>{{ 'Exit player view' if g.previewing else 'View as player' }}</span></button>
++    </form>
++    {% endif %}
++    <a href="{{ url_for('campaigns_list') }}" class="more-link">{{ icon('scroll') }}<span>Switch campaign</span></a>
++  </div>
++  {% endif %}
++  <div class="more-quick">
++    <button type="button" class="more-chip js-theme-toggle" title="Toggle light/dark mode"><span class="more-chip-ico"><span class="theme-icon theme-icon-sun">{{ icon('sun') }}</span><span class="theme-icon theme-icon-moon">{{ icon('moon') }}</span></span><span class="more-chip-label">Theme</span></button>
++    <button type="button" class="more-chip js-fullscreen" title="Full screen" hidden><span class="fs-on">{{ icon('maximize') }}</span><span class="fs-off">{{ icon('minimize') }}</span><span class="more-chip-label">Full screen</span></button>
++  </div>
++  {% if session.username %}
++  <div class="more-user">
++    <span class="more-user-name">{{ icon('user') }}<span>{{ session.username }}</span></span>
++    <form method="POST" action="{{ url_for('logout') }}">{{ csrf_field() }}
++      <button type="submit" class="more-logout">{{ icon('log-out') }}<span>Log out</span></button>
++    </form>
++  </div>
++  {% endif %}
++</div>
++
+ <div class="lightbox-overlay" id="image-lightbox" hidden>
+   <button type="button" class="btn-icon lightbox-close" id="lightbox-close-btn">{{ icon('x') }}</button>
+   <button type="button" class="btn btn-danger lightbox-delete" id="lightbox-delete-btn" hidden>{{ icon('trash-2') }} Delete this image</button>
+diff --git a/tests/test_e2e_browser.py b/tests/test_e2e_browser.py
+index b7ba949..1ee312d 100644
+--- a/tests/test_e2e_browser.py
++++ b/tests/test_e2e_browser.py
+@@ -978,11 +978,11 @@ def test_phone_and_tablet_pages_fit_the_screen_with_a_bottom_tab_bar(pw, shared_
+         assert page.locator('.sidebar').bounding_box()['height'] < 90, path                          # a slim top bar, not a tall block
+     # every tab of the campaign is on screen at once and one tap goes there
+     page.goto(base + f'/campaigns/{cid}/characters')
+-    tabs = page.locator('.sidebar-nav .nav-tab')
+-    assert tabs.count() >= 6
++    tabs = page.locator('.sidebar-nav .nav-tab:visible')                                       # four tabs and a More button; the rest live in the More sheet
++    assert tabs.count() == 5
+     for i in range(tabs.count()):
+         box = tabs.nth(i).bounding_box()
+-        assert box and 0 <= box['x'] and box['x'] + box['width'] <= w + 1 and box['height'] >= 40
++        assert box and 0 <= box['x'] and box['x'] + box['width'] <= w + 1 and box['height'] >= 38
+     page.locator('.sidebar-nav .nav-tab', has_text='Dice').tap()
+     page.wait_for_url(re.compile(r'/dice$'))
+     page.locator('.die-selector[data-die="20"]').tap(); page.locator('#roll-btn').tap()
+@@ -1379,3 +1379,81 @@ def test_dm_hides_a_token_and_a_shape_from_players_in_the_browser(pw, shared_ser
+     assert pl.get(f'{api}/drawings').json() == []
+     assert not perrs, perrs
+     pctx.close()
++
++
++def test_phone_more_sheet_holds_the_extras_and_closes_every_way(pw, shared_server):
++    """The phone tab bar keeps four places plus More; Factions, Reference, view-as-player, theme, full screen and
++    log out live in the sheet, which closes with Escape, a tap outside, or a drag down."""
++    base = shared_server.url; dm = Api(base); cid = dm.campaign('Sheet')
++    ctx = pw.new_context(viewport={'width': 390, 'height': 844}, has_touch=True, is_mobile=True)
++    ctx.add_cookies([{'name': SESSION_COOKIE, 'value': dm.s.cookies.get(SESSION_COOKIE), 'url': base}])
++    page = ctx.new_page(); bad, errs = _collect(page)
++    page.goto(base + f'/campaigns/{cid}/characters'); page.wait_for_load_state('networkidle')
++    tabs = page.locator('.sidebar-nav > .nav-tab:visible')
++    assert tabs.count() == 5                                                       # Characters, Battle, Maps, Dice, More
++    assert page.locator('.sidebar-foot .theme-toggle-btn').is_hidden() and page.locator('.sidebar-foot .user-row').is_hidden()
++    assert page.locator('#more-sheet').is_hidden()
++    page.click('#nav-more-btn'); page.wait_for_timeout(500)
++    assert page.locator('#more-sheet').is_visible()
++    for text in ('Factions', 'Reference', 'View as player', 'Theme', 'Log out'):
++        assert page.locator('#more-sheet').get_by_text(text).first.is_visible(), text
++    box = page.locator('#more-sheet').bounding_box()
++    assert box['y'] + box['height'] <= 844 + 1 and box['y'] > 150                  # a sheet, not a full page
++    page.keyboard.press('Escape'); page.wait_for_timeout(600)
++    assert page.locator('#more-sheet').is_hidden()
++    page.click('#nav-more-btn'); page.wait_for_timeout(500)
++    page.mouse.click(195, 60); page.wait_for_timeout(600)                           # tap on the dimmed page
++    assert page.locator('#more-sheet').is_hidden()
++    page.click('#nav-more-btn'); page.wait_for_timeout(500)
++    g = page.locator('#more-grip').bounding_box()
++    page.mouse.move(g['x'] + g['width'] / 2, g['y'] + 8); page.mouse.down()
++    page.mouse.move(g['x'] + g['width'] / 2, g['y'] + 220, steps=6); page.mouse.up(); page.wait_for_timeout(700)
++    assert page.locator('#more-sheet').is_hidden()                                  # dragged down to dismiss
++    assert not [b for b in bad if b[0] >= 400], bad
++    assert not errs, errs
++    page.click('#nav-more-btn'); page.wait_for_timeout(500)
++    page.locator('#more-sheet').get_by_text('Reference').click(); page.wait_for_load_state('domcontentloaded')
++    assert '/reference' in page.url
++    ctx.close()
++
++
++def test_map_bubble_scales_with_the_screen_and_rides_with_the_bars(pw, shared_server):
++    """The token menu is smaller on a narrow phone than sideways, and the shape bubble docked sideways moves down when
++    the bars slide away (like the full-screen button)."""
++    base = shared_server.url; dm = Api(base); cid = dm.campaign('Scale')
++    r = dm.post(f'/campaigns/{cid}/maps/new', data={'name': 'Hall', 'blank_width': '1000', 'blank_height': '700'})
++    mid = int(re.search(r'/maps/(\d+)', r.headers['Location']).group(1)); api = f'/campaigns/{cid}/api/maps/{mid}'
++    pin = dm.post(f'{api}/pins', json={'pin_type': 'prop', 'icon_key': 'skull', 'x': 300, 'y': 300}).json()['id']
++    shape = dm.post(f'{api}/drawings', json={'kind': 'rect', 'cx': 600, 'cy': 350, 'w': 200, 'h': 120, 'color': '#ff4040', 'fill': True, 'fill_opacity': 0.4, 'data': {}}).json()['id']
++    k = {}
++    for name, (w, h) in {'portrait': (390, 844), 'landscape': (844, 390)}.items():
++        ctx = pw.new_context(viewport={'width': w, 'height': h}, has_touch=True, is_mobile=True)
++        ctx.add_cookies([{'name': SESSION_COOKIE, 'value': dm.s.cookies.get(SESSION_COOKIE), 'url': base}])
++        page = ctx.new_page(); bad, errs = _collect(page)
++        page.goto(base + f'/campaigns/{cid}/maps/{mid}'); page.wait_for_load_state('networkidle'); page.wait_for_timeout(700)
++        if page.locator('#setup-confirm-btn').is_visible():
++            page.evaluate("document.getElementById('setup-confirm-btn').scrollIntoView({block:'center'})")
++            page.click('#setup-confirm-btn'); page.wait_for_timeout(900)
++        page.evaluate("window.scrollTo(0, 100)"); page.wait_for_timeout(250)
++        page.locator(f'.map-pin[data-pin-id="{pin}"]').click(); page.wait_for_timeout(500)
++        k[name] = float(page.eval_on_selector('#pin-action-bubble', 'e => e.style.getPropertyValue("--k")'))
++        btn = page.locator('#pin-action-bubble .pin-radial-btn:visible').first.bounding_box()
++        assert 24 <= btn['width'] <= 50, btn                                          # smaller than the old 38 on a phone, never tiny
++        # every visible button of the token menu is inside the part of the map that is on screen
++        for b in page.locator('#pin-action-bubble .pin-radial-btn:visible').all():
++            bb = b.bounding_box()
++            assert bb['x'] >= -1 and bb['x'] + bb['width'] <= w + 1, (name, bb)
++        if name == 'landscape':
++            page.evaluate("window.scrollTo(0, 0)"); page.wait_for_timeout(200)
++            cb = page.locator('#map-canvas').bounding_box()
++            page.evaluate(f"window.scrollBy(0, {max(0, int(cb['y'] + cb['height'] * 0.5 - 200))})"); page.wait_for_timeout(300)
++            cb = page.locator('#map-canvas').bounding_box()
++            page.mouse.click(cb['x'] + cb['width'] * 0.6, cb['y'] + cb['height'] * 0.5); page.wait_for_timeout(500)
++            if page.locator('#shape-action-bubble').is_visible():
++                shown = page.locator('#shape-action-bubble').bounding_box()['y']
++                page.click('.js-nav-toggle'); page.wait_for_timeout(600)               # the bars slide away
++                lower = page.locator('#shape-action-bubble').bounding_box()['y']
++                assert lower > shown + 20, (shown, lower)                              # the bubble rode down with them
++        assert not errs, errs
++        ctx.close()
++    assert k['landscape'] > k['portrait'], k                                          # bigger sideways than on the narrow phone

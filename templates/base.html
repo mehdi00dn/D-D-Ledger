@@ -56,7 +56,7 @@
       <a href="{{ url_for('characters_list') }}" class="nav-tab {{ 'active' if active_page == 'characters' else '' }}" title="Characters">
         {{ icon('scroll-text') }}<span>Characters</span>
       </a>
-      <a href="{{ url_for('factions_list') }}" class="nav-tab {{ 'active' if active_page == 'factions' else '' }}" title="Factions">
+      <a href="{{ url_for('factions_list') }}" data-more class="nav-tab {{ 'active' if active_page == 'factions' else '' }}" title="Factions">
         {{ icon('faction') }}<span>Factions</span>
       </a>
       <a href="{{ url_for('battle_view') }}" class="nav-tab {{ 'active' if active_page == 'battle' else '' }}" title="Battle">
@@ -68,11 +68,11 @@
       <a href="{{ url_for('dice_view') }}" class="nav-tab {{ 'active' if active_page == 'dice' else '' }}" title="Dice">
         {{ icon('dices') }}<span>Dice</span>
       </a>
-      <a href="{{ url_for('reference_view') }}" class="nav-tab {{ 'active' if active_page == 'reference' else '' }}" title="Spells, monsters and items">
+      <a href="{{ url_for('reference_view') }}" data-more class="nav-tab {{ 'active' if active_page == 'reference' else '' }}" title="Spells, monsters and items">
         {{ icon('book-open') }}<span>Reference</span>
       </a>
       {% if g.real_is_dm %}
-      <form method="POST" action="{{ url_for('preview_as_player') }}" class="nav-form">{{ csrf_field() }}
+      <form method="POST" action="{{ url_for('preview_as_player') }}" class="nav-form" data-more>{{ csrf_field() }}
         <input type="hidden" name="on" value="{{ '0' if g.previewing else '1' }}">
         <button type="submit" class="nav-tab nav-tab-button {{ 'active' if g.previewing else '' }}" title="{{ 'Stop viewing as a Player' if g.previewing else 'See this campaign exactly as a Player does' }}">
           {{ icon('eye') }}<span>{{ 'Exit player view' if g.previewing else 'View as player' }}</span>
@@ -91,6 +91,10 @@
       </a>
       {% endif %}
       {% endif %}
+      {# Phone only: the bar keeps four places; everything else (and the quick settings) lives in this sheet. #}
+      <button type="button" class="nav-tab nav-more-btn {{ 'active' if active_page in ('factions', 'reference') else '' }}" id="nav-more-btn" aria-haspopup="dialog" aria-expanded="false" aria-controls="more-sheet" title="More">
+        {{ icon('more') }}<span>More</span>
+      </button>
     </nav>
 
     <div class="sidebar-foot">
@@ -145,6 +149,37 @@
   <button type="button" class="dock-btn js-fullscreen" title="Full screen" aria-label="Full screen" hidden>
     <span class="fs-on">{{ icon('maximize') }}</span><span class="fs-off">{{ icon('minimize') }}</span>
   </button>
+</div>
+
+{# Phone: the "More" sheet.  Rises from the bottom, dismisses with a drag down, a tap outside or Escape. #}
+<div class="more-scrim" id="more-scrim" hidden></div>
+<div class="more-sheet" id="more-sheet" role="dialog" aria-modal="true" aria-label="More" hidden>
+  <div class="more-grip" id="more-grip"><span class="more-grabber"></span></div>
+  {% if g.campaign_id %}
+  <div class="more-links">
+    <a href="{{ url_for('factions_list') }}" class="more-link {{ 'active' if active_page == 'factions' else '' }}">{{ icon('faction') }}<span>Factions</span></a>
+    <a href="{{ url_for('reference_view') }}" class="more-link {{ 'active' if active_page == 'reference' else '' }}">{{ icon('book-open') }}<span>Reference</span></a>
+    {% if g.real_is_dm %}
+    <form method="POST" action="{{ url_for('preview_as_player') }}">{{ csrf_field() }}
+      <input type="hidden" name="on" value="{{ '0' if g.previewing else '1' }}">
+      <button type="submit" class="more-link {{ 'active' if g.previewing else '' }}">{{ icon('eye') }}<span>{{ 'Exit player view' if g.previewing else 'View as player' }}</span></button>
+    </form>
+    {% endif %}
+    <a href="{{ url_for('campaigns_list') }}" class="more-link">{{ icon('scroll') }}<span>Switch campaign</span></a>
+  </div>
+  {% endif %}
+  <div class="more-quick">
+    <button type="button" class="more-chip js-theme-toggle" title="Toggle light/dark mode"><span class="more-chip-ico"><span class="theme-icon theme-icon-sun">{{ icon('sun') }}</span><span class="theme-icon theme-icon-moon">{{ icon('moon') }}</span></span><span class="more-chip-label">Theme</span></button>
+    <button type="button" class="more-chip js-fullscreen" title="Full screen" hidden><span class="fs-on">{{ icon('maximize') }}</span><span class="fs-off">{{ icon('minimize') }}</span><span class="more-chip-label">Full screen</span></button>
+  </div>
+  {% if session.username %}
+  <div class="more-user">
+    <span class="more-user-name">{{ icon('user') }}<span>{{ session.username }}</span></span>
+    <form method="POST" action="{{ url_for('logout') }}">{{ csrf_field() }}
+      <button type="submit" class="more-logout">{{ icon('log-out') }}<span>Log out</span></button>
+    </form>
+  </div>
+  {% endif %}
 </div>
 
 <div class="lightbox-overlay" id="image-lightbox" hidden>
