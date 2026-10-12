@@ -1105,6 +1105,10 @@
     drawings.push(shape);
     redraw();
     pushCommand(makeAddShapeCommand(shape));
+    // Done drawing: back to the Select tool with the new shape selected, so it can be moved, restyled or removed at once.
+    const selectBtn = document.querySelector('.map-tool-btn[data-tool="select"]');
+    if (selectBtn) selectBtn.click();
+    selectShape(shape.id);
   }
 
   function makeAddShapeCommand(d) {

@@ -37,7 +37,29 @@
       var on = tb.querySelector('.map-tool-btn.active[data-tool]');
       if (icon && on) icon.innerHTML = on.innerHTML;
     }
-    toggle.addEventListener('click', function () { setOpen(!tb.classList.contains('is-open')); });
+    // Sideways every tool is already on screen, so the same button tucks the whole dock down to one pill (and remembers it).
+    var sidewaysTools = window.matchMedia('(orientation: landscape) and (max-height: 500px)');
+    function setTucked(tucked) {
+      tb.classList.toggle('is-tucked', tucked);
+      toggle.setAttribute('aria-expanded', tucked ? 'false' : 'true');
+      try { localStorage.setItem('ledger-map-dock-tucked', tucked ? '1' : '0'); } catch (e) { /* private window: just do not remember */ }
+    }
+    function syncDock() {
+      if (sidewaysTools.matches) {
+        var saved = false;
+        try { saved = localStorage.getItem('ledger-map-dock-tucked') === '1'; } catch (e) { /* ignore */ }
+        setTucked(saved);
+      } else {
+        tb.classList.remove('is-tucked');
+        toggle.setAttribute('aria-expanded', tb.classList.contains('is-open') ? 'true' : 'false');
+      }
+    }
+    syncDock();
+    if (sidewaysTools.addEventListener) sidewaysTools.addEventListener('change', syncDock);
+    toggle.addEventListener('click', function () {
+      if (sidewaysTools.matches) setTucked(!tb.classList.contains('is-tucked'));
+      else setOpen(!tb.classList.contains('is-open'));
+    });
     tb.addEventListener('click', function (ev) {
       var pick = ev.target.closest('[data-tool]');
       if (pick && !ev.target.closest('.roster-menu') && tb.classList.contains('is-open')) setTimeout(function () { setOpen(false); }, 140);

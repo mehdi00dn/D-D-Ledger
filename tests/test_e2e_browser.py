@@ -173,6 +173,9 @@ def test_drawing_persists_after_reload(pw, shared_server):
     box = page.locator('#map-canvas').bounding_box()
     page.mouse.move(box['x'] + 150, box['y'] + 150); page.mouse.down(); page.mouse.move(box['x'] + 320, box['y'] + 280, steps=8); page.mouse.up()
     page.wait_for_timeout(800)
+    assert 'active' in page.locator('[data-tool=select]').get_attribute('class')                    # drawing is over: back on the Select tool ...
+    assert 'active' not in (page.locator('#shapes-flyout [data-flyout-trigger]').get_attribute('class') or '')
+    playwright.expect(page.locator('#shape-action-bubble')).to_be_visible()                          # ... with the new shape selected
     n1 = len(api.get(f'/campaigns/{cid}/api/maps/{mid}/drawings').json())
     page.reload(); page.wait_for_load_state('networkidle'); page.wait_for_timeout(600)
     n2 = len(api.get(f'/campaigns/{cid}/api/maps/{mid}/drawings').json())
@@ -1542,3 +1545,44 @@ def test_lightbox_turns_the_page_quickly_and_calms_down_for_reduced_motion(pw, s
         assert page.evaluate("() => document.getElementById('lightbox-img').getAnimations().length") == 0
         assert not errs, errs
         ctx.close()
+
+
+def test_phone_map_toolbar_is_a_bottom_dock_that_tucks_away_sideways(pw, shared_server):
+    base = shared_server.url; dm = Api(base); cid = dm.campaign('Dock')
+    mid = _map_with_pin(dm, cid, dm.character(cid, 'Hero'))
+    def open_map(w, h):
+        ctx = _touch_context(pw, dm, base, w, h); page = ctx.new_page(); bad, errs = _collect(page)
+        page.goto(base + f'/campaigns/{cid}/maps/{mid}'); page.wait_for_load_state('load'); page.wait_for_timeout(600)
+        if page.locator('#setup-confirm-btn').is_visible(): page.locator('#setup-confirm-btn').tap(); page.wait_for_timeout(400)
+        return ctx, page, errs
+    # portrait: a bar fixed above the tab bar; the tool tray rises out of it
+    ctx, page, errs = open_map(390, 844)
+    tb = page.locator('#map-toolbar')
+    box = tb.bounding_box(); nav = page.locator('.sidebar-nav').bounding_box()
+    assert box['y'] > 844 / 2 and box['y'] + box['height'] <= nav['y'] + 1, (box, nav)
+    page.mouse.wheel(0, 400); page.wait_for_timeout(300)
+    assert abs(tb.bounding_box()['y'] - box['y']) < 2                                                # fixed: does not scroll away
+    page.locator('#map-toolbar-toggle').tap(); page.wait_for_timeout(500)
+    tray = page.locator('[data-tool="eraser"]').bounding_box()
+    assert tray['y'] < tb.bounding_box()['y'] + tb.bounding_box()['height'] and tb.bounding_box()['y'] + tb.bounding_box()['height'] <= nav['y'] + 1
+    page.locator('#shapes-flyout [data-flyout-trigger]').tap(); page.wait_for_timeout(300)
+    menu = page.locator('#shapes-flyout .tool-flyout-menu').bounding_box()
+    assert menu and menu['y'] + menu['height'] <= page.locator('#shapes-flyout').bounding_box()['y'] + 4   # menus open upward
+    assert not errs, errs; ctx.close()
+    # sideways: one row above the bottom bar, tucks to a pill, rides with the bars
+    ctx, page, errs = open_map(844, 390)
+    tb = page.locator('#map-toolbar'); nav = page.locator('.sidebar-nav').bounding_box()
+    box = tb.bounding_box()
+    assert box['height'] < 60 and box['y'] + box['height'] <= nav['y'] + 1 and box['x'] >= 90, (box, nav)
+    assert page.locator('[data-tool="eraser"]').is_visible()
+    page.locator('#map-toolbar-toggle').tap(); page.wait_for_timeout(400)
+    assert page.locator('[data-tool="eraser"]').is_hidden() and tb.bounding_box()['width'] < 120
+    page.reload(); page.wait_for_load_state('load'); page.wait_for_timeout(500)
+    assert page.locator('[data-tool="eraser"]').is_hidden()                                          # remembered
+    page.locator('#map-toolbar-toggle').tap(); page.wait_for_timeout(400)
+    assert page.locator('[data-tool="eraser"]').is_visible()
+    tabs = page.locator('.sidebar-nav .nav-tab:visible')
+    for i in range(tabs.count()):
+        t = tabs.nth(i).bounding_box(); inner = tabs.nth(i).evaluate("e => { const r = document.createRange(); r.selectNodeContents(e); const b = r.getBoundingClientRect(); return [b.left, b.right]; }")
+        assert abs((inner[0] + inner[1]) / 2 - (t['x'] + t['width'] / 2)) < 6, (t, inner)           # content centred in each tab
+    assert not errs, errs; ctx.close()
