@@ -72,6 +72,24 @@
     overlay.hidden = false;
   }
 
+  // A quick page turn: the new picture swings in from its spine edge (left when going forward, right when going back).
+  // 220 ms, ease-out, and interruptible: a new press cancels the turn in flight instead of queueing behind it.
+  let turn = null;
+  const calm = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : { matches: false };
+  function pageTurn(direction) {
+    if (turn) { turn.cancel(); turn = null; }
+    if (!img.animate) return;
+    const forward = direction > 0;
+    const from = calm.matches
+      ? { opacity: 0.4 }
+      : { opacity: 0.35, transform: `perspective(1100px) rotateY(${forward ? -24 : 24}deg) scale(0.985)`, transformOrigin: forward ? 'left center' : 'right center' };
+    const to = calm.matches
+      ? { opacity: 1 }
+      : { opacity: 1, transform: 'perspective(1100px) rotateY(0deg) scale(1)', transformOrigin: forward ? 'left center' : 'right center' };
+    turn = img.animate([from, to], { duration: calm.matches ? 120 : 220, easing: 'cubic-bezier(0.32, 0.72, 0, 1)' });
+    turn.onfinish = turn.oncancel = () => { turn = null; };
+  }
+
   function navigate(direction) {
     const nextIndex = currentIndex + direction;
     if (nextIndex < 0 || nextIndex >= currentImages.length) return;
@@ -82,9 +100,11 @@
     deleteBtn.hidden = !currentDeleteUrl;
     updateNavigation();
     reset();
+    pageTurn(direction);
   }
 
   function close() {
+    if (turn) { turn.cancel(); turn = null; }
     overlay.hidden = true;
     img.src = '';
     currentDeleteUrl = null;

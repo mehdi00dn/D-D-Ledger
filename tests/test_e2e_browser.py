@@ -1515,3 +1515,30 @@ def test_the_three_typefaces_load_from_this_site(pw, shared_server):
     assert hosts == {base.split('/')[2]}, hosts                                                         # nothing but our own server
     assert not bad and not errs, (bad, errs)
     ctx.close()
+
+
+def test_lightbox_turns_the_page_quickly_and_calms_down_for_reduced_motion(pw, shared_server):
+    base = shared_server.url; api = Api(base); cid = api.campaign('Flip')
+    files = [('sheets', (f's{i}.png', png_bytes(600, 300, (40 * i, 80, 120)), 'image/png')) for i in range(3)]
+    api.post(f'/campaigns/{cid}/characters/new', data={'name': 'Gallery', 'max_hp': '10'}, files=files)
+    char_id = next(c['id'] for c in api.get(f'/campaigns/{cid}/api/characters').json() if c['name'] == 'Gallery')
+    for reduced in ('no-preference', 'reduce'):
+        ctx = api.context(pw, base); page = ctx.new_page(); bad, errs = _collect(page)
+        page.emulate_media(reduced_motion=reduced)
+        page.goto(base + f'/campaigns/{cid}/characters/{char_id}'); page.wait_for_load_state('networkidle')
+        page.locator('.sheet-thumbs img[data-sheet-src]').nth(0).click(); page.click('#sheet-viewer-img')
+        page.wait_for_selector('#image-lightbox:not([hidden])'); page.wait_for_timeout(500)
+        assert page.evaluate("() => document.getElementById('lightbox-img').getAnimations().length") == 0     # opening is not a page turn
+        before = page.locator('#lightbox-img').get_attribute('src')
+        page.click('#lightbox-next-btn')
+        info = page.evaluate("() => { const a = document.getElementById('lightbox-img').getAnimations()[0]; return a && { ms: a.effect.getTiming().duration, rot: JSON.stringify(a.effect.getKeyframes()[0].transform || '') }; }")
+        assert info and info['ms'] <= 220, info                                                              # fast: never more than a fifth of a second
+        assert ('rotateY' in info['rot']) == (reduced == 'no-preference'), info                              # reduced motion: a plain fade, no swing
+        assert page.locator('#lightbox-img').get_attribute('src') != before                                  # the new picture is there at once
+        page.wait_for_timeout(350)
+        assert page.evaluate("() => document.getElementById('lightbox-img').getAnimations().length") == 0     # and the turn is over
+        page.click('#lightbox-next-btn'); page.click('#lightbox-prev-btn')                                   # fast presses never queue up
+        page.wait_for_timeout(350)
+        assert page.evaluate("() => document.getElementById('lightbox-img').getAnimations().length") == 0
+        assert not errs, errs
+        ctx.close()

@@ -1,0 +1,205 @@
+diff --git a/static/css/style.css b/static/css/style.css
+index 3115b69..acd9310 100644
+--- a/static/css/style.css
++++ b/static/css/style.css
+@@ -3464,7 +3464,6 @@ body.page-leaving .content {
+   .battle-row { gap: 10px; }
+   .battle-name-block { flex-basis: calc(100% - 70px); }
+   .battle-remove { margin-inline-start: auto; }
+-  .map-toolbar { position: static; }
+   .cd-vitals { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+   .cd-vital-val { white-space: nowrap; }
+   .roll-bar { flex-direction: column; align-items: flex-start; }
+@@ -3670,11 +3669,9 @@ body.page-leaving .content {
+   .dock-btn .icon { width: 18px; height: 18px; }
+   .peek-panel { max-height: calc(100dvh - 16px); }
+   .modal-overlay:has(.peek-panel) { padding: 8px; }
+-  .map-toolbar { position: static; }
+ 
+   /* sideways there is room for every map tool on one line: no Tools menu, no wrapping */
+   .map-toolbar { flex-wrap: nowrap; gap: 6px; padding: 5px 8px; margin-bottom: 8px; }
+-  .map-toolbar .map-toolbar-toggle { display: none; }
+   .map-toolbar .map-tool-group--more, .map-toolbar.is-open .map-tool-group--more { display: flex; flex: 0 0 auto; flex-wrap: nowrap; order: 0; }
+   .map-toolbar .map-tool-group { gap: 4px; padding-right: 6px; border-right: 1px solid var(--hairline); flex: 0 0 auto; }
+   .map-toolbar .map-tool-group:last-child { border-right: 0; padding-right: 0; margin-inline-start: auto; }
+@@ -3988,3 +3985,71 @@ body:has(.pin-action-bubble.is-docked:not([hidden])) #nav-hint { opacity: 0; poi
+ 
+ /* the modifier pill on the details page: centred text, one steady size (touch rules used to stretch it) */
+ .cd-ab .cd-ab-mod { display: inline-flex; align-items: center; justify-content: center; min-width: 52px; min-height: 28px; padding: 0 10px; line-height: 1; box-sizing: border-box; }
++
++
++/* ---- phone map toolbar: a floating tool dock at the bottom, in reach of the thumb ----
++   Portrait: a slim bar (Tools, undo/redo, zoom) with the full tool tray rising out of it.
++   Sideways: every tool on one line, with a chevron that tucks the dock down to a single pill. */
++@media (max-width: 880px), (max-height: 500px) and (orientation: landscape) {
++  :root { --dock-h: 46px; }
++  .map-content-area { padding-bottom: calc(var(--dock-h) + 14px); }
++  .map-toolbar {
++    position: fixed; z-index: 75; inset-inline: 8px; margin: 0; top: auto;
++    bottom: calc(var(--bar-h) + 8px + env(safe-area-inset-bottom));
++    padding: 5px 6px; gap: 6px; border-radius: 16px;
++    background: color-mix(in srgb, var(--bg-void-2) 86%, transparent);
++    -webkit-backdrop-filter: blur(22px) saturate(160%); backdrop-filter: blur(22px) saturate(160%);
++    border: 1px solid var(--hairline-strong); box-shadow: var(--shadow-deep);
++    transition: bottom 0.28s var(--ease-drawer);
++  }
++  .map-toolbar.is-pinned { border-radius: 16px; border-top-color: var(--hairline-strong); }
++  /* the dock sits at the bottom, so tool menus always open upward (the "pinned to the top" flip does not apply) */
++  .map-toolbar.is-pinned .tool-flyout-menu { bottom: 100%; top: auto; padding-top: 0; padding-bottom: 14px; transform: translate(-50%, 4px); }
++  .map-toolbar.is-pinned .tool-flyout:hover .tool-flyout-menu, .map-toolbar.is-pinned .tool-flyout.open .tool-flyout-menu { transform: translate(-50%, 0); }
++  .map-toolbar > * { order: 2; }
++  .map-toolbar .map-tool-group--more { order: 0; }
++  .map-toolbar #fog-options-group, .map-toolbar #shape-style-group { order: 1; flex: 1 1 100%; padding: 2px 4px 4px; }
++  .map-toolbar > .map-tool-group:not(.map-tool-group--more):not(.map-tool-group-persistent):not(#shape-style-group):not(#fog-options-group) { order: 3; }
++  .map-toolbar .map-tool-group-persistent { order: 4; margin-inline-start: auto; }
++  .map-toolbar #map-locked-banner { order: 2; }
++  .map-toolbar .map-toolbar-toggle {
++    display: inline-flex; align-items: center; gap: 6px; min-height: 34px; padding: 0 10px 0 8px; border-radius: 12px;
++    background: rgba(201,162,75,0.10); border: 1px solid rgba(201,162,75,0.28); color: var(--parchment);
++  }
++  .map-toolbar .map-toolbar-toggle .icon:last-child { transform: rotate(180deg); transition: transform 0.24s var(--ease-drawer); }
++  .map-toolbar.is-open .map-toolbar-toggle .icon:last-child { transform: rotate(0deg); }
++  .map-toolbar.is-open .map-tool-group--more {
++    display: flex; flex: 1 1 100%; flex-wrap: wrap; justify-content: flex-start; gap: 6px; padding: 4px 2px 8px; border-bottom: 1px solid var(--hairline);
++    animation: dock-tray-in 0.26s var(--ease-drawer) both;
++  }
++  .modifier-hint, #nav-hint { bottom: calc(var(--bar-h) + var(--dock-h) + 22px + env(safe-area-inset-bottom)); }
++  .bars-hidden .modifier-hint, .bars-hidden #nav-hint { bottom: calc(var(--dock-h) + 22px + env(safe-area-inset-bottom)); }
++  .pin-action-bubble.is-docked { bottom: calc(var(--bar-h) + var(--dock-h) + 22px + env(safe-area-inset-bottom)); }
++  .bars-hidden .pin-action-bubble.is-docked { bottom: calc(var(--dock-h) + 22px + env(safe-area-inset-bottom)); }
++}
++@keyframes dock-tray-in { from { opacity: 0; transform: translateY(10px) scale(0.98); } to { opacity: 1; transform: none; } }
++
++@media (orientation: landscape) and (max-height: 500px) {
++  :root { --dock-h: 44px; }
++  .map-toolbar { inset-inline-start: 98px; inset-inline-end: 10px; bottom: calc(var(--bar-h) + 10px + env(safe-area-inset-bottom)); flex-wrap: nowrap; padding: 4px 6px; gap: 6px; }
++  .bars-hidden .map-toolbar { bottom: calc(10px + env(safe-area-inset-bottom)); }
++  .map-toolbar .map-toolbar-toggle { order: 0; flex: 0 0 auto; }
++  .map-toolbar .map-tool-group--more, .map-toolbar.is-open .map-tool-group--more {
++    order: 1; display: flex; flex: 0 0 auto; flex-wrap: nowrap; padding: 0 6px 0 0; border-bottom: 0; border-inline-end: 1px solid var(--hairline); animation: none;
++  }
++  .map-toolbar #fog-options-group, .map-toolbar #shape-style-group { order: 2; flex: 0 0 auto; padding: 0 6px 0 0; }
++  .map-toolbar .map-toolbar-toggle .icon:last-child { transform: rotate(90deg); }              /* points at the side it folds away to */
++  .map-toolbar.is-tucked .map-toolbar-toggle .icon:last-child { transform: rotate(-90deg); }
++  .map-toolbar.is-tucked { inset-inline-end: auto; }
++  .map-toolbar.is-tucked > *:not(.map-toolbar-toggle) { display: none !important; }
++  .map-toolbar:not(.is-tucked) { animation: dock-tray-in 0.26s var(--ease-drawer) both; }
++}
++@media (prefers-reduced-motion: reduce) {
++  .map-toolbar, .map-toolbar.is-open .map-tool-group--more, .map-toolbar:not(.is-tucked) { animation-duration: 0.01ms; transition-duration: 0.01ms; }
++}
++
++/* ---- sideways phone: the bottom bar's tabs are centred (icon and label together), not left-aligned ---- */
++@media (orientation: landscape) and (max-height: 500px) {
++  .sidebar-nav .nav-tab, :root[data-sidebar="collapsed"] .sidebar-nav .nav-tab { justify-content: center; text-align: center; }
++  .sidebar-nav .nav-tab span { text-align: center; }
++}
+diff --git a/static/js/map.js b/static/js/map.js
+index 564f5ba..e268b9d 100644
+--- a/static/js/map.js
++++ b/static/js/map.js
+@@ -1105,6 +1105,10 @@
+     drawings.push(shape);
+     redraw();
+     pushCommand(makeAddShapeCommand(shape));
++    // Done drawing: back to the Select tool with the new shape selected, so it can be moved, restyled or removed at once.
++    const selectBtn = document.querySelector('.map-tool-btn[data-tool="select"]');
++    if (selectBtn) selectBtn.click();
++    selectShape(shape.id);
+   }
+ 
+   function makeAddShapeCommand(d) {
+diff --git a/static/js/phone-ui.js b/static/js/phone-ui.js
+index d6b4847..462c674 100644
+--- a/static/js/phone-ui.js
++++ b/static/js/phone-ui.js
+@@ -37,7 +37,29 @@
+       var on = tb.querySelector('.map-tool-btn.active[data-tool]');
+       if (icon && on) icon.innerHTML = on.innerHTML;
+     }
+-    toggle.addEventListener('click', function () { setOpen(!tb.classList.contains('is-open')); });
++    // Sideways every tool is already on screen, so the same button tucks the whole dock down to one pill (and remembers it).
++    var sidewaysTools = window.matchMedia('(orientation: landscape) and (max-height: 500px)');
++    function setTucked(tucked) {
++      tb.classList.toggle('is-tucked', tucked);
++      toggle.setAttribute('aria-expanded', tucked ? 'false' : 'true');
++      try { localStorage.setItem('ledger-map-dock-tucked', tucked ? '1' : '0'); } catch (e) { /* private window: just do not remember */ }
++    }
++    function syncDock() {
++      if (sidewaysTools.matches) {
++        var saved = false;
++        try { saved = localStorage.getItem('ledger-map-dock-tucked') === '1'; } catch (e) { /* ignore */ }
++        setTucked(saved);
++      } else {
++        tb.classList.remove('is-tucked');
++        toggle.setAttribute('aria-expanded', tb.classList.contains('is-open') ? 'true' : 'false');
++      }
++    }
++    syncDock();
++    if (sidewaysTools.addEventListener) sidewaysTools.addEventListener('change', syncDock);
++    toggle.addEventListener('click', function () {
++      if (sidewaysTools.matches) setTucked(!tb.classList.contains('is-tucked'));
++      else setOpen(!tb.classList.contains('is-open'));
++    });
+     tb.addEventListener('click', function (ev) {
+       var pick = ev.target.closest('[data-tool]');
+       if (pick && !ev.target.closest('.roster-menu') && tb.classList.contains('is-open')) setTimeout(function () { setOpen(false); }, 140);
+diff --git a/tests/test_e2e_browser.py b/tests/test_e2e_browser.py
+index 34ad261..1831af9 100644
+--- a/tests/test_e2e_browser.py
++++ b/tests/test_e2e_browser.py
+@@ -173,6 +173,9 @@ def test_drawing_persists_after_reload(pw, shared_server):
+     box = page.locator('#map-canvas').bounding_box()
+     page.mouse.move(box['x'] + 150, box['y'] + 150); page.mouse.down(); page.mouse.move(box['x'] + 320, box['y'] + 280, steps=8); page.mouse.up()
+     page.wait_for_timeout(800)
++    assert 'active' in page.locator('[data-tool=select]').get_attribute('class')                    # drawing is over: back on the Select tool ...
++    assert 'active' not in (page.locator('#shapes-flyout [data-flyout-trigger]').get_attribute('class') or '')
++    playwright.expect(page.locator('#shape-action-bubble')).to_be_visible()                          # ... with the new shape selected
+     n1 = len(api.get(f'/campaigns/{cid}/api/maps/{mid}/drawings').json())
+     page.reload(); page.wait_for_load_state('networkidle'); page.wait_for_timeout(600)
+     n2 = len(api.get(f'/campaigns/{cid}/api/maps/{mid}/drawings').json())
+@@ -1542,3 +1545,44 @@ def test_lightbox_turns_the_page_quickly_and_calms_down_for_reduced_motion(pw, s
+         assert page.evaluate("() => document.getElementById('lightbox-img').getAnimations().length") == 0
+         assert not errs, errs
+         ctx.close()
++
++
++def test_phone_map_toolbar_is_a_bottom_dock_that_tucks_away_sideways(pw, shared_server):
++    base = shared_server.url; dm = Api(base); cid = dm.campaign('Dock')
++    mid = _map_with_pin(dm, cid, dm.character(cid, 'Hero'))
++    def open_map(w, h):
++        ctx = _touch_context(pw, dm, base, w, h); page = ctx.new_page(); bad, errs = _collect(page)
++        page.goto(base + f'/campaigns/{cid}/maps/{mid}'); page.wait_for_load_state('load'); page.wait_for_timeout(600)
++        if page.locator('#setup-confirm-btn').is_visible(): page.locator('#setup-confirm-btn').tap(); page.wait_for_timeout(400)
++        return ctx, page, errs
++    # portrait: a bar fixed above the tab bar; the tool tray rises out of it
++    ctx, page, errs = open_map(390, 844)
++    tb = page.locator('#map-toolbar')
++    box = tb.bounding_box(); nav = page.locator('.sidebar-nav').bounding_box()
++    assert box['y'] > 844 / 2 and box['y'] + box['height'] <= nav['y'] + 1, (box, nav)
++    page.mouse.wheel(0, 400); page.wait_for_timeout(300)
++    assert abs(tb.bounding_box()['y'] - box['y']) < 2                                                # fixed: does not scroll away
++    page.locator('#map-toolbar-toggle').tap(); page.wait_for_timeout(500)
++    tray = page.locator('[data-tool="eraser"]').bounding_box()
++    assert tray['y'] < tb.bounding_box()['y'] + tb.bounding_box()['height'] and tb.bounding_box()['y'] + tb.bounding_box()['height'] <= nav['y'] + 1
++    page.locator('#shapes-flyout [data-flyout-trigger]').tap(); page.wait_for_timeout(300)
++    menu = page.locator('#shapes-flyout .tool-flyout-menu').bounding_box()
++    assert menu and menu['y'] + menu['height'] <= page.locator('#shapes-flyout').bounding_box()['y'] + 4   # menus open upward
++    assert not errs, errs; ctx.close()
++    # sideways: one row above the bottom bar, tucks to a pill, rides with the bars
++    ctx, page, errs = open_map(844, 390)
++    tb = page.locator('#map-toolbar'); nav = page.locator('.sidebar-nav').bounding_box()
++    box = tb.bounding_box()
++    assert box['height'] < 60 and box['y'] + box['height'] <= nav['y'] + 1 and box['x'] >= 90, (box, nav)
++    assert page.locator('[data-tool="eraser"]').is_visible()
++    page.locator('#map-toolbar-toggle').tap(); page.wait_for_timeout(400)
++    assert page.locator('[data-tool="eraser"]').is_hidden() and tb.bounding_box()['width'] < 120
++    page.reload(); page.wait_for_load_state('load'); page.wait_for_timeout(500)
++    assert page.locator('[data-tool="eraser"]').is_hidden()                                          # remembered
++    page.locator('#map-toolbar-toggle').tap(); page.wait_for_timeout(400)
++    assert page.locator('[data-tool="eraser"]').is_visible()
++    tabs = page.locator('.sidebar-nav .nav-tab:visible')
++    for i in range(tabs.count()):
++        t = tabs.nth(i).bounding_box(); inner = tabs.nth(i).evaluate("e => { const r = document.createRange(); r.selectNodeContents(e); const b = r.getBoundingClientRect(); return [b.left, b.right]; }")
++        assert abs((inner[0] + inner[1]) / 2 - (t['x'] + t['width'] / 2)) < 6, (t, inner)           # content centred in each tab
++    assert not errs, errs; ctx.close()
