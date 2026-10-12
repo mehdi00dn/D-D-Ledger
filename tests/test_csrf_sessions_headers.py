@@ -240,3 +240,20 @@ def test_inline_scripts_carry_this_pages_nonce_and_no_inline_handlers_remain(app
         tags = [t for t in re.findall(r'<script(?![^>]*\ssrc=)[^>]*>', page) if 'application/json' not in t]
         assert tags and all(f'nonce="{nonce}"' in t for t in tags), (url, tags)
     assert user.get('/campaigns').headers['Content-Security-Policy'] != user.get('/campaigns').headers['Content-Security-Policy']   # fresh each time
+
+
+def test_fonts_are_served_from_this_site_not_google(appmod, user):
+    """DL-36: no runtime dependency on Google Fonts (slow or filtered in some regions)."""
+    cid = user.new_campaign()
+    for r in (user.get(f'/campaigns/{cid}/characters'), appmod.app.test_client().get('/login'), appmod.app.test_client().get('/register')):
+        page = r.get_data(as_text=True)
+        assert 'fonts.googleapis' not in page and 'fonts.gstatic' not in page
+        csp = r.headers['Content-Security-Policy']
+        assert 'google' not in csp and 'gstatic' not in csp
+    css = appmod.app.test_client().get('/static/css/style.css').get_data(as_text=True)
+    files = re.findall(r"url\('\.\./fonts/([^']+)'\)", css)
+    assert len(files) >= 6
+    for name in files:
+        r = appmod.app.test_client().get('/static/fonts/' + name)
+        assert r.status_code == 200 and r.mimetype in ('font/woff2', 'application/font-woff2') and len(r.data) > 10000, name
+        assert 'max-age=' in r.headers['Cache-Control'] and 'no-store' not in r.headers['Cache-Control']

@@ -1386,8 +1386,8 @@ def _csp(nonce=None):
         "default-src 'self'",
         "img-src 'self' data: blob:",
         "media-src 'self' data: blob:",
-        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-        "font-src 'self' data: https://fonts.gstatic.com",
+        "style-src 'self' 'unsafe-inline'",
+        "font-src 'self' data:",
         "script-src 'self'" + (" 'nonce-%s'" % nonce if nonce else ''),   # inline scripts run only with this page's one-time token
         "connect-src " + ' '.join(connect),
         "worker-src 'self' blob:",
@@ -1437,6 +1437,13 @@ def realtime_ping(resp):
             and realtime.config()):
         scope, secret = realtime.scope_for(request.path), app.secret_key
         resp.call_on_close(lambda: realtime.publish(campaign_id, scope, secret))
+    return resp
+
+
+@app.after_request
+def cache_fonts(resp):
+    if request.path.startswith('/static/fonts/') and resp.status_code == 200:
+        resp.headers['Cache-Control'] = 'public, max-age=2592000'        # the font files never change; a month is plenty
     return resp
 
 

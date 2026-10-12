@@ -55,7 +55,7 @@ def wait_text(page, needles, timeout=12.0):
 
 def _collect(page):
     bad, errs = [], []
-    page.on('response', lambda r: bad.append((r.status, r.url)) if r.status >= 400 and 'fonts.g' not in r.url else None)
+    page.on('response', lambda r: bad.append((r.status, r.url)) if r.status >= 400 else None)
     page.on('pageerror', lambda e: errs.append(str(e)))
     return bad, errs
 
@@ -1500,3 +1500,16 @@ def test_reference_item_tables_render_as_real_tables_and_ability_modifiers_sit_c
         ctx.close()
     finally:
         srv.stop(); api.shutdown()
+
+
+def test_the_three_typefaces_load_from_this_site(pw, shared_server):
+    base = shared_server.url; dm = Api(base); cid = dm.campaign('Type')
+    dm.character(cid, 'Hero')
+    ctx = dm.context(pw, base); page = ctx.new_page(); bad, errs = _collect(page)
+    hosts = set(); page.on('request', lambda r: hosts.add(r.url.split('/')[2]))
+    page.goto(base + f'/campaigns/{cid}/characters'); page.wait_for_load_state('load'); page.wait_for_timeout(800)
+    loaded = page.evaluate("async () => { await document.fonts.ready; return [...document.fonts].filter(f => f.status === 'loaded').map(f => f.family.replace(/\"/g, '')); }")
+    assert {'Inter', 'Fraunces', 'IBM Plex Mono'} <= set(loaded), loaded
+    assert hosts == {base.split('/')[2]}, hosts                                                         # nothing but our own server
+    assert not bad and not errs, (bad, errs)
+    ctx.close()
