@@ -248,22 +248,6 @@ def enforce_resource_scope():
                 abort(404)
 
 
-def _claim_orphaned_campaigns(db, user_id):
-    """When auth is introduced onto a database that already has campaigns
-    from before accounts existed, those campaigns have zero rows in
-    campaign_members. Without this, they'd be permanently unreachable once
-    campaign_access_required starts requiring real membership. The first
-    person to ever register becomes owner of every such campaign."""
-    orphaned = db.execute('''
-        SELECT c.id FROM campaigns c
-        LEFT JOIN campaign_members cm ON cm.campaign_id = c.id
-        WHERE cm.id IS NULL
-    ''').fetchall()
-    for row in orphaned:
-        db.execute('INSERT INTO campaign_members (campaign_id, user_id, role, status) VALUES (?, ?, ?, ?)',
-                   (row['id'], user_id, 'owner', 'dm'))
-
-
 DUMMY_PASSWORD_HASH = generate_password_hash('not-a-real-password')   # equalises login timing for unknown users
 
 
@@ -342,7 +326,6 @@ def register():
             db.close()
             return render_template('register.html', error=error, username=username, next=request.form.get('next', ''))
 
-        is_first_user = db.execute('SELECT COUNT(*) AS n FROM users').fetchone()['n'] == 0
         try:
             cur = db.execute('INSERT INTO users (username, password_hash) VALUES (?, ?)',
                               (username, generate_password_hash(password)))
@@ -351,8 +334,6 @@ def register():
             db.close()
             return render_template('register.html', error='That username is already taken.', username=username, next=request.form.get('next', ''))
         user_id = cur.lastrowid
-        if is_first_user:
-            _claim_orphaned_campaigns(db, user_id)
         db.commit()
         db.close()
 

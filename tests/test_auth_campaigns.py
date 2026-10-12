@@ -174,3 +174,15 @@ def test_non_member_is_locked_out(make_user):
         assert b.get(url).status_code == 404, url
     assert b.post(f'/campaigns/{cid}/delete').status_code == 404
     assert b.post(f'/campaigns/{cid}/characters/{ch}/delete').status_code == 404
+
+
+def test_nobody_can_claim_campaigns_that_have_no_members(appmod, make_user):
+    """DL-28: the cloud database starts clean, so there is no 'first registrant takes every campaign' step any more."""
+    assert not hasattr(appmod, '_claim_orphaned_campaigns')
+    from conftest import q
+    import database
+    db = database.get_db()
+    cur = db.execute("INSERT INTO campaigns (name) VALUES (?)", ('Nobody owns this',))
+    cid = cur.lastrowid; db.commit(); db.close()
+    make_user()
+    assert q('SELECT id FROM campaign_members WHERE campaign_id = ?', cid) == []
