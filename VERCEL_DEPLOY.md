@@ -108,6 +108,14 @@ to Production** (instant rollback). Nothing in the database changes.
     docker run -d -p 5432:5432 -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=ledger postgres:16
     python app.py                 # images are stored in ./uploads (no Supabase needed locally)
 
+### Dependencies
+
+`requirements.txt` and `requirements-dev.txt` are **pinned lock files** (exact versions, Python 3.12), so a deploy never
+picks up a new release by surprise. The loose, human-edited lists are `requirements.in` and `requirements-dev.in`.
+To add or change a package, edit the `.in` file and recompile (the command is at the top of each `.in` file, using `uv`).
+Dependabot opens a weekly pull request with newer versions; CI runs the tests and `pip-audit` (known vulnerabilities)
+on every push, so merge those pull requests when CI is green.
+
 ## 6. Tests and CI
     LEDGER_TEST_BACKEND=postgres pytest tests
 The suite creates and drops its own throw-away database (set `TEST_PG_ADMIN` if your local Postgres

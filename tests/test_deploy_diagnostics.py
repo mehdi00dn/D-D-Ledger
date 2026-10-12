@@ -1,7 +1,7 @@
 """Deployment diagnostics: /healthz and the one-paste Supabase setup script."""
 import os, uuid
 import pytest, requests
-from conftest import BACKEND, PG_ADMIN, Server, CsrfSession
+from conftest import BACKEND, PG_ADMIN, Server, CsrfSession, APP_DIR
 
 pytestmark = pytest.mark.skipif(BACKEND != 'postgres', reason='postgres backend only')
 
@@ -150,3 +150,20 @@ def test_static_urls_carry_a_content_version(appmod, make_user):
     appmod._static_hashes.clear()
     assert appmod._static_version('js/direct-upload.js') == a == m.group(1)
     assert appmod._static_version('../app.py') is None                     # never escapes the static folder
+
+
+def test_requirements_are_pinned_lock_files_that_cover_every_direct_dependency():
+    """DL-124: a deploy can never pick up a new major version by surprise."""
+    import re
+    def pins(name):
+        lines = [l.split('#')[0].strip() for l in open(os.path.join(APP_DIR, name), encoding='utf-8')]
+        return [l for l in lines if l and not l.startswith(('-', '#'))]
+    for lock in ('requirements.txt', 'requirements-dev.txt'):
+        for line in pins(lock):
+            assert re.match(r'^[A-Za-z0-9_.\[\]-]+==[^=<>~!,]+( ;.*)?$', line), f'{lock}: {line!r} is not an exact pin'
+    locked = {re.split(r'[\[=]', l)[0].lower().replace('_', '-') for l in pins('requirements.txt')}
+    for line in pins('requirements.in'):
+        assert re.split(r'[\[<>=!~]', line)[0].lower().replace('_', '-') in locked, f'{line} missing from requirements.txt'
+    dev = {re.split(r'[\[=]', l)[0].lower() for l in pins('requirements-dev.txt')}
+    assert {'pytest', 'playwright', 'pip-audit'} <= dev and locked <= {d.replace('_', '-') for d in dev}   # the dev lock includes the app lock
+    assert os.path.exists(os.path.join(APP_DIR, '.github', 'dependabot.yml'))

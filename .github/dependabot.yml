@@ -1,0 +1,16 @@
+version: 2
+updates:
+  # Python packages: requirements.txt / requirements-dev.txt are pinned lock files, so a new version always arrives as a
+  # reviewable pull request that CI tests before it can reach the vercel branch.
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      python-minor-and-patch:
+        update-types: [minor, patch]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

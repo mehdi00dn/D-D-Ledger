@@ -1,0 +1,9 @@
+# Direct dependencies, loose on purpose. After changing this file run:
+#   uv pip compile requirements.in --python-version 3.12 --universal -o requirements.txt
+# requirements.txt is the pinned lock that Vercel and CI install; Dependabot keeps it fresh.
+Flask>=3.1,<4
+Pillow>=10.0
+psycopg[binary]>=3.2,<4
+requests>=2.31
+nh3>=0.2.18
+numpy>=2.0,<3
