@@ -575,7 +575,8 @@ def test_condition_chip_x_removes_it_on_hover(pw, shared_server):
     assert opacity() == 0                                                            # invisible until hover
     chip.hover(); dpage.wait_for_timeout(400)
     assert opacity() == 1
-    assert chip.bounding_box() == before and dpage.locator('.cond-row').bounding_box() == row_before   # hovering moves/resizes nothing
+    same = lambda p, q: all(abs(p[k] - q[k]) < 0.5 for k in ('x', 'y', 'width', 'height'))             # (sub-pixel jitter is not movement)
+    assert same(chip.bounding_box(), before) and same(dpage.locator('.cond-row').bounding_box(), row_before)   # hovering moves/resizes nothing
     dpage.screenshot(path='/tmp/cond-chip-hover.png', clip={**row_before, 'x': row_before['x'] - 10, 'y': row_before['y'] - 30, 'width': 420, 'height': 80})
     x.click()
     dpage.locator('.cond-chip.cond-prone').wait_for(state='detached')
@@ -1155,9 +1156,10 @@ def test_sideways_phone_bars_hide_on_scroll_and_the_dock_brings_them_back(pw, sh
     def nav_on_screen(): return page.locator('.sidebar-nav').bounding_box()['y'] < 390 - 5
     assert nav_on_screen() and page.locator('#mobile-dock').is_visible()
     assert page.locator('.sidebar-nav').bounding_box()['height'] <= 60 and page.locator('.sidebar').bounding_box()['height'] <= 50   # slim bars, not a third of the screen
-    page.evaluate('() => window.scrollTo(0, 500)'); page.wait_for_timeout(500)
+    page.evaluate('() => window.scrollTo(0, 500)'); page.wait_for_timeout(900)                          # (the bars ignore the scroll their own hiding causes for half a second)
     assert not nav_on_screen()                                                                          # scrolling down: out of the way
-    page.evaluate('() => window.scrollTo(0, 380)'); page.wait_for_timeout(500)
+    top = page.evaluate('() => window.scrollY')
+    page.evaluate(f'() => window.scrollTo(0, {max(top - 120, 30)})'); page.wait_for_timeout(700)
     assert nav_on_screen()                                                                              # scrolling up: back
     page.locator('.js-nav-toggle').tap(); page.wait_for_timeout(450); assert not nav_on_screen()        # by hand
     page.locator('.js-nav-toggle').tap(); page.wait_for_timeout(450); assert nav_on_screen()
