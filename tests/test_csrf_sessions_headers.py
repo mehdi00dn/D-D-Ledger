@@ -146,6 +146,8 @@ def test_security_headers_on_pages_and_api(appmod, user):
         csp = h['Content-Security-Policy']
         assert "frame-ancestors 'none'" in csp and "object-src 'none'" in csp and "base-uri 'self'" in csp and "form-action 'self'" in csp
         assert 'unsafe-eval' not in csp
+        script_src = [d for d in csp.split('; ') if d.startswith('script-src')][0]
+        assert "'unsafe-inline'" not in script_src                      # DL-123: injected scripts must not run
 
 
 def test_csp_allows_only_our_own_storage_host_for_direct_uploads(appmod):
@@ -220,3 +222,21 @@ def test_persian_usernames_and_passwords_are_fine(appmod):
     c.post('/logout')
     assert c.post('/login', data={'username': name, 'password': 'رمز-عبور-طولانی'}).status_code == 302
     assert c.get('/campaigns').status_code == 200
+
+
+def test_inline_scripts_carry_this_pages_nonce_and_no_inline_handlers_remain(appmod, user):
+    """DL-123: every executable inline <script> has the nonce announced in the header; templates hold no on*= handlers."""
+    import glob
+    for f in glob.glob(os.path.join(APP_DIR, 'templates', '*.html')):
+        src = open(f, encoding='utf-8').read()
+        assert not re.search(r'<[a-z][^>]*\son[a-z]+\s*=', src), f'{f} has an inline event handler'
+        for tag in re.findall(r'<script(?![^>]*\ssrc=)[^>]*>', src):
+            assert 'nonce="{{ csp_nonce() }}"' in tag or 'type="application/json"' in tag, (f, tag)
+    cid = user.new_campaign()
+    for url in ('/campaigns', f'/campaigns/{cid}/characters', f'/campaigns/{cid}/battle'):
+        r = user.get(url)
+        nonce = re.search(r"'nonce-([^']+)'", r.headers['Content-Security-Policy']).group(1)
+        page = r.get_data(as_text=True)
+        tags = [t for t in re.findall(r'<script(?![^>]*\ssrc=)[^>]*>', page) if 'application/json' not in t]
+        assert tags and all(f'nonce="{nonce}"' in t for t in tags), (url, tags)
+    assert user.get('/campaigns').headers['Content-Security-Policy'] != user.get('/campaigns').headers['Content-Security-Policy']   # fresh each time

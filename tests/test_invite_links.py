@@ -97,7 +97,8 @@ def test_dead_links_all_look_the_same(make_user):
     lid = q('SELECT id FROM campaign_invite_links WHERE campaign_id = ?', cid)[0]['id']
     owner.post(f'/campaigns/{cid}/invite-links/revoke', data={'link_id': lid})
     revoked, unknown = g.get(good), g.get('/join/' + 'x' * 43)
-    assert revoked.status_code == unknown.status_code == 404 and revoked.data == unknown.data
+    same = lambda r: re.sub(rb'nonce="[^"]*"', b'nonce=""', r.data)               # the per-request CSP nonce differs by design
+    assert revoked.status_code == unknown.status_code == 404 and same(revoked) == same(unknown)
 
 
 def test_leaving_link_mode_revokes_every_link_for_good(make_user):

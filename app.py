@@ -1375,7 +1375,7 @@ def local_download(token):
     return resp
 
 
-def _csp():
+def _csp(nonce=None):
     connect = ["'self'"] + realtime.csp_origins()
     supa = os.environ.get('SUPABASE_URL', '')
     if supa and os.environ.get('STORAGE_BACKEND', 'supabase') == 'supabase':
@@ -1388,7 +1388,7 @@ def _csp():
         "media-src 'self' data: blob:",
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
         "font-src 'self' data: https://fonts.gstatic.com",
-        "script-src 'self' 'unsafe-inline'",
+        "script-src 'self'" + (" 'nonce-%s'" % nonce if nonce else ''),   # inline scripts run only with this page's one-time token
         "connect-src " + ' '.join(connect),
         "worker-src 'self' blob:",
         "object-src 'none'",
@@ -1449,7 +1449,7 @@ def security_headers(resp):
     h.setdefault('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=(), usb=()')
     h.setdefault('Cross-Origin-Opener-Policy', 'same-origin')
     if resp.mimetype in ('text/html', 'application/json'):
-        h.setdefault('Content-Security-Policy', _csp())
+        h.setdefault('Content-Security-Policy', _csp(getattr(g, 'csp_nonce', None)))
         h.setdefault('Cache-Control', 'no-store')                  # logged-in pages never linger in caches / back button
     if _SECURE_COOKIES:
         h.setdefault('Strict-Transport-Security', 'max-age=31536000; includeSubDomains')
@@ -1614,6 +1614,16 @@ CHARACTER_CLASSES = [
 ]
 CLASS_KEYS = [k for k, _l, _d in CHARACTER_CLASSES]
 app.jinja_env.globals['character_classes'] = [{'key': k, 'label': l, 'desc': d} for k, l, d in CHARACTER_CLASSES]
+def csp_nonce():
+    """A fresh random token per request, put on every inline <script> and announced in the CSP header."""
+    if not getattr(g, 'csp_nonce', None):
+        g.csp_nonce = secrets.token_urlsafe(16)
+    return g.csp_nonce
+
+
+app.jinja_env.globals['csp_nonce'] = csp_nonce
+
+
 @app.context_processor
 def _realtime_settings():
     cid = getattr(g, 'campaign_id', None)

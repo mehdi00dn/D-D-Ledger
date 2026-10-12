@@ -104,7 +104,7 @@
 {% endblock %}
 
 {% block extra_scripts %}
-<script>
+<script nonce="{{ csp_nonce() }}">
 document.addEventListener('DOMContentLoaded', () => {
   const modal = document.getElementById('new-map-modal');
   const openers = [document.getElementById('open-new-map-modal'), document.getElementById('open-new-map-modal-2')];

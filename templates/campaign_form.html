@@ -139,7 +139,7 @@
         <span class="member-actions">
           {% if is_owner %}
           <form method="POST" action="{{ url_for('campaign_member_status', campaign_id=campaign.id, user_id=m.id) }}">{{ csrf_field() }}
-            <select name="status" class="status-select status-select-{{ m.status }}" title="Dungeon Master / Player" onchange="this.form.submit()">
+            <select name="status" class="status-select status-select-{{ m.status }}" title="Dungeon Master / Player" data-auto-submit>
               <option value="dm" {{ 'selected' if m.status == 'dm' else '' }}>DM</option>
               <option value="player" {{ 'selected' if m.status == 'player' else '' }}>Player</option>
             </select>
@@ -267,7 +267,7 @@
 {% endif %}
 </div>
 
-<script>
+<script nonce="{{ csp_nonce() }}">
 (function () {
   var panel = document.getElementById('invite-links');
   if (!panel) return;

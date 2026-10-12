@@ -14,7 +14,7 @@
     <form method="POST" action="{{ url_for('import_data') }}" enctype="multipart/form-data" class="import-form">{{ csrf_field() }}
       <label class="btn btn-ghost import-label">
         {{ icon('images') }} <span class="btn-label">Import</span>
-        <input type="file" name="import_file" accept=".zip" onchange="this.form.requestSubmit()">
+        <input type="file" name="import_file" accept=".zip" data-auto-submit-request>
       </label>
       <div class="upload-progress" hidden><div class="upload-progress-bar"></div></div>
     </form>
