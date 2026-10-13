@@ -4138,3 +4138,17 @@ body.has-dice-fab .modifier-hint { right: 80px; max-width: calc(100vw - 100px); 
 @media (max-width: 880px) and (orientation: portrait), (max-width: 880px) and (min-height: 501px) {
   .map-toolbar.is-open::before { content: ''; order: 1; flex: 0 0 100%; height: 0; }            /* the tray is its own block; the Tools / undo / zoom bar starts a new line */
 }
+
+
+/* ---- full screen is remembered between pages: the note shown until the first tap takes the person back in ---- */
+.fs-resume {
+  position: fixed; z-index: 95; inset-inline: 0; margin-inline: auto; width: fit-content; max-width: calc(100vw - 32px);
+  top: calc(env(safe-area-inset-top) + 10px); padding: 8px 14px; border-radius: 999px; pointer-events: none;
+  font-size: 12.5px; color: var(--parchment); text-align: center;
+  background: color-mix(in srgb, var(--bg-void-2) 88%, transparent); border: 1px solid var(--hairline-strong); box-shadow: var(--shadow-deep);
+  -webkit-backdrop-filter: blur(16px) saturate(150%); backdrop-filter: blur(16px) saturate(150%);
+  animation: fs-resume-in 200ms var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)) both; transition: opacity 240ms ease, transform 240ms ease;
+}
+.fs-resume.is-gone { opacity: 0; transform: translateY(-6px); }
+@keyframes fs-resume-in { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .fs-resume { animation: none; transition-duration: 0.01ms; } .fs-resume.is-gone { transform: none; } }

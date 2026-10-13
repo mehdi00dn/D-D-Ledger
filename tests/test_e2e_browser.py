@@ -1649,3 +1649,26 @@ def test_character_sheet_viewer_turns_the_page_between_sheets(pw, shared_server)
     page.locator('[data-sheet-prev]').click()
     turns = page.evaluate('window.__turns'); assert len(turns) == 2 and 'rotateY(24deg)' in turns[1][0], turns
     assert not errs, errs; ctx.close()
+
+
+def test_full_screen_choice_is_remembered_between_pages(pw, shared_server):
+    base = shared_server.url; dm = Api(base); cid = dm.campaign('Fullscreen')
+    ctx = dm.context(pw, base); page = ctx.new_page(); bad, errs = _collect(page)
+    page.goto(base + f'/campaigns/{cid}/characters'); page.wait_for_load_state('load')
+    btn = page.locator('.js-fullscreen:visible').first
+    if btn.count() == 0:
+        page.evaluate("document.querySelector('.js-fullscreen').hidden = false; document.querySelector('.js-fullscreen').style.display = 'inline-flex'")
+        btn = page.locator('.js-fullscreen').first
+    btn.click(); page.wait_for_timeout(400)
+    assert page.evaluate("sessionStorage.getItem('ledger-fullscreen')") == '1'
+    # a new page does not start in full screen (the browser does not allow that): a note appears and the first tap goes back in
+    page.goto(base + f'/campaigns/{cid}/battle'); page.wait_for_load_state('load')
+    playwright.expect(page.locator('.fs-resume')).to_be_visible()
+    page.mouse.click(300, 300); page.wait_for_timeout(500)
+    assert page.evaluate("!!document.fullscreenElement"); assert page.locator('.fs-resume').count() == 0
+    # leaving full screen yourself (Escape / the button) forgets it
+    page.evaluate("document.exitFullscreen()"); page.wait_for_timeout(800)
+    assert page.evaluate("sessionStorage.getItem('ledger-fullscreen')") is None
+    page.goto(base + f'/campaigns/{cid}/maps'); page.wait_for_load_state('load')
+    assert page.locator('.fs-resume').count() == 0
+    assert not errs, errs; ctx.close()

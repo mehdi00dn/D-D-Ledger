@@ -133,9 +133,21 @@
   }
 
   // ---- full screen ----
+  // A browser always leaves full screen when the page changes, and only lets a page enter it from a tap or key press.
+  // So the choice is remembered for this tab, and the first tap or key press on the next page takes the person back in
+  // (with a small note saying so). Leaving by the button or Escape forgets it.
   var fsEl = root;
   var canFs = !!(fsEl.requestFullscreen || fsEl.webkitRequestFullscreen);
+  var FS_KEY = 'ledger-fullscreen';
   function isFs() { return !!(document.fullscreenElement || document.webkitFullscreenElement); }
+  function wantsFs() { try { return sessionStorage.getItem(FS_KEY) === '1'; } catch (e) { return false; } }
+  function rememberFs(on) { try { if (on) sessionStorage.setItem(FS_KEY, '1'); else sessionStorage.removeItem(FS_KEY); } catch (e) { /* private window: just do not remember */ } }
+  function enterFs() {
+    try {
+      var p = (fsEl.requestFullscreen || fsEl.webkitRequestFullscreen).call(fsEl);
+      if (p && p.catch) p.catch(function () { /* not allowed right now */ });
+    } catch (e) { /* not allowed here */ }
+  }
   function syncFs() {
     root.classList.toggle('is-fullscreen', isFs());
     document.querySelectorAll('.js-fullscreen').forEach(function (b) {
@@ -147,14 +159,40 @@
   document.querySelectorAll('.js-fullscreen').forEach(function (b) {
     b.addEventListener('click', function () {
       try {
-        if (isFs()) { (document.exitFullscreen || document.webkitExitFullscreen).call(document); }
-        else { (fsEl.requestFullscreen || fsEl.webkitRequestFullscreen).call(fsEl); }
+        if (isFs()) { rememberFs(false); (document.exitFullscreen || document.webkitExitFullscreen).call(document); }
+        else { rememberFs(true); enterFs(); }
       } catch (e) { /* not allowed here */ }
     });
   });
-  document.addEventListener('fullscreenchange', syncFs);
-  document.addEventListener('webkitfullscreenchange', syncFs);
+  function onFsChange() {
+    syncFs();
+    if (isFs()) { rememberFs(true); return; }
+    // Left full screen. If the page is about to be replaced (a menu was tapped), keep the choice; if the page is
+    // still here a moment later it was Escape or the browser's own control, so forget it.
+    setTimeout(function () { if (!isFs() && !document.body.classList.contains('page-leaving')) rememberFs(false); }, 400);
+  }
+  document.addEventListener('fullscreenchange', onFsChange);
+  document.addEventListener('webkitfullscreenchange', onFsChange);
   syncFs();
+
+  if (canFs && wantsFs() && !isFs()) {
+    var note = document.createElement('div');
+    note.className = 'fs-resume';
+    note.setAttribute('role', 'status');
+    note.textContent = 'Tap anywhere to return to full screen';
+    document.body.appendChild(note);
+    var noteTimer = setTimeout(function () { note.classList.add('is-gone'); }, 5000);
+    var resume = function (ev) {
+      if (ev.type === 'keydown' && ev.key === 'Escape') return;
+      document.removeEventListener('click', resume, true);
+      document.removeEventListener('keydown', resume, true);
+      clearTimeout(noteTimer);
+      note.remove();
+      if (!isFs()) enterFs();
+    };
+    document.addEventListener('click', resume, true);
+    document.addEventListener('keydown', resume, true);
+  }
 
   // ---- sideways phone: bars that get out of the way ----
   var sideways = window.matchMedia('(orientation: landscape) and (max-height: 500px)');
