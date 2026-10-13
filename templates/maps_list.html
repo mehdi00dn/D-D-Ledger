@@ -48,7 +48,7 @@
   <div class="modal-panel">
     <div class="modal-header">
       <h3>Import Map</h3>
-      <button type="button" class="btn-icon" id="close-new-map-modal">{{ icon('x') }}</button>
+      <button type="button" class="btn-icon" id="close-new-map-modal" aria-label="Close">{{ icon('x') }}</button>
     </div>
     <form class="modal-body" method="POST" action="{{ url_for('map_new') }}" enctype="multipart/form-data">{{ csrf_field() }}
       <div class="form-row cols-2" style="margin-bottom:14px; align-items: end;">
@@ -71,7 +71,7 @@
           {{ icon('upload') }}
           <div>Click or drop an image</div>
           <span class="file-name"></span>
-          <input type="file" name="image" id="map-image-input" accept="image/*" data-multi-input>
+          <input type="file" name="image" id="map-image-input" accept="image/*" data-multi-input aria-label="Choose a map image">
           <div class="upload-progress upload-progress-circle" hidden></div>
         </div>
         <div id="map-image-preview-wrap" hidden style="margin-top:12px;">

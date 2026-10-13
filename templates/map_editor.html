@@ -120,7 +120,7 @@
       <div class="tool-flyout-menu"><div class="tool-flyout-menu-inner">
         <div class="color-swatch-row" data-color-group="#map-color-input" style="gap:6px;">
           {% for c in ['#c9a24b', '#e63946', '#5f9174', '#4d7ea8', '#8e6bb0', '#8a5a34', '#f2f2f2', '#1a1a1a'] %}
-          <button type="button" class="color-swatch {{ 'selected' if loop.first }}" data-color="{{ c }}" style="background:{{ c }}; width:22px; height:22px;"></button>
+          <button type="button" class="color-swatch {{ 'selected' if loop.first }}" data-color="{{ c }}" aria-label="Colour {{ c }}" style="background:{{ c }}; width:22px; height:22px;"></button>
           {% endfor %}
         </div>
       </div></div>
@@ -222,14 +222,14 @@
       </label>
       <div class="map-setup-slider-group">
         <label class="grid-size-label">Size</label>
-        <input type="range" id="setup-grid-size" min="25" max="100" value="50">
+        <input type="range" id="setup-grid-size" min="25" max="100" value="50" aria-label="Grid size">
         <span id="setup-grid-size-value" class="map-setup-value">50px</span>
       </div>
       <div class="map-setup-color-group">
         <label class="grid-size-label">Color</label>
-        <button type="button" class="grid-color-swatch active" data-grid-color="gray" title="Gray"></button>
-        <button type="button" class="grid-color-swatch" data-grid-color="white" title="White"></button>
-        <button type="button" class="grid-color-swatch" data-grid-color="black" title="Black"></button>
+        <button type="button" class="grid-color-swatch active" data-grid-color="gray" title="Gray" aria-label="Grid colour gray"></button>
+        <button type="button" class="grid-color-swatch" data-grid-color="white" title="White" aria-label="Grid colour white"></button>
+        <button type="button" class="grid-color-swatch" data-grid-color="black" title="Black" aria-label="Grid colour black"></button>
       </div>
       <label class="field-checkbox">
         <input type="checkbox" id="setup-snap-grid" {{ 'checked' if map.snap_to_grid else '' }}>
@@ -251,7 +251,7 @@
   <div class="modal-panel">
     <div class="modal-header">
       <h3 id="detail-modal-title">Character</h3>
-      <button type="button" class="btn-icon" id="close-detail-modal">{{ icon('x') }}</button>
+      <button type="button" class="btn-icon" id="close-detail-modal" aria-label="Close">{{ icon('x') }}</button>
     </div>
     <div class="modal-body" id="detail-modal-body"></div>
   </div>

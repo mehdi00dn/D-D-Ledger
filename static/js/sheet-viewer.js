@@ -31,6 +31,7 @@
     img.src = thumbs[index].dataset.sheetSrc;
     if (changed) pageTurn(index > before ? 1 : -1);
     thumbs.forEach(function (t, n) { t.parentNode.classList.toggle('is-active', n === index); });
+    img.alt = 'Character sheet ' + (index + 1) + ' of ' + thumbs.length;
     if (count) count.textContent = (index + 1) + ' / ' + thumbs.length;
     if (prev) prev.disabled = index === 0;
     if (next) next.disabled = index === thumbs.length - 1;

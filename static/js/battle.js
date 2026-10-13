@@ -128,11 +128,11 @@
       <div class="battle-stats">
       <div class="stat-chip">
         <label>INIT</label>
-        <input type="number" class="stat-chip-input" data-action="initiative" value="${p.initiative}" ${dead || !isDM ? 'disabled' : ''}>
+        <input type="number" class="stat-chip-input" data-action="initiative" aria-label="Initiative for ${escapeHtml(p.char_name)}" value="${p.initiative}" ${dead || !isDM ? 'disabled' : ''}>
       </div>
       <div class="stat-chip">
         <label>AC</label>
-        <input type="number" class="stat-chip-input" data-action="ac" value="${p.effective_ac}" ${dead || !isDM ? 'disabled' : ''}>
+        <input type="number" class="stat-chip-input" data-action="ac" aria-label="Armor class for ${escapeHtml(p.char_name)}" value="${p.effective_ac}" ${dead || !isDM ? 'disabled' : ''}>
       </div>
       <div class="hp-block">
         <div class="hp-bar-track${isDM ? '' : ' hp-bar-track-static'}" ${isDM ? `data-hp-scrub="${p.id}"` : ''} data-max="${p.char_max_hp}" title="${isDM ? 'Hold and drag to set HP' : ''}">
@@ -146,7 +146,7 @@
 
     const hpControls = (isDM && !hidden) ? `
       <div class="hp-controls">
-        <input type="number" class="hp-amount-input" min="0" placeholder="1" value="" ${dead ? 'disabled' : ''}>
+        <input type="number" class="hp-amount-input" aria-label="Hit points to heal or damage ${escapeHtml(p.char_name)}" min="0" placeholder="1" value="" ${dead ? 'disabled' : ''}>
         <button type="button" class="hp-btn heal-btn" data-action="heal" title="Heal" ${dead ? 'disabled' : ''}>${ICONS.heart}<span class="hp-btn-label">Heal</span></button>
         <button type="button" class="hp-btn damage-btn" data-action="damage" title="Damage" ${dead ? 'disabled' : ''}>${ICONS.swords}<span class="hp-btn-label">Damage</span></button>
         <button type="button" class="hp-btn temphp-btn" data-action="temphp" title="Temporary HP" ${dead ? 'disabled' : ''}>${ICONS.shieldPlus}<span class="hp-btn-label">Temp</span></button>
@@ -155,7 +155,7 @@
     let detailControl = '';
     if (p.is_temp_familiar) {
       if (isDM) {
-        detailControl = `<div class="stat-chip"><label>MAX HP</label><input type="number" class="stat-chip-input" data-action="max-hp" min="1" value="${p.char_max_hp}" ${dead ? 'disabled' : ''}></div>`;
+        detailControl = `<div class="stat-chip"><label>MAX HP</label><input type="number" class="stat-chip-input" data-action="max-hp" aria-label="Max HP for ${escapeHtml(p.char_name)}" min="1" value="${p.char_max_hp}" ${dead ? 'disabled' : ''}></div>`;
       }
     }
     // The picture and the name are the details button (a familiar has no sheet to open).

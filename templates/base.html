@@ -180,12 +180,12 @@
 </div>
 
 <div class="lightbox-overlay" id="image-lightbox" hidden>
-  <button type="button" class="btn-icon lightbox-close" id="lightbox-close-btn">{{ icon('x') }}</button>
+  <button type="button" class="btn-icon lightbox-close" id="lightbox-close-btn" aria-label="Close image">{{ icon('x') }}</button>
   <button type="button" class="btn btn-danger lightbox-delete" id="lightbox-delete-btn" hidden>{{ icon('trash-2') }} Delete this image</button>
   <div class="lightbox-row">
     <button type="button" class="btn-icon lightbox-nav lightbox-prev" id="lightbox-prev-btn" title="Previous image">{{ icon('chevron-left') }}</button>
     <div class="lightbox-stage">
-      <img id="lightbox-img" src="" alt="Preview">
+      <img id="lightbox-img" src="" alt="Enlarged image">
     </div>
     <button type="button" class="btn-icon lightbox-nav lightbox-next" id="lightbox-next-btn" title="Next image">{{ icon('chevron-right') }}</button>
   </div>
@@ -208,7 +208,7 @@
   <div class="modal-panel crop-modal-panel">
     <div class="modal-header">
       <h3 id="crop-modal-title">Position Avatar</h3>
-      <button type="button" class="btn-icon" id="crop-cancel-btn">{{ icon('x') }}</button>
+      <button type="button" class="btn-icon" id="crop-cancel-btn" aria-label="Cancel crop">{{ icon('x') }}</button>
     </div>
     <div class="modal-body">
       <div class="crop-stage-wrap" id="crop-stage-wrap">
@@ -218,7 +218,7 @@
       <p class="hint-text" style="text-align:center; margin-top:10px;">Drag to reposition &middot; use the slider to zoom</p>
       <div class="crop-zoom-row">
         <label>{{ icon('images') }}</label>
-        <input type="range" id="crop-zoom-slider" min="0" max="100" value="0">
+        <input type="range" id="crop-zoom-slider" min="0" max="100" value="0" aria-label="Zoom">
       </div>
       <div class="form-actions">
         <button type="button" class="btn btn-ghost" id="crop-cancel-btn-2">Cancel</button>
@@ -235,6 +235,7 @@
 <script src="{{ url_for('static', filename='js/realtime.js') }}"></script>
 <script src="{{ url_for('static', filename='js/form-actions.js') }}"></script>
 <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
+<script src="{{ url_for('static', filename='js/a11y-labels.js') }}"></script>
 <script src="{{ url_for('static', filename='js/sidebar.js') }}"></script>
 <script src="{{ url_for('static', filename='js/transitions.js') }}"></script>
 <script src="{{ url_for('static', filename='js/app.js') }}"></script>

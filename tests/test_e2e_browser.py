@@ -1672,3 +1672,39 @@ def test_full_screen_choice_is_remembered_between_pages(pw, shared_server):
     page.goto(base + f'/campaigns/{cid}/maps'); page.wait_for_load_state('load')
     assert page.locator('.fs-resume').count() == 0
     assert not errs, errs; ctx.close()
+
+
+_UNNAMED_JS = """() => {
+  const txt = e => (e.textContent || '').replace(/\\s+/g, ' ').trim();
+  const bad = [];
+  document.querySelectorAll('button, a[href], input:not([type=hidden]), select, textarea, img').forEach(e => {
+    const tag = e.tagName.toLowerCase();
+    let name = e.getAttribute('aria-label') || '';
+    if (!name && e.getAttribute('aria-labelledby')) name = 'labelledby';
+    if (tag === 'img') { if (!e.hasAttribute('alt')) bad.push(e.outerHTML.slice(0, 100)); return; }
+    if (!name && ['input', 'select', 'textarea'].includes(tag)) name = (e.labels && e.labels[0] ? txt(e.labels[0]) : '') || e.getAttribute('placeholder') || e.getAttribute('title') || '';
+    if (!name) name = txt(e) || (e.querySelector('img[alt]:not([alt=""])') ? 'img' : '');
+    if (!name) bad.push(e.outerHTML.slice(0, 100));
+  });
+  return bad;
+}"""
+
+
+def test_every_button_input_and_image_has_a_name_a_screen_reader_can_read(pw, shared_server):
+    base = shared_server.url; dm = Api(base); cid = dm.campaign('Names')
+    hero = dm.character(cid, 'Hero'); dm.post(f'/campaigns/{cid}/api/battle/add', json={'character_id': hero})
+    mid = _map_with_pin(dm, cid, hero)
+    ctx = dm.context(pw, base); page = ctx.new_page(); bad, errs = _collect(page)
+    problems = {}
+    for path in ('/characters', f'/characters/{hero}', f'/characters/{hero}/edit', '/battle', '/maps', f'/maps/{mid}', '/dice', '/reference', '/factions', '/factions/new', '/characters/new'):
+        page.goto(base + f'/campaigns/{cid}' + path); page.wait_for_load_state('load'); page.wait_for_timeout(400)
+        found = page.evaluate(_UNNAMED_JS)
+        if found: problems[path] = found
+    assert not problems, problems
+    # icon-only buttons the scripts build later are covered too, and a changing title keeps its name in step
+    page.goto(base + f'/campaigns/{cid}/characters'); page.wait_for_load_state('load')
+    page.evaluate("() => { const b = document.createElement('button'); b.id = 'late'; b.title = 'Late one'; b.innerHTML = '<svg></svg>'; document.body.appendChild(b); }")
+    page.wait_for_timeout(200); assert page.locator('#late').get_attribute('aria-label') == 'Late one'
+    page.evaluate("document.getElementById('late').title = 'Renamed'"); page.wait_for_timeout(200)
+    assert page.locator('#late').get_attribute('aria-label') == 'Renamed'
+    assert not errs, errs; ctx.close()
