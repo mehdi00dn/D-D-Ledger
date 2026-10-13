@@ -1,0 +1,811 @@
+diff --git a/static/css/style.css b/static/css/style.css
+index 54020b3..6e0b16a 100644
+--- a/static/css/style.css
++++ b/static/css/style.css
+@@ -1927,177 +1927,128 @@ body.page-leaving .content {
+ /* ==========================================================================
+    Dice roller
+    ========================================================================== */
+-.dice-tray {
+-  display: flex;
+-  flex-wrap: wrap;
+-  gap: 24px;
+-  margin-bottom: 28px;
+-  padding: 28px;
+-  background: var(--bg-panel);
+-  border: 1px solid var(--hairline);
+-  border-radius: var(--radius-l);
+-  box-shadow: var(--shadow-deep);
+-}
+-
+-.die-selector { position: relative; cursor: pointer; user-select: none; }
+-
+-.die-shape {
+-  width: 76px;
+-  height: 76px;
+-  display: flex;
+-  align-items: center;
+-  justify-content: center;
+-  position: relative;
+-  background:
+-    radial-gradient(circle at 30% 22%, rgba(255,255,255,0.32), transparent 45%),
+-    linear-gradient(160deg, var(--bg-panel-raised), var(--bg-panel-inset));
+-  border: 2px solid var(--brass-dim);
+-  color: var(--brass-bright);
+-  font-family: var(--font-mono);
+-  font-weight: 700;
+-  font-size: 15px;
+-  box-shadow: inset 0 -7px 11px rgba(0,0,0,0.25), inset 0 2px 3px rgba(255,255,255,0.15);
+-  transition: border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+-}
+-.die-selector:hover .die-shape { border-color: var(--brass); transform: translateY(-2px); }
+-.die-selector.has-count .die-shape {
+-  border-color: var(--brass-bright);
+-  color: var(--parchment);
+-  background:
+-    radial-gradient(circle at 30% 22%, rgba(255,255,255,0.38), transparent 45%),
+-    linear-gradient(160deg, rgba(201,162,75,0.22), var(--bg-panel-inset));
+-  box-shadow: 0 0 0 3px rgba(201,162,75,0.12), inset 0 -7px 11px rgba(0,0,0,0.22), inset 0 2px 3px rgba(255,255,255,0.18);
++.dice-layout { display: grid; grid-template-columns: minmax(340px, 440px) minmax(0, 1fr); gap: 24px; align-items: start; }
++.dice-bench, .dice-side { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
++.dice-card {
++  background: var(--bg-panel); border: 1px solid var(--hairline); border-radius: var(--radius-l);
++  box-shadow: var(--shadow-deep); padding: 18px;
++}
++.dice-card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
++.dice-card-title { font: 600 11px var(--font-body); letter-spacing: 0.14em; text-transform: uppercase; color: var(--parchment-faint); margin: 0; }
++.dice-clear { display: inline-flex; align-items: center; gap: 4px; background: none; border: 0; padding: 4px 6px; border-radius: 8px; color: var(--parchment-dim); font-size: 12px; cursor: pointer; transition: color 140ms ease, background-color 140ms ease; }
++.dice-clear svg { width: 13px; height: 13px; }
++.dice-clear[hidden] { display: inline-flex; visibility: hidden; }
++.dice-clear:hover { color: var(--parchment); background: rgba(255, 255, 255, 0.05); }
++
++/* the outlined die drawings (shared with the corner widget) */
++.dw-art { overflow: visible; }
++.dw-body { fill: color-mix(in srgb, var(--brass) 16%, transparent); stroke: currentColor; stroke-width: 1.5; stroke-linejoin: round; transition: fill 160ms ease; }
++.dw-facet { fill: none; stroke: currentColor; stroke-width: 1; stroke-linejoin: round; opacity: 0.55; }
++.dw-num { fill: currentColor; font: 600 9.5px/1 var(--font-mono); }
++.dw-pips circle { fill: currentColor; }
++
++.dice-tray { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
++.die-selector { position: relative; user-select: none; }
++.die-btn {
++  width: 100%; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 12px 0 9px; cursor: pointer;
++  color: var(--brass-bright); background: rgba(255, 255, 255, 0.025); border: 1px solid var(--hairline); border-radius: 14px;
++  transition: transform 160ms var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), border-color 160ms ease, background-color 160ms ease, box-shadow 160ms ease;
++}
++.die-art { display: block; width: 52px; height: 52px; }
++.die-art svg { width: 100%; height: 100%; }
++.die-art .dw-num { font-size: 10.5px; }
++.die-name { font: 500 11px var(--font-mono); letter-spacing: 0.06em; color: var(--parchment-dim); }
++.die-btn:active { transform: scale(0.96); }
++.die-btn:focus-visible, .die-count-badge:focus-visible, .dice-clear:focus-visible, .dice-stepper-btn:focus-visible, .dice-roll-btn:focus-visible { outline: 2px solid var(--brass-bright); outline-offset: 2px; }
++.die-selector.has-count .die-btn { border-color: var(--hairline-strong); background: rgba(201, 162, 75, 0.1); box-shadow: 0 0 0 3px rgba(201, 162, 75, 0.08); }
++.die-selector.has-count .dw-body { fill: color-mix(in srgb, var(--brass) 34%, transparent); }
++@media (hover: hover) and (pointer: fine) {
++  .die-btn:hover { border-color: var(--hairline-strong); transform: translateY(-2px); }
++  .die-btn:hover .die-art { transform: rotate(-7deg); }
++  .die-art { transition: transform 180ms var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)); }
+ }
+-
+-.die-shape.d4 { clip-path: polygon(50% 4%, 4% 96%, 96% 96%); }
+-.die-shape.d6 { border-radius: 12px; }
+-.die-shape.d8 { clip-path: polygon(50% 2%, 98% 50%, 50% 98%, 2% 50%); }
+-.die-shape.d10 { clip-path: polygon(50% 0%, 88% 32%, 62% 100%, 38% 100%, 12% 32%); }
+-.die-shape.d12 { clip-path: polygon(50% 0%, 100% 35%, 82% 100%, 18% 100%, 0% 35%); }
+-.die-shape.d20 { clip-path: polygon(25% 3%, 75% 3%, 97% 50%, 75% 97%, 25% 97%, 3% 50%); }
+-.die-shape.d100 { border-radius: 50%; }
+-
+ .die-count-badge {
+-  position: absolute;
+-  top: -8px;
+-  right: -8px;
+-  width: 24px;
+-  height: 24px;
+-  border-radius: 50%;
+-  background: var(--blood);
+-  color: var(--parchment);
+-  font-family: var(--font-mono);
+-  font-size: 12px;
+-  font-weight: 700;
+-  align-items: center;
+-  justify-content: center;
+-  cursor: pointer;
+-  border: 2px solid var(--bg-panel);
+-  z-index: 2;
++  position: absolute; top: -7px; right: -7px; min-width: 24px; height: 24px; padding: 0 5px; border-radius: 12px;
++  background: var(--brass); color: var(--bg-void); font: 700 12px var(--font-mono);
++  align-items: center; justify-content: center; cursor: pointer; border: 2px solid var(--bg-panel); z-index: 2;
+ }
+-:root[data-theme="light"] .die-count-badge { color: var(--bg-panel); }
+ .die-count-badge[hidden] { display: none; }
+ .die-count-badge:not([hidden]) { display: flex; }
+-.die-count-badge:hover { filter: brightness(1.15); transform: scale(1.08); }
+-
+-.dice-controls {
+-  display: flex;
+-  align-items: flex-end;
+-  gap: 14px;
+-  margin-bottom: 34px;
+-  flex-wrap: wrap;
+-}
+-.btn-lg { padding: 9px 26px; font-size: 15px; }
+-.btn-lg svg { width: 17px; height: 17px; }
+-
+-.roll-summary {
+-  text-align: center;
+-  margin-bottom: 30px;
+-  padding-bottom: 24px;
+-  border-bottom: 1px solid var(--hairline);
+-}
+-.roll-total {
+-  font-family: var(--font-display);
+-  font-size: 64px;
+-  font-weight: 700;
+-  color: var(--brass-bright);
+-  line-height: 1;
+-  text-shadow: 0 0 24px rgba(201,162,75,0.25);
+-}
+-.roll-breakdown {
+-  font-family: var(--font-mono);
+-  font-size: 12.5px;
+-  color: var(--parchment-dim);
+-  margin-top: 10px;
+-}
+-
+-.dice-result-grid {
+-  display: flex;
+-  flex-wrap: wrap;
+-  gap: 18px;
+-  justify-content: center;
+-}
+ 
++.dice-formula { margin: 14px 0 0; text-align: center; font: 500 14px var(--font-mono); color: var(--parchment); min-height: 20px; font-variant-numeric: tabular-nums; }
++
++.dice-options { display: flex; flex-direction: column; gap: 14px; }
++.dice-opt-row { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
++.dice-opt-row--end { align-items: center; justify-content: space-between; }
++.dice-mod { flex: 0 0 132px; }
++.dice-what { flex: 1 1 160px; min-width: 0; }
++.dice-stepper { display: flex; align-items: stretch; border: 1px solid var(--hairline-strong); border-radius: 10px; overflow: hidden; background: var(--bg-panel-inset); }
++.dice-stepper input[type="number"] { width: 100%; min-width: 0; height: auto; text-align: center; border: 0; border-radius: 0; box-shadow: none; background: transparent; font: 600 14px var(--font-mono); color: var(--parchment); padding: 0; -moz-appearance: textfield; appearance: textfield; }
++.dice-stepper input[type="number"]::-webkit-outer-spin-button, .dice-stepper input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
++.dice-stepper input[type="number"]:focus { outline: none; box-shadow: none; }
++.dice-stepper:focus-within { border-color: var(--brass); }
++.dice-stepper-btn { width: 36px; min-height: 38px; padding: 0; font-size: 17px; line-height: 1; border: 0; background: transparent; color: var(--brass-bright); cursor: pointer; transition: background-color 120ms ease; }
++.dice-stepper-btn:active { background: rgba(201, 162, 75, 0.18); }
++
++/* roll mode as a segmented control (the radios stay real, just visually folded into the labels) */
++.dice-options .roll-mode { display: inline-flex; flex-wrap: nowrap; gap: 0; padding: 3px; margin: 0; border: 1px solid var(--hairline); border-radius: 999px; background: var(--bg-panel-inset); font-size: 12.5px; }
++.dice-options .roll-mode label { position: relative; cursor: pointer; }
++.dice-options .roll-mode input { position: absolute; opacity: 0; inset: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
++.dice-options .roll-mode label span { display: block; padding: 6px 12px; border-radius: 999px; color: var(--parchment-dim); transition: background-color 160ms ease, color 160ms ease; white-space: nowrap; }
++.dice-options .roll-mode input:checked + span { background: var(--brass); color: var(--bg-void); font-weight: 600; }
++.dice-options .roll-mode input:focus-visible + span { outline: 2px solid var(--brass-bright); outline-offset: 1px; }
++.dice-options .roll-mode label:has(input:disabled) { opacity: 0.4; cursor: not-allowed; }
++.dice-options .roll-mode label:has(input:disabled) input { cursor: not-allowed; }
++.roll-private { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--parchment-dim); cursor: pointer; }
++
++.dice-roll-btn {
++  display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; min-height: 52px; border: 0; border-radius: 14px; cursor: pointer;
++  font: 600 16px var(--font-body); letter-spacing: 0.02em; color: var(--bg-void);
++  background: linear-gradient(180deg, var(--brass-bright), var(--brass)); box-shadow: 0 8px 20px rgba(201, 162, 75, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.35);
++  transition: transform 140ms var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), opacity 160ms ease, box-shadow 160ms ease;
++}
++.dice-roll-btn svg { width: 20px; height: 20px; }
++.dice-roll-btn:active:not(:disabled) { transform: scale(0.98); }
++.dice-roll-btn:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: none; filter: saturate(0.6); }
++@media (hover: hover) and (pointer: fine) { .dice-roll-btn:hover:not(:disabled) { box-shadow: 0 10px 26px rgba(201, 162, 75, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.4); } }
++.dice-options .roll-error { margin: -14px 0 0; min-height: 0; }
++.dice-options .roll-error:not(:empty) { margin-top: -4px; min-height: 1.2em; }
++
++/* the stage where the dice land */
++.dice-stage { min-height: 260px; display: flex; flex-direction: column; justify-content: center; padding: 26px 20px; background:
++  radial-gradient(120% 90% at 50% 0%, rgba(201, 162, 75, 0.09), transparent 60%), var(--bg-panel); }
++.dice-empty { text-align: center; color: var(--parchment-dim); }
++.dice-empty-art { display: inline-block; width: 64px; height: 64px; color: var(--brass-dim); opacity: 0.7; }
++.dice-empty-art svg { width: 100%; height: 100%; }
++.dice-empty-art .dw-body { fill: none; stroke-dasharray: 3 2.4; }
++.dice-empty h3 { font-family: var(--font-display); font-size: 20px; margin: 10px 0 4px; color: var(--parchment); }
++.dice-empty p { margin: 0; font-size: 13px; }
++
++.roll-summary { text-align: center; margin-bottom: 22px; }
++.roll-total { font-family: var(--font-display); font-size: 76px; font-weight: 700; color: var(--brass-bright); line-height: 1; font-variant-numeric: tabular-nums; text-shadow: 0 0 28px rgba(201, 162, 75, 0.28); }
++.roll-breakdown { font-family: var(--font-mono); font-size: 12.5px; color: var(--parchment-dim); margin-top: 10px; }
++.dice-result-grid { display: flex; flex-wrap: wrap; gap: 16px 14px; justify-content: center; }
+ .die-tile-wrap { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+-
+-.die-tile {
+-  width: 58px;
+-  height: 58px;
+-  font-size: 18px;
+-  box-shadow: inset 0 -5px 8px rgba(0,0,0,0.28), inset 0 2px 2px rgba(255,255,255,0.15);
+-}
+-.die-tile.rolling {
+-  animation: die-flicker 0.09s linear infinite;
+-  border-color: var(--brass);
+-  color: var(--parchment);
+-}
+-.die-tile.die-settle {
+-  animation: die-settle-pop 0.32s ease;
+-}
+-.die-tile.die-crit-high { border-color: var(--moss-bright); color: var(--moss-bright); box-shadow: 0 0 16px rgba(121,178,142,0.35); }
+-.die-tile.die-crit-low { border-color: var(--blood-bright); color: var(--blood-bright); box-shadow: 0 0 16px rgba(211,86,79,0.35); }
+-
+-.d6-pips {
+-  display: grid;
+-  grid-template-columns: repeat(3, 1fr);
+-  grid-template-rows: repeat(3, 1fr);
+-  width: 70%;
+-  height: 70%;
+-  place-items: center;
+-}
+-.d6-pips .pip {
+-  width: 22%;
+-  height: 22%;
+-  border-radius: 50%;
+-  background: transparent;
+-  box-shadow: inset 0 1px 1px rgba(0,0,0,0.3);
+-}
+-.d6-pips .pip.active { background: currentColor; box-shadow: 0 1px 1px rgba(0,0,0,0.25); }
+-
+-.die-tile-label {
+-  font-family: var(--font-mono);
+-  font-size: 10px;
+-  letter-spacing: 0.08em;
+-  color: var(--parchment-faint);
+-  text-transform: uppercase;
+-}
+-
+-@keyframes die-flicker {
+-  0% { transform: rotate(-6deg) scale(1); }
+-  50% { transform: rotate(6deg) scale(1.04); }
+-  100% { transform: rotate(-6deg) scale(1); }
+-}
+-
+-@keyframes die-settle-pop {
+-  0% { transform: scale(1.35); }
+-  60% { transform: scale(0.92); }
+-  100% { transform: scale(1); }
+-}
++.die-tile { width: 70px; height: 70px; color: var(--brass-bright); will-change: transform; }
++.die-tile svg { width: 100%; height: 100%; }
++.die-tile .dw-num { font-size: 11px; }
++.die-tile.rolling { color: var(--parchment); }
++.die-tile.rolling .dw-body { fill: color-mix(in srgb, var(--brass) 28%, transparent); }
++.die-tile.die-crit-high { color: var(--moss-bright); filter: drop-shadow(0 0 8px rgba(121, 178, 142, 0.45)); }
++.die-tile.die-crit-low { color: var(--blood-bright); filter: drop-shadow(0 0 8px rgba(211, 86, 79, 0.4)); }
++.die-tile-label { font: 500 10px var(--font-mono); letter-spacing: 0.08em; color: var(--parchment-faint); text-transform: uppercase; }
+ 
+ @media (max-width: 880px) {
+-  .dice-tray { gap: 16px; padding: 20px; justify-content: center; }
+-  .die-shape { width: 64px; height: 64px; font-size: 13px; }
+-  .roll-total { font-size: 48px; }
++  .dice-layout { grid-template-columns: minmax(0, 1fr); gap: 16px; }
++  .dice-tray { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
++  .die-art { width: 44px; height: 44px; }
++  .roll-total { font-size: 60px; }
++  .dice-stage { min-height: 200px; padding: 20px 14px; }
++  .die-tile { width: 60px; height: 60px; }
++  .dice-opt-row--end { gap: 10px; }
++}
++@media (prefers-reduced-motion: reduce) {
++  .die-btn, .die-art, .dice-roll-btn, .dw-body { transition-duration: 0.01ms; }
+ }
+ 
+ 
+@@ -3391,8 +3342,8 @@ body.page-leaving .content {
+ .roll-mode { display: inline-flex; flex-wrap: wrap; gap: 4px 14px; border: 0; padding: 0; margin: 0; font-size: 13px; color: var(--parchment-dim); }
+ .roll-mode label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+ .roll-mode label:has(input:disabled) { opacity: 0.45; cursor: not-allowed; }
+-.roll-mode--small { font-size: 12px; }
+ .roll-private { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--parchment-dim); }
++.roll-mode--small { font-size: 12px; }
+ .roll-error { color: var(--blood-bright); font-size: 13px; min-height: 1.2em; margin: 8px 0 0; }
+ .die-tile-wrap.is-dropped { opacity: 0.4; }
+ 
+@@ -4077,10 +4028,6 @@ body:has(.pin-action-bubble.is-docked:not([hidden])) #nav-hint { opacity: 0; poi
+   .dice-fab:hover { border-color: var(--brass); transform: translateY(-2px); }
+   .dice-fab:hover:active { transform: scale(0.95); }
+ }
+-/* the die drawings: a plain brass outline, a few facets, the number inside */
+-.dw-body { fill: color-mix(in srgb, var(--brass) 16%, transparent); stroke: currentColor; stroke-width: 1.5; stroke-linejoin: round; }
+-.dw-facet { fill: none; stroke: currentColor; stroke-width: 1; stroke-linejoin: round; opacity: 0.55; }
+-.dw-num { fill: currentColor; font: 600 9.5px/1 var(--font-mono, ui-monospace, monospace); }
+ .dice-fab .dw-num { font-size: 10px; }
+ 
+ .dice-widget {
+diff --git a/static/js/dice-art.js b/static/js/dice-art.js
+new file mode 100644
+index 0000000..7d6b5bf
+--- /dev/null
++++ b/static/js/dice-art.js
+@@ -0,0 +1,61 @@
++/* The dice drawings, shared by the corner widget and the Dice page: one outlined silhouette per die (a few facets,
++ * the number inside).  LedgerDiceArt.svg(sides, {label}) returns an <svg> that takes its colour from `currentColor`;
++ * a d6 can also carry pips (LedgerDiceArt.showPips) for a result.
++ */
++(function () {
++  'use strict';
++  var NS = 'http://www.w3.org/2000/svg';
++  var SHAPES = {
++    4:   { body: '16,3.5 29,27 3,27', facets: 'M16 3.5 L16 27' },
++    6:   { body: 'M7 4.5h18a2.5 2.5 0 0 1 2.5 2.5v18a2.5 2.5 0 0 1-2.5 2.5H7A2.5 2.5 0 0 1 4.5 25V7A2.5 2.5 0 0 1 7 4.5z', facets: '' },
++    8:   { body: '16,3 28.5,16 16,29 3.5,16', facets: 'M3.5 16 H28.5' },
++    10:  { body: '16,3 28.5,13 16,29 3.5,13', facets: 'M3.5 13 L16 18 L28.5 13 M16 3 L16 18' },
++    12:  { body: '16,3 28.5,12 23.7,27 8.3,27 3.5,12', facets: 'M16 3 L16 10 M3.5 12 L10 14.5 M28.5 12 L22 14.5' },
++    20:  { body: '16,3 27.3,9.5 27.3,22.5 16,29 4.7,22.5 4.7,9.5', facets: 'M16 3 L4.7 22.5 M16 3 L27.3 22.5 M4.7 22.5 H27.3' },
++    100: { circle: true, facets: 'M5 16 a11 11 0 0 1 22 0' }
++  };
++  var PIPS = { 1: [5], 2: [1, 9], 3: [1, 5, 9], 4: [1, 3, 7, 9], 5: [1, 3, 5, 7, 9], 6: [1, 3, 4, 6, 7, 9] };
++
++  function el(tag, attrs) {
++    var n = document.createElementNS(NS, tag);
++    Object.keys(attrs || {}).forEach(function (k) { n.setAttribute(k, attrs[k]); });
++    return n;
++  }
++
++  function svg(sides, opts) {
++    opts = opts || {};
++    var def = SHAPES[sides];
++    var s = el('svg', { viewBox: '0 0 32 32', 'aria-hidden': 'true', focusable: 'false', 'class': 'dw-art' });
++    s.appendChild(def.circle ? el('circle', { cx: 16, cy: 16, r: 12.5, 'class': 'dw-body' })
++      : (def.body.charAt(0) === 'M' ? el('path', { d: def.body, 'class': 'dw-body' }) : el('polygon', { points: def.body, 'class': 'dw-body' })));
++    if (def.facets) s.appendChild(el('path', { d: def.facets, 'class': 'dw-facet' }));
++    if (opts.label !== false) {
++      var t = el('text', { x: 16, y: sides === 4 ? 21.5 : 20, 'text-anchor': 'middle', 'class': 'dw-num' });
++      t.textContent = opts.text !== undefined ? String(opts.text) : (sides === 100 ? '%' : String(sides));
++      s.appendChild(t);
++    }
++    return s;
++  }
++
++  function setNumber(svgEl, value) {
++    var pips = svgEl.querySelector('.dw-pips');
++    if (pips) pips.remove();
++    var t = svgEl.querySelector('.dw-num');
++    if (t) { t.style.display = ''; t.textContent = String(value); t.setAttribute('font-size', String(value).length > 2 ? '8' : ''); }
++  }
++
++  /* A d6 result shown as pips instead of a number. */
++  function showPips(svgEl, value) {
++    var t = svgEl.querySelector('.dw-num');
++    if (t) t.style.display = 'none';
++    var old = svgEl.querySelector('.dw-pips'); if (old) old.remove();
++    var g = el('g', { 'class': 'dw-pips' });
++    (PIPS[value] || []).forEach(function (cell) {
++      var col = (cell - 1) % 3, row = Math.floor((cell - 1) / 3);
++      g.appendChild(el('circle', { cx: 10.5 + col * 5.5, cy: 10.5 + row * 5.5, r: 1.9 }));
++    });
++    svgEl.appendChild(g);
++  }
++
++  window.LedgerDiceArt = { svg: svg, setNumber: setNumber, showPips: showPips, SIDES: [4, 6, 8, 10, 12, 20, 100] };
++})();
+diff --git a/static/js/dice-widget.js b/static/js/dice-widget.js
+index 485f0f3..98ee6ad 100644
+--- a/static/js/dice-widget.js
++++ b/static/js/dice-widget.js
+@@ -5,23 +5,11 @@
+  */
+ (function () {
+   'use strict';
+-  if (!window.LedgerDice || window.DICE_PAGE) return;
++  if (!window.LedgerDice || !window.LedgerDiceArt || window.DICE_PAGE) return;
+ 
+-  var SIDES = [4, 6, 8, 10, 12, 20, 100];
++  var SIDES = LedgerDiceArt.SIDES;
+   var EASE_OUT = 'cubic-bezier(0.23, 1, 0.32, 1)';
+   var reduce = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : { matches: false };
+-  var NS = 'http://www.w3.org/2000/svg';
+-
+-  // Each die has its own silhouette (a plain outline with a few facets), so the widget reads as a different, lighter set than the Dice page.
+-  var SHAPES = {
+-    4:   { body: '16,3.5 29,27 3,27', facets: 'M16 3.5 L16 27' },
+-    6:   { body: 'M7 4.5h18a2.5 2.5 0 0 1 2.5 2.5v18a2.5 2.5 0 0 1-2.5 2.5H7A2.5 2.5 0 0 1 4.5 25V7A2.5 2.5 0 0 1 7 4.5z', facets: '' },
+-    8:   { body: '16,3 28.5,16 16,29 3.5,16', facets: 'M3.5 16 H28.5' },
+-    10:  { body: '16,3 28.5,13 16,29 3.5,13', facets: 'M3.5 13 L16 18 L28.5 13 M16 3 L16 18' },
+-    12:  { body: '16,3 28.5,12 23.7,27 8.3,27 3.5,12', facets: 'M16 3 L16 10 M3.5 12 L10 14.5 M28.5 12 L22 14.5' },
+-    20:  { body: '16,3 27.3,9.5 27.3,22.5 16,29 4.7,22.5 4.7,9.5', facets: 'M16 3 L4.7 22.5 M16 3 L27.3 22.5 M4.7 22.5 H27.3' },
+-    100: { circle: true, facets: 'M5 16 a11 11 0 0 1 22 0' }
+-  };
+ 
+   function el(tag, cls, text) {
+     var n = document.createElement(tag);
+@@ -29,25 +17,7 @@
+     if (text !== undefined) n.textContent = text;
+     return n;
+   }
+-  function svg(tag, attrs) {
+-    var n = document.createElementNS(NS, tag);
+-    Object.keys(attrs || {}).forEach(function (k) { n.setAttribute(k, attrs[k]); });
+-    return n;
+-  }
+-  function dieSvg(sides, withLabel) {
+-    var s = svg('svg', { viewBox: '0 0 32 32', 'aria-hidden': 'true', focusable: 'false' });
+-    var def = SHAPES[sides];
+-    var body = def.circle ? svg('circle', { cx: 16, cy: 16, r: 12.5, class: 'dw-body' })
+-      : (def.body.charAt(0) === 'M' ? svg('path', { d: def.body, class: 'dw-body' }) : svg('polygon', { points: def.body, class: 'dw-body' }));
+-    s.appendChild(body);
+-    if (def.facets) s.appendChild(svg('path', { d: def.facets, class: 'dw-facet' }));
+-    if (withLabel) {
+-      var t = svg('text', { x: 16, y: sides === 4 ? 21.5 : 20, 'text-anchor': 'middle', class: 'dw-num' });
+-      t.textContent = sides === 100 ? '%' : String(sides);
+-      s.appendChild(t);
+-    }
+-    return s;
+-  }
++  function dieSvg(sides) { return LedgerDiceArt.svg(sides); }
+   function signed(n) { return (n >= 0 ? '+' : '−') + Math.abs(n); }
+ 
+   // ---- markup ----
+diff --git a/static/js/dice.js b/static/js/dice.js
+index e9ba872..bea1e50 100644
+--- a/static/js/dice.js
++++ b/static/js/dice.js
+@@ -7,41 +7,47 @@
+   const clearTrayBtn = document.getElementById('clear-tray-btn');
+   const modifierInput = document.getElementById('modifier');
+ 
++  const Art = window.LedgerDiceArt;
++  const EASE_OUT = 'cubic-bezier(0.23, 1, 0.32, 1)';
++  const calm = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : { matches: false };
++  const formulaEl = document.getElementById('dice-formula');
+   const queue = {}; // { 4: count, 6: count, ... }
+   [4, 6, 8, 10, 12, 20, 100].forEach((d) => { queue[d] = 0; });
+ 
+-  // Classic 6-sided die pip layouts, numbered 1-9 across a 3x3 grid
+-  // (1=top-left, 5=center, 9=bottom-right, etc.)
+-  const PIP_POSITIONS = {
+-    1: [5],
+-    2: [1, 9],
+-    3: [1, 5, 9],
+-    4: [1, 3, 7, 9],
+-    5: [1, 3, 5, 7, 9],
+-    6: [1, 3, 4, 6, 7, 9],
+-  };
+-
+-  function pipsMarkup(value) {
+-    const active = new Set(PIP_POSITIONS[value] || []);
+-    let html = '<div class="d6-pips">';
+-    for (let i = 1; i <= 9; i++) {
+-      html += `<span class="pip ${active.has(i) ? 'active' : ''}"></span>`;
+-    }
+-    html += '</div>';
+-    return html;
++  // Draw the dice in the tray (same outlined set as the corner widget) and in the empty state.
++  document.querySelectorAll('[data-art]').forEach((slot) => { slot.appendChild(Art.svg(parseInt(slot.dataset.art, 10))); });
++
++  function formulaText() {
++    const parts = [4, 6, 8, 10, 12, 20, 100].filter((d) => queue[d] > 0).map((d) => `${queue[d]}d${d}`);
++    if (!parts.length) return 'Tap a die to add it';
++    const mod = parseInt(modifierInput.value, 10) || 0;
++    return parts.join(' + ') + (mod ? ` ${mod > 0 ? '+' : '\u2212'} ${Math.abs(mod)}` : '');
++  }
++  function syncControls() {
++    if (formulaEl) formulaEl.textContent = formulaText();
++    rollBtn.disabled = totalQueued() === 0;
++    clearTrayBtn.hidden = totalQueued() === 0;
++  }
++  // a quick press on the die and a pop on the count, so a tap is felt on the frame it lands
++  function pop(node, from) {
++    if (!node || !node.animate || calm.matches) return;
++    node.animate([{ transform: `scale(${from})` }, { transform: 'scale(1.12)', offset: 0.6 }, { transform: 'scale(1)' }], { duration: 220, easing: EASE_OUT });
+   }
+ 
+   function updateBadge(die) {
+     const selector = tray.querySelector(`.die-selector[data-die="${die}"]`);
+     const badge = selector.querySelector('.die-count-badge');
+     const count = queue[die];
++    const wasHidden = badge.hidden;
+     if (count > 0) {
+       badge.hidden = false;
+       badge.textContent = count;
++      pop(badge, wasHidden ? 0.5 : 0.8);
+     } else {
+       badge.hidden = true;
+     }
+     selector.classList.toggle('has-count', count > 0);
++    syncControls();
+   }
+ 
+   tray.addEventListener('click', (e) => {
+@@ -53,6 +59,7 @@
+       queue[die] -= 1; // clicking the badge removes one
+     } else {
+       queue[die] += 1; // clicking the shape adds one
++      pop(selector.querySelector('.die-art'), 0.9);
+     }
+     updateBadge(die);
+   });
+@@ -68,6 +75,7 @@
+   function renderEmpty() {
+     resultsRoot.innerHTML = '';
+     resultsRoot.appendChild(emptyTemplate.content.cloneNode(true));
++    resultsRoot.querySelectorAll('[data-art]').forEach((slot) => { slot.appendChild(Art.svg(parseInt(slot.dataset.art, 10))); });
+   }
+ 
+   function totalQueued() {
+@@ -91,9 +99,14 @@
+     modeRadios.forEach((r) => { r.disabled = !single && r.value !== 'normal'; });
+     if (!single) { const n = modeRadios.find((r) => r.value === 'normal'); if (n) n.checked = true; }
+   }
++  document.getElementById('mod-dec').addEventListener('click', () => { modifierInput.value = Math.max(-99, (parseInt(modifierInput.value, 10) || 0) - 1); syncControls(); });
++  document.getElementById('mod-inc').addEventListener('click', () => { modifierInput.value = Math.min(99, (parseInt(modifierInput.value, 10) || 0) + 1); syncControls(); });
++  modifierInput.addEventListener('input', syncControls);
++  [labelInput, modifierInput].forEach((input) => input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !rollBtn.disabled) rollBtn.click(); }));
+   tray.addEventListener('click', syncModes);
+   clearTrayBtn.addEventListener('click', syncModes);
+   syncModes();
++  syncControls();
+ 
+   rollBtn.addEventListener('click', async () => {
+     if (totalQueued() === 0) return;
+@@ -114,7 +127,7 @@
+       errorEl.textContent = err.message;
+       return;
+     } finally {
+-      rollBtn.disabled = false;
++      syncControls();
+     }
+ 
+     // The server rolled; this page only shows it.
+@@ -141,60 +154,73 @@
+         <div class="roll-breakdown">${groupLines}${modifier ? ` &middot; modifier ${modifier >= 0 ? '+' : ''}${modifier}` : ''}${note}</div>
+       </div>
+       <div class="dice-result-grid">
+-        ${plan.map((p, i) => `
++        ${plan.map((p) => `
+           <div class="die-tile-wrap${p.dropped ? ' is-dropped' : ''}">
+-            <div class="die-shape d${p.die} die-tile rolling" data-final="${p.final}" data-sides="${p.die}" style="animation-delay:${i * 40}ms;">
+-              <span class="die-tile-number">?</span>
+-            </div>
+-            <span class="die-tile-label">d${p.die}</span>
++            <div class="die-tile rolling" data-final="${p.final}" data-sides="${p.die}"></div>
++            <span class="die-tile-label">d${p.die}${p.dropped ? ' · dropped' : ''}</span>
+           </div>
+         `).join('')}
+       </div>
+     `;
+ 
+-    // Animate: flicker random numbers, then settle
+-    const tiles = resultsRoot.querySelectorAll('.die-tile');
+-    tiles.forEach((tile) => {
++    // On a phone the result sits below the Roll button: bring it into view.
++    const stage = resultsRoot.closest('.dice-stage');
++    if (stage && window.matchMedia('(max-width: 880px)').matches) stage.scrollIntoView({ block: 'nearest', behavior: calm.matches ? 'auto' : 'smooth' });
++
++    // Each die drops in turning, shows flickering numbers while it lands, then settles on the real value.
++    // 40 ms stagger, 560 ms throw (ease-out, so it decelerates into place); reduced motion = a plain fade.
++    const tiles = Array.from(resultsRoot.querySelectorAll('.die-tile'));
++    let landed = 0;
++    tiles.forEach((tile, i) => {
+       const sides = parseInt(tile.dataset.sides, 10);
+       const finalVal = parseInt(tile.dataset.final, 10);
+-      const numEl = tile.querySelector('.die-tile-number');
+-      const flickerDuration = 500 + Math.random() * 250;
+-      const start = performance.now();
+-
++      const art = Art.svg(sides, { text: '?' });
++      tile.appendChild(art);
++      const spin = (i % 2 ? -1 : 1) * (200 + Math.random() * 140);
++      const throwAnim = tile.animate && (calm.matches
++        ? [{ opacity: 0 }, { opacity: 1 }]
++        : [
++            { opacity: 0, transform: `translateY(-34px) rotate(${-spin}deg) scale(0.7)` },
++            { opacity: 1, transform: `translateY(4px) rotate(${spin * 0.08}deg) scale(1.04)`, offset: 0.7 },
++            { opacity: 1, transform: 'translateY(0) rotate(0deg) scale(1)' },
++          ]);
++      if (throwAnim) tile.animate(throwAnim, { duration: calm.matches ? 140 : 560, delay: i * 40, easing: EASE_OUT, fill: 'backwards' });
++      const flickerDuration = calm.matches ? 0 : 520 + Math.random() * 220;
++      const start = performance.now() + i * 40;
+       function flicker(now) {
+-        const elapsed = now - start;
+-        if (elapsed < flickerDuration) {
+-          numEl.textContent = rollOne(sides);
++        if (now - start < flickerDuration) {
++          if (now >= start) Art.setNumber(art, rollOne(sides));
+           requestAnimationFrame(flicker);
+-        } else {
+-          if (sides === 6) {
+-            tile.innerHTML = pipsMarkup(finalVal);
+-          } else {
+-            numEl.textContent = finalVal;
+-          }
+-          tile.classList.remove('rolling');
+-          if (finalVal === sides) tile.classList.add('die-crit-high');
+-          if (finalVal === 1) tile.classList.add('die-crit-low');
+-          tile.classList.add('die-settle');
++          return;
+         }
++        if (sides === 6) Art.showPips(art, finalVal); else Art.setNumber(art, finalVal);
++        tile.classList.remove('rolling');
++        if (finalVal === sides) tile.classList.add('die-crit-high');
++        if (finalVal === 1) tile.classList.add('die-crit-low');
++        if (tile.animate && !calm.matches) tile.animate([{ transform: 'scale(1.16)' }, { transform: 'scale(0.97)', offset: 0.6 }, { transform: 'scale(1)' }], { duration: 300, easing: EASE_OUT });
++        landed += 1;
++        if (landed === tiles.length) countUpTotal();
+       }
+       requestAnimationFrame(flicker);
+     });
+ 
+-    // Animate total count-up after dice settle
++    // The total counts up once the last die has landed.
+     const totalEl = document.getElementById('roll-total-display');
+-    const settleDelay = 900;
+-    setTimeout(() => {
++    function countUpTotal() {
++      if (!totalEl.isConnected) return;
+       const start = performance.now();
+-      const duration = 450;
++      const duration = calm.matches ? 1 : 420;
+       function countUp(now) {
+         const t = Math.min(1, (now - start) / duration);
+         totalEl.textContent = Math.round(grandTotal * t);
+         if (t < 1) requestAnimationFrame(countUp);
+-        else totalEl.textContent = grandTotal;
++        else {
++          totalEl.textContent = grandTotal;
++          if (totalEl.animate && !calm.matches) totalEl.animate([{ transform: 'scale(1.1)' }, { transform: 'scale(1)' }], { duration: 260, easing: EASE_OUT });
++        }
+       }
+       requestAnimationFrame(countUp);
+-    }, settleDelay);
++    }
+   });
+ 
+   // ---- Recent rolls: the campaign's roll log (everyone's rolls, newest first) ----
+diff --git a/templates/base.html b/templates/base.html
+index 3a111a9..b73f14e 100644
+--- a/templates/base.html
++++ b/templates/base.html
+@@ -247,6 +247,7 @@
+ <script src="{{ url_for('static', filename='js/phone-ui.js') }}"></script>
+ {% if g.campaign_id %}<script src="{{ url_for('static', filename='js/dice-feed.js') }}"></script>
+ <script src="{{ url_for('static', filename='js/character-rolls.js') }}"></script>
++<script src="{{ url_for('static', filename='js/dice-art.js') }}"></script>
+ {% if active_page != 'dice' %}<script src="{{ url_for('static', filename='js/dice-widget.js') }}"></script>{% endif %}
+ <script src="{{ url_for('static', filename='js/char-peek.js') }}"></script>{% endif %}
+ {% block extra_scripts %}{% endblock %}
+diff --git a/templates/dice.html b/templates/dice.html
+index eb89d67..dd46f6e 100644
+--- a/templates/dice.html
++++ b/templates/dice.html
+@@ -7,54 +7,74 @@
+ <div class="page-header">
+   <div>
+     <h1 class="page-title">Dice</h1>
+-    <p class="page-sub">Tap a die to queue it, roll them all at once, totals tally automatically.</p>
++    <p class="page-sub">Tap dice to build a roll, then throw them all at once. Everyone at the table sees the result.</p>
+   </div>
+ </div>
+ 
+-<div class="dice-tray" id="dice-tray">
+-  {% for d in [4, 6, 8, 10, 12, 20, 100] %}
+-  <div class="die-selector" data-die="{{ d }}">
+-    <div class="die-shape d{{ d }}">
+-      <span>d{{ d }}</span>
+-    </div>
+-    <span class="die-count-badge" hidden>0</span>
+-  </div>
+-  {% endfor %}
+-</div>
++<div class="dice-layout">
++  <div class="dice-bench">
++    <section class="dice-card" aria-label="Pick your dice">
++      <div class="dice-card-head">
++        <h2 class="dice-card-title">Your dice</h2>
++        <button type="button" class="dice-clear" id="clear-tray-btn">{{ icon('x') }} Clear</button>
++      </div>
++      <div class="dice-tray" id="dice-tray">
++        {% for d in [4, 6, 8, 10, 12, 20, 100] %}
++        <div class="die-selector" data-die="{{ d }}">
++          <button type="button" class="die-btn" aria-label="Add a d{{ d }}"><span class="die-art" data-art="{{ d }}"></span><span class="die-name">d{{ d }}</span></button>
++          <button type="button" class="die-count-badge" aria-label="Remove one d{{ d }}" hidden>0</button>
++        </div>
++        {% endfor %}
++      </div>
++      <p class="dice-formula" id="dice-formula" aria-live="polite">Tap a die to add it</p>
++    </section>
+ 
+-<div class="dice-controls">
+-  <div class="field" style="max-width:120px;">
+-    <label for="modifier">Modifier</label>
+-    <input type="number" id="modifier" value="0">
+-  </div>
+-  <div class="field" style="min-width:180px;flex:1;max-width:280px;">
+-    <label for="roll-label">What is it for? <small>(optional)</small></label>
+-    <input type="text" id="roll-label" maxlength="80" placeholder="e.g. Fireball damage">
++    <section class="dice-card dice-options" aria-label="Roll options">
++      <div class="dice-opt-row">
++        <div class="field dice-mod">
++          <label for="modifier">Modifier</label>
++          <div class="dice-stepper">
++            <button type="button" class="dice-stepper-btn" id="mod-dec" aria-label="Lower modifier">&minus;</button>
++            <input type="number" id="modifier" value="0" inputmode="numeric">
++            <button type="button" class="dice-stepper-btn" id="mod-inc" aria-label="Raise modifier">+</button>
++          </div>
++        </div>
++        <div class="field dice-what">
++          <label for="roll-label">What is it for? <small>(optional)</small></label>
++          <input type="text" id="roll-label" maxlength="80" placeholder="e.g. Fireball damage">
++        </div>
++      </div>
++      <div class="dice-opt-row dice-opt-row--end">
++        <fieldset class="roll-mode" aria-label="Roll mode">
++          <label><input type="radio" name="roll-mode" value="normal" checked><span>Normal</span></label>
++          <label title="Roll a single d20 twice, keep the higher"><input type="radio" name="roll-mode" value="advantage"><span>Advantage</span></label>
++          <label title="Roll a single d20 twice, keep the lower"><input type="radio" name="roll-mode" value="disadvantage"><span>Disadvantage</span></label>
++        </fieldset>
++        {% if g.is_dm %}<label class="roll-private"><input type="checkbox" id="roll-private"><span>DM only</span></label>{% endif %}
++      </div>
++      <button type="button" class="dice-roll-btn" id="roll-btn" disabled>{{ icon('dices') }} <span>Roll</span></button>
++      <p class="roll-error" id="roll-error" role="alert"></p>
++    </section>
+   </div>
+-  <fieldset class="roll-mode" aria-label="Roll mode">
+-    <label><input type="radio" name="roll-mode" value="normal" checked> Normal</label>
+-    <label title="Roll a single d20 twice, keep the higher"><input type="radio" name="roll-mode" value="advantage"> Advantage</label>
+-    <label title="Roll a single d20 twice, keep the lower"><input type="radio" name="roll-mode" value="disadvantage"> Disadvantage</label>
+-  </fieldset>
+-  {% if g.is_dm %}<label class="roll-private"><input type="checkbox" id="roll-private"> DM only</label>{% endif %}
+-  <button type="button" class="btn btn-ghost" id="clear-tray-btn">{{ icon('x') }} Clear Tray</button>
+-  <button type="button" class="btn btn-primary btn-lg" id="roll-btn"> Roll</button>
+-</div>
+ 
+-<p class="roll-error" id="roll-error" role="alert"></p>
+-<div id="dice-results"></div>
++  <div class="dice-side">
++    <section class="dice-card dice-stage" aria-label="Result">
++      <div id="dice-results"></div>
++    </section>
+ 
+-<section class="roll-log" aria-label="Recent rolls">
+-  <h2 class="roll-log-title">Recent rolls <small>everyone in the campaign sees these</small></h2>
+-  <p class="roll-log-empty" id="roll-log-empty">No rolls yet.</p>
+-  <ol class="roll-log-list" id="roll-log-list"></ol>
+-</section>
++    <section class="roll-log" aria-label="Recent rolls">
++      <h2 class="roll-log-title">Recent rolls <small>everyone in the campaign sees these</small></h2>
++      <p class="roll-log-empty" id="roll-log-empty">No rolls yet.</p>
++      <ol class="roll-log-list" id="roll-log-list"></ol>
++    </section>
++  </div>
++</div>
+ 
+ <template id="empty-results-template">
+-  <div class="empty-state">
+-    <span>{{ icon('dices') }}</span>
+-    <h3>No dice queued</h3>
+-    <p>Tap a die shape above to add it to your roll, then hit Roll.</p>
++  <div class="dice-empty">
++    <span class="dice-empty-art" data-art="20"></span>
++    <h3>Nothing thrown yet</h3>
++    <p>Pick a few dice on the left and hit Roll.</p>
+   </div>
+ </template>
+ {% endblock %}
+diff --git a/tests/test_e2e_browser.py b/tests/test_e2e_browser.py
+index ebd186b..7524429 100644
+--- a/tests/test_e2e_browser.py
++++ b/tests/test_e2e_browser.py
+@@ -940,14 +940,19 @@ def test_dice_page_rolls_on_the_server_and_keeps_a_shared_log(pw, shared_server)
+     dpage.fill('#modifier', '4')
+     dpage.click('#roll-btn')
+     playwright.expect(dpage.locator('.roll-summary')).to_be_visible()
++    playwright.expect(dpage.locator('.die-tile.rolling')).to_have_count(0, timeout=5000); playwright.expect(dpage.locator('.die-tile .dw-pips')).to_have_count(2)
+     playwright.expect(dpage.locator('#roll-log-list .roll-log-item').first).to_contain_text('Sneak attack')
+     assert dpage.locator('.dice-toast').count() == 0                 # your own roll is on screen already: no toast on this page
+     playwright.expect(ppage.locator('.dice-toast').first).to_contain_text('Sneak attack', timeout=15000)
+     playwright.expect(ppage.locator('#roll-log-list .roll-log-item').first).to_contain_text('Sneak attack')
+     assert dpage.locator('#roll-private').count() == 1 and ppage.locator('#roll-private').count() == 0
++    # the redesigned page: real SVG dice in the tray and in the result, a live formula, Roll only once something is queued
++    assert dpage.locator('.die-selector[data-die] svg').count() == 7 and dpage.locator('.die-tile svg').count() == 2
++    assert 'Sneak' not in dpage.locator('#dice-formula').inner_text() and '2d6' in dpage.locator('#dice-formula').inner_text() and '+ 4' in dpage.locator('#dice-formula').inner_text()
+     # advantage is only offered for one lone d20
+     assert dpage.locator('input[value="advantage"]').is_disabled()
+-    dpage.click('#clear-tray-btn'); dpage.locator('.die-selector[data-die="20"]').click()
++    dpage.click('#clear-tray-btn'); assert dpage.locator('#roll-btn').is_disabled()
++    dpage.locator('.die-selector[data-die="20"]').click(); assert not dpage.locator('#roll-btn').is_disabled()
+     assert not dpage.locator('input[value="advantage"]').is_disabled()
+     assert not [b for b in dbad + pbad if b[0] >= 400], (dbad, pbad)
+     dctx.close(); pctx.close()

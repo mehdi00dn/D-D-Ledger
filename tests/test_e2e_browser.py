@@ -940,14 +940,19 @@ def test_dice_page_rolls_on_the_server_and_keeps_a_shared_log(pw, shared_server)
     dpage.fill('#modifier', '4')
     dpage.click('#roll-btn')
     playwright.expect(dpage.locator('.roll-summary')).to_be_visible()
+    playwright.expect(dpage.locator('.die-tile.rolling')).to_have_count(0, timeout=5000); playwright.expect(dpage.locator('.die-tile .dw-pips')).to_have_count(2)
     playwright.expect(dpage.locator('#roll-log-list .roll-log-item').first).to_contain_text('Sneak attack')
     assert dpage.locator('.dice-toast').count() == 0                 # your own roll is on screen already: no toast on this page
     playwright.expect(ppage.locator('.dice-toast').first).to_contain_text('Sneak attack', timeout=15000)
     playwright.expect(ppage.locator('#roll-log-list .roll-log-item').first).to_contain_text('Sneak attack')
     assert dpage.locator('#roll-private').count() == 1 and ppage.locator('#roll-private').count() == 0
+    # the redesigned page: real SVG dice in the tray and in the result, a live formula, Roll only once something is queued
+    assert dpage.locator('.die-selector[data-die] svg').count() == 7 and dpage.locator('.die-tile svg').count() == 2
+    assert 'Sneak' not in dpage.locator('#dice-formula').inner_text() and '2d6' in dpage.locator('#dice-formula').inner_text() and '+ 4' in dpage.locator('#dice-formula').inner_text()
     # advantage is only offered for one lone d20
     assert dpage.locator('input[value="advantage"]').is_disabled()
-    dpage.click('#clear-tray-btn'); dpage.locator('.die-selector[data-die="20"]').click()
+    dpage.click('#clear-tray-btn'); assert dpage.locator('#roll-btn').is_disabled()
+    dpage.locator('.die-selector[data-die="20"]').click(); assert not dpage.locator('#roll-btn').is_disabled()
     assert not dpage.locator('input[value="advantage"]').is_disabled()
     assert not [b for b in dbad + pbad if b[0] >= 400], (dbad, pbad)
     dctx.close(); pctx.close()
