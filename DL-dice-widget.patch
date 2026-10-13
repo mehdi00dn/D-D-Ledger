@@ -1,0 +1,444 @@
+diff --git a/static/css/style.css b/static/css/style.css
+index acd9310..98e5f7b 100644
+--- a/static/css/style.css
++++ b/static/css/style.css
+@@ -4053,3 +4053,113 @@ body:has(.pin-action-bubble.is-docked:not([hidden])) #nav-hint { opacity: 0; poi
+   .sidebar-nav .nav-tab, :root[data-sidebar="collapsed"] .sidebar-nav .nav-tab { justify-content: center; text-align: center; }
+   .sidebar-nav .nav-tab span { text-align: center; }
+ }
++
++
++/* ---- quick-roll dice widget: a small d20 in the corner of every campaign page ---- */
++.dice-fab {
++  position: fixed; z-index: 85; inset-inline-end: 16px;
++  inset-block-end: calc(var(--bar-h, 0px) + 16px + env(safe-area-inset-bottom));
++  width: 48px; height: 48px; padding: 0; border-radius: 50%; cursor: pointer; color: var(--brass-bright);
++  border: 1px solid var(--hairline-strong);
++  background: color-mix(in srgb, var(--bg-void-2) 88%, transparent);
++  -webkit-backdrop-filter: blur(14px) saturate(150%); backdrop-filter: blur(14px) saturate(150%);
++  box-shadow: var(--shadow-deep);
++  transition: transform 160ms var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), border-color 160ms ease, inset-block-end 0.28s var(--ease-drawer, cubic-bezier(0.32, 0.72, 0, 1)), opacity 160ms ease;
++}
++.dice-fab:active { transform: scale(0.95); }
++.dice-fab:focus-visible { outline: 2px solid var(--brass-bright); outline-offset: 3px; }
++.dice-fab-icon { position: absolute; inset: 0; display: grid; place-items: center; transition: opacity 160ms ease, transform 220ms var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)); }
++.dice-fab-icon svg { width: 30px; height: 30px; overflow: visible; }
++.dice-fab-icon--close svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
++.dice-fab-icon--close { opacity: 0; transform: rotate(-90deg) scale(0.8); }
++.dice-fab.is-open .dice-fab-icon--die { opacity: 0; transform: rotate(90deg) scale(0.8); }
++.dice-fab.is-open .dice-fab-icon--close { opacity: 1; transform: none; }
++@media (hover: hover) and (pointer: fine) {
++  .dice-fab:hover { border-color: var(--brass); transform: translateY(-2px); }
++  .dice-fab:hover:active { transform: scale(0.95); }
++}
++/* the die drawings: a plain brass outline, a few facets, the number inside */
++.dw-body { fill: color-mix(in srgb, var(--brass) 16%, transparent); stroke: currentColor; stroke-width: 1.5; stroke-linejoin: round; }
++.dw-facet { fill: none; stroke: currentColor; stroke-width: 1; stroke-linejoin: round; opacity: 0.55; }
++.dw-num { fill: currentColor; font: 600 9.5px/1 var(--font-mono, ui-monospace, monospace); }
++.dice-fab .dw-num { font-size: 10px; }
++
++.dice-widget {
++  position: fixed; z-index: 84; inset-inline-end: 16px; width: 300px; max-width: calc(100vw - 32px);
++  inset-block-end: calc(var(--bar-h, 0px) + 16px + 48px + 10px + env(safe-area-inset-bottom));
++  padding: 12px; border-radius: 16px; display: flex; flex-direction: column; gap: 10px;
++  background: color-mix(in srgb, var(--bg-panel-raised) 90%, transparent);
++  -webkit-backdrop-filter: blur(22px) saturate(160%); backdrop-filter: blur(22px) saturate(160%);
++  border: 1px solid var(--hairline-strong); box-shadow: var(--shadow-deep);
++  transform-origin: calc(100% - 24px) 100%;                  /* grows out of the button */
++  opacity: 0; transform: translateY(8px) scale(0.94); pointer-events: none;
++  transition: opacity 120ms ease, transform 150ms var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), inset-block-end 0.28s var(--ease-drawer, cubic-bezier(0.32, 0.72, 0, 1));
++}
++.dice-widget[hidden] { display: none; }
++.dice-widget.is-open { opacity: 1; transform: none; pointer-events: auto; transition-duration: 180ms, 200ms, 0.28s; }
++.dw-result { text-align: center; min-height: 74px; display: flex; flex-direction: column; justify-content: center; gap: 2px; padding: 4px 0 2px; }
++.dw-total { font: 600 40px/1.05 var(--font-display, inherit); color: var(--parchment); font-variant-numeric: tabular-nums; min-height: 42px; }
++.dw-total.is-rolling { color: var(--parchment-dim); }
++.dw-total.is-crit { color: var(--moss-bright); text-shadow: 0 0 18px color-mix(in srgb, var(--moss-bright) 55%, transparent); }
++.dw-total.is-fumble { color: var(--blood-bright); text-shadow: 0 0 18px color-mix(in srgb, var(--blood-bright) 50%, transparent); }
++.dw-detail { font-size: 12px; color: var(--parchment-dim); min-height: 16px; font-variant-numeric: tabular-nums; }
++.dw-detail.is-error { color: var(--blood-bright); }
++.dw-live { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
++.dw-dice { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
++.dw-die {
++  display: flex; align-items: center; justify-content: center; padding: 6px 0; min-height: 44px; cursor: pointer;
++  color: var(--brass-bright); background: rgba(255, 255, 255, 0.03); border: 1px solid var(--hairline); border-radius: 12px;
++  transition: transform 140ms var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), border-color 140ms ease, background-color 140ms ease;
++}
++.dw-die svg { width: 28px; height: 28px; overflow: visible; will-change: transform; }
++.dw-die-name { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
++.dw-die:active { transform: scale(0.95); }
++.dw-die:focus-visible, .dw-chip:focus-visible, .dw-step-btn:focus-visible { outline: 2px solid var(--brass-bright); outline-offset: 2px; }
++.dice-widget.is-busy .dw-die { opacity: 0.6; }
++@media (hover: hover) and (pointer: fine) {
++  .dw-die:hover { border-color: var(--hairline-strong); background: rgba(201, 162, 75, 0.1); }
++  .dw-die:hover svg { transform: rotate(-8deg); transition: transform 160ms var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)); }
++}
++.dw-fields { display: flex; gap: 8px; }
++.dw-field { flex: 1; display: flex; flex-direction: column; gap: 3px; font-size: 11px; color: var(--parchment-dim); }
++.dw-step { display: flex; align-items: center; border: 1px solid var(--hairline); border-radius: 10px; overflow: hidden; }
++.dw-step-btn { width: 32px; height: 32px; padding: 0; font-size: 16px; line-height: 1; color: var(--brass-bright); background: transparent; border: 0; cursor: pointer; transition: background-color 120ms ease; }
++.dw-step-btn:active { background: rgba(201, 162, 75, 0.18); }
++.dw-step-val { flex: 1; text-align: center; font: 600 13px/1 var(--font-mono, ui-monospace, monospace); color: var(--parchment); font-variant-numeric: tabular-nums; }
++.dw-modes { display: flex; gap: 6px; flex-wrap: wrap; }
++.dw-modes.is-idle .dw-chip:not([data-always]) { opacity: 0.45; }
++.dw-chip {
++  flex: 1 1 auto; min-height: 30px; padding: 0 8px; font-size: 11px; white-space: nowrap; color: var(--parchment-dim); cursor: pointer;
++  background: transparent; border: 1px solid var(--hairline); border-radius: 999px;
++  transition: color 140ms ease, background-color 140ms ease, border-color 140ms ease, opacity 140ms ease;
++}
++.dw-chip[aria-pressed="true"] { color: var(--bg-void); background: var(--brass); border-color: var(--brass); }
++.dw-chip[aria-pressed="false"]:hover { border-color: var(--hairline-strong); }
++
++/* neighbours: the roll toasts and map hints sit clear of the button */
++body.has-dice-fab .dice-toasts { margin-block-end: 58px; }
++body.has-dice-fab .modifier-hint { right: 80px; max-width: calc(100vw - 100px); }
++@media (max-width: 880px), (max-height: 500px) and (orientation: landscape) {
++  .dice-fab { inset-inline-end: 12px; inset-block-end: calc(var(--bar-h, 0px) + 12px + env(safe-area-inset-bottom)); }
++  .dice-widget { inset-inline-end: 12px; inset-block-end: calc(var(--bar-h, 0px) + 12px + 48px + 10px + env(safe-area-inset-bottom)); }
++  body.dice-fab-above-dock .dice-fab { inset-block-end: calc(var(--bar-h, 0px) + var(--dock-h, 46px) + 22px + env(safe-area-inset-bottom)); }
++  body.dice-fab-above-dock .dice-widget { inset-block-end: calc(var(--bar-h, 0px) + var(--dock-h, 46px) + 22px + 58px + env(safe-area-inset-bottom)); }
++  body:has(.map-toolbar.is-open) .dice-fab { opacity: 0; pointer-events: none; }
++}
++@media (orientation: landscape) and (max-height: 500px) {
++  /* sideways there is little height: the tray goes two columns wide (readout and modes left, dice and steppers right) */
++  .dice-widget { width: min(500px, calc(100vw - 24px)); display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr); column-gap: 12px; row-gap: 8px; align-items: start; }
++  .dice-widget .dw-result { grid-column: 1; grid-row: 1 / span 2; min-height: 0; align-self: center; }
++  .dice-widget .dw-dice { grid-column: 2; grid-row: 1; }
++  .dice-widget .dw-fields { grid-column: 2; grid-row: 2; }
++  .dice-widget .dw-modes { grid-column: 1 / -1; grid-row: 3; }
++  .dw-total { font-size: 34px; min-height: 36px; }
++  .bars-hidden .dice-fab { inset-block-end: calc(12px + env(safe-area-inset-bottom)); }
++  .bars-hidden .dice-widget { inset-block-end: calc(12px + 58px + env(safe-area-inset-bottom)); }
++  .bars-hidden.dice-fab-above-dock .dice-fab, :root.bars-hidden body.dice-fab-above-dock .dice-fab { inset-block-end: calc(var(--dock-h, 44px) + 22px + env(safe-area-inset-bottom)); }
++  :root.bars-hidden body.dice-fab-above-dock .dice-widget { inset-block-end: calc(var(--dock-h, 44px) + 22px + 58px + env(safe-area-inset-bottom)); }
++}
++@media (prefers-reduced-motion: reduce) {
++  .dice-fab, .dice-fab-icon, .dice-widget, .dw-die, .dw-die svg { transition-duration: 0.01ms; }
++  .dice-fab-icon--close, .dice-fab.is-open .dice-fab-icon--die { transform: none; }
++}
+diff --git a/static/js/dice-feed.js b/static/js/dice-feed.js
+index 0f5ec40..29da98c 100644
+--- a/static/js/dice-feed.js
++++ b/static/js/dice-feed.js
+@@ -87,7 +87,7 @@
+     seen[roll.id] = true;
+     if (latest === null || roll.id > latest) latest = roll.id;
+     listeners.forEach(function (fn) { try { fn(roll); } catch (e) { /* a listener must not break the feed */ } });
+-    if (roll.mine && window.DICE_PAGE) return;
++    if (roll.mine && (window.DICE_PAGE || window.DICE_QUIET)) return;   // shown big already (Dice page or the corner widget)
+     toast(roll);
+   }
+ 
+diff --git a/static/js/dice-widget.js b/static/js/dice-widget.js
+new file mode 100644
+index 0000000..485f0f3
+--- /dev/null
++++ b/static/js/dice-widget.js
+@@ -0,0 +1,252 @@
++/* Quick-roll dice widget: a small d20 button in the corner of every campaign page (except the Dice page itself).
++ * It opens a little tray: pick how many, a modifier, advantage / disadvantage, then tap a die.  Rolls go through
++ * LedgerDice, so they are made on the server and everyone in the campaign sees them, exactly like the Dice page.
++ * The roller sees the result right in the tray, so their own roll is not also toasted.
++ */
++(function () {
++  'use strict';
++  if (!window.LedgerDice || window.DICE_PAGE) return;
++
++  var SIDES = [4, 6, 8, 10, 12, 20, 100];
++  var EASE_OUT = 'cubic-bezier(0.23, 1, 0.32, 1)';
++  var reduce = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : { matches: false };
++  var NS = 'http://www.w3.org/2000/svg';
++
++  // Each die has its own silhouette (a plain outline with a few facets), so the widget reads as a different, lighter set than the Dice page.
++  var SHAPES = {
++    4:   { body: '16,3.5 29,27 3,27', facets: 'M16 3.5 L16 27' },
++    6:   { body: 'M7 4.5h18a2.5 2.5 0 0 1 2.5 2.5v18a2.5 2.5 0 0 1-2.5 2.5H7A2.5 2.5 0 0 1 4.5 25V7A2.5 2.5 0 0 1 7 4.5z', facets: '' },
++    8:   { body: '16,3 28.5,16 16,29 3.5,16', facets: 'M3.5 16 H28.5' },
++    10:  { body: '16,3 28.5,13 16,29 3.5,13', facets: 'M3.5 13 L16 18 L28.5 13 M16 3 L16 18' },
++    12:  { body: '16,3 28.5,12 23.7,27 8.3,27 3.5,12', facets: 'M16 3 L16 10 M3.5 12 L10 14.5 M28.5 12 L22 14.5' },
++    20:  { body: '16,3 27.3,9.5 27.3,22.5 16,29 4.7,22.5 4.7,9.5', facets: 'M16 3 L4.7 22.5 M16 3 L27.3 22.5 M4.7 22.5 H27.3' },
++    100: { circle: true, facets: 'M5 16 a11 11 0 0 1 22 0' }
++  };
++
++  function el(tag, cls, text) {
++    var n = document.createElement(tag);
++    if (cls) n.className = cls;
++    if (text !== undefined) n.textContent = text;
++    return n;
++  }
++  function svg(tag, attrs) {
++    var n = document.createElementNS(NS, tag);
++    Object.keys(attrs || {}).forEach(function (k) { n.setAttribute(k, attrs[k]); });
++    return n;
++  }
++  function dieSvg(sides, withLabel) {
++    var s = svg('svg', { viewBox: '0 0 32 32', 'aria-hidden': 'true', focusable: 'false' });
++    var def = SHAPES[sides];
++    var body = def.circle ? svg('circle', { cx: 16, cy: 16, r: 12.5, class: 'dw-body' })
++      : (def.body.charAt(0) === 'M' ? svg('path', { d: def.body, class: 'dw-body' }) : svg('polygon', { points: def.body, class: 'dw-body' }));
++    s.appendChild(body);
++    if (def.facets) s.appendChild(svg('path', { d: def.facets, class: 'dw-facet' }));
++    if (withLabel) {
++      var t = svg('text', { x: 16, y: sides === 4 ? 21.5 : 20, 'text-anchor': 'middle', class: 'dw-num' });
++      t.textContent = sides === 100 ? '%' : String(sides);
++      s.appendChild(t);
++    }
++    return s;
++  }
++  function signed(n) { return (n >= 0 ? '+' : '−') + Math.abs(n); }
++
++  // ---- markup ----
++  var fab = el('button', 'dice-fab');
++  fab.type = 'button';
++  fab.setAttribute('aria-label', 'Quick dice');
++  fab.setAttribute('aria-expanded', 'false');
++  fab.setAttribute('aria-controls', 'dice-widget-panel');
++  var fabIcon = el('span', 'dice-fab-icon dice-fab-icon--die');
++  fabIcon.appendChild(dieSvg(20, true));
++  var fabClose = el('span', 'dice-fab-icon dice-fab-icon--close');
++  fabClose.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 6l12 12M18 6L6 18"/></svg>';
++  fab.append(fabIcon, fabClose);
++
++  var panel = el('div', 'dice-widget');
++  panel.id = 'dice-widget-panel';
++  panel.setAttribute('role', 'dialog');
++  panel.setAttribute('aria-label', 'Quick dice');
++  panel.hidden = true;
++
++  var result = el('div', 'dw-result');
++  var total = el('div', 'dw-total', '');
++  var detail = el('div', 'dw-detail', 'Tap a die to roll it');
++  var live = el('div', 'dw-live');
++  live.setAttribute('role', 'status');
++  live.setAttribute('aria-live', 'polite');
++  result.append(total, detail, live);
++
++  var grid = el('div', 'dw-dice');
++  var dieBtns = {};
++  SIDES.forEach(function (s) {
++    var b = el('button', 'dw-die');
++    b.type = 'button';
++    b.dataset.sides = String(s);
++    b.setAttribute('aria-label', 'Roll d' + s);
++    b.appendChild(dieSvg(s, true));
++    b.appendChild(el('span', 'dw-die-name', 'd' + s));
++    grid.appendChild(b);
++    dieBtns[s] = b;
++  });
++
++  function stepper(label, onStep) {
++    var wrap = el('div', 'dw-step');
++    var dec = el('button', 'dw-step-btn', '−'); dec.type = 'button'; dec.setAttribute('aria-label', 'Fewer ' + label);
++    var val = el('output', 'dw-step-val'); val.setAttribute('aria-label', label);
++    var inc = el('button', 'dw-step-btn', '+'); inc.type = 'button'; inc.setAttribute('aria-label', 'More ' + label);
++    dec.addEventListener('click', function () { onStep(-1); });
++    inc.addEventListener('click', function () { onStep(1); });
++    wrap.append(dec, val, inc);
++    return { wrap: wrap, val: val };
++  }
++  var count = 1, modifier = 0, mode = 'normal', privateRoll = false, busy = false;
++  var countStep = stepper('dice', function (d) { count = Math.max(1, Math.min(10, count + d)); sync(); });
++  var modStep = stepper('modifier', function (d) { modifier = Math.max(-20, Math.min(20, modifier + d)); sync(); });
++  var rowCount = el('label', 'dw-field'); rowCount.append(el('span', 'dw-field-name', 'Dice'), countStep.wrap);
++  var rowMod = el('label', 'dw-field'); rowMod.append(el('span', 'dw-field-name', 'Modifier'), modStep.wrap);
++  var fields = el('div', 'dw-fields'); fields.append(rowCount, rowMod);
++
++  var modes = el('div', 'dw-modes');
++  modes.setAttribute('role', 'group'); modes.setAttribute('aria-label', 'Roll mode (one d20)');
++  var advBtn = el('button', 'dw-chip', 'Advantage'); advBtn.type = 'button'; advBtn.setAttribute('aria-pressed', 'false');
++  var disBtn = el('button', 'dw-chip', 'Disadvantage'); disBtn.type = 'button'; disBtn.setAttribute('aria-pressed', 'false');
++  modes.append(advBtn, disBtn);
++  var privBtn = null;
++  if (window.IS_DM) {
++    privBtn = el('button', 'dw-chip', 'DM only'); privBtn.type = 'button'; privBtn.setAttribute('aria-pressed', 'false');
++    modes.appendChild(privBtn);
++  }
++  advBtn.addEventListener('click', function () { mode = mode === 'advantage' ? 'normal' : 'advantage'; sync(); });
++  disBtn.addEventListener('click', function () { mode = mode === 'disadvantage' ? 'normal' : 'disadvantage'; sync(); });
++  if (privBtn) privBtn.addEventListener('click', function () { privateRoll = !privateRoll; sync(); });
++
++  panel.append(result, grid, fields, modes);
++  document.body.append(panel, fab);
++  document.body.classList.add('has-dice-fab');
++  if (document.getElementById('map-toolbar')) document.body.classList.add('dice-fab-above-dock');
++
++  function sync() {
++    countStep.val.textContent = '×' + count;
++    modStep.val.textContent = signed(modifier);
++    advBtn.setAttribute('aria-pressed', mode === 'advantage' ? 'true' : 'false');
++    disBtn.setAttribute('aria-pressed', mode === 'disadvantage' ? 'true' : 'false');
++    if (privBtn) privBtn.setAttribute('aria-pressed', privateRoll ? 'true' : 'false');
++    modes.classList.toggle('is-idle', count !== 1);          // advantage only ever applies to a single d20
++    panel.classList.toggle('is-busy', busy);
++  }
++
++  // ---- open / close ----
++  var open = false, hideTimer = 0;
++  function setOpen(next, restoreFocus) {
++    if (open === next) return;
++    open = next;
++    clearTimeout(hideTimer);
++    fab.setAttribute('aria-expanded', next ? 'true' : 'false');
++    fab.classList.toggle('is-open', next);
++    if (next) {
++      panel.hidden = false;
++      void panel.offsetHeight;                               // let the closed state paint so the open animates
++      panel.classList.add('is-open');
++    } else {
++      panel.classList.remove('is-open');
++      hideTimer = setTimeout(function () { panel.hidden = true; }, reduce.matches ? 20 : 150);
++      if (restoreFocus) fab.focus({ preventScroll: true });
++    }
++  }
++  fab.addEventListener('click', function () { setOpen(!open); });
++  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && open) setOpen(false, true); });
++  document.addEventListener('pointerdown', function (e) {
++    if (open && !panel.contains(e.target) && !fab.contains(e.target)) setOpen(false);
++  });
++
++  // ---- rolling ----
++  var settleAnim = null, flickerRaf = 0;
++  function showTotal(value, finalRoll) {
++    total.classList.remove('is-crit', 'is-fumble');
++    total.textContent = String(value);
++    if (finalRoll) {
++      var kept = finalRoll.dice.filter(function (d) { return !d.dropped; });
++      if (kept.length === 1 && kept[0].sides === 20) {
++        if (kept[0].value === 20) total.classList.add('is-crit');
++        else if (kept[0].value === 1) total.classList.add('is-fumble');
++      }
++    }
++  }
++  function describe(r) {
++    var by = {};
++    r.dice.filter(function (d) { return !d.dropped; }).forEach(function (d) { (by[d.sides] = by[d.sides] || []).push(d.value); });
++    var parts = Object.keys(by).sort(function (a, b) { return a - b; }).map(function (s) { return by[s].length + 'd' + s + ' ' + by[s].join(' + '); });
++    var text = parts.join(' · ');
++    if (r.modifier) text += ' ' + signed(r.modifier);
++    var dropped = r.dice.filter(function (d) { return d.dropped; })[0];
++    if (dropped) text += ' · ' + r.mode + ' (dropped ' + dropped.value + ')';
++    return text;
++  }
++
++  function tumble(btn) {
++    var icon = btn.querySelector('svg');
++    if (!icon || !icon.animate || reduce.matches) return null;
++    return icon.animate([
++      { transform: 'rotate(0deg) scale(1)' },
++      { transform: 'rotate(200deg) scale(1.18)', offset: 0.45 },
++      { transform: 'rotate(380deg) scale(1.06)', offset: 0.8 },
++      { transform: 'rotate(360deg) scale(1)' }
++    ], { duration: 560, easing: EASE_OUT });
++  }
++
++  function roll(sides) {
++    if (busy) return;
++    busy = true; sync();
++    detail.classList.remove('is-error');
++    var btn = dieBtns[sides];
++    var useMode = (sides === 20 && count === 1) ? mode : 'normal';
++    var spec = {}; spec[String(sides)] = count;
++    var t0 = performance.now();
++    var spin = tumble(btn);
++    cancelAnimationFrame(flickerRaf);
++    if (settleAnim) settleAnim.cancel();
++    total.classList.remove('is-crit', 'is-fumble');
++    total.classList.add('is-rolling');
++    detail.textContent = count + 'd' + sides + (modifier ? ' ' + signed(modifier) : '') + '…';
++    window.DICE_QUIET = true;                                // this roll is shown here, not toasted
++    var request = LedgerDice.roll({ dice: spec, modifier: modifier, mode: useMode, private: privateRoll, label: '' });
++    function flicker() {
++      if (!busy) return;
++      showTotal(1 + Math.floor(Math.random() * (sides === 100 ? 100 : sides) * Math.max(1, count)));
++      total.classList.add('is-rolling');
++      flickerRaf = requestAnimationFrame(function () { setTimeout(flicker, 55); });
++    }
++    if (!reduce.matches) flicker();
++    request.then(function (r) {
++      // let the tumble play out (about 0.45s) so a fast server never makes the number appear before the die lands
++      var wait = reduce.matches ? 0 : Math.max(0, 450 - (performance.now() - t0));
++      return new Promise(function (res) { setTimeout(function () { res(r); }, wait); });
++    }).then(function (r) {
++      busy = false; cancelAnimationFrame(flickerRaf);
++      total.classList.remove('is-rolling');
++      showTotal(r.total, r);
++      detail.textContent = describe(r);
++      live.textContent = 'Rolled ' + r.total + '. ' + describe(r);
++      if (total.animate) {
++        settleAnim = total.animate(reduce.matches
++          ? [{ opacity: 0.4 }, { opacity: 1 }]
++          : [{ transform: 'scale(0.86)', opacity: 0.6 }, { transform: 'scale(1.14)', opacity: 1, offset: 0.55 }, { transform: 'scale(1)' }],
++        { duration: reduce.matches ? 140 : 300, easing: EASE_OUT });
++      }
++      sync();
++    }).catch(function (err) {
++      busy = false; cancelAnimationFrame(flickerRaf);
++      total.classList.remove('is-rolling'); total.textContent = '!';
++      detail.textContent = err && err.message ? err.message : 'Could not roll. Try again.';
++      detail.classList.add('is-error');
++      if (spin) spin.cancel();
++      sync();
++    }).then(function () { window.DICE_QUIET = false; });
++  }
++
++  grid.addEventListener('click', function (e) {
++    var b = e.target.closest('.dw-die');
++    if (b) roll(parseInt(b.dataset.sides, 10));
++  });
++  sync();
++})();
+diff --git a/templates/base.html b/templates/base.html
+index df0385a..3a111a9 100644
+--- a/templates/base.html
++++ b/templates/base.html
+@@ -247,6 +247,7 @@
+ <script src="{{ url_for('static', filename='js/phone-ui.js') }}"></script>
+ {% if g.campaign_id %}<script src="{{ url_for('static', filename='js/dice-feed.js') }}"></script>
+ <script src="{{ url_for('static', filename='js/character-rolls.js') }}"></script>
++{% if active_page != 'dice' %}<script src="{{ url_for('static', filename='js/dice-widget.js') }}"></script>{% endif %}
+ <script src="{{ url_for('static', filename='js/char-peek.js') }}"></script>{% endif %}
+ {% block extra_scripts %}{% endblock %}
+ </body>
+diff --git a/tests/test_e2e_browser.py b/tests/test_e2e_browser.py
+index 1831af9..de30e4e 100644
+--- a/tests/test_e2e_browser.py
++++ b/tests/test_e2e_browser.py
+@@ -1586,3 +1586,38 @@ def test_phone_map_toolbar_is_a_bottom_dock_that_tucks_away_sideways(pw, shared_
+         t = tabs.nth(i).bounding_box(); inner = tabs.nth(i).evaluate("e => { const r = document.createRange(); r.selectNodeContents(e); const b = r.getBoundingClientRect(); return [b.left, b.right]; }")
+         assert abs((inner[0] + inner[1]) / 2 - (t['x'] + t['width'] / 2)) < 6, (t, inner)           # content centred in each tab
+     assert not errs, errs; ctx.close()
++
++
++def test_corner_dice_widget_rolls_shared_dice_from_any_page(pw, shared_server):
++    base = shared_server.url
++    dm, pl = Api(base), Api(base); cid = dm.campaign('Corner dice')
++    dm.add_member(cid, pl)
++    dctx, pctx = dm.context(pw, base), pl.context(pw, base)
++    dpage, ppage = dctx.new_page(), pctx.new_page()
++    dbad, derr = _collect(dpage); pbad, perr = _collect(ppage)
++    dpage.goto(base + f'/campaigns/{cid}/characters'); ppage.goto(base + f'/campaigns/{cid}/characters')
++    dpage.wait_for_load_state('networkidle'); ppage.wait_for_load_state('networkidle'); time.sleep(0.8)
++    fab = ppage.locator('.dice-fab'); panel = ppage.locator('#dice-widget-panel')
++    playwright.expect(fab).to_be_visible(); playwright.expect(panel).to_be_hidden()
++    box = fab.bounding_box(); vp = ppage.viewport_size
++    assert box['width'] <= 52 and box['x'] + box['width'] > vp['width'] - 40 and box['y'] + box['height'] > vp['height'] - 40, box   # small, bottom-right
++    fab.click(); playwright.expect(panel).to_be_visible(); assert fab.get_attribute('aria-expanded') == 'true'
++    ppage.wait_for_timeout(350); assert panel.bounding_box()['y'] + panel.bounding_box()['height'] <= box['y']                                                      # opens above the button
++    # tap a d20 with a +3 modifier: the total shows in the tray, the roller gets no toast, the other person does
++    ppage.locator('.dw-step-btn[aria-label="More modifier"]').click(); ppage.locator('.dw-step-btn[aria-label="More modifier"]').click(); ppage.locator('.dw-step-btn[aria-label="More modifier"]').click()
++    ppage.locator('.dw-die[data-sides="20"]').click()
++    playwright.expect(ppage.locator('.dw-detail')).to_contain_text('+3', timeout=5000); playwright.expect(panel).not_to_have_class(re.compile('is-busy'), timeout=5000)
++    total = int(ppage.locator('.dw-total').inner_text()); assert 4 <= total <= 23, total
++    assert ppage.locator('.dice-toast').count() == 0
++    playwright.expect(dpage.locator('.dice-toast').first).to_contain_text(str(total), timeout=15000)
++    # several dice of one kind, and advantage
++    ppage.locator('.dw-step-btn[aria-label="More dice"]').click()
++    ppage.locator('.dw-die[data-sides="6"]').click(); playwright.expect(ppage.locator('.dw-detail')).to_contain_text('2d6', timeout=5000); playwright.expect(panel).not_to_have_class(re.compile('is-busy'), timeout=5000)
++    ppage.locator('.dw-step-btn[aria-label="Fewer dice"]').click()
++    ppage.get_by_role('button', name='Advantage', exact=True).click(); ppage.locator('.dw-die[data-sides="20"]').click()
++    playwright.expect(ppage.locator('.dw-detail')).to_contain_text('advantage', timeout=5000)
++    # Escape closes it and gives focus back; the Dice page has no corner widget (it has the full tray)
++    ppage.keyboard.press('Escape'); playwright.expect(panel).to_be_hidden(); assert ppage.evaluate("document.activeElement.classList.contains('dice-fab')")
++    ppage.goto(base + f'/campaigns/{cid}/dice'); assert ppage.locator('.dice-fab').count() == 0
++    assert not [b for b in dbad + pbad if b[0] >= 400] and not derr and not perr, (dbad, pbad, derr, perr)
++    dctx.close(); pctx.close()

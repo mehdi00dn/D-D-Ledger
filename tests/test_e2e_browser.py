@@ -1586,3 +1586,38 @@ def test_phone_map_toolbar_is_a_bottom_dock_that_tucks_away_sideways(pw, shared_
         t = tabs.nth(i).bounding_box(); inner = tabs.nth(i).evaluate("e => { const r = document.createRange(); r.selectNodeContents(e); const b = r.getBoundingClientRect(); return [b.left, b.right]; }")
         assert abs((inner[0] + inner[1]) / 2 - (t['x'] + t['width'] / 2)) < 6, (t, inner)           # content centred in each tab
     assert not errs, errs; ctx.close()
+
+
+def test_corner_dice_widget_rolls_shared_dice_from_any_page(pw, shared_server):
+    base = shared_server.url
+    dm, pl = Api(base), Api(base); cid = dm.campaign('Corner dice')
+    dm.add_member(cid, pl)
+    dctx, pctx = dm.context(pw, base), pl.context(pw, base)
+    dpage, ppage = dctx.new_page(), pctx.new_page()
+    dbad, derr = _collect(dpage); pbad, perr = _collect(ppage)
+    dpage.goto(base + f'/campaigns/{cid}/characters'); ppage.goto(base + f'/campaigns/{cid}/characters')
+    dpage.wait_for_load_state('networkidle'); ppage.wait_for_load_state('networkidle'); time.sleep(0.8)
+    fab = ppage.locator('.dice-fab'); panel = ppage.locator('#dice-widget-panel')
+    playwright.expect(fab).to_be_visible(); playwright.expect(panel).to_be_hidden()
+    box = fab.bounding_box(); vp = ppage.viewport_size
+    assert box['width'] <= 52 and box['x'] + box['width'] > vp['width'] - 40 and box['y'] + box['height'] > vp['height'] - 40, box   # small, bottom-right
+    fab.click(); playwright.expect(panel).to_be_visible(); assert fab.get_attribute('aria-expanded') == 'true'
+    ppage.wait_for_timeout(350); assert panel.bounding_box()['y'] + panel.bounding_box()['height'] <= box['y']                                                      # opens above the button
+    # tap a d20 with a +3 modifier: the total shows in the tray, the roller gets no toast, the other person does
+    ppage.locator('.dw-step-btn[aria-label="More modifier"]').click(); ppage.locator('.dw-step-btn[aria-label="More modifier"]').click(); ppage.locator('.dw-step-btn[aria-label="More modifier"]').click()
+    ppage.locator('.dw-die[data-sides="20"]').click()
+    playwright.expect(ppage.locator('.dw-detail')).to_contain_text('+3', timeout=5000); playwright.expect(panel).not_to_have_class(re.compile('is-busy'), timeout=5000)
+    total = int(ppage.locator('.dw-total').inner_text()); assert 4 <= total <= 23, total
+    assert ppage.locator('.dice-toast').count() == 0
+    playwright.expect(dpage.locator('.dice-toast').first).to_contain_text(str(total), timeout=15000)
+    # several dice of one kind, and advantage
+    ppage.locator('.dw-step-btn[aria-label="More dice"]').click()
+    ppage.locator('.dw-die[data-sides="6"]').click(); playwright.expect(ppage.locator('.dw-detail')).to_contain_text('2d6', timeout=5000); playwright.expect(panel).not_to_have_class(re.compile('is-busy'), timeout=5000)
+    ppage.locator('.dw-step-btn[aria-label="Fewer dice"]').click()
+    ppage.get_by_role('button', name='Advantage', exact=True).click(); ppage.locator('.dw-die[data-sides="20"]').click()
+    playwright.expect(ppage.locator('.dw-detail')).to_contain_text('advantage', timeout=5000)
+    # Escape closes it and gives focus back; the Dice page has no corner widget (it has the full tray)
+    ppage.keyboard.press('Escape'); playwright.expect(panel).to_be_hidden(); assert ppage.evaluate("document.activeElement.classList.contains('dice-fab')")
+    ppage.goto(base + f'/campaigns/{cid}/dice'); assert ppage.locator('.dice-fab').count() == 0
+    assert not [b for b in dbad + pbad if b[0] >= 400] and not derr and not perr, (dbad, pbad, derr, perr)
+    dctx.close(); pctx.close()

@@ -4053,3 +4053,113 @@ body:has(.pin-action-bubble.is-docked:not([hidden])) #nav-hint { opacity: 0; poi
   .sidebar-nav .nav-tab, :root[data-sidebar="collapsed"] .sidebar-nav .nav-tab { justify-content: center; text-align: center; }
   .sidebar-nav .nav-tab span { text-align: center; }
 }
+
+
+/* ---- quick-roll dice widget: a small d20 in the corner of every campaign page ---- */
+.dice-fab {
+  position: fixed; z-index: 85; inset-inline-end: 16px;
+  inset-block-end: calc(var(--bar-h, 0px) + 16px + env(safe-area-inset-bottom));
+  width: 48px; height: 48px; padding: 0; border-radius: 50%; cursor: pointer; color: var(--brass-bright);
+  border: 1px solid var(--hairline-strong);
+  background: color-mix(in srgb, var(--bg-void-2) 88%, transparent);
+  -webkit-backdrop-filter: blur(14px) saturate(150%); backdrop-filter: blur(14px) saturate(150%);
+  box-shadow: var(--shadow-deep);
+  transition: transform 160ms var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), border-color 160ms ease, inset-block-end 0.28s var(--ease-drawer, cubic-bezier(0.32, 0.72, 0, 1)), opacity 160ms ease;
+}
+.dice-fab:active { transform: scale(0.95); }
+.dice-fab:focus-visible { outline: 2px solid var(--brass-bright); outline-offset: 3px; }
+.dice-fab-icon { position: absolute; inset: 0; display: grid; place-items: center; transition: opacity 160ms ease, transform 220ms var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)); }
+.dice-fab-icon svg { width: 30px; height: 30px; overflow: visible; }
+.dice-fab-icon--close svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+.dice-fab-icon--close { opacity: 0; transform: rotate(-90deg) scale(0.8); }
+.dice-fab.is-open .dice-fab-icon--die { opacity: 0; transform: rotate(90deg) scale(0.8); }
+.dice-fab.is-open .dice-fab-icon--close { opacity: 1; transform: none; }
+@media (hover: hover) and (pointer: fine) {
+  .dice-fab:hover { border-color: var(--brass); transform: translateY(-2px); }
+  .dice-fab:hover:active { transform: scale(0.95); }
+}
+/* the die drawings: a plain brass outline, a few facets, the number inside */
+.dw-body { fill: color-mix(in srgb, var(--brass) 16%, transparent); stroke: currentColor; stroke-width: 1.5; stroke-linejoin: round; }
+.dw-facet { fill: none; stroke: currentColor; stroke-width: 1; stroke-linejoin: round; opacity: 0.55; }
+.dw-num { fill: currentColor; font: 600 9.5px/1 var(--font-mono, ui-monospace, monospace); }
+.dice-fab .dw-num { font-size: 10px; }
+
+.dice-widget {
+  position: fixed; z-index: 84; inset-inline-end: 16px; width: 300px; max-width: calc(100vw - 32px);
+  inset-block-end: calc(var(--bar-h, 0px) + 16px + 48px + 10px + env(safe-area-inset-bottom));
+  padding: 12px; border-radius: 16px; display: flex; flex-direction: column; gap: 10px;
+  background: color-mix(in srgb, var(--bg-panel-raised) 90%, transparent);
+  -webkit-backdrop-filter: blur(22px) saturate(160%); backdrop-filter: blur(22px) saturate(160%);
+  border: 1px solid var(--hairline-strong); box-shadow: var(--shadow-deep);
+  transform-origin: calc(100% - 24px) 100%;                  /* grows out of the button */
+  opacity: 0; transform: translateY(8px) scale(0.94); pointer-events: none;
+  transition: opacity 120ms ease, transform 150ms var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), inset-block-end 0.28s var(--ease-drawer, cubic-bezier(0.32, 0.72, 0, 1));
+}
+.dice-widget[hidden] { display: none; }
+.dice-widget.is-open { opacity: 1; transform: none; pointer-events: auto; transition-duration: 180ms, 200ms, 0.28s; }
+.dw-result { text-align: center; min-height: 74px; display: flex; flex-direction: column; justify-content: center; gap: 2px; padding: 4px 0 2px; }
+.dw-total { font: 600 40px/1.05 var(--font-display, inherit); color: var(--parchment); font-variant-numeric: tabular-nums; min-height: 42px; }
+.dw-total.is-rolling { color: var(--parchment-dim); }
+.dw-total.is-crit { color: var(--moss-bright); text-shadow: 0 0 18px color-mix(in srgb, var(--moss-bright) 55%, transparent); }
+.dw-total.is-fumble { color: var(--blood-bright); text-shadow: 0 0 18px color-mix(in srgb, var(--blood-bright) 50%, transparent); }
+.dw-detail { font-size: 12px; color: var(--parchment-dim); min-height: 16px; font-variant-numeric: tabular-nums; }
+.dw-detail.is-error { color: var(--blood-bright); }
+.dw-live { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.dw-dice { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.dw-die {
+  display: flex; align-items: center; justify-content: center; padding: 6px 0; min-height: 44px; cursor: pointer;
+  color: var(--brass-bright); background: rgba(255, 255, 255, 0.03); border: 1px solid var(--hairline); border-radius: 12px;
+  transition: transform 140ms var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), border-color 140ms ease, background-color 140ms ease;
+}
+.dw-die svg { width: 28px; height: 28px; overflow: visible; will-change: transform; }
+.dw-die-name { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.dw-die:active { transform: scale(0.95); }
+.dw-die:focus-visible, .dw-chip:focus-visible, .dw-step-btn:focus-visible { outline: 2px solid var(--brass-bright); outline-offset: 2px; }
+.dice-widget.is-busy .dw-die { opacity: 0.6; }
+@media (hover: hover) and (pointer: fine) {
+  .dw-die:hover { border-color: var(--hairline-strong); background: rgba(201, 162, 75, 0.1); }
+  .dw-die:hover svg { transform: rotate(-8deg); transition: transform 160ms var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)); }
+}
+.dw-fields { display: flex; gap: 8px; }
+.dw-field { flex: 1; display: flex; flex-direction: column; gap: 3px; font-size: 11px; color: var(--parchment-dim); }
+.dw-step { display: flex; align-items: center; border: 1px solid var(--hairline); border-radius: 10px; overflow: hidden; }
+.dw-step-btn { width: 32px; height: 32px; padding: 0; font-size: 16px; line-height: 1; color: var(--brass-bright); background: transparent; border: 0; cursor: pointer; transition: background-color 120ms ease; }
+.dw-step-btn:active { background: rgba(201, 162, 75, 0.18); }
+.dw-step-val { flex: 1; text-align: center; font: 600 13px/1 var(--font-mono, ui-monospace, monospace); color: var(--parchment); font-variant-numeric: tabular-nums; }
+.dw-modes { display: flex; gap: 6px; flex-wrap: wrap; }
+.dw-modes.is-idle .dw-chip:not([data-always]) { opacity: 0.45; }
+.dw-chip {
+  flex: 1 1 auto; min-height: 30px; padding: 0 8px; font-size: 11px; white-space: nowrap; color: var(--parchment-dim); cursor: pointer;
+  background: transparent; border: 1px solid var(--hairline); border-radius: 999px;
+  transition: color 140ms ease, background-color 140ms ease, border-color 140ms ease, opacity 140ms ease;
+}
+.dw-chip[aria-pressed="true"] { color: var(--bg-void); background: var(--brass); border-color: var(--brass); }
+.dw-chip[aria-pressed="false"]:hover { border-color: var(--hairline-strong); }
+
+/* neighbours: the roll toasts and map hints sit clear of the button */
+body.has-dice-fab .dice-toasts { margin-block-end: 58px; }
+body.has-dice-fab .modifier-hint { right: 80px; max-width: calc(100vw - 100px); }
+@media (max-width: 880px), (max-height: 500px) and (orientation: landscape) {
+  .dice-fab { inset-inline-end: 12px; inset-block-end: calc(var(--bar-h, 0px) + 12px + env(safe-area-inset-bottom)); }
+  .dice-widget { inset-inline-end: 12px; inset-block-end: calc(var(--bar-h, 0px) + 12px + 48px + 10px + env(safe-area-inset-bottom)); }
+  body.dice-fab-above-dock .dice-fab { inset-block-end: calc(var(--bar-h, 0px) + var(--dock-h, 46px) + 22px + env(safe-area-inset-bottom)); }
+  body.dice-fab-above-dock .dice-widget { inset-block-end: calc(var(--bar-h, 0px) + var(--dock-h, 46px) + 22px + 58px + env(safe-area-inset-bottom)); }
+  body:has(.map-toolbar.is-open) .dice-fab { opacity: 0; pointer-events: none; }
+}
+@media (orientation: landscape) and (max-height: 500px) {
+  /* sideways there is little height: the tray goes two columns wide (readout and modes left, dice and steppers right) */
+  .dice-widget { width: min(500px, calc(100vw - 24px)); display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr); column-gap: 12px; row-gap: 8px; align-items: start; }
+  .dice-widget .dw-result { grid-column: 1; grid-row: 1 / span 2; min-height: 0; align-self: center; }
+  .dice-widget .dw-dice { grid-column: 2; grid-row: 1; }
+  .dice-widget .dw-fields { grid-column: 2; grid-row: 2; }
+  .dice-widget .dw-modes { grid-column: 1 / -1; grid-row: 3; }
+  .dw-total { font-size: 34px; min-height: 36px; }
+  .bars-hidden .dice-fab { inset-block-end: calc(12px + env(safe-area-inset-bottom)); }
+  .bars-hidden .dice-widget { inset-block-end: calc(12px + 58px + env(safe-area-inset-bottom)); }
+  .bars-hidden.dice-fab-above-dock .dice-fab, :root.bars-hidden body.dice-fab-above-dock .dice-fab { inset-block-end: calc(var(--dock-h, 44px) + 22px + env(safe-area-inset-bottom)); }
+  :root.bars-hidden body.dice-fab-above-dock .dice-widget { inset-block-end: calc(var(--dock-h, 44px) + 22px + 58px + env(safe-area-inset-bottom)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dice-fab, .dice-fab-icon, .dice-widget, .dw-die, .dw-die svg { transition-duration: 0.01ms; }
+  .dice-fab-icon--close, .dice-fab.is-open .dice-fab-icon--die { transform: none; }
+}

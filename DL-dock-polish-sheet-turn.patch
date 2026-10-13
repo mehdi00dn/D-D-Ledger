@@ -1,0 +1,123 @@
+diff --git a/static/css/style.css b/static/css/style.css
+index 98e5f7b..54020b3 100644
+--- a/static/css/style.css
++++ b/static/css/style.css
+@@ -4040,7 +4040,6 @@ body:has(.pin-action-bubble.is-docked:not([hidden])) #nav-hint { opacity: 0; poi
+   .map-toolbar #fog-options-group, .map-toolbar #shape-style-group { order: 2; flex: 0 0 auto; padding: 0 6px 0 0; }
+   .map-toolbar .map-toolbar-toggle .icon:last-child { transform: rotate(90deg); }              /* points at the side it folds away to */
+   .map-toolbar.is-tucked .map-toolbar-toggle .icon:last-child { transform: rotate(-90deg); }
+-  .map-toolbar.is-tucked { inset-inline-end: auto; }
+   .map-toolbar.is-tucked > *:not(.map-toolbar-toggle) { display: none !important; }
+   .map-toolbar:not(.is-tucked) { animation: dock-tray-in 0.26s var(--ease-drawer) both; }
+ }
+@@ -4163,3 +4162,32 @@ body.has-dice-fab .modifier-hint { right: 80px; max-width: calc(100vw - 100px);
+   .dice-fab, .dice-fab-icon, .dice-widget, .dw-die, .dw-die svg { transition-duration: 0.01ms; }
+   .dice-fab-icon--close, .dice-fab.is-open .dice-fab-icon--die { transform: none; }
+ }
++
++
++/* ---- phone map dock, round 2: centred, no stray gap, tray grouped as "tools" over "map" ---- */
++@media (max-width: 880px), (max-height: 500px) and (orientation: landscape) {
++  .map-toolbar { width: fit-content; max-width: calc(100% - 16px); margin-inline: auto; justify-content: center; }
++  .map-toolbar.is-open { width: auto; margin-inline: 8px; }                                     /* the open tray uses the whole width */
++  .map-toolbar .map-tool-group-persistent, .map-toolbar .map-tool-group:last-child { margin-inline-start: 0; }
++  .map-toolbar #hold-space-hint { display: none; }
++  /* the tray: the six drawing tools as one even row, the map actions (clear, grid, hide new) as a second row */
++  .map-toolbar.is-open .map-tool-group--more { border-bottom: 0; padding: 0; gap: 6px; animation: dock-tray-in 0.26s var(--ease-drawer) both; }
++  .map-toolbar.is-open .map-tool-group--more:first-of-type { flex: 1 1 100%; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); }
++  .map-toolbar.is-open .map-tool-group--more:first-of-type > *, .map-toolbar.is-open .map-tool-group--more:first-of-type .tool-flyout { width: 100%; }
++  .map-toolbar.is-open .map-tool-group--more:first-of-type .map-tool-btn { width: 100%; }
++  .map-toolbar.is-open .map-tool-group--more:has(#clear-drawings-btn) { flex: 1 1 0; }
++  .map-toolbar.is-open #clear-drawings-btn { width: 100%; justify-content: center; min-height: var(--ctl); }
++  .map-toolbar.is-open .map-tool-group--more:has(#grid-settings-btn) { flex: 0 0 auto; }
++  .map-toolbar.is-open .map-tool-group--more:has(#clear-drawings-btn) + .map-tool-group--more { padding: 0; }
++}
++@media (orientation: landscape) and (max-height: 500px) {
++  .map-toolbar { inset-inline: 98px 10px; max-width: none; }
++  .map-toolbar.is-open { margin-inline: auto; width: fit-content; }
++  .map-toolbar.is-open .map-tool-group--more:first-of-type { display: flex; flex: 0 0 auto; }
++  .map-toolbar.is-open .map-tool-group--more:first-of-type .map-tool-btn { width: var(--ctl); }
++  .map-toolbar.is-open .map-tool-group--more:has(#clear-drawings-btn) { flex: 0 0 auto; }
++  .map-toolbar.is-open #clear-drawings-btn { width: auto; }
++}
++@media (max-width: 880px) and (orientation: portrait), (max-width: 880px) and (min-height: 501px) {
++  .map-toolbar.is-open::before { content: ''; order: 1; flex: 0 0 100%; height: 0; }            /* the tray is its own block; the Tools / undo / zoom bar starts a new line */
++}
+diff --git a/static/js/sheet-viewer.js b/static/js/sheet-viewer.js
+index 26c480a..71d1511 100644
+--- a/static/js/sheet-viewer.js
++++ b/static/js/sheet-viewer.js
+@@ -11,9 +11,25 @@
+   var next = panel.querySelector('[data-sheet-next]');
+   var index = 0;
+ 
++  // The same page turn as the lightbox (220 ms, ease-out, interruptible; reduced motion = a short fade), hinged on the side it came from.
++  var turn = null;
++  var calm = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : { matches: false };
++  function pageTurn(direction) {
++    if (turn) { turn.cancel(); turn = null; }
++    if (!img.animate || !direction) return;
++    var forward = direction > 0, origin = forward ? 'left center' : 'right center';
++    var from = calm.matches ? { opacity: 0.4 } : { opacity: 0.35, transform: 'perspective(1100px) rotateY(' + (forward ? -24 : 24) + 'deg) scale(0.985)', transformOrigin: origin };
++    var to = calm.matches ? { opacity: 1 } : { opacity: 1, transform: 'perspective(1100px) rotateY(0deg) scale(1)', transformOrigin: origin };
++    turn = img.animate([from, to], { duration: calm.matches ? 120 : 220, easing: 'cubic-bezier(0.32, 0.72, 0, 1)' });
++    turn.onfinish = turn.oncancel = function () { turn = null; };
++  }
++
+   function show(i) {
++    var before = index;
+     index = Math.max(0, Math.min(thumbs.length - 1, i));
++    var changed = index !== before;
+     img.src = thumbs[index].dataset.sheetSrc;
++    if (changed) pageTurn(index > before ? 1 : -1);
+     thumbs.forEach(function (t, n) { t.parentNode.classList.toggle('is-active', n === index); });
+     if (count) count.textContent = (index + 1) + ' / ' + thumbs.length;
+     if (prev) prev.disabled = index === 0;
+diff --git a/tests/test_e2e_browser.py b/tests/test_e2e_browser.py
+index de30e4e..ebd186b 100644
+--- a/tests/test_e2e_browser.py
++++ b/tests/test_e2e_browser.py
+@@ -1562,9 +1562,15 @@ def test_phone_map_toolbar_is_a_bottom_dock_that_tucks_away_sideways(pw, shared_
+     assert box['y'] > 844 / 2 and box['y'] + box['height'] <= nav['y'] + 1, (box, nav)
+     page.mouse.wheel(0, 400); page.wait_for_timeout(300)
+     assert abs(tb.bounding_box()['y'] - box['y']) < 2                                                # fixed: does not scroll away
++    assert abs(box['x'] + box['width'] / 2 - 390 / 2) < 3, box                                        # closed: centred
++    redo = page.locator('#redo-btn').bounding_box(); zr = page.locator('#zoom-reset-btn').bounding_box()
++    assert zr['x'] - (redo['x'] + redo['width']) < 40, (redo, zr)                                      # no empty gap before Reset Zoom
+     page.locator('#map-toolbar-toggle').tap(); page.wait_for_timeout(500)
+     tray = page.locator('[data-tool="eraser"]').bounding_box()
+     assert tray['y'] < tb.bounding_box()['y'] + tb.bounding_box()['height'] and tb.bounding_box()['y'] + tb.bounding_box()['height'] <= nav['y'] + 1
++    xs = [page.locator(sel).bounding_box() for sel in ('[data-tool="select"]', '#shapes-flyout [data-flyout-trigger]', '#fog-flyout [data-flyout-trigger]')]
++    assert len({round(b['y']) for b in xs}) == 1 and abs(xs[0]['width'] - xs[1]['width']) < 1, xs        # one even row of tools
++    assert page.locator('#clear-drawings-btn').bounding_box()['y'] > xs[0]['y'] + xs[0]['height']        # map actions on their own row below
+     page.locator('#shapes-flyout [data-flyout-trigger]').tap(); page.wait_for_timeout(300)
+     menu = page.locator('#shapes-flyout .tool-flyout-menu').bounding_box()
+     assert menu and menu['y'] + menu['height'] <= page.locator('#shapes-flyout').bounding_box()['y'] + 4   # menus open upward
+@@ -1574,6 +1580,7 @@ def test_phone_map_toolbar_is_a_bottom_dock_that_tucks_away_sideways(pw, shared_
+     tb = page.locator('#map-toolbar'); nav = page.locator('.sidebar-nav').bounding_box()
+     box = tb.bounding_box()
+     assert box['height'] < 60 and box['y'] + box['height'] <= nav['y'] + 1 and box['x'] >= 90, (box, nav)
++    assert abs(box['x'] + box['width'] / 2 - (98 + 844 - 10) / 2) < 6, box                         # centred in the space beside the corner buttons
+     assert page.locator('[data-tool="eraser"]').is_visible()
+     page.locator('#map-toolbar-toggle').tap(); page.wait_for_timeout(400)
+     assert page.locator('[data-tool="eraser"]').is_hidden() and tb.bounding_box()['width'] < 120
+@@ -1621,3 +1628,19 @@ def test_corner_dice_widget_rolls_shared_dice_from_any_page(pw, shared_server):
+     ppage.goto(base + f'/campaigns/{cid}/dice'); assert ppage.locator('.dice-fab').count() == 0
+     assert not [b for b in dbad + pbad if b[0] >= 400] and not derr and not perr, (dbad, pbad, derr, perr)
+     dctx.close(); pctx.close()
++
++
++def test_character_sheet_viewer_turns_the_page_between_sheets(pw, shared_server):
++    base = shared_server.url; dm = Api(base); cid = dm.campaign('Sheets')
++    files = [('sheets', (f's{i}.png', png_bytes(600, 300, (40 * i, 80, 120)), 'image/png')) for i in range(3)]
++    dm.post(f'/campaigns/{cid}/characters/new', data={'name': 'Gallery', 'max_hp': '10'}, files=files)
++    hero = next(c['id'] for c in dm.get(f'/campaigns/{cid}/api/characters').json() if c['name'] == 'Gallery')
++    ctx = dm.context(pw, base); page = ctx.new_page(); bad, errs = _collect(page)
++    page.goto(base + f'/campaigns/{cid}/characters/{hero}'); page.wait_for_load_state('load')
++    img = page.locator('#sheet-viewer-img')
++    page.evaluate("() => { window.__turns = []; const a = HTMLElement.prototype.animate; HTMLElement.prototype.animate = function (k, o) { if (this.id === 'sheet-viewer-img') window.__turns.push([k[0].transform || '', o.duration]); return a.call(this, k, o); }; }")
++    page.locator('[data-sheet-next]').click()
++    turns = page.evaluate('window.__turns'); assert len(turns) == 1 and 'rotateY(-24deg)' in turns[0][0] and turns[0][1] == 220, turns
++    page.locator('[data-sheet-prev]').click()
++    turns = page.evaluate('window.__turns'); assert len(turns) == 2 and 'rotateY(24deg)' in turns[1][0], turns
++    assert not errs, errs; ctx.close()

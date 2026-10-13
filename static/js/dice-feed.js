@@ -87,7 +87,7 @@
     seen[roll.id] = true;
     if (latest === null || roll.id > latest) latest = roll.id;
     listeners.forEach(function (fn) { try { fn(roll); } catch (e) { /* a listener must not break the feed */ } });
-    if (roll.mine && window.DICE_PAGE) return;
+    if (roll.mine && (window.DICE_PAGE || window.DICE_QUIET)) return;   // shown big already (Dice page or the corner widget)
     toast(roll);
   }
 
