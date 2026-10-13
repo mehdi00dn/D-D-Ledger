@@ -81,7 +81,7 @@
     return (chips || addBtn) ? `<div class="cond-row">${chips}${addBtn}</div>` : '';
   }
 
-  function rowMarkup(p) {
+  function rowMarkup(p, rank) {
     const hidden = !!p.hidden_stats; // enemy stats redacted server-side for Players
     const pct = hidden ? 0 : hpPercent(p);
     const dead = !!p.is_dead;
@@ -119,7 +119,7 @@
         <div class="stat-chip stats-fogged" aria-hidden="true"><label>INIT</label><input type="number" class="stat-chip-input" value="00" disabled tabindex="-1"></div>
         <div class="stat-chip stats-fogged" aria-hidden="true"><label>AC</label><input type="number" class="stat-chip-input" value="00" disabled tabindex="-1"></div>
         <div class="hp-block stats-fogged" aria-hidden="true">
-          <div class="hp-bar-track hp-bar-track-static"><div class="hp-bar-fill ${hpColorClass(70)}" style="width:70%"></div></div>
+          <div class="hp-bar-track hp-bar-track-static"><div class="hp-bar-fill ${hpColorClass(70)}" style="--p:0.7"></div></div>
           <span class="hp-readout">00 / 00</span>
         </div>
       </div>`;
@@ -136,7 +136,7 @@
       </div>
       <div class="hp-block">
         <div class="hp-bar-track${isDM ? '' : ' hp-bar-track-static'}" ${isDM ? `data-hp-scrub="${p.id}"` : ''} data-max="${p.char_max_hp}" title="${isDM ? 'Hold and drag to set HP' : ''}">
-          <div class="hp-bar-fill ${hpColorClass(pct)}" style="width:${pct}%"></div>
+          <div class="hp-bar-fill ${hpColorClass(pct)}" style="--p:${pct / 100}"></div>
           ${tempBarWidth > 0 ? `<div class="hp-bar-temp" style="left:${pct}%; width:${tempBarWidth}%;"></div>` : ''}
         </div>
         <span class="hp-readout">${p.current_hp} / ${p.char_max_hp}${tempHp > 0 ? ` <span class="temp-hp-badge">+${tempHp}</span>` : ''}</span>
@@ -163,7 +163,8 @@
       ? ' data-action="view" role="button" tabindex="0" title="View details"' : '';
 
     return `
-    <div class="battle-row ${dead ? 'is-dead' : ''} ${p.is_active ? 'is-active' : ''}" data-pid="${p.id}"${p.is_active ? ' aria-current="true"' : ''}>
+    <div class="battle-row ${dead ? 'is-dead' : ''} ${p.is_active ? 'is-active' : ''}" data-pid="${p.id}"${hidden ? '' : ` data-hp="${p.current_hp}"`}${p.is_active ? ' aria-current="true"' : ''}>
+      ${rank ? `<span class="battle-rank" aria-hidden="true">${rank}</span>` : ''}
       <div class="battle-avatar${openAttrs ? ' is-link' : ''}"${openAttrs} aria-label="${escapeHtml(p.display_name)}: details" style="border-color:${safeColor(p.group_color, 'var(--brass)')};">${avatarMarkup(p)}</div>
 
       <div class="battle-name-block">
@@ -176,8 +177,7 @@
       ${hpControls}
       ${detailControl}
 
-      ${showDiedBtn ? `<button type="button" class="btn btn-danger btn-sm" data-action="die">${ICONS.skull} Died?</button>` : ''}
-      ${isDM && dead ? `<button type="button" class="btn btn-ghost btn-sm" data-action="revive">Revive</button>` : ''}
+      ${isDM ? `<div class="battle-extra">${showDiedBtn ? `<button type="button" class="btn btn-danger btn-sm" data-action="die">${ICONS.skull} Died?</button>` : ''}${dead ? `<button type="button" class="btn btn-ghost btn-sm" data-action="revive">Revive</button>` : ''}</div>` : ''}
 
       ${isDM ? `<button type="button" class="btn-icon battle-remove" data-action="remove" title="Remove from battle">${ICONS.x}</button>` : ''}
     </div>`;
@@ -232,10 +232,85 @@
       if (section.heading) {
         html += `<div class="group-heading"><span class="group-dot" style="background:${safeColor(section.heading.color, '#c9a24b')}"></span>${escapeHtml(section.heading.name)}</div>`;
       }
-      html += '<div class="battle-list">' + section.items.map(rowMarkup).join('') + '</div>';
+      html += '<div class="battle-list">' + section.items.map((p, i) => rowMarkup(p, isDM && sortMode === 'initiative' ? i + 1 : 0)).join('') + '</div>';
     });
+    const before = snapshotRows();
     root.innerHTML = html;
     condSeen = condNow; condNow = new Set();
+    animateRows(before);
+  }
+
+  // ---- Motion ----
+  // The list is re-rendered from scratch on every change, so motion is rebuilt from a before/after comparison:
+  // rows that moved slide from where they were (FLIP), HP bars glide from their old fill, a hit or a heal flashes the
+  // row and floats the amount up, newcomers fade in, and the row whose turn it is pulses once.  transform and opacity
+  // only; skipped entirely for reduced motion.
+  const EASE_OUT = 'cubic-bezier(0.23, 1, 0.32, 1)';
+  const reduceMotion = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : { matches: false };
+  let firstPaint = true;
+  let activePid = null;
+
+  function snapshotRows() {
+    const snap = new Map();
+    root.querySelectorAll('.battle-row').forEach((row) => {
+      const fill = row.querySelector('.hp-bar-fill');
+      snap.set(row.dataset.pid, {
+        top: row.getBoundingClientRect().top,
+        pct: fill ? parseFloat(fill.style.getPropertyValue('--p')) : null,
+        hp: row.dataset.hp === undefined ? null : Number(row.dataset.hp),
+      });
+    });
+    return snap;
+  }
+
+  function animateRows(before) {
+    const rows = [...root.querySelectorAll('.battle-row')];
+    const activeRow = root.querySelector('.battle-row.is-active');
+    const nowActive = activeRow ? activeRow.dataset.pid : null;
+    const turnChanged = nowActive && activePid !== null && nowActive !== activePid;
+    activePid = nowActive;
+    if (reduceMotion.matches || !rows[0] || !rows[0].animate) { firstPaint = false; return; }
+    rows.forEach((row, i) => {
+      const was = before.get(row.dataset.pid);
+      if (!was) {                                   // new on the field (or the very first paint): fade up, staggered on first paint
+        row.animate([{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'translateY(0)' }],
+          { duration: 240, delay: firstPaint ? Math.min(i, 8) * 40 : 0, easing: EASE_OUT, fill: 'backwards' });
+        return;
+      }
+      const dy = was.top - row.getBoundingClientRect().top;
+      if (Math.abs(dy) > 1) {
+        row.animate([{ transform: `translateY(${dy}px)` }, { transform: 'translateY(0)' }], { duration: 260, easing: EASE_OUT });
+      }
+      const fill = row.querySelector('.hp-bar-fill');
+      if (fill && was.pct !== null) {
+        const now = parseFloat(fill.style.getPropertyValue('--p'));
+        if (Math.abs(now - was.pct) > 0.001) {
+          fill.animate([{ transform: `scaleX(${was.pct})` }, { transform: `scaleX(${now})` }], { duration: 360, easing: EASE_OUT });
+        }
+      }
+      const hp = row.dataset.hp === undefined ? null : Number(row.dataset.hp);
+      if (hp !== null && was.hp !== null && hp !== was.hp) hpFeedback(row, hp - was.hp);
+      if (turnChanged && row.dataset.pid === nowActive) {
+        row.classList.add('turn-pulse');
+        row.addEventListener('animationend', () => row.classList.remove('turn-pulse'), { once: true });
+      }
+    });
+    firstPaint = false;
+  }
+
+  function hpFeedback(row, delta) {
+    const kind = delta < 0 ? 'hit' : 'heal';
+    row.classList.add('flash-' + kind);
+    row.addEventListener('animationend', () => row.classList.remove('flash-' + kind), { once: true });
+    const host = row.querySelector('.hp-block');
+    if (!host) return;
+    const tag = document.createElement('span');
+    tag.className = 'hp-delta hp-delta-' + kind;
+    tag.textContent = (delta < 0 ? '\u2212' : '+') + Math.abs(delta);
+    tag.setAttribute('aria-hidden', 'true');
+    host.appendChild(tag);
+    tag.animate([{ opacity: 0, transform: 'translateY(4px) scale(0.9)' }, { opacity: 1, transform: 'translateY(-6px) scale(1)', offset: 0.25 }, { opacity: 0, transform: 'translateY(-20px) scale(1)' }],
+      { duration: 720, easing: EASE_OUT }).onfinish = () => tag.remove();
   }
 
   // Round counter + the DM's Next turn button (hidden while nobody is on the field).
@@ -246,6 +321,12 @@
     const round = document.getElementById('round-num');
     if (round && participants.length) round.textContent = participants[0].battle_round || 1;
     const started = participants.some((p) => p.is_active);
+    const now = document.getElementById('turn-now');
+    if (now) {
+      const cur = participants.find((p) => p.is_active);
+      now.textContent = cur ? cur.display_name : '';
+      now.hidden = !cur;
+    }
     const label = document.getElementById('next-turn-label');
     if (label) label.textContent = started ? 'Next turn' : 'Start combat';
     // Back / Restart only mean something once the fight has started.
@@ -603,7 +684,7 @@
 
   function updateScrubVisual(value, max) {
     const pct = max ? Math.max(0, Math.min(100, Math.round((value / max) * 100))) : 0;
-    scrubbing.fill.style.width = `${pct}%`;
+    scrubbing.fill.style.setProperty('--p', pct / 100);
     scrubbing.fill.className = `hp-bar-fill ${hpColorClass(pct)}`;
     scrubbing.readout.textContent = `${value} / ${max}`;
     scrubbing.value = value;

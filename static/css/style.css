@@ -1420,15 +1420,42 @@ body.page-leaving .content {
   background: var(--bg-panel);
   border: 1px solid var(--hairline);
   border-radius: var(--radius-m);
-  padding: 12px 16px;
+  padding: 12px 16px 12px 14px;
   flex-wrap: wrap;
-  transition: opacity 0.2s ease, filter 0.2s ease, background-color 0.4s ease, border-color 0.4s ease;
+  position: relative;
+  transition: opacity 0.2s ease, filter 0.2s ease, background-color 0.4s ease, border-color 0.4s ease, box-shadow 0.25s var(--ease-out);
 }
 
 .battle-row.is-active {
-  border-color: var(--brass);
-  box-shadow: 0 0 0 1px var(--brass), 0 0 18px rgba(201, 162, 75, 0.28);
+  border-color: rgba(201, 162, 75, 0.7);
+  box-shadow: 0 0 0 1px rgba(201, 162, 75, 0.45), 0 10px 30px rgba(201, 162, 75, 0.13);
 }
+/* the brass bar on the left edge marks whose turn it is */
+.battle-row::before {
+  content: ''; position: absolute; left: -1px; top: 12px; bottom: 12px; width: 3px; border-radius: 0 3px 3px 0;
+  background: var(--brass-bright); opacity: 0; transition: opacity 0.2s var(--ease-out); pointer-events: none;
+}
+.battle-row.is-active::before { opacity: 1; }
+/* a hit or a heal tints the whole row for a moment */
+.battle-row::after { content: ''; position: absolute; inset: 0; border-radius: inherit; opacity: 0; pointer-events: none; }
+.battle-row.flash-hit::after { background: rgba(196, 84, 84, 0.2); animation: battle-flash 560ms var(--ease-out); }
+.battle-row.flash-heal::after { background: rgba(95, 145, 116, 0.22); animation: battle-flash 560ms var(--ease-out); }
+@keyframes battle-flash { 0% { opacity: 1; } 100% { opacity: 0; } }
+.battle-row.turn-pulse { animation: battle-turn 340ms var(--ease-out); }
+@keyframes battle-turn { 0% { transform: scale(0.985); } 55% { transform: scale(1.006); } 100% { transform: scale(1); } }
+.battle-rank {
+  flex: none; width: 22px; text-align: center; font: 600 12px var(--font-mono); color: var(--parchment-faint);
+  font-variant-numeric: tabular-nums;
+}
+.battle-row.is-active .battle-rank { color: var(--brass-bright); }
+.battle-extra { flex: none; min-width: 88px; display: flex; justify-content: flex-end; }
+.hp-block { position: relative; }
+.hp-delta {
+  position: absolute; right: 0; top: -14px; pointer-events: none; z-index: 3;
+  font: 700 13px var(--font-mono); font-variant-numeric: tabular-nums; text-shadow: 0 1px 6px rgba(0, 0, 0, 0.45);
+}
+.hp-delta-hit { color: var(--blood-bright); }
+.hp-delta-heal { color: var(--moss-bright); }
 .turn-tag {
   margin-left: 8px; padding: 1px 7px; border-radius: 999px; vertical-align: middle;
   background: var(--brass); color: var(--bg-deep, #0b0d13);
@@ -1456,6 +1483,12 @@ body.page-leaving .content {
   font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--parchment-dim);
 }
 .round-badge b { color: var(--brass-bright); font-weight: 600; margin-left: 4px; }
+.turn-now {
+  display: inline-flex; align-items: baseline; gap: 8px; max-width: 240px; padding-left: 12px; border-left: 1px solid var(--hairline-strong);
+  font: 600 15px var(--font-display); color: var(--parchment); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.turn-now::before { content: 'Now'; font: 600 10px var(--font-mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--brass); }
+.turn-now[hidden] { display: none; }
 .battle-row.is-dead {
   filter: grayscale(1);
   opacity: 0.5;
@@ -1557,11 +1590,12 @@ body.page-leaving .content {
 .hp-bar-track-static { cursor: default; }
 .hp-bar-track.is-scrubbing { box-shadow: 0 0 0 2px var(--brass); }
 .hp-bar-fill {
+  /* full width, scaled to the current HP: only transform changes, so the glide stays on the compositor */
+  width: 100%;
   height: 100%;
-  border-radius: 999px;
-  border-top-right-radius: 999px;
-  border-bottom-right-radius: 999px;
-  transition: width 0.3s ease, background 0.3s ease;
+  transform: scaleX(var(--p, 1));
+  transform-origin: left center;
+  transition: background 0.3s ease;
   position: relative;
   z-index: 0; /* Ensure it's below the temp hp bar */
 }
@@ -1640,38 +1674,50 @@ body.page-leaving .content {
 .stats-fog-wrap { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
 .stats-fog-wrap .stats-fogged { flex-shrink: 0; }
 
-.hp-controls { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.hp-controls {
+  display: flex; align-items: center; gap: 2px; flex-shrink: 0; padding: 3px;
+  background: var(--bg-panel-inset); border: 1px solid var(--hairline); border-radius: 12px;
+}
 .hp-amount-input {
-  width: 46px;
-  background: var(--bg-panel-inset);
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-s);
+  width: 44px; height: 32px;
+  background: transparent;
+  border: 0;
+  border-radius: 9px;
   color: var(--parchment);
   font-family: var(--font-mono);
-  font-size: 12.5px;
+  font-size: 13px;
   text-align: center;
-  padding: 6px 4px;
+  padding: 0 4px;
 }
+.hp-amount-input:focus { outline: none; background: rgba(255, 255, 255, 0.05); }
+/* calm tinted buttons: the colour says what it does, and fills in on hover and press */
 .hp-btn {
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
   border: none;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: transform 0.1s ease, filter 0.15s ease;
+  transition: transform 160ms var(--ease-out), background-color 160ms ease, color 160ms ease;
 }
-.hp-btn svg { width: 14px; height: 14px; }
-.hp-btn:active { transform: scale(0.92); }
+.hp-btn svg { width: 15px; height: 15px; }
+.hp-btn:active { transform: scale(0.95); }
 .hp-btn:disabled { opacity: 0.35; cursor: default; }
-.heal-btn { background: var(--moss); color: var(--on-solid); }
-.heal-btn:hover { filter: brightness(1.12); }
-.damage-btn { background: var(--blood); color: var(--on-solid); }
-.damage-btn:hover { filter: brightness(1.12); }
-.temphp-btn { background: var(--blue); color: #200a09; }
-.temphp-btn:hover { filter: brightness(1.15); }
+.heal-btn { background: rgba(95, 145, 116, 0.2); color: var(--moss-bright); }
+.damage-btn { background: rgba(196, 84, 84, 0.2); color: var(--blood-bright); }
+.temphp-btn { background: rgba(107, 167, 207, 0.2); color: #7ec8ff; }
+.hp-btn:focus-visible { outline: 2px solid var(--brass-bright); outline-offset: 1px; }
+@media (hover: hover) and (pointer: fine) {
+  .heal-btn:hover:not(:disabled) { background: var(--moss); color: var(--on-solid); }
+  .damage-btn:hover:not(:disabled) { background: var(--blood); color: var(--on-solid); }
+  .temphp-btn:hover:not(:disabled) { background: var(--blue); color: #200a09; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .battle-row.flash-hit::after, .battle-row.flash-heal::after { animation-duration: 1ms; }
+  .battle-row.turn-pulse { animation: none; }
+}
 
 .battle-remove {
   margin-left: auto;
@@ -3596,7 +3642,13 @@ body.page-leaving .content {
   .battle-row .hp-btn { width: auto; height: 46px; border-radius: 10px; flex-direction: column; gap: 1px; font: inherit; font-size: 11px; font-weight: 600; }
   .battle-row .hp-btn svg { width: 17px; height: 17px; }
   .hp-btn-label { display: block; line-height: 1; }
-  .battle-row > .btn-sm, .battle-row > .stats-hidden-badge, .battle-row > .stat-chip { grid-column: 1 / -1; min-height: 42px; justify-content: center; }
+  .battle-row > .stats-hidden-badge, .battle-row > .stat-chip, .battle-row > .battle-extra { grid-column: 1 / -1; min-height: 42px; justify-content: center; }
+  .battle-extra:empty { display: none; }
+  .battle-extra .btn-sm { width: 100%; min-height: 42px; justify-content: center; }
+  .battle-rank { display: none; }
+  .turn-now { display: none; }
+  .battle-row .hp-controls { padding: 0; background: none; border: 0; border-radius: 0; gap: 6px; }
+  .battle-row .hp-amount-input { background: var(--bg-panel-inset); border: 1px solid var(--hairline); }
 }
 
 /* phone held sideways: little height to spare, so the bars slide away and a dock brings them back */

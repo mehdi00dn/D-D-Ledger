@@ -22,6 +22,7 @@
 <div class="battle-toolbar">
   <div class="turn-bar" id="turn-bar" hidden>
     <span class="round-badge">Round <b id="round-num">1</b></span>
+    <span class="turn-now" id="turn-now" hidden aria-live="polite"></span>
     {% if g.is_dm %}
     <div class="turn-controls" role="group" aria-label="Turn controls">
       <button type="button" class="turn-btn" id="prev-turn-btn" title="Previous turn" aria-label="Previous turn">{{ icon('chevron-left') }}</button>

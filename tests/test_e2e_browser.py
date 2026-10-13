@@ -1755,3 +1755,31 @@ def test_dice_card_does_not_grow_when_a_die_is_picked(pw, shared_server):
         assert page.evaluate("getComputedStyle(document.getElementById('clear-tray-btn')).visibility") == 'visible'
         assert page.evaluate(probe) == before, (size, before, page.evaluate(probe))
         ctx.close()
+
+
+def test_battle_page_shows_turn_rank_and_gives_hit_and_heal_feedback(pw, shared_server):
+    base = shared_server.url; dm = Api(base); cid = dm.campaign('Arena')
+    ids = [dm.character(cid, n, max_hp=40) for n in ('Aria', 'Borin', 'Cael')]
+    for i in ids: dm.post(f'/campaigns/{cid}/api/battle/add', json={'character_id': i})
+    ctx = dm.context(pw, base); page = ctx.new_page(); bad, errs = _collect(page)
+    page.goto(base + f'/campaigns/{cid}/battle'); page.wait_for_selector('.battle-row')
+    # initiative order is numbered 1..n for the DM, and "now" names whoever has the turn once combat starts
+    assert page.locator('.battle-rank').all_inner_texts() == ['1', '2', '3']
+    assert page.locator('#turn-now').is_hidden()
+    page.click('#next-turn-btn'); page.wait_for_selector('.battle-row.is-active')
+    first = page.locator('.battle-row.is-active .battle-name').inner_text().upper().replace('TURN', '').strip().title()
+    assert first in page.locator('#turn-now').inner_text()
+    page.click('#next-turn-btn'); page.wait_for_function("(f) => document.querySelector('.battle-row.is-active') && document.querySelector('#turn-now').textContent.trim() !== f", arg=first)
+    # damage floats a number up, drops the bar by scale (not width) and the readout follows
+    row = page.locator('.battle-row').nth(1)
+    row.locator('.hp-amount-input').fill('15'); row.locator('.damage-btn').click()
+    page.wait_for_selector('.hp-delta-hit')
+    assert '15' in page.locator('.hp-delta-hit').first.inner_text()
+    page.wait_for_function("() => document.querySelectorAll('.hp-delta').length === 0")
+    assert page.locator('.battle-row').nth(1).locator('.hp-readout').inner_text().startswith('25 / 40')
+    assert float(page.locator('.battle-row').nth(1).locator('.hp-bar-fill').evaluate("e => e.style.getPropertyValue('--p')")) == 0.63
+    page.locator('.battle-row').nth(1).locator('.heal-btn').click(); page.wait_for_selector('.hp-delta-heal')
+    # sorting by faction drops the numbers
+    page.click('#sort-toggle [data-sort="group"]'); page.wait_for_timeout(300)
+    assert page.locator('.battle-rank').count() == 0
+    assert not errs, errs; ctx.close()
