@@ -1741,3 +1741,17 @@ def test_forms_work_from_the_keyboard_alone(pw, shared_server):
     assert anon.get_attribute('#password', 'autocomplete') == 'new-password'
     assert anon.get_attribute('#confirm', 'autocomplete') == 'new-password'
     assert not errs, errs
+
+
+def test_dice_card_does_not_grow_when_a_die_is_picked(pw, shared_server):
+    base = shared_server.url; dm = Api(base); cid = dm.campaign('Steady')
+    for size in ({'width': 1280, 'height': 800}, {'width': 390, 'height': 800}):
+        ctx = dm.context(pw, base); page = ctx.new_page(); page.set_viewport_size(size)
+        page.goto(base + f'/campaigns/{cid}/dice'); page.wait_for_load_state('load'); page.wait_for_timeout(300)
+        probe = "() => ['.dice-card', '#dice-tray', '#dice-formula', '#roll-btn'].map(s => Math.round(document.querySelector(s).getBoundingClientRect().top * 10) / 10)"
+        before = page.evaluate(probe)
+        assert page.evaluate("getComputedStyle(document.getElementById('clear-tray-btn')).visibility") == 'hidden'
+        page.click('.die-selector[data-die="20"] .die-btn'); page.wait_for_timeout(300)
+        assert page.evaluate("getComputedStyle(document.getElementById('clear-tray-btn')).visibility") == 'visible'
+        assert page.evaluate(probe) == before, (size, before, page.evaluate(probe))
+        ctx.close()

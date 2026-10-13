@@ -698,6 +698,7 @@
       pinPcNpcToggle.style.display = isFamiliar ? '' : 'none';
       if (isFamiliar) {
         pinPcNpcToggle.textContent = pin.is_npc ? 'NPC' : 'PC';
+        pinPcNpcToggle.setAttribute('aria-label', pin.is_npc ? 'Character type: NPC. Switch to PC' : 'Character type: PC. Switch to NPC');
         pinPcNpcToggle.title = pin.is_npc
           ? 'Currently an NPC (stats hidden from players) — click to make it a PC'
           : 'Currently a PC (stats visible to players) — click to make it an NPC';

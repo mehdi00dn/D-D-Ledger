@@ -1945,11 +1945,11 @@ body.page-leaving .content {
   background: var(--bg-panel); border: 1px solid var(--hairline); border-radius: var(--radius-l);
   box-shadow: var(--shadow-deep); padding: 18px;
 }
-.dice-card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.dice-card-head { min-height: 26px; display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
 .dice-card-title { font: 600 11px var(--font-body); letter-spacing: 0.14em; text-transform: uppercase; color: var(--parchment-faint); margin: 0; }
 .dice-clear { display: inline-flex; align-items: center; gap: 4px; background: none; border: 0; padding: 4px 6px; border-radius: 8px; color: var(--parchment-dim); font-size: 12px; cursor: pointer; transition: color 140ms ease, background-color 140ms ease; }
 .dice-clear svg { width: 13px; height: 13px; }
-.dice-clear[hidden] { display: inline-flex; visibility: hidden; }
+.dice-clear[hidden] { display: inline-flex !important; visibility: hidden; }   /* keeps its space, so the card never grows when a die is picked */
 .dice-clear:hover { color: var(--parchment); background: rgba(255, 255, 255, 0.05); }
 
 /* the outlined die drawings (shared with the corner widget) */
