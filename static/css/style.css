@@ -1008,6 +1008,18 @@ body.page-leaving .content {
   border-color: var(--brass);
   outline: none;
 }
+/* keyboard focus gets a visible ring on top of the border colour (mouse clicks keep the quiet border only) */
+.field input:focus-visible, .field textarea:focus-visible, .field select:focus-visible {
+  box-shadow: 0 0 0 2px var(--bg-void), 0 0 0 4px var(--brass-bright);
+}
+.skip-link {
+  position: fixed; top: 8px; left: 8px; z-index: 10000;
+  padding: 9px 14px; border-radius: var(--radius-s);
+  background: var(--brass-bright); color: #1a1408; font-weight: 600; font-size: 13px; text-decoration: none;
+  transform: translateY(-160%);
+}
+.skip-link:focus { transform: none; }
+.content:focus { outline: none; }
 .field textarea { resize: vertical; min-height: 90px; line-height: 1.5; }
 .field input:disabled, .field textarea:disabled, .field select:disabled {
   opacity: 0.55;

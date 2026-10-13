@@ -1708,3 +1708,36 @@ def test_every_button_input_and_image_has_a_name_a_screen_reader_can_read(pw, sh
     page.evaluate("document.getElementById('late').title = 'Renamed'"); page.wait_for_timeout(200)
     assert page.locator('#late').get_attribute('aria-label') == 'Renamed'
     assert not errs, errs; ctx.close()
+
+
+def test_forms_work_from_the_keyboard_alone(pw, shared_server):
+    base = shared_server.url; dm = Api(base); cid = dm.campaign('Keys')
+    ctx = dm.context(pw, base); page = ctx.new_page(); bad, errs = _collect(page)
+    page.goto(base + f'/campaigns/{cid}/characters/new'); page.wait_for_load_state('load')
+    # the first Tab stop is a skip link that jumps past the sidebar to the page content
+    page.keyboard.press('Tab')
+    assert page.evaluate("document.activeElement.className") == 'skip-link'
+    assert page.evaluate("document.activeElement.getBoundingClientRect().top") >= 0
+    page.keyboard.press('Enter')
+    assert page.evaluate("document.activeElement.id") == 'main-content'
+    # a field reached by keyboard shows a ring, not just a border colour
+    page.keyboard.press('Tab')
+    ring = page.evaluate("(() => { const e = document.activeElement; return [e.tagName, getComputedStyle(e).boxShadow, getComputedStyle(e).outlineStyle]; })()")
+    assert ring[1] != 'none' or ring[2] != 'none', ring
+    # typing a name and pressing Enter saves the character without touching the mouse
+    page.fill('input[name=name]', 'Keyboard Hero'); page.press('input[name=name]', 'Enter')
+    page.wait_for_url(lambda u: '/characters/new' not in u)
+    assert 'Keyboard Hero' in page.content()
+    ctx.close()
+    # sign-in / sign-up fields tell password managers what they are, and errors are announced
+    anon = pw.new_context().new_page()
+    anon.goto(base + '/login'); anon.wait_for_load_state('load')
+    assert anon.get_attribute('#username', 'autocomplete') == 'username'
+    assert anon.get_attribute('#password', 'autocomplete') == 'current-password'
+    anon.fill('#username', 'nobody'); anon.fill('#password', 'wrongpass'); anon.press('#password', 'Enter')
+    anon.wait_for_selector('.auth-error[role=alert]')
+    assert anon.get_attribute('#username', 'aria-describedby') == 'auth-error'
+    anon.goto(base + '/register'); anon.wait_for_load_state('load')
+    assert anon.get_attribute('#password', 'autocomplete') == 'new-password'
+    assert anon.get_attribute('#confirm', 'autocomplete') == 'new-password'
+    assert not errs, errs

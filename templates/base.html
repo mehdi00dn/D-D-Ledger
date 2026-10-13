@@ -27,6 +27,7 @@
 {% block extra_head %}{% endblock %}
 </head>
 <body>
+<a class="skip-link" href="#main-content">Skip to content</a>
 {% from "_icons.html" import icon %}
 <div class="app-shell">
   <aside class="sidebar" id="sidebar">
@@ -124,7 +125,7 @@
     </div>
   </aside>
 
-  <main class="content">
+  <main class="content" id="main-content" tabindex="-1">
     {% if g.previewing %}
     <div class="preview-banner" role="status">
       {{ icon('eye') }}
