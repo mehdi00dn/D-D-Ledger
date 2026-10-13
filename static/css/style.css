@@ -4192,8 +4192,8 @@ body.has-dice-fab .modifier-hint { right: 80px; max-width: calc(100vw - 100px); 
   .map-toolbar.is-open .map-tool-group--more:has(#clear-drawings-btn) + .map-tool-group--more { padding: 0; }
 }
 @media (orientation: landscape) and (max-height: 500px) {
-  .map-toolbar { inset-inline: 98px 10px; max-width: none; }
-  .map-toolbar.is-open { margin-inline: auto; width: fit-content; }
+  .map-toolbar { inset-inline: 98px 72px; max-width: none; margin-inline: auto 0; }           /* sits on the right, beside the dice button */
+  .map-toolbar.is-open { margin-inline: auto 0; width: fit-content; }
   .map-toolbar.is-open .map-tool-group--more:first-of-type { display: flex; flex: 0 0 auto; }
   .map-toolbar.is-open .map-tool-group--more:first-of-type .map-tool-btn { width: var(--ctl); }
   .map-toolbar.is-open .map-tool-group--more:has(#clear-drawings-btn) { flex: 0 0 auto; }
@@ -4216,3 +4216,21 @@ body.has-dice-fab .modifier-hint { right: 80px; max-width: calc(100vw - 100px); 
 .fs-resume.is-gone { opacity: 0; transform: translateY(-6px); }
 @keyframes fs-resume-in { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .fs-resume { animation: none; transition-duration: 0.01ms; } .fs-resume.is-gone { transform: none; } }
+
+
+/* ---- phone held sideways, map: two round buttons bottom-left, the Tools pill and the dice button bottom-right.
+   All of them ride the same baseline and slide with the navigation bar (same 0.22s as the bar itself). ---- */
+@media (max-width: 880px), (max-height: 500px) and (orientation: landscape) {
+  .map-toolbar .map-toolbar-toggle-icon { display: none; }                                      /* the Tools button carries no tool icon */
+}
+@media (orientation: landscape) and (max-height: 500px) {
+  .map-toolbar { transition: bottom 0.22s ease; }
+  .dice-fab, body.dice-fab-above-dock .dice-fab {
+    inset-block-end: calc(var(--bar-h, 0px) + 8px + env(safe-area-inset-bottom));
+    transition: transform 160ms var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), border-color 160ms ease, inset-block-end 0.22s ease, opacity 160ms ease;
+  }
+  .bars-hidden .dice-fab, :root.bars-hidden body.dice-fab-above-dock .dice-fab { inset-block-end: calc(8px + env(safe-area-inset-bottom)); }
+  .dice-widget, body.dice-fab-above-dock .dice-widget { inset-block-end: calc(var(--bar-h, 0px) + 8px + 58px + env(safe-area-inset-bottom)); }
+  .bars-hidden .dice-widget, :root.bars-hidden body.dice-fab-above-dock .dice-widget { inset-block-end: calc(8px + 58px + env(safe-area-inset-bottom)); }
+  body:has(.map-toolbar.is-open) .dice-fab { opacity: 1; pointer-events: auto; }                 /* the open toolbar stops short of it */
+}

@@ -468,3 +468,20 @@ def test_export_and_import_carry_every_faction(make_user):
     assert r.status_code == 302
     row = q('SELECT id FROM characters WHERE campaign_id = ? AND name = ?', cid2, 'Multi')[0]
     assert len(_members_of(row['id'])) == 2
+
+
+def test_a_dm_viewing_as_player_does_not_see_hidden_notes_on_their_own_npc(make_user):
+    """"View as player" must show exactly what a Player gets: the DM made the NPC, but the hidden note stays out."""
+    dm = make_user(); cid = dm.new_campaign()
+    SECRET, SHARED = 'dm-only-secret-xyz', 'shared-lore-abc'
+    npc = dm.new_character(cid, name='Ogre', is_npc='on', max_hp=99, notes=_notes(SHARED, {'t': SECRET, 'h': 1}))
+    def blobs():
+        return [dm.get(f'/campaigns/{cid}/characters/{npc}').data.decode(),
+                dm.get(f'/campaigns/{cid}/api/characters/{npc}/detail').data.decode(),
+                dm.get(f'/campaigns/{cid}/api/characters').data.decode()]
+    assert all(SECRET in b for b in blobs()[:2])
+    assert dm.post(f'/campaigns/{cid}/preview-as-player', data={'on': '1'}).status_code == 302
+    for b in blobs():
+        assert SECRET not in b, 'hidden note visible while viewing as a player'
+    assert dm.post(f'/campaigns/{cid}/preview-as-player', data={'on': '0'}).status_code == 302
+    assert SECRET in blobs()[0]

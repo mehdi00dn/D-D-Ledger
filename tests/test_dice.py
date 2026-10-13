@@ -194,3 +194,23 @@ def test_a_roll_for_one_copy_in_battle_keeps_its_number(table):
     other = dm.new_character(cid, name='Hero')
     assert roll(dm, cid, dice={'20': 1}, character_id=other, participant_id=ids[0]).get_json()['character'] == 'Hero'   # not that row
     assert roll(dm, cid, dice={'20': 1}, character_id=gob, participant_id='x').status_code == 400
+
+
+def test_players_see_only_the_total_of_an_npc_roll(table):
+    """Dice, modifier and advantage of an NPC's roll stay with the DM: a bare d20 would give away the creature's bonus."""
+    dm, pl, cid = table
+    npc = dm.new_character(cid, name='Ogre', is_npc='on', max_hp=59)
+    pc = dm.new_character(cid, name='Hero')
+    mine = roll(dm, cid, dice={'20': 1}, modifier=7, character_id=npc, label='Stealth').get_json()
+    assert mine['dice'] and mine['modifier'] == 7 and mine['hidden_detail'] is False        # the DM sees everything
+    roll(dm, cid, dice={'20': 1}, modifier=4, character_id=pc, label='Perception')          # a PC's roll is shown in full
+    seen = feed(pl, cid)['rolls']
+    ogre = next(r for r in seen if r['label'] == 'Stealth')
+    assert ogre['dice'] == [] and ogre['modifier'] == 0 and ogre['mode'] == 'normal' and ogre['hidden_detail'] is True
+    assert ogre['total'] == mine['total'] and ogre['character'] == 'Ogre'
+    hero = next(r for r in seen if r['label'] == 'Perception')
+    assert hero['dice'] and hero['modifier'] == 4 and hero['hidden_detail'] is False
+    # a DM viewing as a player gets the same redaction
+    assert dm.post(f'/campaigns/{cid}/preview-as-player', data={'on': '1'}).status_code == 302
+    ogre2 = next(r for r in feed(dm, cid)['rolls'] if r['label'] == 'Stealth')
+    assert ogre2['dice'] == [] and ogre2['modifier'] == 0

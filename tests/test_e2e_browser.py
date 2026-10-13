@@ -113,7 +113,7 @@ def test_two_users_see_each_others_changes_without_reload(pw, shared_server):
     dm.s.post(f'{base}/campaigns/{cid}/api/battle/add', json={'character_id': hero})
     dm.s.post(f'{base}/campaigns/{cid}/api/battle/add', json={'character_id': ogre})
     wait_text(ppage, ['Hero', 'Ogre']); wait_text(dpage, ['Hero'])
-    body = ppage.inner_text('body')
+    body = ppage.inner_text('#battle-root')
     assert '59' not in body                     # the player never sees the ogre's HP
     assert not [b for b in dbad + pbad if b[0] >= 400], (dbad, pbad)
     dctx.close(); pctx.close()
@@ -1585,7 +1585,17 @@ def test_phone_map_toolbar_is_a_bottom_dock_that_tucks_away_sideways(pw, shared_
     tb = page.locator('#map-toolbar'); nav = page.locator('.sidebar-nav').bounding_box()
     box = tb.bounding_box()
     assert box['height'] < 60 and box['y'] + box['height'] <= nav['y'] + 1 and box['x'] >= 90, (box, nav)
-    assert abs(box['x'] + box['width'] / 2 - (98 + 844 - 10) / 2) < 6, box                         # centred in the space beside the corner buttons
+    fab = page.locator('.dice-fab').bounding_box()                                                   # right side: the Tools pill, then the dice button, on one baseline
+    assert abs((box['x'] + box['width']) - (844 - 72)) < 6 and box['x'] + box['width'] < fab['x'], (box, fab)
+    assert abs((box['y'] + box['height'] / 2) - (fab['y'] + fab['height'] / 2)) < 6, (box, fab)
+    assert page.locator('#map-toolbar-toggle-icon').is_hidden()                                        # no tool icon on the Tools button
+    dock = [page.locator('.mobile-dock .dock-btn').nth(i).bounding_box() for i in range(2)]          # left side: the two round buttons
+    assert dock[1]['x'] + dock[1]['width'] < box['x'] and fab['x'] > 844 - 80, (dock, fab)
+    page.locator('.js-nav-toggle').first.tap(); page.wait_for_timeout(500)                           # hiding the bars: dice, toolbar and buttons drop together
+    fab2, box2, dock2 = page.locator('.dice-fab').bounding_box(), tb.bounding_box(), page.locator('.mobile-dock .dock-btn').first.bounding_box()
+    drop = fab2['y'] - fab['y']
+    assert drop > 20 and abs((box2['y'] - box['y']) - drop) < 4 and abs((dock2['y'] - dock[0]['y']) - drop) < 8, (drop, box2, dock2)
+    page.locator('.js-nav-toggle').first.tap(); page.wait_for_timeout(500)
     assert page.locator('[data-tool="eraser"]').is_visible()
     page.locator('#map-toolbar-toggle').tap(); page.wait_for_timeout(400)
     assert page.locator('[data-tool="eraser"]').is_hidden() and tb.bounding_box()['width'] < 120

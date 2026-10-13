@@ -1152,6 +1152,8 @@ def notes_parse_blocks(raw):
 def can_see_hidden_notes(character):
     """The DM and the character's own creator see every note; other members
     never receive a note flagged hidden. Single source of truth for the rule."""
+    if getattr(g, 'previewing', False):      # "View as player" shows exactly what a Player gets, even to the DM who made the NPC
+        return False
     return bool(g.is_dm or character['created_by'] == session.get('user_id'))
 
 
@@ -2716,12 +2718,18 @@ def _roll_row_out(r, names):
         label_ = r['character_label']
     except (KeyError, IndexError):         # a database that has not had migration 0019 yet
         label_ = ''
+    modifier, mode = r['modifier'], r['mode']
+    # An NPC's roll shows Players only the final number: no dice, modifier or advantage (a bare d20 would give away
+    # the creature's bonus).  The DM, and the DM viewing as a player, see the same thing the table does.
+    hide_detail = bool(names.get(('npc', r['character_id']))) and not g.is_dm
+    if hide_detail:
+        dice, modifier, mode = [], 0, 'normal'
     return {'id': r['id'], 'user_id': r['user_id'], 'who': names.get(r['user_id'], 'Someone'),
             'mine': r['user_id'] == session.get('user_id'),
             'character_id': r['character_id'],
             'character': label_ or names.get(('c', r['character_id'])),
-            'label': r['label'], 'dice': dice, 'modifier': r['modifier'], 'total': r['total'],
-            'mode': r['mode'], 'private': bool(r['private']), 'created_at': str(r['created_at'])}
+            'label': r['label'], 'dice': dice, 'modifier': modifier, 'total': r['total'],
+            'mode': mode, 'private': bool(r['private']), 'hidden_detail': hide_detail, 'created_at': str(r['created_at'])}
 
 
 def _dice_feed(db, after=None, limit=DICE_FEED_LIMIT):
@@ -2736,8 +2744,9 @@ def _dice_feed(db, after=None, limit=DICE_FEED_LIMIT):
     names = {r['id']: r['username'] for r in db.execute(
         'SELECT u.id, u.username FROM users u JOIN campaign_members cm ON cm.user_id = u.id WHERE cm.campaign_id = ?',
         (g.campaign_id,)).fetchall()}
-    for r in db.execute('SELECT id, name FROM characters WHERE campaign_id = ?', (g.campaign_id,)).fetchall():
+    for r in db.execute('SELECT id, name, is_npc FROM characters WHERE campaign_id = ?', (g.campaign_id,)).fetchall():
         names[('c', r['id'])] = r['name']
+        names[('npc', r['id'])] = bool(r['is_npc'])
     return [_roll_row_out(r, names) for r in rows]
 
 
