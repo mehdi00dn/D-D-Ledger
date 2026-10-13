@@ -4040,7 +4040,6 @@ body:has(.pin-action-bubble.is-docked:not([hidden])) #nav-hint { opacity: 0; poi
   .map-toolbar #fog-options-group, .map-toolbar #shape-style-group { order: 2; flex: 0 0 auto; padding: 0 6px 0 0; }
   .map-toolbar .map-toolbar-toggle .icon:last-child { transform: rotate(90deg); }              /* points at the side it folds away to */
   .map-toolbar.is-tucked .map-toolbar-toggle .icon:last-child { transform: rotate(-90deg); }
-  .map-toolbar.is-tucked { inset-inline-end: auto; }
   .map-toolbar.is-tucked > *:not(.map-toolbar-toggle) { display: none !important; }
   .map-toolbar:not(.is-tucked) { animation: dock-tray-in 0.26s var(--ease-drawer) both; }
 }
@@ -4162,4 +4161,33 @@ body.has-dice-fab .modifier-hint { right: 80px; max-width: calc(100vw - 100px); 
 @media (prefers-reduced-motion: reduce) {
   .dice-fab, .dice-fab-icon, .dice-widget, .dw-die, .dw-die svg { transition-duration: 0.01ms; }
   .dice-fab-icon--close, .dice-fab.is-open .dice-fab-icon--die { transform: none; }
+}
+
+
+/* ---- phone map dock, round 2: centred, no stray gap, tray grouped as "tools" over "map" ---- */
+@media (max-width: 880px), (max-height: 500px) and (orientation: landscape) {
+  .map-toolbar { width: fit-content; max-width: calc(100% - 16px); margin-inline: auto; justify-content: center; }
+  .map-toolbar.is-open { width: auto; margin-inline: 8px; }                                     /* the open tray uses the whole width */
+  .map-toolbar .map-tool-group-persistent, .map-toolbar .map-tool-group:last-child { margin-inline-start: 0; }
+  .map-toolbar #hold-space-hint { display: none; }
+  /* the tray: the six drawing tools as one even row, the map actions (clear, grid, hide new) as a second row */
+  .map-toolbar.is-open .map-tool-group--more { border-bottom: 0; padding: 0; gap: 6px; animation: dock-tray-in 0.26s var(--ease-drawer) both; }
+  .map-toolbar.is-open .map-tool-group--more:first-of-type { flex: 1 1 100%; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .map-toolbar.is-open .map-tool-group--more:first-of-type > *, .map-toolbar.is-open .map-tool-group--more:first-of-type .tool-flyout { width: 100%; }
+  .map-toolbar.is-open .map-tool-group--more:first-of-type .map-tool-btn { width: 100%; }
+  .map-toolbar.is-open .map-tool-group--more:has(#clear-drawings-btn) { flex: 1 1 0; }
+  .map-toolbar.is-open #clear-drawings-btn { width: 100%; justify-content: center; min-height: var(--ctl); }
+  .map-toolbar.is-open .map-tool-group--more:has(#grid-settings-btn) { flex: 0 0 auto; }
+  .map-toolbar.is-open .map-tool-group--more:has(#clear-drawings-btn) + .map-tool-group--more { padding: 0; }
+}
+@media (orientation: landscape) and (max-height: 500px) {
+  .map-toolbar { inset-inline: 98px 10px; max-width: none; }
+  .map-toolbar.is-open { margin-inline: auto; width: fit-content; }
+  .map-toolbar.is-open .map-tool-group--more:first-of-type { display: flex; flex: 0 0 auto; }
+  .map-toolbar.is-open .map-tool-group--more:first-of-type .map-tool-btn { width: var(--ctl); }
+  .map-toolbar.is-open .map-tool-group--more:has(#clear-drawings-btn) { flex: 0 0 auto; }
+  .map-toolbar.is-open #clear-drawings-btn { width: auto; }
+}
+@media (max-width: 880px) and (orientation: portrait), (max-width: 880px) and (min-height: 501px) {
+  .map-toolbar.is-open::before { content: ''; order: 1; flex: 0 0 100%; height: 0; }            /* the tray is its own block; the Tools / undo / zoom bar starts a new line */
 }

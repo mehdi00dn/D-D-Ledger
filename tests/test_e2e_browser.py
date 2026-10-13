@@ -1562,9 +1562,15 @@ def test_phone_map_toolbar_is_a_bottom_dock_that_tucks_away_sideways(pw, shared_
     assert box['y'] > 844 / 2 and box['y'] + box['height'] <= nav['y'] + 1, (box, nav)
     page.mouse.wheel(0, 400); page.wait_for_timeout(300)
     assert abs(tb.bounding_box()['y'] - box['y']) < 2                                                # fixed: does not scroll away
+    assert abs(box['x'] + box['width'] / 2 - 390 / 2) < 3, box                                        # closed: centred
+    redo = page.locator('#redo-btn').bounding_box(); zr = page.locator('#zoom-reset-btn').bounding_box()
+    assert zr['x'] - (redo['x'] + redo['width']) < 40, (redo, zr)                                      # no empty gap before Reset Zoom
     page.locator('#map-toolbar-toggle').tap(); page.wait_for_timeout(500)
     tray = page.locator('[data-tool="eraser"]').bounding_box()
     assert tray['y'] < tb.bounding_box()['y'] + tb.bounding_box()['height'] and tb.bounding_box()['y'] + tb.bounding_box()['height'] <= nav['y'] + 1
+    xs = [page.locator(sel).bounding_box() for sel in ('[data-tool="select"]', '#shapes-flyout [data-flyout-trigger]', '#fog-flyout [data-flyout-trigger]')]
+    assert len({round(b['y']) for b in xs}) == 1 and abs(xs[0]['width'] - xs[1]['width']) < 1, xs        # one even row of tools
+    assert page.locator('#clear-drawings-btn').bounding_box()['y'] > xs[0]['y'] + xs[0]['height']        # map actions on their own row below
     page.locator('#shapes-flyout [data-flyout-trigger]').tap(); page.wait_for_timeout(300)
     menu = page.locator('#shapes-flyout .tool-flyout-menu').bounding_box()
     assert menu and menu['y'] + menu['height'] <= page.locator('#shapes-flyout').bounding_box()['y'] + 4   # menus open upward
@@ -1574,6 +1580,7 @@ def test_phone_map_toolbar_is_a_bottom_dock_that_tucks_away_sideways(pw, shared_
     tb = page.locator('#map-toolbar'); nav = page.locator('.sidebar-nav').bounding_box()
     box = tb.bounding_box()
     assert box['height'] < 60 and box['y'] + box['height'] <= nav['y'] + 1 and box['x'] >= 90, (box, nav)
+    assert abs(box['x'] + box['width'] / 2 - (98 + 844 - 10) / 2) < 6, box                         # centred in the space beside the corner buttons
     assert page.locator('[data-tool="eraser"]').is_visible()
     page.locator('#map-toolbar-toggle').tap(); page.wait_for_timeout(400)
     assert page.locator('[data-tool="eraser"]').is_hidden() and tb.bounding_box()['width'] < 120
@@ -1621,3 +1628,19 @@ def test_corner_dice_widget_rolls_shared_dice_from_any_page(pw, shared_server):
     ppage.goto(base + f'/campaigns/{cid}/dice'); assert ppage.locator('.dice-fab').count() == 0
     assert not [b for b in dbad + pbad if b[0] >= 400] and not derr and not perr, (dbad, pbad, derr, perr)
     dctx.close(); pctx.close()
+
+
+def test_character_sheet_viewer_turns_the_page_between_sheets(pw, shared_server):
+    base = shared_server.url; dm = Api(base); cid = dm.campaign('Sheets')
+    files = [('sheets', (f's{i}.png', png_bytes(600, 300, (40 * i, 80, 120)), 'image/png')) for i in range(3)]
+    dm.post(f'/campaigns/{cid}/characters/new', data={'name': 'Gallery', 'max_hp': '10'}, files=files)
+    hero = next(c['id'] for c in dm.get(f'/campaigns/{cid}/api/characters').json() if c['name'] == 'Gallery')
+    ctx = dm.context(pw, base); page = ctx.new_page(); bad, errs = _collect(page)
+    page.goto(base + f'/campaigns/{cid}/characters/{hero}'); page.wait_for_load_state('load')
+    img = page.locator('#sheet-viewer-img')
+    page.evaluate("() => { window.__turns = []; const a = HTMLElement.prototype.animate; HTMLElement.prototype.animate = function (k, o) { if (this.id === 'sheet-viewer-img') window.__turns.push([k[0].transform || '', o.duration]); return a.call(this, k, o); }; }")
+    page.locator('[data-sheet-next]').click()
+    turns = page.evaluate('window.__turns'); assert len(turns) == 1 and 'rotateY(-24deg)' in turns[0][0] and turns[0][1] == 220, turns
+    page.locator('[data-sheet-prev]').click()
+    turns = page.evaluate('window.__turns'); assert len(turns) == 2 and 'rotateY(24deg)' in turns[1][0], turns
+    assert not errs, errs; ctx.close()
