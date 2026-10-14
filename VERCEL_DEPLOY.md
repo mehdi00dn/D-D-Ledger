@@ -84,8 +84,9 @@ to Production** (instant rollback). Nothing in the database changes.
 * **Temp files.** Abandoned upload staging and large-export files pile up in `ledger-temp`.
   `python scripts/cleanup_temp.py --dry-run`, then without `--dry-run`, now and then
   (needs `SUPABASE_URL` + `SUPABASE_SECRET_KEY` in your shell).
-* **Backups.** Supabase's free plan has none. Export from the app (Campaign -> Export) or use
-  `pg_dump` with the *direct* connection string. Consider the Pro plan before real campaigns.
+* **Backups.** Supabase's own backups never include the uploaded images, and the Free plan has none at all, so use
+  `python scripts/backup.py` (database + images) and rehearse it with `python scripts/restore_drill.py`.
+  The routine, recovery steps and drill log are in [BACKUPS.md](BACKUPS.md).
 * **Free plan pauses** projects after a week of inactivity; the site then returns 503 from `/healthz`
   until you resume it in the Supabase dashboard.
 * **Schema changes.** Add `migrations/000N_name.sql`, run `python migrate.py` from a trusted

@@ -16,3 +16,6 @@ venv/
 uploads/*
 !uploads/.gitkeep
 .pytest_cache/
+
+# backups hold personal data (scripts/backup.py)
+backups/

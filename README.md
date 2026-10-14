@@ -54,6 +54,13 @@ import adds nothing. Deleting or replacing an image frees its space. Images uplo
 count as 0 bytes until you run `python scripts/backfill_storage_usage.py` once after applying migration 0021.
 The campaign settings page shows the current usage.
 
+## Backups
+
+Supabase's own backups do not cover uploaded images (and the Free plan has none at all), so the repo ships its
+own: `python scripts/backup.py` saves the database and every image, and `python scripts/restore_drill.py <backup>`
+proves the backup restores into a throw-away database and that the app runs on it. Full routine, recovery steps,
+targets and the drill log: [BACKUPS.md](BACKUPS.md).
+
 ## Deployment
 
 See [VERCEL_DEPLOY.md](VERCEL_DEPLOY.md): Supabase setup, Vercel environment variables,
@@ -96,5 +103,5 @@ internet or credentials. GitHub Actions runs it on every push and pull request.
 | `srd.py`, `dnd5e.py` | 2024 rules reference and character rules data |
 | `realtime.py`, `fog.py` | Live updates and map fog |
 | `templates/`, `static/` | Jinja templates, CSS, vanilla JS |
-| `scripts/` | Live check, temp cleanup, image optimization |
+| `scripts/` | Live check, temp cleanup, image optimization, backup and restore drill, storage-usage backfill |
 | `tests/` | Pytest suite (including Playwright browser tests) |
