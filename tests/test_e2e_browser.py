@@ -1567,7 +1567,9 @@ def test_phone_map_toolbar_is_a_bottom_dock_that_tucks_away_sideways(pw, shared_
     assert box['y'] > 844 / 2 and box['y'] + box['height'] <= nav['y'] + 1, (box, nav)
     page.mouse.wheel(0, 400); page.wait_for_timeout(300)
     assert abs(tb.bounding_box()['y'] - box['y']) < 2                                                # fixed: does not scroll away
-    assert abs(box['x'] + box['width'] / 2 - 390 / 2) < 3, box                                        # closed: centred
+    fab0 = page.locator('.dice-fab').bounding_box()                                                  # closed: the dock and the dice button share one row, edge to edge
+    assert abs(box['x'] - 12) < 2 and box['x'] + box['width'] < fab0['x'] and abs(fab0['x'] + fab0['width'] - (390 - 12)) < 2, (box, fab0)
+    assert abs((box['y'] + box['height'] / 2) - (fab0['y'] + fab0['height'] / 2)) < 3, (box, fab0)
     redo = page.locator('#redo-btn').bounding_box(); zr = page.locator('#zoom-reset-btn').bounding_box()
     assert zr['x'] - (redo['x'] + redo['width']) < 40, (redo, zr)                                      # no empty gap before Reset Zoom
     page.locator('#map-toolbar-toggle').tap(); page.wait_for_timeout(500)

@@ -53,3 +53,18 @@ def test_only_a_dm_can_use_it_and_it_is_per_campaign(make_user):
     _toggle(dm, cid, True)
     assert _row(dm, other, o2)['current_hp'] == 80                         # the other campaign is unaffected
     assert _row(dm, cid, ogre)['current_hp'] is None
+
+
+def test_preview_hides_hidden_notes_in_the_characters_list(make_user):
+    """The dossier cards on the characters page showed a hidden note to the DM who made the NPC, even in player view."""
+    import json
+    dm, player, cid, ogre, hero = _setup(make_user)
+    secret = 'only-the-dm-should-read-this'
+    dm.new_character(cid, name='Lich', is_npc='on', notes=json.dumps(['shared-lore', {'t': secret, 'h': 1}]))
+    assert secret in dm.get(f'/campaigns/{cid}/characters').get_data(as_text=True)          # normal DM view
+    _toggle(dm, cid, True)
+    page = dm.get(f'/campaigns/{cid}/characters').get_data(as_text=True)
+    assert secret not in page and 'shared-lore' in page
+    assert secret not in player.get(f'/campaigns/{cid}/characters').get_data(as_text=True)
+    _toggle(dm, cid, False)
+    assert secret in dm.get(f'/campaigns/{cid}/characters').get_data(as_text=True)

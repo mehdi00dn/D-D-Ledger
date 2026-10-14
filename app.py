@@ -1199,6 +1199,7 @@ def notes_plain_preview(raw, show_hidden=False):
 
 
 app.jinja_env.filters['notes_preview'] = notes_plain_preview
+app.jinja_env.globals['can_see_hidden_notes'] = can_see_hidden_notes
 app.jinja_env.filters['preview_lines'] = preview_lines
 
 

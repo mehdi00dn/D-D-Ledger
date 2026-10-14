@@ -4234,3 +4234,42 @@ body.has-dice-fab .modifier-hint { right: 80px; max-width: calc(100vw - 100px); 
   .bars-hidden .dice-widget, :root.bars-hidden body.dice-fab-above-dock .dice-widget { inset-block-end: calc(8px + 58px + env(safe-area-inset-bottom)); }
   body:has(.map-toolbar.is-open) .dice-fab { opacity: 1; pointer-events: auto; }                 /* the open toolbar stops short of it */
 }
+
+
+/* ---- phone held upright, map: the tools dock and the dice button share one row, edge to edge, and the dice tray
+   is as wide as the screen allows.  (The dock used to float in the middle with the dice button stacked above it.) ---- */
+@media (max-width: 880px) and (orientation: portrait), (max-width: 880px) and (min-height: 501px) {
+  :root { --row-gap: 8px; --fab: 48px; }
+  body.dice-fab-above-dock .map-toolbar {
+    inset-inline: 12px calc(12px + var(--fab) + var(--row-gap)); width: auto; max-width: none; margin: 0;
+    justify-content: space-between; min-height: var(--fab); box-sizing: border-box;
+    bottom: calc(var(--bar-h, 0px) + var(--row-gap) + env(safe-area-inset-bottom));
+  }
+  body.dice-fab-above-dock .map-toolbar.is-open { width: auto; margin-inline: 0; }
+  body.dice-fab-above-dock .dice-fab {
+    inset-inline-end: 12px; inset-block-end: calc(var(--bar-h, 0px) + var(--row-gap) + env(safe-area-inset-bottom));
+  }
+  body.dice-fab-above-dock:has(.map-toolbar.is-open) .dice-fab { opacity: 1; pointer-events: auto; }   /* it sits beside the open tray, not under it */
+  .bars-hidden .map-toolbar, :root.bars-hidden body.dice-fab-above-dock .map-toolbar { bottom: calc(var(--row-gap) + env(safe-area-inset-bottom)); }
+  .bars-hidden .dice-fab, :root.bars-hidden body.dice-fab-above-dock .dice-fab { inset-block-end: calc(var(--row-gap) + env(safe-area-inset-bottom)); }
+  /* the tray opens just above the button, as wide as the page minus a 12px margin each side */
+  .dice-widget, body.dice-fab-above-dock .dice-widget {
+    inset-inline-end: 12px; width: min(420px, calc(100vw - 24px)); max-width: none; box-sizing: border-box;
+    inset-block-end: calc(var(--bar-h, 0px) + var(--row-gap) + var(--fab) + 10px + env(safe-area-inset-bottom));
+  }
+  .bars-hidden .dice-widget, :root.bars-hidden body.dice-fab-above-dock .dice-widget { inset-block-end: calc(var(--row-gap) + var(--fab) + 10px + env(safe-area-inset-bottom)); }
+  .dice-widget .dw-result { min-height: 52px; }
+  .dice-widget .dw-total { min-height: 34px; }
+  body:has(.map-toolbar.is-open) #nav-hint, body:has(.map-toolbar.is-open) .modifier-hint,
+  body:has(.dice-widget.is-open) #nav-hint, body:has(.dice-widget.is-open) .modifier-hint { opacity: 0; pointer-events: none; }   /* no note behind an open tray */
+  .modifier-hint, #nav-hint, body.has-dice-fab .modifier-hint { right: 12px; left: 12px; max-width: none; margin-inline: auto; width: fit-content; }
+  .modifier-hint, #nav-hint { bottom: calc(var(--bar-h, 0px) + var(--row-gap) + var(--fab) + 12px + env(safe-area-inset-bottom)); }
+  .bars-hidden .modifier-hint, .bars-hidden #nav-hint { bottom: calc(var(--row-gap) + var(--fab) + 12px + env(safe-area-inset-bottom)); }
+  .map-content-area { padding-bottom: calc(var(--fab) + var(--row-gap) + 14px); }
+}
+@media (max-width: 400px) and (orientation: portrait) {
+  body.dice-fab-above-dock .map-toolbar { gap: 4px; padding-inline: 5px; }
+  body.dice-fab-above-dock .map-toolbar .map-tool-group-persistent { flex-wrap: nowrap; gap: 4px; }
+  body.dice-fab-above-dock #zoom-level-label { display: none; }                                  /* the number only; Reset Zoom stays */
+  body.dice-fab-above-dock #zoom-reset-btn { padding-inline: 8px; }
+}
