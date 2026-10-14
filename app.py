@@ -28,6 +28,7 @@ import fog
 import dnd5e
 import srd
 import importer
+import quotas
 from storage import get_storage, StorageError, UPLOADS, TEMP
 from database import get_db, init_db, init_app as init_database_app, UniqueViolation
 
@@ -523,6 +524,8 @@ def campaign_new():
         campaign_id = cur.lastrowid
         db.execute('INSERT INTO campaign_members (campaign_id, user_id, role, status) VALUES (?, ?, ?, ?)',
                    (campaign_id, session['user_id'], 'owner', 'dm'))
+        if avatar_path:                                             # the cover image now belongs to this campaign's quota
+            db.execute('UPDATE stored_files SET campaign_id = ? WHERE key = ?', (campaign_id, avatar_path))
         db.commit()
         db.close()
         session['last_campaign_id'] = campaign_id
@@ -584,11 +587,12 @@ def campaign_edit():
                (expires_at <= ''' + _UTC_NOW + ''') AS expired
         FROM campaign_invite_links WHERE campaign_id = ? ORDER BY id DESC LIMIT 15
     ''', (g.campaign_id,)).fetchall() if g.campaign_role == 'owner' and campaign['access_mode'] == 'invite_link' else []
+    storage = quotas.summary(db, session['user_id'], g.campaign_id)
     db.close()
     new_invite_link = session.pop('new_invite_link', None) if g.campaign_role == 'owner' else None
     setting_preset, setting_custom = _split_campaign_setting(campaign['setting'])
     return render_template('campaign_form.html', campaign=campaign, members=members, invitations=invitations,
-                            invite_links=invite_links, new_invite_link=new_invite_link,
+                            invite_links=invite_links, new_invite_link=new_invite_link, storage=storage,
                             setting_preset=setting_preset, setting_custom=setting_custom)
 
 
@@ -1056,6 +1060,7 @@ def campaign_delete():
     db.execute('DELETE FROM groups WHERE campaign_id = ?', (g.campaign_id,))
     db.execute('DELETE FROM maps WHERE campaign_id = ?', (g.campaign_id,))
     db.execute('DELETE FROM campaign_members WHERE campaign_id = ?', (g.campaign_id,))
+    db.execute('DELETE FROM stored_files WHERE campaign_id = ?', (g.campaign_id,))
     db.execute('DELETE FROM campaigns WHERE id = ?', (g.campaign_id,))
     db.commit()
     db.close()
@@ -1241,6 +1246,16 @@ def _read_upload_source(file_storage=None, direct_key=None):
     return file_storage.read(), None
 
 
+def _put_upload(key, processed, kind):
+    """Store one processed image if the user's and the campaign's quota allow it, and record its size.
+    The ledger row joins the request's transaction (committed with the record that points at the file)."""
+    db = get_db()
+    uid, cid = session.get('user_id'), g.get('campaign_id')
+    quotas.check(db, uid, cid, len(processed.data))                       # raises QuotaExceeded before anything is written
+    get_storage().put(UPLOADS, key, processed.data, processed.content_type)
+    quotas.record(db, key, uid, cid, kind, len(processed.data))
+
+
 def _store_image(data, subfolder, cap_dimension=None):
     """Validate + store; returns Stored or None when the file is not an acceptable image."""
     try:
@@ -1248,7 +1263,7 @@ def _store_image(data, subfolder, cap_dimension=None):
     except images.ImageError:
         return None
     key = f"{subfolder}/{uuid.uuid4().hex}.{p.ext}"
-    get_storage().put(UPLOADS, key, p.data, p.content_type)
+    _put_upload(key, p, subfolder)
     return Stored(key, p.width, p.height)
 
 
@@ -1288,6 +1303,7 @@ def save_upload_field(field, subfolder):
 
 def delete_upload(rel_path):
     if rel_path:
+        quotas.forget(get_db(), [rel_path])       # frees the quota with the caller's commit
         try:
             get_storage().delete(UPLOADS, rel_path)
         except StorageError:
@@ -1297,6 +1313,7 @@ def delete_upload(rel_path):
 def delete_uploads(paths):
     paths = [p for p in paths if p]
     if paths:
+        quotas.forget(get_db(), paths)
         try:
             get_storage().delete_many(UPLOADS, paths)
         except StorageError:
@@ -1307,7 +1324,7 @@ def _generate_blank_canvas(width, height):
     """Create a plain white PNG for maps without a background image; returns its key."""
     p = images.blank_canvas(width, height)
     key = f"maps/{uuid.uuid4().hex}.png"
-    get_storage().put(UPLOADS, key, p.data, p.content_type)
+    _put_upload(key, p, 'maps')
     return key
 
 
@@ -1347,6 +1364,11 @@ def upload_sign():
         return jsonify({'error': 'file too large (limit %d MB)' % (max_bytes // (1024 * 1024))}), 413
     if (data.get('content_type') or 'application/octet-stream') not in allowed_types:
         return jsonify({'error': 'unsupported file type'}), 415
+    if purpose != 'import':
+        try:
+            quotas.check(get_db(), session['user_id'], None)             # already full: say so before the file travels
+        except quotas.QuotaExceeded as exc:
+            return jsonify({'error': str(exc)}), 413
     key = f"tmp/{session['user_id']}/{uuid.uuid4().hex}"
     target = get_storage().create_upload_target(TEMP, key, data.get('content_type'), max_bytes)
     return jsonify({'key': key, 'upload': target})
@@ -1478,6 +1500,19 @@ def security_headers(resp):
 def bad_input(exc):
     app.logger.warning('rejected malformed input on %s %s: %s: %s', request.method, request.path, type(exc).__name__, exc)
     return _reject_request('The submitted data was not valid.', 400)
+
+
+@app.errorhandler(quotas.QuotaExceeded)
+def quota_exceeded(exc):
+    """A storage limit was reached: nothing was saved.  Pages get their own banner back, JSON callers the message."""
+    app.logger.info('quota refused on %s %s: %s', request.method, request.path, exc.scope)
+    if _wants_json():
+        return jsonify({'error': str(exc)}), 413
+    ref = urlparse(request.referrer or '')
+    if request.method == 'POST' and ref.netloc == request.host and ref.path:
+        sep = '&' if ref.query else '?'
+        return redirect(f"{ref.path}{'?' + ref.query if ref.query else ''}{sep}quota_error={exc.scope}")
+    return Response(str(exc), status=413, mimetype='text/plain')
 
 
 @app.errorhandler(StorageError)
@@ -3160,6 +3195,12 @@ def import_data():
 
     # Upload every queued image (in parallel) BEFORE committing, so a storage failure
     # rolls the whole import back instead of leaving rows that point at missing files.
+    try:
+        quotas.check(db, session['user_id'], g.campaign_id, sum(len(p.data) for _, p in pending))
+    except quotas.QuotaExceeded:
+        db.rollback()
+        db.close()
+        return redirect(url_for(dest, import_error='quota'))
     st = get_storage()
     try:
         with ThreadPoolExecutor(6) as pool:
@@ -3172,6 +3213,8 @@ def import_data():
         except StorageError:
             pass
         raise
+    for key, processed in pending:
+        quotas.record(db, key, session['user_id'], g.campaign_id, key.split('/')[0], len(processed.data))
     db.commit()
     db.close()
 

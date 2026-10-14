@@ -28,7 +28,9 @@
 {% if request.args.get('imported') %}
 <div class="banner-notice banner-success">Import complete — new characters and factions have been added.</div>
 {% endif %}
-{% if request.args.get('import_error') %}
+{% if request.args.get('import_error') == 'quota' %}
+<div class="banner-notice banner-error">That import would pass this campaign's or your image storage limit, so nothing was imported. Free some space (delete images you no longer need) or import a smaller file.</div>
+{% elif request.args.get('import_error') %}
 <div class="banner-notice banner-error">That file couldn't be read as a Campaign Ledger export. Make sure you're uploading a .zip created by the Export button.</div>
 {% endif %}
 

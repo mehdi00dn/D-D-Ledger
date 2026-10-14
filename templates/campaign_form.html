@@ -123,6 +123,11 @@
   {% endif %}
 </form>
 
+{% if campaign and storage %}
+{% macro mb(n) %}{{ '%.1f'|format(n / 1048576) }} MB{% endmacro %}
+<p class="hint-text" id="storage-usage">Image storage: this campaign {{ mb(storage.campaign[0]) }}{% if storage.campaign[1] %} of {{ mb(storage.campaign[1]) }}{% endif %} &middot; your account {{ mb(storage.user[0]) }}{% if storage.user[1] %} of {{ mb(storage.user[1]) }}{% endif %}</p>
+{% endif %}
+
 {% if campaign %}
 {% set owner_count = members|selectattr('role', 'equalto', 'owner')|list|length %}
 {% set can_leave_freely = not is_owner or owner_count > 1 %}

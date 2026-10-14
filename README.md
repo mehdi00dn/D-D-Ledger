@@ -43,6 +43,17 @@ Open **http://127.0.0.1:5000**. Uploads go to `./uploads` locally (no Supabase n
   Storage in the cloud (private buckets), or `uploads/` in development. The database keeps
   only the file keys, and images are served through the app behind login.
 
+## Upload limits
+
+Images are re-encoded before they are stored, and what is kept is counted per user and per campaign
+(table `stored_files`, module `quotas.py`). Defaults: **150 MB per user**, **300 MB per campaign**; the
+existing per-file caps (avatar 8 MB, sheet 25 MB, map 30 MB, import ZIP 50 MB) still apply. Change them with
+`LEDGER_QUOTA_USER_MB` and `LEDGER_QUOTA_CAMPAIGN_MB` (`0` turns a limit off). The server refuses an upload
+that would pass a limit, saves nothing and shows a banner; imports are checked as a whole, so a refused
+import adds nothing. Deleting or replacing an image frees its space. Images uploaded before quotas existed
+count as 0 bytes until you run `python scripts/backfill_storage_usage.py` once after applying migration 0021.
+The campaign settings page shows the current usage.
+
 ## Deployment
 
 See [VERCEL_DEPLOY.md](VERCEL_DEPLOY.md): Supabase setup, Vercel environment variables,
@@ -79,7 +90,7 @@ internet or credentials. GitHub Actions runs it on every push and pull request.
 | --- | --- |
 | `app.py` | Flask app: routes, auth, authorization |
 | `database.py`, `migrations/`, `migrate.py` | Postgres access and versioned schema |
-| `storage.py`, `images.py` | Object storage and image validation/optimization |
+| `storage.py`, `images.py`, `quotas.py` | Object storage, image validation/optimization, upload quotas |
 | `security.py` | CSRF, rate limiting, sanitization helpers |
 | `observability.py` | Structured logs, request ids, error handling, optional Sentry |
 | `srd.py`, `dnd5e.py` | 2024 rules reference and character rules data |

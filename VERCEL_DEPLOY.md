@@ -103,6 +103,11 @@ to Production** (instant rollback). Nothing in the database changes.
   `X-Request-ID` response header and in the reference shown on an error page, so search the logs for it to find the
   stack trace. `/healthz` is the uptime-check URL. Optional Sentry: set `SENTRY_DSN` and add `sentry-sdk` to
   `requirements.in`, recompile the lock file, redeploy.
+* **Upload quotas.** Defaults are 150 MB of stored images per user and 300 MB per campaign (Supabase Free holds 1 GB
+  in total, so size them against your plan). Override with `LEDGER_QUOTA_USER_MB` / `LEDGER_QUOTA_CAMPAIGN_MB` in
+  Vercel (`0` = off) and redeploy. After applying migration 0021 run `python scripts/backfill_storage_usage.py`
+  once (use `--dry-run` first) so images uploaded earlier are counted. Browsers still upload large files straight
+  to Supabase; the server checks the quota again when it processes the staged file, so the limit cannot be skipped.
 * **Keys.** Never paste `DATABASE_URL` or Supabase keys into chat, issues, or git. If one leaks,
   rotate it in Supabase and update Vercel, then redeploy.
 

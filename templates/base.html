@@ -136,6 +136,9 @@
       </form>
     </div>
     {% endif %}
+    {% if request.args.get('quota_error') %}
+    <div class="banner-notice banner-error" role="alert">{{ 'This campaign\'s image storage is full, so the image was not saved. Delete images you no longer need and try again.' if request.args.get('quota_error') == 'campaign' else 'Your upload storage is full, so the image was not saved. Delete images you no longer need and try again.' }}</div>
+    {% endif %}
     {% block content %}{% endblock %}
   </main>
 </div>

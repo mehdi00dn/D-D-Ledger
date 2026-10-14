@@ -468,7 +468,7 @@ def test_invite_link_options_appear_live_when_the_access_mode_changes(pw, shared
     page.click('label.access-option:has(input[value=private])')
     assert page.is_hidden('#invite-links')
     page.click('label.access-option:has(input[value=invite_link])')
-    page.screenshot(path='/tmp/invite_links_unsaved.png', clip=page.locator('#invite-links').bounding_box())
+    page.locator('#invite-links').screenshot(path='/tmp/invite_links_unsaved.png')
 
     # Create a link straight away: no page navigation, the link appears in place, and the mode is now saved.
     marker = page.evaluate("window.__marker = 'same-page'")
@@ -480,7 +480,7 @@ def test_invite_link_options_appear_live_when_the_access_mode_changes(pw, shared
     page.wait_for_selector('[data-invite-link-row]:has-text("0 / 3 used")')
     assert q_mode(cid) == 'invite_link'
     page.wait_for_timeout(600)
-    page.screenshot(path='/tmp/invite_links_saved.png', clip=page.locator('#invite-links').bounding_box())
+    page.locator('#invite-links').screenshot(path='/tmp/invite_links_saved.png')
 
     # a second link stacks on top, and the revoke button on the freshly-added row works
     page.click('#invite-link-form button[type=submit]'); page.locator('[data-invite-link-row]').nth(1).wait_for()
