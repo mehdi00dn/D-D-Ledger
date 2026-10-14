@@ -1795,3 +1795,47 @@ def test_battle_page_shows_turn_rank_and_gives_hit_and_heal_feedback(pw, shared_
     page.click('#sort-toggle [data-sort="group"]'); page.wait_for_timeout(300)
     assert page.locator('.battle-rank').count() == 0
     assert not errs, errs; ctx.close()
+
+
+@pytest.mark.parametrize('size', [(390, 844), (360, 640), (844, 390), (667, 375)])
+def test_phone_grid_settings_lightbox_fits_and_the_grid_drags_by_touch(pw, shared_server, size):
+    base = shared_server.url; dm = Api(base); cid = dm.campaign('Lightbox')
+    r = dm.post(f'/campaigns/{cid}/maps/new', data={'name': 'Hall', 'blank_width': '1000', 'blank_height': '700'})
+    mid = int(re.search(r'/maps/(\d+)', r.headers['Location']).group(1))
+    w, h = size
+    ctx = _touch_context(pw, dm, base, w, h); page = ctx.new_page(); bad, errs = _collect(page)
+    page.goto(base + f'/campaigns/{cid}/maps/{mid}'); page.wait_for_load_state('load'); page.wait_for_timeout(800)
+
+    def check_fits(label):
+        for sel in ('.map-setup-stack', '.map-setup-preview-box', '#setup-preview-canvas', '.map-setup-bar', '#setup-confirm-btn'):
+            box = page.locator(sel).bounding_box()
+            assert box and box['x'] >= -1 and box['y'] >= -1 and box['x'] + box['width'] <= w + 1 and box['y'] + box['height'] <= h + 1, (label, sel, box)
+        conf = page.locator('#setup-confirm-btn').bounding_box()
+        assert conf['height'] >= 40, (label, conf)                                    # a finger-sized Confirm
+        canvas = page.locator('#setup-preview-canvas').bounding_box()
+        assert canvas['width'] > 120 and canvas['height'] > 90, (label, canvas)       # the preview is still usable
+
+    check_fits('first open')
+    # dragging the preview with a finger moves the grid
+    box = page.locator('#setup-preview-canvas').bounding_box()
+    x, y = box['x'] + box['width'] / 2, box['y'] + box['height'] / 2
+    before = page.evaluate("() => document.getElementById('setup-preview-canvas').toDataURL()")
+    cdp = ctx.new_cdp_session(page)
+    cdp.send('Input.dispatchTouchEvent', {'type': 'touchStart', 'touchPoints': [{'x': x, 'y': y}]})
+    for i in range(1, 8):
+        cdp.send('Input.dispatchTouchEvent', {'type': 'touchMove', 'touchPoints': [{'x': x + i * 5, 'y': y + i * 3}]})
+    cdp.send('Input.dispatchTouchEvent', {'type': 'touchEnd', 'touchPoints': []})
+    page.wait_for_timeout(200)
+    assert page.evaluate("() => document.getElementById('setup-preview-canvas').toDataURL()") != before
+    page.locator('#setup-confirm-btn').tap(); page.wait_for_timeout(500)
+    assert not page.locator('#map-setup-overlay').is_visible()
+    # reopened from the toolbar: same fit, now with the close button inside the screen
+    page.evaluate("() => document.getElementById('grid-settings-btn').click()"); page.wait_for_timeout(500)
+    check_fits('reopened')
+    close = page.locator('#setup-close-btn').bounding_box()
+    assert close and close['width'] >= 40 and 0 <= close['x'] and close['x'] + close['width'] <= w and 0 <= close['y'], close
+    page.locator('#setup-close-btn').tap(); page.wait_for_timeout(300)
+    assert not page.locator('#map-setup-overlay').is_visible()
+    assert not [b for b in bad if b[0] >= 400], bad
+    assert not errs, errs
+    ctx.close()

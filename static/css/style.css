@@ -2612,7 +2612,7 @@ body.page-leaving .content {
   max-width: 100%;
   max-height: 62vh;
 }
-.map-setup-close-btn {
+.map-setup-preview-box .map-setup-close-btn {
   position: absolute;
   top: 10px;
   right: 10px;
@@ -4273,3 +4273,62 @@ body.has-dice-fab .modifier-hint { right: 80px; max-width: calc(100vw - 100px); 
   body.dice-fab-above-dock #zoom-level-label { display: none; }                                  /* the number only; Reset Zoom stays */
   body.dice-fab-above-dock #zoom-reset-btn { padding-inline: 8px; }
 }
+
+/* ---- Grid & Canvas Settings lightbox on phones ------------------------------------------
+   The stack fills the visible viewport (dvh, safe areas) instead of guessing with vh; the
+   preview takes whatever room the controls leave and letterboxes the map inside it (contain),
+   the controls scroll if they must and Confirm stays reachable.  Landscape puts them side by
+   side because there is no vertical room for both.  */
+@media (max-width: 880px) {
+  .map-setup-overlay {
+    inset: 0 0 auto 0; height: 100vh; height: 100dvh; box-sizing: border-box;
+    padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right))
+             max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+  }
+  .map-setup-stack {
+    width: 100%; height: 100%; max-width: 560px; max-height: none; min-height: 0; gap: 10px;
+    animation: map-setup-sheet-in 0.26s var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));
+  }
+  .map-setup-preview-box {
+    flex: 1 1 0; min-height: 0; min-width: 0; width: 100%; max-height: none; box-sizing: border-box;
+    display: flex; align-items: center; justify-content: center; padding: 8px;
+  }
+  .map-setup-preview-box canvas {
+    width: 100%; height: 100%; max-width: 100%; max-height: 100%; min-width: 0; min-height: 0;
+    object-fit: contain; background: transparent; border-radius: 0; touch-action: none;
+    -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+  }
+  .map-setup-preview-box .map-setup-close-btn { top: 8px; right: 8px; width: 44px; height: 44px; min-width: 44px; }
+  .map-setup-drag-hint { flex: none; font-size: 12px; }
+  .map-setup-bar {
+    flex: 0 1 auto; min-height: 0; width: 100%; box-sizing: border-box; overflow-y: auto; overscroll-behavior: contain;
+    display: grid; grid-template-columns: 1fr 1fr; align-items: center; gap: 4px 14px; padding: 14px 16px;
+    justify-content: stretch;
+  }
+  .map-setup-title { grid-column: 1 / -1; font-size: 12px; text-align: center; padding-bottom: 4px; order: 0; }
+  .map-setup-bar > label:has(#setup-grid-visible) { order: 1; }
+  .map-setup-bar > label:has(#setup-snap-grid) { order: 2; }
+  .map-setup-slider-group { order: 3; }
+  .map-setup-color-group { order: 4; grid-column: 1 / -1; }
+  .map-setup-bar > label:has(#setup-fog-toggle) { order: 5; grid-column: 1 / -1; }
+  .map-setup-bar .btn-primary { order: 6; }
+  .map-setup-bar .field-checkbox { min-height: 44px; margin: 0; }
+  .map-setup-slider-group { grid-column: 1 / -1; min-height: 44px; }
+  .map-setup-slider-group input[type="range"] { flex: 1; min-width: 0; }
+  .map-setup-color-group { gap: 6px; min-height: 44px; }
+  .grid-color-swatch { width: 32px; height: 32px; margin: 0 2px; }
+  .map-setup-bar .btn-primary { grid-column: 1 / -1; min-height: 46px; width: 100%; justify-content: center; position: sticky; bottom: 0; margin-top: 4px; }
+}
+@keyframes map-setup-sheet-in { from { opacity: 0; transform: translateY(12px) scale(0.98); } to { opacity: 1; transform: none; } }
+
+@media (max-width: 880px) and (max-height: 500px) {
+  .map-setup-overlay { padding: max(8px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); }
+  .map-setup-stack { max-width: none; flex-direction: row; align-items: stretch; gap: 10px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 340px); grid-template-rows: minmax(0, 1fr) auto; }
+  .map-setup-preview-box { grid-column: 1; grid-row: 1 / span 2; width: auto; }
+  .map-setup-drag-hint { display: none; }
+  .map-setup-bar { grid-column: 2; grid-row: 1 / span 2; grid-template-columns: 1fr; align-content: start; gap: 0; padding: 10px 14px; }
+  .map-setup-title { text-align: start; padding: 0 0 2px; }
+  .map-setup-bar .field-checkbox, .map-setup-slider-group, .map-setup-color-group { min-height: 40px; }
+  .map-setup-bar .btn-primary { margin-top: 6px; }
+}
+@media (prefers-reduced-motion: reduce) { .map-setup-stack { animation: none; } }

@@ -2541,22 +2541,31 @@
   // Hold and drag on the preview to move the grid without leaving the
   // lightbox — dragging in preview-pixel space is converted back to
   // natural-image pixels since the preview is downscaled.
+  // Pointer events so a finger works as well as a mouse; the canvas is letterboxed
+  // (object-fit: contain) on phones, so the drag scale uses the drawn image width, not the element's.
   let previewDrag = null;
-  previewCanvas.addEventListener('mousedown', (e) => {
-    previewDrag = { startX: e.clientX, startY: e.clientY, origOffsetX: gridOffsetX, origOffsetY: gridOffsetY };
-  });
-  window.addEventListener('mousemove', (e) => {
-    if (!previewDrag) return;
+  function previewDrawnWidth() {
     const rect = previewCanvas.getBoundingClientRect();
-    const scale = naturalWidth / rect.width;
+    const ratio = previewCanvas.width / previewCanvas.height;
+    return Math.max(1, Math.min(rect.width, rect.height * ratio));
+  }
+  previewCanvas.addEventListener('pointerdown', (e) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    previewDrag = { id: e.pointerId, startX: e.clientX, startY: e.clientY, origOffsetX: gridOffsetX, origOffsetY: gridOffsetY };
+    try { previewCanvas.setPointerCapture(e.pointerId); } catch (_) { /* not capturable: window listeners still work */ }
+    e.preventDefault();
+  });
+  window.addEventListener('pointermove', (e) => {
+    if (!previewDrag || e.pointerId !== previewDrag.id) return;
+    const scale = naturalWidth / previewDrawnWidth();
     gridOffsetX = previewDrag.origOffsetX + (e.clientX - previewDrag.startX) * scale;
     gridOffsetY = previewDrag.origOffsetY + (e.clientY - previewDrag.startY) * scale;
     drawSetupPreview();
     redraw();
   });
-  window.addEventListener('mouseup', () => {
-    previewDrag = null;
-  });
+  const endPreviewDrag = (e) => { if (previewDrag && e.pointerId === previewDrag.id) previewDrag = null; };
+  window.addEventListener('pointerup', endPreviewDrag);
+  window.addEventListener('pointercancel', endPreviewDrag);
 
   // The image may still be loading when the overlay first appears.
   const prevOnLoad = bgImage.onload;
