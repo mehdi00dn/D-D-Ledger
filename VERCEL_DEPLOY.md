@@ -99,6 +99,10 @@ to Production** (instant rollback). Nothing in the database changes.
   Step, or turn Preview Deployments off); and clear old ones in bulk with
   `vercel remove d-d-ledger --safe --yes` (`--safe` skips anything that has an alias, i.e. what is live).
   Deploy in batches rather than once per small change.
+* **Logs and errors.** Runtime logs (Vercel -> Logs) are JSON lines with a `request_id`; the same id is in the
+  `X-Request-ID` response header and in the reference shown on an error page, so search the logs for it to find the
+  stack trace. `/healthz` is the uptime-check URL. Optional Sentry: set `SENTRY_DSN` and add `sentry-sdk` to
+  `requirements.in`, recompile the lock file, redeploy.
 * **Keys.** Never paste `DATABASE_URL` or Supabase keys into chat, issues, or git. If one leaks,
   rotate it in Supabase and update Vercel, then redeploy.
 

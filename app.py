@@ -20,6 +20,7 @@ import psycopg.errors as pgerr
 from markupsafe import Markup
 import security
 import realtime
+import observability
 from concurrent.futures import ThreadPoolExecutor
 from flask import Response
 import images
@@ -32,6 +33,7 @@ from database import get_db, init_db, init_app as init_database_app, UniqueViola
 
 
 app = Flask(__name__)
+observability.init_app(app)
 
 
 # ---------------- SECURITY CONFIGURATION ----------------
