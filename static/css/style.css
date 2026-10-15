@@ -401,17 +401,29 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
 .campaign-edit-side > .hint-text { margin: 0; padding-inline: 4px; }
 .campaign-switcher:hover { background: rgba(201,162,75,0.08); color: var(--parchment); border-color: var(--hairline-strong); }
 .campaign-switcher-name {
-  flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 140px;
-  opacity: 1;
+}
+/* the campaign's name and a "Change campaign" prompt share one spot; hovering swaps them (and the icon) */
+.cs-icons { display: grid; width: 15px; height: 15px; flex-shrink: 0; }
+.cs-icons svg { grid-area: 1 / 1; transition: opacity 0.16s var(--ease-out), transform 0.16s var(--ease-out); }
+.cs-icon-hover { opacity: 0; transform: scale(0.9); }
+.cs-labels {
+  display: grid; flex: 1; min-width: 0; max-width: 140px; opacity: 1;
   transition: opacity 0.18s ease, max-width 0.32s cubic-bezier(0.4, 0, 0.2, 1);
 }
+.cs-labels > span { grid-area: 1 / 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: opacity 0.16s var(--ease-out); }
+.cs-hover { opacity: 0; }
+@media (hover: hover) {
+  .campaign-switcher:hover .cs-icon-rest, .campaign-switcher:focus-visible .cs-icon-rest { opacity: 0; transform: scale(0.9); }
+  .campaign-switcher:hover .cs-icon-hover, .campaign-switcher:focus-visible .cs-icon-hover { opacity: 1; transform: none; }
+  .campaign-switcher:hover .campaign-switcher-name, .campaign-switcher:focus-visible .campaign-switcher-name { opacity: 0; }
+  .campaign-switcher:hover .cs-hover, .campaign-switcher:focus-visible .cs-hover { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) { .cs-icons svg { transition: opacity 0.01s; transform: none !important; } }
 :root[data-sidebar="collapsed"] .campaign-switcher { justify-content: center; gap: 0; padding: 9px 0; }
-:root[data-sidebar="collapsed"] .campaign-switcher-name,
-:root[data-sidebar="collapsed"] .campaign-switcher svg:last-child { opacity: 0; max-width: 0; }
+:root[data-sidebar="collapsed"] .cs-labels { opacity: 0; max-width: 0; }
 
 .sidebar-foot { margin-top: auto; padding: 0 6px; transition: padding 0.32s cubic-bezier(0.4, 0, 0.2, 1); }
 :root[data-sidebar="collapsed"] .sidebar-foot { padding: 0; }

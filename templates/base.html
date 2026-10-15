@@ -43,13 +43,13 @@
         {{ icon('sidebar-collapse') }}
       </button>
     </div>
-    {% if g.campaign_id %}<a href="{{ url_for('campaigns_list') }}" class="campaign-chip-top" title="Switch campaign">{{ icon('scroll') }}<span>{{ g.campaign.name }}</span></a>{% endif %}
+    {% if g.campaign_id %}<a href="{{ url_for('campaigns_list') }}" class="campaign-chip-top" title="Change campaign">{{ icon('scroll') }}<span>{{ g.campaign.name }}</span></a>{% endif %}
 
     <nav class="sidebar-nav">
       {% if g.campaign_id %}
-      <a href="{{ url_for('campaigns_list') }}" class="campaign-switcher" title="Switch campaign">
-        {{ icon('scroll') }}
-        <span class="campaign-switcher-name">{{ g.campaign.name }}</span>
+      <a href="{{ url_for('campaigns_list') }}" class="campaign-switcher" title="Change campaign" aria-label="Change campaign (current: {{ g.campaign.name }})">
+        <span class="cs-icons" aria-hidden="true">{{ icon('scroll', 'cs-icon-rest') }}{{ icon('swap', 'cs-icon-hover') }}</span>
+        <span class="cs-labels" aria-hidden="true"><span class="campaign-switcher-name">{{ g.campaign.name }}</span><span class="cs-hover">Change campaign</span></span>
       </a>
       <a href="{{ url_for('characters_list') }}" class="nav-tab {{ 'active' if active_page == 'characters' else '' }}" title="Characters">
         {{ icon('scroll-text') }}<span>Characters</span>
@@ -166,7 +166,7 @@
       <button type="submit" class="more-link {{ 'active' if g.previewing else '' }}">{{ icon('eye') }}<span>{{ 'Exit player view' if g.previewing else 'View as player' }}</span></button>
     </form>
     {% endif %}
-    <a href="{{ url_for('campaigns_list') }}" class="more-link">{{ icon('scroll') }}<span>Switch campaign</span></a>
+    <a href="{{ url_for('campaigns_list') }}" class="more-link">{{ icon('swap') }}<span>Change campaign</span></a>
   </div>
   {% endif %}
   <div class="more-quick">
