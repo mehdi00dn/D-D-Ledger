@@ -95,6 +95,11 @@ internet or credentials. GitHub Actions runs it on every push and pull request.
 `tests/test_observability.py` needs no database
 (`pytest --noconftest tests/test_observability.py`).
 
+A second workflow (`.github/workflows/srd-contract.yml`) runs nightly and fetches one spell, monster, equipment
+item and magic item from the real 2024 5e API through `scripts/check_srd_contract.py`. If dnd5eapi.co renames or
+drops a field the job fails and lists what changed (the normal tests fake the API and would not notice). Run it by
+hand with `python scripts/check_srd_contract.py`, or from the Actions tab (Run workflow).
+
 ## Project layout
 
 | Path | Purpose |
