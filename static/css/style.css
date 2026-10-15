@@ -1420,11 +1420,11 @@ body.page-leaving .content {
 .battle-row {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 12px;
   background: var(--bg-panel);
   border: 1px solid var(--hairline);
   border-radius: var(--radius-m);
-  padding: 12px 16px 12px 14px;
+  padding: 10px 14px 10px 12px;
   flex-wrap: wrap;
   position: relative;
   transition: opacity 0.2s ease, filter 0.2s ease, background-color 0.4s ease, border-color 0.4s ease, box-shadow 0.25s var(--ease-out);
@@ -1555,7 +1555,7 @@ body.page-leaving .content {
   color: var(--parchment-faint);
 }
 .stat-chip-input {
-  width: 48px;
+  width: 40px;
   text-align: center;
   background: var(--bg-panel-inset);
   border: 1px solid var(--hairline);
@@ -1563,8 +1563,8 @@ body.page-leaving .content {
   color: var(--brass-bright);
   font-family: var(--font-mono);
   font-weight: 600;
-  font-size: 13px;
-  padding: 5px 4px;
+  font-size: 12.5px;
+  padding: 4px 2px;
 }
 .stat-chip-input:focus { border-color: var(--brass); outline: none; }
 .stat-chip-input:disabled { opacity: 0.4; }
@@ -1574,10 +1574,9 @@ body.page-leaving .content {
   align-items: center;
   gap: 10px;
   flex-shrink: 0;
-  min-width: 190px;
 }
 .hp-bar-track {
-  width: 130px;
+  width: 110px;
   height: 16px;
   background: var(--bg-panel-inset);
   border: 1px solid var(--hairline);
@@ -1632,6 +1631,10 @@ body.page-leaving .content {
   font-size: 12px;
   color: var(--parchment);
   white-space: nowrap;
+  /* fixed width so "70 / 70" and "105 / 105" rows line up (a changing number must not move the columns) */
+  min-width: 9.5ch;
+  text-align: start;
+  font-variant-numeric: tabular-nums;
 }
 .temp-hp-badge { color: #7ec8ff; font-weight: 600; }
 
