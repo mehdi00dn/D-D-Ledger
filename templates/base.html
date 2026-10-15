@@ -235,6 +235,7 @@
 {% if g.campaign_id %}<script nonce="{{ csp_nonce() }}">window.CAMPAIGN_ID = {{ g.campaign_id | tojson }}; window.IS_DM = {{ g.is_dm | default(false) | tojson }}; window.USER_ID = {{ session.user_id | tojson }}; window.CLASS_LABELS = {{ class_labels | tojson }};</script>{% endif %}
 {% if g.campaign_id and realtime_settings %}<script nonce="{{ csp_nonce() }}">window.LEDGER_REALTIME = {{ realtime_settings | tojson }};</script>{% endif %}
 <script src="{{ url_for('static', filename='js/csrf.js') }}"></script>
+<script src="{{ url_for('static', filename='js/api.js') }}"></script>
 <script src="{{ url_for('static', filename='js/poller.js') }}"></script>
 <script src="{{ url_for('static', filename='js/realtime.js') }}"></script>
 <script src="{{ url_for('static', filename='js/form-actions.js') }}"></script>

@@ -4332,3 +4332,24 @@ body.has-dice-fab .modifier-hint { right: 80px; max-width: calc(100vw - 100px); 
   .map-setup-bar .btn-primary { margin-top: 6px; }
 }
 @media (prefers-reduced-motion: reduce) { .map-setup-stack { animation: none; } }
+
+/* Alert toasts from LedgerApi.notify (static/js/api.js): a failed action says why, then goes away. */
+.ledger-toasts {
+  position: fixed; z-index: 300; inset-inline: 12px; top: calc(12px + env(safe-area-inset-top));
+  display: flex; flex-direction: column; align-items: center; gap: 8px; pointer-events: none;
+}
+.ledger-toast {
+  pointer-events: auto; display: flex; align-items: flex-start; gap: 10px; max-width: min(460px, 100%);
+  padding: 10px 12px 10px 14px; border-radius: var(--radius-m); font-size: 13px; line-height: 1.4; color: var(--parchment);
+  background: color-mix(in srgb, var(--bg-panel) 94%, transparent); border: 1px solid var(--blood, #b4443a);
+  box-shadow: var(--shadow-deep); -webkit-backdrop-filter: blur(14px) saturate(150%); backdrop-filter: blur(14px) saturate(150%);
+  opacity: 0; transform: translateY(-8px) scale(0.98);
+  transition: opacity 180ms var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), transform 220ms var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));
+}
+.ledger-toast.is-in { opacity: 1; transform: none; }
+.ledger-toast.is-info { border-color: var(--hairline-strong); }
+.ledger-toast-close {
+  flex: none; margin: -4px -4px -4px 0; min-width: 32px; min-height: 32px; border: 0; background: transparent;
+  color: var(--parchment-dim); font-size: 18px; line-height: 1; cursor: pointer; border-radius: var(--radius-s, 6px);
+}
+@media (prefers-reduced-motion: reduce) { .ledger-toast { transition: opacity 120ms linear; transform: none; } }

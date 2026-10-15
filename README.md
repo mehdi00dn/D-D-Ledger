@@ -76,6 +76,10 @@ verification, rollback and operations. Never commit `.env` or production credent
   and user id. Query strings are never logged.
 - **Errors.** An unexpected server error shows the user a generic message and a reference
   (the request id). Search the logs for that id to find the stack trace.
+- **JSON error shape.** Every AJAX/JSON route (anything under `/api/`, JSON requests, `/uploads/sign`)
+  answers failures as `{"error": "<message for people>", "code": "<stable slug>", "request_id": "..."}`
+  with the matching HTTP status (401 also carries `login_url`; quota errors carry `scope`). Build
+  them with `api_error()` in `app.py`. In the browser `static/js/api.js` (`LedgerApi`) turns them into a toast.
 - **Error tracking (optional).** Set `SENTRY_DSN` and add `sentry-sdk` to
   `requirements.in` (then recompile the lock file). Without both, nothing is sent. Personal
   data is not sent.

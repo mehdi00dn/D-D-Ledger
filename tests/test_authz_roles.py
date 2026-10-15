@@ -96,6 +96,10 @@ def send(client, method, url, body=None):
 
 
 def is_login_redirect(resp):
+    """Anonymous visitors go to the login page; JSON/AJAX callers get the standard JSON 401 pointing at it."""
+    if resp.status_code == 401:
+        body = resp.get_json(silent=True) or {}
+        return body.get('code') == 'unauthenticated' and '/login' in body.get('login_url', '')
     return resp.status_code == 302 and '/login' in resp.headers.get('Location', '')
 
 

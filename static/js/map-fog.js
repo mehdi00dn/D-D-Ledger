@@ -264,7 +264,7 @@
     function post(body) {
       saving = saving.then(async () => {
         const res = await fetch(base, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-        if (!res.ok) return;
+        if (!res.ok) { LedgerApi.fail(res, 'The fog change was not saved.'); return; }
         const d = await res.json();
         version = d.version;
       }).catch(() => { /* the next poll shows what the server really has */ });

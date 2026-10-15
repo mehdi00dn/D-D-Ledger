@@ -2,6 +2,19 @@
   const initData = JSON.parse(document.getElementById('map-init-data').textContent);
   const mapId = initData.id;
 
+  // A map change that was refused (no permission, locked object, session ended, no connection) must say so:
+  // the change is on screen but not on the server, and the next sync would silently undo it.
+  async function mapWrite(url, init) {
+    try {
+      const res = await fetch(url, init);
+      if (!res.ok) await LedgerApi.fail(res, "That change wasn't saved.");
+      return res;
+    } catch (err) {
+      LedgerApi.notify(LedgerApi.networkMessage);
+      throw err;
+    }
+  }
+
   const stageWrap = document.getElementById('map-stage-wrap');
   const stageInner = document.getElementById('map-stage-inner');
   const canvas = document.getElementById('map-canvas');
@@ -1080,7 +1093,7 @@
     return { kind: d.kind, data: d.data, cx: d.cx, cy: d.cy, w: d.w, h: d.h, rotation: d.rotation, color: d.color, fill: d.fill, fill_opacity: d.fill_opacity, locked: !!d.locked, dm_only: !!d.dm_only };
   }
   async function persistShapeFields(d, fields) {
-    await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/drawings/${d.id}/update`, {
+    await mapWrite(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/drawings/${d.id}/update`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(fields),
     });
   }
@@ -1116,7 +1129,7 @@
     return {
       label: 'add-shape',
       undo: async () => {
-        await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/drawings/${d.id}/delete`, { method: 'POST' });
+        await mapWrite(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/drawings/${d.id}/delete`, { method: 'POST' });
         const idx = drawings.findIndex((s) => s.id === d.id);
         if (idx >= 0) drawings.splice(idx, 1);
         if (selectedShapeId === d.id) deselectShape();
@@ -1146,7 +1159,7 @@
         redraw();
       },
       redo: async () => {
-        await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/drawings/${d.id}/delete`, { method: 'POST' });
+        await mapWrite(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/drawings/${d.id}/delete`, { method: 'POST' });
         const idx = drawings.findIndex((s) => s.id === d.id);
         if (idx >= 0) drawings.splice(idx, 1);
         if (selectedShapeId === d.id) deselectShape();
@@ -1156,7 +1169,7 @@
   }
   async function deleteShape(d) {
     const index = drawings.findIndex((s) => s.id === d.id);
-    await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/drawings/${d.id}/delete`, { method: 'POST' });
+    await mapWrite(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/drawings/${d.id}/delete`, { method: 'POST' });
     drawings.splice(index, 1);
     if (selectedShapeId === d.id) deselectShape();
     redraw();
@@ -1167,7 +1180,7 @@
     return { pin_type: p.pin_type, icon_key: p.icon_key, character_id: p.character_id || null, custom_name: p.pin_type === 'prop' ? (p.custom_name || null) : null, x: p.x, y: p.y, scale: p.scale || 1, rotation: p.rotation || 0, locked: !!p.locked, dm_only: !!p.dm_only };
   }
   async function persistPinFields(p, fields) {
-    await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/pins/${p.id}/update`, {
+    await mapWrite(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/pins/${p.id}/update`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(fields),
     });
   }
@@ -1182,7 +1195,7 @@
     return {
       label: 'add-pin',
       undo: async () => {
-        await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/pins/${p.id}/delete`, { method: 'POST' });
+        await mapWrite(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/pins/${p.id}/delete`, { method: 'POST' });
         const idx = pins.findIndex((x) => x.id === p.id);
         if (idx >= 0) pins.splice(idx, 1);
         if (selectedPinId === p.id) deselectPin();
@@ -1212,7 +1225,7 @@
         renderPins();
       },
       redo: async () => {
-        await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/pins/${p.id}/delete`, { method: 'POST' });
+        await mapWrite(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/pins/${p.id}/delete`, { method: 'POST' });
         const idx = pins.findIndex((x) => x.id === p.id);
         if (idx >= 0) pins.splice(idx, 1);
         if (selectedPinId === p.id) deselectPin();
@@ -1229,7 +1242,7 @@
       }
     }
     const index = pins.findIndex((p) => p.id === pin.id);
-    await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/pins/${pin.id}/delete`, { method: 'POST' });
+    await mapWrite(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/pins/${pin.id}/delete`, { method: 'POST' });
     pins.splice(index, 1);
     if (selectedPinId === pin.id) deselectPin();
     renderPins();
@@ -1469,7 +1482,7 @@
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ owner_user_id: ownerId }),
       });
-      if (!res.ok) return;
+      if (!res.ok) { LedgerApi.fail(res, "Couldn't change who controls that token."); return; }
       pin.owner_user_id = ownerId;
       const m = members.find((x) => Number(x.id) === ownerId);
       pin.owner_name = m ? m.username : null;
@@ -1486,7 +1499,7 @@
       const pin = pins.find((p) => p.id === selectedPinId);
       if (!pin) return;
       const nextIsNpc = !pin.is_npc;
-      await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/pins/${pin.id}/update`, {
+      await mapWrite(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/pins/${pin.id}/update`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ is_npc: nextIsNpc }),
       });
@@ -1651,7 +1664,7 @@
     const ok = window.confirmAction ? await window.confirmAction('Clear all drawings on this map?') : confirm('Clear all drawings on this map?');
     if (!ok) return;
     const snapshot = drawings.map((d) => ({ ...d }));
-    await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/drawings/clear`, { method: 'POST' });
+    await mapWrite(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/drawings/clear`, { method: 'POST' });
     drawings = [];
     deselectShape();
     redraw();
@@ -1670,7 +1683,7 @@
         redraw();
       },
       redo: async () => {
-        await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/drawings/clear`, { method: 'POST' });
+        await mapWrite(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/drawings/clear`, { method: 'POST' });
         drawings = [];
         deselectShape();
         redraw();
@@ -1682,7 +1695,7 @@
   if (linkBattleCheckbox) {
     linkBattleCheckbox.addEventListener('change', async (e) => {
       linkedToBattle = e.target.checked;
-      await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/settings`, {
+      await mapWrite(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/settings`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ linked_to_battle: linkedToBattle }),
       });
@@ -1695,7 +1708,7 @@
   if (lockMapCheckbox) {
     lockMapCheckbox.addEventListener('change', async (e) => {
       lockedForPlayers = e.target.checked;
-      await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/settings`, {
+      await mapWrite(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/settings`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ locked_for_players: lockedForPlayers }),
       });
@@ -2342,7 +2355,7 @@
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ pin_type: 'character', character_id: character.id, x: snapped.x, y: snapped.y, scale: 1.0, rotation: 0, dm_only: window.IS_DM && newObjectsHidden }),
     });
-    if (!res.ok) { flashPlaceHint("Couldn't place that character. Please try again."); return; }
+    if (!res.ok) { flashPlaceHint(await LedgerApi.message(res, "Couldn't place that character. Please try again.")); return; }
     const json = await res.json();
     await loadPins();                                         // the server numbers duplicates and links the battle row
     const pin = pins.find((p) => p.id === json.id);
@@ -2574,7 +2587,7 @@
   setupCloseBtn.addEventListener('click', () => closeGridSettings(true));
 
   setupConfirmBtn.addEventListener('click', async () => {
-    await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/settings`, {
+    await mapWrite(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/settings`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         grid_size: gridSize, grid_color: gridColor, grid_visible: gridVisible, grid_setup_done: true,

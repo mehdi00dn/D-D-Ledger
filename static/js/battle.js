@@ -342,7 +342,11 @@
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body || {}),
     });
-    if (!res.ok) throw new Error('Request failed');
+    if (!res.ok) {
+      const message = await LedgerApi.message(res, 'That did not work. Please try again.');
+      LedgerApi.notify(message);                 // say why (no permission, session ended, ...) instead of failing silently
+      throw new LedgerApi.Error(message, res.status);
+    }
     return res.json();
   }
 

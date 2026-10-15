@@ -42,7 +42,7 @@ def do_import(user, cid, data):
 
 # ------------------------------------------------------------------ signing
 def test_sign_needs_login_and_validates_everything(appmod, user):
-    assert appmod.app.test_client().post('/uploads/sign', json={'purpose': 'avatar', 'size': 10}).status_code == 302
+    assert appmod.app.test_client().post('/uploads/sign', json={'purpose': 'avatar', 'size': 10}).status_code == 401
     sign = lambda **kw: user.json('/uploads/sign', {'purpose': 'avatar', 'size': 100, 'content_type': 'image/png', **kw})
     assert sign(purpose='nope').status_code == 400
     assert sign(size=0).status_code == 400 and sign(size='abc').status_code == 400 and sign(size=-5).status_code == 400

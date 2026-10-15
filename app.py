@@ -15,6 +15,7 @@ from flask import (
     jsonify, flash, send_file, g, abort, session
 )
 from werkzeug.security import generate_password_hash, check_password_hash, safe_join
+from werkzeug.exceptions import HTTPException
 import nh3
 import psycopg.errors as pgerr
 from markupsafe import Markup
@@ -196,10 +197,49 @@ def _wants_json():
     return request.is_json or '/api/' in request.path or request.path.startswith('/uploads/sign')
 
 
+# One error shape for every AJAX/JSON route:  {"error": "<sentence safe to show>", "code": "<stable slug>", "request_id": "..."}
+# (plus optional extra keys).  The frontend shows `error`, and can branch on `code` or the HTTP status.
+API_ERROR_CODES = {400: 'bad_request', 401: 'unauthenticated', 403: 'forbidden', 404: 'not_found', 405: 'method_not_allowed',
+                   409: 'conflict', 413: 'too_large', 415: 'unsupported_type', 422: 'unprocessable', 429: 'rate_limited',
+                   500: 'server_error', 503: 'unavailable'}
+API_ERROR_MESSAGES = {400: 'That request was not valid.', 401: 'Your session ended. Reload the page to sign in again.',
+                      403: 'You do not have permission to do that.', 404: 'That could not be found.',
+                      405: 'That action is not allowed here.', 409: 'That conflicts with the current state. Reload and try again.',
+                      413: 'That is too large to send.', 415: 'That type of file is not supported.',
+                      429: 'Too many requests. Wait a moment and try again.', 500: 'Something went wrong on our side.',
+                      503: 'This is temporarily unavailable. Try again in a moment.'}
+
+
+def api_error(message, status, code=None, **extra):
+    """The standard JSON error response: `return api_error('Unknown pin type.', 400)`."""
+    body = {'error': message or API_ERROR_MESSAGES.get(status, 'The request failed.'),
+            'code': code or API_ERROR_CODES.get(status, 'error')}
+    rid = g.get('request_id')
+    if rid:
+        body['request_id'] = rid
+    body.update(extra)
+    resp = jsonify(body)
+    resp.status_code = status
+    return resp
+
+
 def _reject_request(message, status):
     if _wants_json():
-        return jsonify({'error': message}), status
+        return api_error(message, status)
     return Response(message, status=status, mimetype='text/plain')
+
+
+@app.errorhandler(HTTPException)
+def http_error(exc):
+    """abort(403), a 404 on an unknown id, a wrong method, an oversized body ... on an AJAX route answers in the standard
+    JSON shape instead of an HTML page the frontend cannot read.  Normal pages keep Flask's HTML error pages."""
+    if not _wants_json() or exc.code is None or exc.code < 400:
+        return exc
+    resp = api_error(API_ERROR_MESSAGES.get(exc.code), exc.code)
+    for name, value in exc.get_headers():                      # keep Allow on a 405, Retry-After on a 429, ...
+        if name.lower() not in ('content-type', 'content-length'):
+            resp.headers[name] = value
+    return resp
 
 
 @app.before_request
@@ -207,6 +247,8 @@ def require_login():
     if request.endpoint is None or request.endpoint in PUBLIC_ENDPOINTS:
         return
     if not session.get('user_id'):
+        if _wants_json():
+            return api_error(None, 401, login_url=url_for('login'))
         return redirect(url_for('login', next=request.path))
 
 
@@ -932,7 +974,7 @@ def api_member_search():
     retry = security.member_search_blocked_for(db, secret, session['user_id'], g.campaign_id)
     if retry:
         db.close()
-        return jsonify({'error': 'Searching too fast -- try again in a moment.'}), 429
+        return api_error('Searching too fast -- try again in a moment.', 429)
     security.record_member_search(db, secret, session['user_id'], g.campaign_id)
     db.commit()
     like = q.replace('\\', '\\\\').replace('%', r'\%').replace('_', r'\_') + '%'
@@ -1352,23 +1394,23 @@ def upload_sign():
     data = request.get_json(silent=True) or {}
     purpose = data.get('purpose')
     if purpose not in UPLOAD_PURPOSES:
-        return jsonify({'error': 'unknown upload type'}), 400
+        return api_error('That kind of upload is not supported.', 400, code='unknown_upload_type')
     max_bytes, allowed_types = UPLOAD_PURPOSES[purpose]
     try:
         size = int(data.get('size', 0))
     except (TypeError, ValueError):
-        return jsonify({'error': 'invalid size'}), 400
+        return api_error('The file size could not be read.', 400, code='invalid_size')
     if size <= 0:
-        return jsonify({'error': 'empty file'}), 400
+        return api_error('That file is empty.', 400, code='empty_file')
     if size > max_bytes:
-        return jsonify({'error': 'file too large (limit %d MB)' % (max_bytes // (1024 * 1024))}), 413
+        return api_error('That file is too large (limit %d MB).' % (max_bytes // (1024 * 1024)), 413, code='file_too_large')
     if (data.get('content_type') or 'application/octet-stream') not in allowed_types:
-        return jsonify({'error': 'unsupported file type'}), 415
+        return api_error('That type of file is not supported.', 415, code='unsupported_type')
     if purpose != 'import':
         try:
             quotas.check(get_db(), session['user_id'], None)             # already full: say so before the file travels
         except quotas.QuotaExceeded as exc:
-            return jsonify({'error': str(exc)}), 413
+            return api_error(str(exc), 413, code='quota_exceeded', scope=exc.scope)
     key = f"tmp/{session['user_id']}/{uuid.uuid4().hex}"
     target = get_storage().create_upload_target(TEMP, key, data.get('content_type'), max_bytes)
     return jsonify({'key': key, 'upload': target})
@@ -1507,7 +1549,7 @@ def quota_exceeded(exc):
     """A storage limit was reached: nothing was saved.  Pages get their own banner back, JSON callers the message."""
     app.logger.info('quota refused on %s %s: %s', request.method, request.path, exc.scope)
     if _wants_json():
-        return jsonify({'error': str(exc)}), 413
+        return api_error(str(exc), 413, code='quota_exceeded', scope=exc.scope)
     ref = urlparse(request.referrer or '')
     if request.method == 'POST' and ref.netloc == request.host and ref.path:
         sep = '&' if ref.query else '?'
@@ -1519,7 +1561,7 @@ def quota_exceeded(exc):
 def storage_unavailable(exc):
     app.logger.error('storage error: %s', exc)
     if request.is_json or '/api/' in request.path or request.path.startswith('/uploads/sign'):
-        return jsonify({'error': 'file storage is temporarily unavailable'}), 503
+        return api_error('File storage is temporarily unavailable. Try again in a moment.', 503, code='storage_unavailable')
     return Response('File storage is temporarily unavailable. Please try again in a moment.', status=503,
                     mimetype='text/plain')
 
@@ -2063,7 +2105,7 @@ def api_character_detail(char_id):
     ''', (char_id, g.campaign_id)).fetchone()
     if character is None:
         db.close()
-        return jsonify({'error': 'not found'}), 404
+        return api_error(None, 404)
     if not g.is_dm and character['is_npc']:
         # 5e convention: a Player may read an NPC's notes but never its
         # numbers. This is the real enforcement point -- an allow-list, so a
@@ -2335,7 +2377,7 @@ def api_battle_add():
     char = db.execute('SELECT max_hp FROM characters WHERE id = ? AND campaign_id = ?', (character_id, g.campaign_id)).fetchone()
     if char is None:
         db.close()
-        return jsonify({'error': 'character not found'}), 404
+        return api_error('That character could not be found.', 404)
     max_order = db.execute('SELECT COALESCE(MAX(sort_order), -1) AS m FROM battle_participants').fetchone()['m']
     db.execute('''
         INSERT INTO battle_participants (character_id, current_hp, initiative, is_dead, sort_order)
@@ -2372,18 +2414,18 @@ def api_battle_add_monster():
     ("Goblin 1", "Goblin 2"...), so each can have its own rolled hit points; the stat block is a note hidden from Players."""
     data = request.get_json(silent=True)
     if not isinstance(data, dict):
-        return jsonify({'error': 'bad request'}), 400
+        return api_error(None, 400)
     try:
         count = 1 if data.get('count') in (None, '') else int(data['count'])
     except (TypeError, ValueError):
-        return jsonify({'error': 'bad request'}), 400
+        return api_error(None, 400)
     if not 1 <= count <= MONSTER_COUNT_MAX:
-        return jsonify({'error': f'Add between 1 and {MONSTER_COUNT_MAX} at a time.'}), 400
+        return api_error(f'Add between 1 and {MONSTER_COUNT_MAX} at a time.', 400)
     rolled = data.get('hp') == 'rolled'
     try:
         entry = srd.detail('monsters', data.get('ref'))
     except srd.SrdError as e:
-        return jsonify({'error': str(e)}), _srd_status(e)
+        return api_error(str(e), _srd_status(e))
     c = entry['prefill']
     notes = sanitize_notes_payload(json.dumps([{'t': n, 'h': 1} for n in entry.get('notes') or []]))
     skill_prof = json.dumps(dnd5e.clean_skill_prof(c['skill_prof']))
@@ -2450,7 +2492,7 @@ def api_battle_heal(pid):
     if cur.rowcount == 0:
         db.rollback()
         db.close()
-        return jsonify({'error': 'not found'}), 404
+        return api_error(None, 404)
     db.commit()
     rows = _battle_rows(db)
     db.close()
@@ -2476,7 +2518,7 @@ def api_battle_damage(pid):
     if cur.rowcount == 0:
         db.rollback()
         db.close()
-        return jsonify({'error': 'not found'}), 404
+        return api_error(None, 404)
     db.commit()
     rows = _battle_rows(db)
     db.close()
@@ -2515,7 +2557,7 @@ def api_battle_set_hp(pid):
     if cur.rowcount == 0:
         db.rollback()
         db.close()
-        return jsonify({'error': 'not found'}), 404
+        return api_error(None, 404)
     db.commit()
     rows = _battle_rows(db)
     db.close()
@@ -2623,14 +2665,14 @@ def api_battle_conditions(pid):
     payload = request.get_json(silent=True) or {}
     wanted = payload.get('conditions')
     if not isinstance(wanted, list) or any(not isinstance(k, str) or k not in _CONDITION_KEYS for k in wanted):
-        return jsonify({'error': 'Unknown condition'}), 400
+        return api_error('Unknown condition.', 400, code='unknown_condition')
     custom = None                                          # omitted = leave the participant's custom conditions alone
     if 'custom_conditions' in payload:
         try:
             custom = _clean_custom_conditions(payload['custom_conditions'])
         except ValueError:
-            return jsonify({'error': 'Custom conditions: up to %d, each 1-%d characters of plain text.'
-                                     % (MAX_CUSTOM_CONDITIONS, CUSTOM_CONDITION_MAX_LEN)}), 400
+            return api_error('Custom conditions: up to %d, each 1-%d characters of plain text.'
+                             % (MAX_CUSTOM_CONDITIONS, CUSTOM_CONDITION_MAX_LEN), 400)
     db = get_db()
     db.execute('UPDATE battle_participants SET conditions = ? WHERE id = ?',
                (','.join(k for k in _CONDITION_KEYS if k in wanted), pid))
@@ -2743,7 +2785,7 @@ DICE_NEEDS_MIGRATION = 'The dice log is not set up in this database yet. Run the
 
 
 def _dice_error(message, status=400):
-    return jsonify({'error': message}), status
+    return api_error(message, status)
 
 
 def _roll_row_out(r, names):
@@ -2922,7 +2964,7 @@ def reference_search():
     try:
         return jsonify(srd.search(request.args.get('kind', ''), request.args.get('q', '')))
     except srd.SrdError as e:
-        return jsonify({'error': str(e)}), _srd_status(e)
+        return api_error(str(e), _srd_status(e))
 
 
 @app.route('/campaigns/<int:campaign_id>/api/reference/entry')
@@ -2931,7 +2973,7 @@ def reference_detail():
     try:
         return jsonify(srd.detail(request.args.get('kind', ''), request.args.get('ref', '')))
     except srd.SrdError as e:
-        return jsonify({'error': str(e)}), _srd_status(e)
+        return api_error(str(e), _srd_status(e))
 
 
 # ---------------- EXPORT / IMPORT ----------------
@@ -3452,7 +3494,7 @@ def api_map_fog_set(map_id):
     dims = fog.grid_dims(w, h)
     if dims is None:
         db.close()
-        return jsonify({'error': 'this map cannot have fog'}), 400
+        return api_error('This map cannot have fog.', 400)
     cols, rows = dims
     if data.get('clear'):
         raw = None
@@ -3463,7 +3505,7 @@ def api_map_fog_set(map_id):
             raw = fog.decode_client(data.get('mask'), cols, rows)
         except ValueError as e:
             db.close()
-            return jsonify({'error': str(e)}), 400
+            return api_error(str(e), 400)
         if not fog.any_fogged(raw):
             raw = None
     db.execute('UPDATE maps SET fog_mask = ?, fog_cols = ?, fog_rows = ?, fog_version = fog_version + 1 WHERE id = ? AND campaign_id = ?',
@@ -3582,7 +3624,7 @@ def api_map_drawings_add(map_id):
     locked = 1 if data.get('locked') else 0
     dm_only = 1 if (g.is_dm and data.get('dm_only')) else 0        # only the DM can hide an object
     if kind not in ('line', 'rect', 'oval', 'pen', 'angle'):
-        return jsonify({'error': 'invalid kind'}), 400
+        return api_error('Unknown kind of drawing.', 400)
     db = get_db()
     max_order = db.execute('SELECT COALESCE(MAX(sort_order), -1) AS m FROM map_drawings WHERE map_id = ?', (map_id,)).fetchone()['m']
     cur = db.execute(
@@ -3867,15 +3909,15 @@ def api_map_pins_add(map_id):
         try:
             character_id = int(data.get('character_id'))
         except (TypeError, ValueError):
-            return jsonify({'error': 'Unknown character.'}), 400
+            return api_error('Unknown character.', 400)
     elif pin_type != 'prop':
-        return jsonify({'error': 'Unknown pin type.'}), 400
+        return api_error('Unknown pin type.', 400)
     if icon_key is not None and icon_key not in PIN_ICON_KEYS:
-        return jsonify({'error': 'Unknown pin icon.'}), 400
+        return api_error('Unknown pin icon.', 400)
     try:
         custom_name = _pin_name(data.get('custom_name'))
     except ValueError:
-        return jsonify({'error': 'Pin names must be plain text of at most %d characters.' % PIN_NAME_MAX}), 400
+        return api_error('Pin names must be plain text of at most %d characters.' % PIN_NAME_MAX, 400)
     x = float(data.get('x', 0))
     y = float(data.get('y', 0))
     scale = float(data.get('scale', 1.0))
@@ -3890,7 +3932,7 @@ def api_map_pins_add(map_id):
         if db.execute('SELECT 1 FROM characters WHERE id = ? AND campaign_id = ? AND is_temp_familiar = 0',
                       (character_id, g.campaign_id)).fetchone() is None:
             db.close()
-            return jsonify({'error': 'Character not found.'}), 404
+            return api_error('Character not found.', 404)
     elif linked:
         participant_id = _create_familiar_participant(db, icon_key, custom_name)
     cur = db.execute(
@@ -3933,11 +3975,11 @@ def api_map_pin_update(map_id, pin_id):
                 new_owner = int(new_owner)
             except (TypeError, ValueError):
                 db.close()
-                return jsonify({'error': 'Unknown member.'}), 400
+                return api_error('Unknown member.', 400)
             if db.execute('SELECT 1 FROM campaign_members WHERE campaign_id = ? AND user_id = ?',
                           (g.campaign_id, new_owner)).fetchone() is None:
                 db.close()
-                return jsonify({'error': 'That person is not a member of this campaign.'}), 400
+                return api_error('That person is not a member of this campaign.', 400)
         fields.append('owner_user_id = ?'); values.append(new_owner)
     if 'x' in data:
         fields.append('x = ?'); values.append(float(data['x']))
@@ -3959,7 +4001,7 @@ def api_map_pin_update(map_id, pin_id):
             new_custom_name = _pin_name(data['custom_name'])
         except ValueError:
             db.close()
-            return jsonify({'error': 'Pin names must be plain text of at most %d characters.' % PIN_NAME_MAX}), 400
+            return api_error('Pin names must be plain text of at most %d characters.' % PIN_NAME_MAX, 400)
         fields.append('custom_name = ?'); values.append(new_custom_name)
         # Keep a familiar's battle-tracker name in sync with its pin name.
         pin_row = db.execute('SELECT participant_id, icon_key FROM map_pins WHERE id = ? AND map_id = ?', (pin_id, map_id)).fetchone()
