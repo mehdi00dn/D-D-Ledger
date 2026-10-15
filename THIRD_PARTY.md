@@ -51,11 +51,21 @@ belongs to DL-80 (applicable local laws) and DL-82.
 |---|---|---|
 | Fraunces, Inter, IBM Plex Mono fonts | `static/fonts/` | Verified: SIL OFL 1.1, bundled licence text |
 | lottie-web | `static/vendor/` | Verified: MIT, licence file bundled |
-| Map pin icons: skull, sword, hand, paw | `static/icons/pins/` | **Owner to confirm.** The files carry SVG Repo headers; SVG Repo hosts icons under different licences (CC0, MIT, CC BY...), and the original author and licence of each of these four were not recorded. A CC BY icon needs a credit line |
-| Class icons (13) | `static/icons/classes.svg` | **Owner to confirm** source and licence (not recorded) |
-| Condition icons (15) | `static/icons/conditions.svg` | **Owner to confirm** source and licence. Sources are mixed; at least Blinded and Deafened look like Phosphor Icons (MIT, no credit needed) but this is a guess |
-| Fog animation | `static/fog/fog-smoke.json` | **Owner to confirm** it is the owner's own work or licensed for use |
+| Map pin icons: skull, sword, hand, paw | `static/icons/pins/` | Source per owner: SVG Repo (the files carry SVG Repo headers). **Open:** SVG Repo licences are per icon (CC0, MIT, CC BY, ...) and the original author and licence of each were not recorded |
+| Class icons (13) | `static/icons/classes.svg` | Source per owner: SVG Repo or Flaticon, otherwise drawn by Claude. **Open:** the SVG files carry no author or licence, so which icon came from where is not recorded |
+| Condition icons (15) | `static/icons/conditions.svg` | Same as the class icons |
+| Fog animation | `static/fog/fog-smoke.json` | [Fog / Smoke Animation by Ladon Sklyarov, LottieFiles](https://lottiefiles.com/free-animation/fog-smoke-gcgRd1137Q), under the Lottie Simple License: commercial use and changes allowed, no attribution required but strongly encouraged (if given, it must be visible to users). Owner plans to replace it with his own work later |
 | Logo and favicons | `static/logo/` | Assumed the owner's own work (DL-90 redraw is the owner's task) |
 
-Until the "owner to confirm" rows are settled, treat them as unverified. Replace an icon whose licence cannot be
-confirmed, or add a credit line if its licence asks for one. Record the answer in this table.
+### What is still open (DL-76)
+
+- **Flaticon icons.** Flaticon's free licence requires a visible credit ("Icon by *author* from flaticon.com") for each
+  icon, unless the downloader has a paid plan. If the owner has a paid Flaticon plan, nothing is needed; if not, find
+  the authors (Flaticon account, download history) and list them on the About page (DL-25).
+- **SVG Repo icons.** Each icon's page states its licence and author. Check the ones used and add a credit where the
+  licence is CC BY. CC0 and MIT icons need nothing.
+- **Fog animation credit.** Optional, but a line on the About page (DL-25) is the polite thing: "Fog animation by Ladon
+  Sklyarov, LottieFiles".
+- **Icons drawn by Claude** need no credit.
+
+Record the answers in the table above. Until the Flaticon and SVG Repo licences are checked, treat DL-76 as open.

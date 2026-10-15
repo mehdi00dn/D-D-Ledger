@@ -7,7 +7,9 @@ It also runs locally.
 
 ## Features
 
-- **Campaigns and accounts.** Self-registration, login, invitations and invite links.
+- **Campaigns and accounts.** Self-registration, login, invitations and invite links. Each account has a basic
+  profile at `/account` (display name, avatar, bio); the display name replaces the username in the sidebar, the
+  username stays the login. Profiles are private to their owner for now and need no campaign.
   Roles per campaign: DM (full control) and Player. Authorization is enforced on the
   server for every campaign route.
 - **Characters and factions.** Profiles with class, abilities, saves, skills, speed,

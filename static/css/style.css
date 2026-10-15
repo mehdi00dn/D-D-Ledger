@@ -440,6 +440,11 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
 }
 .user-name { display: flex; align-items: center; gap: 8px; overflow: hidden; font-size: 12.5px; color: var(--parchment-dim); }
 .user-name svg { width: 14px; height: 14px; flex-shrink: 0; }
+a.user-name { text-decoration: none; border-radius: var(--radius-s); transition: color 0.15s ease; }
+a.user-name:hover, a.user-name:focus-visible { color: var(--parchment); }
+.user-avatar { width: 22px; height: 22px; flex-shrink: 0; border-radius: 50%; object-fit: cover; }
+.account-form { max-width: 640px; }
+.account-form .avatar-preview-row .avatar-frame { border-radius: 50%; }
 .user-name span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: 1; max-width: 110px; transition: opacity 0.18s ease, max-width 0.32s cubic-bezier(0.4, 0, 0.2, 1); }
 .user-row form { flex-shrink: 0; }
 :root[data-sidebar="collapsed"] .user-row { justify-content: center; padding: 8px 0; border-color: transparent; }
@@ -3943,6 +3948,7 @@ body.page-leaving .content {
   .more-chip .icon, .more-chip-ico svg { width: 18px; height: 18px; color: var(--brass-bright); }
   .more-user { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-top: 12px; border-top: 1px solid var(--hairline); }
   .more-user-name { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 13px; color: var(--parchment-dim); }
+  a.more-user-name { text-decoration: none; }
   .more-user-name svg { width: 15px; height: 15px; flex: none; }
   .more-user-name span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .more-logout { display: inline-flex; align-items: center; gap: 6px; min-height: 34px; padding: 0 12px; border-radius: 999px; border: 1px solid rgba(179, 69, 63, 0.45); background: transparent; color: var(--blood-bright); font: 600 12.5px var(--font-body); cursor: pointer; }

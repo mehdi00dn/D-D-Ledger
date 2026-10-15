@@ -98,7 +98,11 @@
     <div class="sidebar-foot">
       {% if session.username %}
       <div class="user-row">
-        <span class="user-name">{{ icon('user') }}<span>{{ session.username }}</span></span>
+        {% set me = my_profile() %}
+        <a href="{{ url_for('account') }}" class="user-name" title="Your profile" aria-label="Your profile ({{ (me.display_name if me and me.display_name else session.username) }})">
+          {% if me and me.avatar_path %}<img class="user-avatar" src="{{ url_for('uploaded_file', filename=me.avatar_path) }}" alt="">{% else %}{{ icon('user') }}{% endif %}
+          <span>{{ me.display_name if me and me.display_name else session.username }}</span>
+        </a>
         <form method="POST" action="{{ url_for('logout') }}">{{ csrf_field() }}
           <button type="submit" class="btn-icon" title="Log out">{{ icon('unlock') }}</button>
         </form>
@@ -175,7 +179,8 @@
   </div>
   {% if session.username %}
   <div class="more-user">
-    <span class="more-user-name">{{ icon('user') }}<span>{{ session.username }}</span></span>
+    {% set me = my_profile() %}
+    <a href="{{ url_for('account') }}" class="more-user-name" aria-label="Your profile">{% if me and me.avatar_path %}<img class="user-avatar" src="{{ url_for('uploaded_file', filename=me.avatar_path) }}" alt="">{% else %}{{ icon('user') }}{% endif %}<span>{{ me.display_name if me and me.display_name else session.username }}</span></a>
     <form method="POST" action="{{ url_for('logout') }}">{{ csrf_field() }}
       <button type="submit" class="more-logout">{{ icon('log-out') }}<span>Log out</span></button>
     </form>

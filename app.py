@@ -424,6 +424,64 @@ def logout():
     return redirect(url_for('login'))
 
 
+# ---------------- ACCOUNT / PROFILE ----------------
+# A basic profile (display name, avatar, bio).  It belongs to the account, not to any campaign, and for now only its
+# owner can see it (the sidebar and /account); showing it to other people is a separate, later decision.
+
+DISPLAY_NAME_MAX = 40
+BIO_MAX = 500
+
+
+def _profile_error(display_name, bio):
+    if len(display_name) > DISPLAY_NAME_MAX or not display_name.isprintable() or any(c in display_name for c in '<>'):
+        return f'Display name must be at most {DISPLAY_NAME_MAX} characters, without < or >.'
+    if len(bio) > BIO_MAX:
+        return f'Bio must be at most {BIO_MAX} characters.'
+    return None
+
+
+def my_profile():
+    """The logged-in user's profile row (cached for the request); None when logged out."""
+    uid = session.get('user_id')
+    if not uid:
+        return None
+    if '_profile' not in g:
+        db = get_db()
+        row = db.execute('SELECT id, username, display_name, avatar_path, bio FROM users WHERE id = ?', (uid,)).fetchone()
+        g._profile = dict(row) if row else None
+    return g._profile
+
+
+app.jinja_env.globals['my_profile'] = my_profile
+
+
+@app.route('/account', methods=['GET', 'POST'])
+def account():
+    db = get_db()
+    user = db.execute('SELECT id, username, display_name, avatar_path, bio FROM users WHERE id = ?', (session['user_id'],)).fetchone()
+    if user is None:
+        session.clear()
+        return redirect(url_for('login'))
+    if request.method == 'POST':
+        display_name = ' '.join(request.form.get('display_name', '').split())
+        bio = request.form.get('bio', '').replace('\r\n', '\n').strip()
+        error = _profile_error(display_name, bio)
+        if error:
+            return render_template('account.html', profile=dict(user), form={'display_name': display_name, 'bio': bio}, error=error), 400
+        new_avatar = save_upload_field('avatar', 'avatars')      # a full quota is answered by the app-wide banner
+        old_avatar = user['avatar_path']
+        if new_avatar:
+            db.execute('UPDATE users SET avatar_path = ? WHERE id = ?', (new_avatar, user['id']))
+            delete_upload(old_avatar)
+        elif request.form.get('remove_avatar') == '1' and old_avatar:
+            db.execute('UPDATE users SET avatar_path = NULL WHERE id = ?', (user['id'],))
+            delete_upload(old_avatar)
+        db.execute('UPDATE users SET display_name = ?, bio = ? WHERE id = ?', (display_name or None, bio or None, user['id']))
+        db.commit()
+        return redirect(url_for('account', saved=1))
+    return render_template('account.html', profile=dict(user), form=dict(user), error=None)
+
+
 # ---------------- CAMPAIGN SCOPING (Phase C) ----------------
 # Every data-bearing route lives under /campaigns/<campaign_id>/... . These
 # three pieces work together so that (a) view functions don't each need a

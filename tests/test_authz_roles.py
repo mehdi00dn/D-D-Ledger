@@ -36,7 +36,7 @@ POLICY = {
     'healthz': PUBLIC, 'register': PUBLIC, 'login': PUBLIC, 'static': PUBLIC,
     'logout': LOGIN, 'index': LOGIN, 'campaigns_list': LOGIN, 'campaign_new': LOGIN,
     'join_via_link': LOGIN, 'join_via_link_accept': LOGIN,
-    'notifications_page': LOGIN, 'notification_read': LOGIN, 'notifications_read_all': LOGIN,
+    'notifications_page': LOGIN, 'account': LOGIN, 'notification_read': LOGIN, 'notifications_read_all': LOGIN,
     'invitation_accept': LOGIN, 'invitation_decline': LOGIN,
     'uploaded_file': LOGIN, 'upload_sign': LOGIN, 'local_direct_upload': LOGIN, 'local_download': LOGIN,
     # --- campaign management ---

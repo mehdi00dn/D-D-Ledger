@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% set active_page = 'account' %}
+{% block title %}Your profile — Campaign Ledger{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Your profile</h1>
+    <p class="page-sub">Signed in as <b>{{ profile.username }}</b>. Only you can see this page for now.</p>
+  </div>
+</div>
+
+{% if request.args.get('saved') %}<div class="banner-notice" role="status">Profile saved.</div>{% endif %}
+{% if error %}<div class="banner-notice banner-error" role="alert">{{ error }}</div>{% endif %}
+
+<form class="form-panel account-form" method="POST" enctype="multipart/form-data" id="account-form">{{ csrf_field() }}
+  <div class="form-section">
+    <p class="form-section-title">Profile</p>
+
+    <div class="field" style="margin-bottom:14px;">
+      <label>Avatar</label>
+      <div class="avatar-preview-row">
+        <div class="avatar-frame-wrap">
+          <div class="avatar-frame">
+            {% if profile.avatar_path %}
+              <img id="account-avatar-preview" src="{{ url_for('uploaded_file', filename=profile.avatar_path) }}" alt="Your avatar">
+            {% else %}
+              <img id="account-avatar-preview" style="display:none;" alt="Avatar preview">
+              {{ icon('user', 'avatar-placeholder-icon') }}
+            {% endif %}
+          </div>
+          <button type="button" class="avatar-remove-btn" id="account-avatar-remove-btn" title="Remove avatar" {{ '' if profile.avatar_path else 'hidden' }}>{{ icon('x') }}</button>
+          <div class="upload-progress upload-progress-circle" hidden></div>
+        </div>
+        <div class="file-drop">
+          {{ icon('upload') }}
+          <div>Click or drop an image</div>
+          <span class="file-name"></span>
+          <input type="file" name="avatar" aria-label="Choose an image" accept="image/*" data-avatar-input="#account-avatar-preview" data-remove-btn="#account-avatar-remove-btn" data-remove-input="#account-remove-avatar-input" data-crop-shape="circle">
+        </div>
+      </div>
+      <input type="hidden" name="remove_avatar" id="account-remove-avatar-input" value="">
+    </div>
+
+    <div class="field" style="margin-bottom:14px;">
+      <label for="display_name">Display name</label>
+      <input type="text" id="display_name" name="display_name" value="{{ form.display_name or '' }}" maxlength="40" placeholder="{{ profile.username }}" autocomplete="nickname">
+      <p class="hint-text">Shown instead of your username. Leave empty to use <b>{{ profile.username }}</b>. Your username stays the same and is what you log in with.</p>
+    </div>
+
+    <div class="field">
+      <label for="bio">Bio</label>
+      <textarea id="bio" name="bio" maxlength="500" rows="4" placeholder="A line or two about you as a player or DM">{{ form.bio or '' }}</textarea>
+    </div>
+  </div>
+
+  <div class="form-actions">
+    <button type="submit" class="btn btn-primary">{{ icon('check') }} Save profile</button>
+  </div>
+</form>
+{% endblock %}
