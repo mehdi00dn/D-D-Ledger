@@ -1453,6 +1453,7 @@ body.page-leaving .content {
 }
 .battle-row.is-active .battle-rank { color: var(--brass-bright); }
 .battle-extra { flex: none; min-width: 88px; display: flex; justify-content: flex-end; }
+.battle-extra:empty { display: none; }   /* nothing to show: do not reserve 88px (it pushed the remove button onto its own line) */
 .hp-block { position: relative; }
 .hp-delta {
   position: absolute; inset-inline-end: 0; top: -14px; pointer-events: none; z-index: 3;
@@ -1460,11 +1461,6 @@ body.page-leaving .content {
 }
 .hp-delta-hit { color: var(--blood-bright); }
 .hp-delta-heal { color: var(--moss-bright); }
-.turn-tag {
-  margin-inline-start: 8px; padding: 1px 7px; border-radius: 999px; vertical-align: middle;
-  background: var(--brass); color: var(--bg-deep, #0b0d13);
-  font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
-}
 .turn-bar { display: flex; align-items: center; gap: 12px; margin-inline-end: auto; flex-wrap: wrap; }
 .turn-controls {
   display: inline-flex; align-items: stretch; gap: 2px; padding: 3px;

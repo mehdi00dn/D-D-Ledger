@@ -168,7 +168,7 @@
       <div class="battle-avatar${openAttrs ? ' is-link' : ''}"${openAttrs} aria-label="${escapeHtml(p.display_name)}: details" style="border-color:${safeColor(p.group_color, 'var(--brass)')};">${avatarMarkup(p)}</div>
 
       <div class="battle-name-block">
-        <div class="battle-name${openAttrs ? ' is-link' : ''}"${openAttrs}>${classIconHtml(p.class_key)}${escapeHtml(p.display_name)}${p.is_active ? '<span class="turn-tag">Turn</span>' : ''}</div>
+        <div class="battle-name${openAttrs ? ' is-link' : ''}"${openAttrs}>${classIconHtml(p.class_key)}${escapeHtml(p.display_name)}</div>
         <div class="battle-meta">${groupDot}${p.group_name ? escapeHtml(p.group_name) : 'No Faction'} &middot; ${p.is_npc ? 'NPC' : 'PC'}</div>
         ${conditionChips(p)}
       </div>
