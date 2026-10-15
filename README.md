@@ -84,6 +84,14 @@ verification, rollback and operations. Never commit `.env` or production credent
   `requirements.in` (then recompile the lock file). Without both, nothing is sent. Personal
   data is not sent.
 
+## CSS conventions
+
+Layout CSS uses logical properties (`margin-inline-start`, `inset-inline-end`, `border-inline-start`,
+`text-align: start`) instead of left/right, so a right-to-left language (Persian, say) can be added later without
+rewriting the stylesheet. A deliberate physical `left`/`right` (centering with `translate`, map canvas coordinates)
+carries a `/* phys */` marker; `tests/test_css_logical.py` fails on any unmarked one. Translating the interface is a
+separate decision (only worth it if players read Persian).
+
 ## Tests
 
 ```
