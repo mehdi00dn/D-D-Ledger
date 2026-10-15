@@ -90,3 +90,18 @@ def test_csrf_is_enforced(user):
     user.c.csrf_enabled = False
     assert user.c.post('/account', data={'display_name': 'x', 'bio': ''}).status_code == 403
     assert row(user)['display_name'] is None
+
+
+def test_site_survives_migration_0022_not_applied(user):
+    """Deploying the code before the migration must not 500 every page (it did): pages fall back to the username."""
+    import database
+    def rename(a, b):
+        db = database.get_db()
+        db.execute(f'ALTER TABLE users RENAME COLUMN {a} TO {b}'); db.commit(); db.close()
+    rename('display_name', 'display_name_off')
+    try:
+        r = user.get('/campaigns')
+        assert r.status_code == 200 and user.name in r.get_data(as_text=True)
+        assert user.get('/account').status_code == 503
+    finally:
+        rename('display_name_off', 'display_name')

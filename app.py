@@ -447,8 +447,15 @@ def my_profile():
         return None
     if '_profile' not in g:
         db = get_db()
-        row = db.execute('SELECT id, username, display_name, avatar_path, bio FROM users WHERE id = ?', (uid,)).fetchone()
-        g._profile = dict(row) if row else None
+        try:
+            row = db.execute('SELECT id, username, display_name, avatar_path, bio FROM users WHERE id = ?', (uid,)).fetchone()
+            g._profile = dict(row) if row else None
+        except pgerr.UndefinedColumn:
+            # Code deployed before migration 0022 was applied: every page renders this in the sidebar, so a missing
+            # column must not take the whole site down.  Fall back to the username until the migration runs.
+            db.rollback()
+            app.logger.error('users.display_name is missing: apply migration 0022_user_profile.sql')
+            g._profile = {'id': uid, 'username': session.get('username'), 'display_name': None, 'avatar_path': None, 'bio': None}
     return g._profile
 
 
@@ -458,7 +465,11 @@ app.jinja_env.globals['my_profile'] = my_profile
 @app.route('/account', methods=['GET', 'POST'])
 def account():
     db = get_db()
-    user = db.execute('SELECT id, username, display_name, avatar_path, bio FROM users WHERE id = ?', (session['user_id'],)).fetchone()
+    try:
+        user = db.execute('SELECT id, username, display_name, avatar_path, bio FROM users WHERE id = ?', (session['user_id'],)).fetchone()
+    except pgerr.UndefinedColumn:
+        db.rollback()
+        return api_error('Profiles need a database update that has not been applied yet (migration 0022_user_profile.sql).', 503, code='migration_pending')
     if user is None:
         session.clear()
         return redirect(url_for('login'))
