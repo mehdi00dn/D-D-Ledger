@@ -246,10 +246,24 @@ def http_error(exc):
 def require_login():
     if request.endpoint is None or request.endpoint in PUBLIC_ENDPOINTS:
         return
+    if session.get('user_id') and not _session_is_current():
+        session.clear()
     if not session.get('user_id'):
         if _wants_json():
             return api_error(None, 401, login_url=url_for('login'))
         return redirect(url_for('login', next=request.path))
+
+
+def _session_is_current():
+    """False when the account is gone or its session_version moved on (password change / log out everywhere)."""
+    db = get_db()
+    try:
+        row = db.execute('SELECT session_version FROM users WHERE id = ?', (session['user_id'],)).fetchone()
+    except pgerr.UndefinedColumn:
+        db.rollback()                       # code deployed before migration 0023: skip the check rather than fail every page
+        app.logger.error('users.session_version is missing: apply migration 0023_session_version.sql')
+        return True
+    return row is not None and int(row['session_version']) == int(session.get('sv', 0))
 
 
 # Every ID in a URL must belong to the campaign in that URL (and children to their parent).
@@ -318,13 +332,14 @@ def _safe_next(path):
     return path
 
 
-def _start_session(user_id, username, remember=True):
+def _start_session(user_id, username, remember=True, version=0):
     """Fresh session on login: drops anything an earlier visitor of this browser left behind.
     remember=True issues a persistent cookie (PERMANENT_SESSION_LIFETIME); False makes it a
     plain session cookie that the browser drops when it's closed."""
     session.clear()
     session['user_id'] = user_id
     session['username'] = username
+    session['sv'] = int(version or 0)
     session['csrf_token'] = secrets.token_urlsafe(32)
     session.permanent = remember
 
@@ -413,7 +428,8 @@ def login():
         security.clear_login_failures(db, app.secret_key, username, ip)
         db.commit()
         db.close()
-        _start_session(user['id'], user['username'], remember=bool(request.form.get('remember')))
+        _start_session(user['id'], user['username'], remember=bool(request.form.get('remember')),
+                       version=dict(user).get('session_version', 0))
         return redirect(_safe_next(next_value or request.args.get('next')) or url_for('campaigns_list'))
     return render_template('login.html', error=None, username='', next=request.args.get('next', ''))
 
@@ -528,9 +544,37 @@ def account_password():
     db.execute('UPDATE users SET password_hash = ? WHERE id = ?', (generate_password_hash(new), user['id']))
     security.clear_login_failures(db, app.secret_key, user['username'], ip)
     db.commit()
+    version = _bump_session_version(db, user['id'])                        # ends every other session of this account
     permanent = session.permanent
-    _start_session(user['id'], user['username'], remember=permanent)       # fresh session and CSRF token
+    _start_session(user['id'], user['username'], remember=permanent, version=version)   # fresh session and CSRF token
     return redirect(url_for('account', pw=1))
+
+
+def _bump_session_version(db, user_id):
+    """Invalidate all sessions of the account; returns the new version (0 if migration 0023 is not applied yet)."""
+    try:
+        db.execute('UPDATE users SET session_version = session_version + 1 WHERE id = ?', (user_id,))
+        row = db.execute('SELECT session_version FROM users WHERE id = ?', (user_id,)).fetchone()
+        db.commit()
+        return int(row['session_version'])
+    except pgerr.UndefinedColumn:
+        db.rollback()
+        app.logger.error('users.session_version is missing: apply migration 0023_session_version.sql')
+        return 0
+
+
+@app.route('/account/sessions/logout-all', methods=['POST'])
+def account_logout_all():
+    """Sign out every other browser/device; this one stays signed in."""
+    db = get_db()
+    try:
+        db.execute('SELECT session_version FROM users WHERE id = ?', (session['user_id'],)).fetchone()
+    except pgerr.UndefinedColumn:
+        db.rollback()
+        return api_error('Signing out everywhere needs a database update that has not been applied yet (migration 0023_session_version.sql).', 503, code='migration_pending')
+    version = _bump_session_version(db, session['user_id'])
+    _start_session(session['user_id'], session['username'], remember=session.permanent, version=version)
+    return redirect(url_for('account', out=1))
 
 
 # ---------------- CAMPAIGN SCOPING (Phase C) ----------------

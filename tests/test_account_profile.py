@@ -148,3 +148,46 @@ def test_change_password_csrf(user):
     user.c.csrf_enabled = False
     assert user.c.post('/account/password', data={'current_password': user.password, 'new_password': 'brand-new-pass',
                                                   'confirm_password': 'brand-new-pass'}).status_code == 403
+
+
+# ---- sessions: log out everywhere ----
+def test_password_change_signs_out_other_devices(user):
+    other = user.fresh_client()
+    assert other.get('/campaigns').status_code == 200
+    assert change(user, user.password, 'brand-new-pass').status_code == 302
+    r = other.get('/campaigns')
+    assert r.status_code == 302 and '/login' in r.headers['Location']
+    assert user.get('/campaigns').status_code == 200                 # the device that changed it stays in
+
+
+def test_logout_everywhere_keeps_only_this_device(user):
+    other = user.fresh_client()
+    r = user.post('/account/sessions/logout-all')
+    assert r.status_code == 302 and 'out=1' in r.headers['Location']
+    assert other.get('/campaigns').status_code == 302
+    assert user.get('/campaigns').status_code == 200
+    assert user.fresh_client().get('/campaigns').status_code == 200   # logging in again works
+
+
+def test_signed_out_json_calls_get_a_401(user):
+    other = user.fresh_client()
+    user.post('/account/sessions/logout-all')
+    r = other.post('/uploads/sign', json={'purpose': 'avatar', 'size': 10, 'content_type': 'image/png'})
+    assert r.status_code == 401 and r.get_json()['code'] == 'unauthenticated'
+
+
+def test_logout_everywhere_csrf(user):
+    user.c.csrf_enabled = False
+    assert user.c.post('/account/sessions/logout-all').status_code == 403
+
+
+def test_sessions_survive_migration_0023_not_applied(user):
+    import database
+    def rename(a, b):
+        db = database.get_db(); db.execute(f'ALTER TABLE users RENAME COLUMN {a} TO {b}'); db.commit(); db.close()
+    rename('session_version', 'session_version_off')
+    try:
+        assert user.get('/campaigns').status_code == 200
+        assert user.post('/account/sessions/logout-all').status_code == 503
+    finally:
+        rename('session_version_off', 'session_version')
