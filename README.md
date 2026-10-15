@@ -117,6 +117,7 @@ hand with `python scripts/check_srd_contract.py`, or from the Actions tab (Run w
 | `storage.py`, `images.py`, `quotas.py` | Object storage, image validation/optimization, upload quotas |
 | `security.py` | CSRF, rate limiting, sanitization helpers |
 | `observability.py` | Structured logs, request ids, error handling, optional Sentry |
+| `THIRD_PARTY.md` | Audit of third-party requests, tracking, browser storage and bundled-asset licences |
 | `srd.py`, `dnd5e.py` | 2024 rules reference and character rules data |
 | `realtime.py`, `fog.py` | Live updates and map fog |
 | `templates/`, `static/` | Jinja templates, CSS, vanilla JS |
