@@ -1,7 +1,29 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon %}
 {% set active_page = 'account' %}
-{% block title %}Your profile — Campaign Ledger{% endblock %}
+{% block title %}Your profile — Campaign Ledger
+<form class="form-panel account-form" method="POST" action="{{ url_for('account_password') }}" id="password-form">{{ csrf_field() }}
+  <div class="form-section">
+    <p class="form-section-title">Password</p>
+    <div class="field" style="margin-bottom:14px;">
+      <label for="current_password">Current password</label>
+      <input type="password" id="current_password" name="current_password" required autocomplete="current-password">
+    </div>
+    <div class="field" style="margin-bottom:14px;">
+      <label for="new_password">New password</label>
+      <input type="password" id="new_password" name="new_password" required minlength="8" maxlength="128" autocomplete="new-password">
+      <p class="hint-text">At least 8 characters.</p>
+    </div>
+    <div class="field">
+      <label for="confirm_password">Repeat new password</label>
+      <input type="password" id="confirm_password" name="confirm_password" required minlength="8" maxlength="128" autocomplete="new-password">
+    </div>
+  </div>
+  <div class="form-actions">
+    <button type="submit" class="btn btn-primary">{{ icon('lock') }} Change password</button>
+  </div>
+</form>
+{% endblock %}
 
 {% block content %}
 <div class="page-header">
@@ -12,7 +34,9 @@
 </div>
 
 {% if request.args.get('saved') %}<div class="banner-notice" role="status">Profile saved.</div>{% endif %}
+{% if request.args.get('pw') %}<div class="banner-notice" role="status">Password changed.</div>{% endif %}
 {% if error %}<div class="banner-notice banner-error" role="alert">{{ error }}</div>{% endif %}
+{% if password_error %}<div class="banner-notice banner-error" role="alert" id="password-error">{{ password_error }}</div>{% endif %}
 
 <form class="form-panel account-form" method="POST" enctype="multipart/form-data" id="account-form">{{ csrf_field() }}
   <div class="form-section">
@@ -57,6 +81,28 @@
 
   <div class="form-actions">
     <button type="submit" class="btn btn-primary">{{ icon('check') }} Save profile</button>
+  </div>
+</form>
+
+<form class="form-panel account-form" method="POST" action="{{ url_for('account_password') }}" id="password-form">{{ csrf_field() }}
+  <div class="form-section">
+    <p class="form-section-title">Password</p>
+    <div class="field" style="margin-bottom:14px;">
+      <label for="current_password">Current password</label>
+      <input type="password" id="current_password" name="current_password" required autocomplete="current-password">
+    </div>
+    <div class="field" style="margin-bottom:14px;">
+      <label for="new_password">New password</label>
+      <input type="password" id="new_password" name="new_password" required minlength="8" maxlength="128" autocomplete="new-password">
+      <p class="hint-text">At least 8 characters.</p>
+    </div>
+    <div class="field">
+      <label for="confirm_password">Repeat new password</label>
+      <input type="password" id="confirm_password" name="confirm_password" required minlength="8" maxlength="128" autocomplete="new-password">
+    </div>
+  </div>
+  <div class="form-actions">
+    <button type="submit" class="btn btn-primary">{{ icon('lock') }} Change password</button>
   </div>
 </form>
 {% endblock %}

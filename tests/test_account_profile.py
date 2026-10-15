@@ -105,3 +105,46 @@ def test_site_survives_migration_0022_not_applied(user):
         assert user.get('/account').status_code == 503
     finally:
         rename('display_name_off', 'display_name')
+
+
+# ---- change password ----
+def change(u, current, new, confirm=None):
+    return u.post('/account/password', data={'current_password': current, 'new_password': new,
+                                             'confirm_password': new if confirm is None else confirm})
+
+
+def test_change_password_then_login_with_new_one(user, appmod):
+    r = change(user, user.password, 'brand-new-pass')
+    assert r.status_code == 302 and 'pw=1' in r.headers['Location']
+    assert 'Password changed.' in user.get('/account?pw=1').get_data(as_text=True)
+    c = appmod.app.test_client()
+    assert c.post('/login', data={'username': user.name, 'password': 'brand-new-pass'}).status_code == 302
+    assert 'Incorrect' in appmod.app.test_client().post('/login', data={'username': user.name, 'password': user.password}).get_data(as_text=True)
+    assert user.get('/campaigns').status_code == 200          # this session keeps working
+
+
+def test_change_password_checks_current_and_rules(user):
+    before = row(user)['password_hash']
+    for args, text in [((user.password + 'x', 'brand-new-pass'), 'current password is not correct'),
+                       ((user.password, 'short'), 'at least 8'),
+                       ((user.password, 'brand-new-pass', 'different-one'), 'do not match'),
+                       ((user.password, user.password), 'different from the current')]:
+        r = change(user, *args)
+        assert r.status_code == 400 and text in r.get_data(as_text=True)
+    assert row(user)['password_hash'] == before
+
+
+def test_change_password_wrong_current_is_throttled(user, appmod):
+    from unittest import mock
+    import security
+    with mock.patch.dict(security.WINDOWS, {'login-pair': (3, 900)}), mock.patch.dict(appmod.app.config, {'CLIENT_IP_HEADER': 'X-Test-IP'}):
+        user.c.environ_base['HTTP_X_TEST_IP'] = '10.9.8.7'
+        codes = [change(user, 'wrong-guess-%d' % i, 'brand-new-pass').status_code for i in range(5)]
+        assert codes[:3] == [400, 400, 400] and codes[3] == 429
+        assert change(user, user.password, 'brand-new-pass').status_code == 429      # even the right one waits
+
+
+def test_change_password_csrf(user):
+    user.c.csrf_enabled = False
+    assert user.c.post('/account/password', data={'current_password': user.password, 'new_password': 'brand-new-pass',
+                                                  'confirm_password': 'brand-new-pass'}).status_code == 403

@@ -493,6 +493,46 @@ def account():
     return render_template('account.html', profile=dict(user), form=dict(user), error=None)
 
 
+@app.route('/account/password', methods=['POST'])
+def account_password():
+    """Change the password: needs the current one.  A wrong current password counts as a failed login
+    (same throttle), so this form cannot be used to guess passwords."""
+    db = get_db()
+    user = db.execute('SELECT id, username, password_hash, display_name, avatar_path, bio FROM users WHERE id = ?', (session['user_id'],)).fetchone()
+    if user is None:
+        session.clear()
+        return redirect(url_for('login'))
+    current = request.form.get('current_password', '')[:1024]
+    new = request.form.get('new_password', '')
+    confirm = request.form.get('confirm_password', '')
+    ip = client_ip()
+
+    def fail(message, status=400):
+        return render_template('account.html', profile=dict(user), form=dict(user), error=None, password_error=message), status
+
+    wait = security.login_blocked_for(db, app.secret_key, user['username'], ip)
+    if wait:
+        return fail(_wait_message(wait), 429)
+    if not user['password_hash'] or not check_password_hash(user['password_hash'], current):
+        security.record_login_failure(db, app.secret_key, user['username'], ip)
+        db.commit()
+        return fail('Your current password is not correct.')
+    if new != confirm:
+        return fail('The new passwords do not match.')
+    if len(new) < 8:
+        return fail('Password must be at least 8 characters.')
+    if len(new) > 128:
+        return fail('Password must be at most 128 characters.')
+    if new == current:
+        return fail('Choose a password different from the current one.')
+    db.execute('UPDATE users SET password_hash = ? WHERE id = ?', (generate_password_hash(new), user['id']))
+    security.clear_login_failures(db, app.secret_key, user['username'], ip)
+    db.commit()
+    permanent = session.permanent
+    _start_session(user['id'], user['username'], remember=permanent)       # fresh session and CSRF token
+    return redirect(url_for('account', pw=1))
+
+
 # ---------------- CAMPAIGN SCOPING (Phase C) ----------------
 # Every data-bearing route lives under /campaigns/<campaign_id>/... . These
 # three pieces work together so that (a) view functions don't each need a
