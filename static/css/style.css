@@ -394,7 +394,11 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
    single column once there isn't room for both. */
 .campaign-edit-layout { display: flex; align-items: flex-start; gap: 24px; flex-wrap: wrap; }
 .campaign-edit-layout > .form-panel { flex: 1 1 480px; max-width: 640px; margin-top: 0; }
-.campaign-edit-layout > .members-panel { flex: 1 1 320px; max-width: 380px; }
+/* the header ends where the columns end, so Back to list sits above the right column, not at the far edge of a wide screen */
+.campaign-edit-header { max-width: 1044px; }
+.campaign-edit-side { flex: 1 1 320px; max-width: 380px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.campaign-edit-side > .members-panel { max-width: none; width: 100%; box-sizing: border-box; }
+.campaign-edit-side > .hint-text { margin: 0; padding-inline: 4px; }
 .campaign-switcher:hover { background: rgba(201,162,75,0.08); color: var(--parchment); border-color: var(--hairline-strong); }
 .campaign-switcher-name {
   flex: 1;
