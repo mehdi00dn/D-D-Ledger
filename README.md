@@ -16,7 +16,8 @@ It also runs locally.
   `.env.example`). A forgotten password is reset from the login page with a one-hour, single-use link sent to a
   *confirmed* address (the answer never reveals whether an address has an account); a reset ends every session and
   mails the owner a notice. Accounts can be deleted from `/account` (password + typed DELETE): campaigns the
-  user solely owns are deleted for good unless handed to a member first, and the page says so next to each one.
+  user solely owns are deleted for good unless handed to a member first, and the page says so next to each one. "Download my data" on `/account` returns your account, memberships and
+  the characters, factions, maps and dice rolls you made as one JSON file (never the password).
   Roles per campaign: DM (full control) and Player. Authorization is enforced on the
   server for every campaign route.
 - **Characters and factions.** Profiles with class, abilities, saves, skills, speed,

@@ -8,7 +8,7 @@ import hashlib
 import hmac
 import secrets
 from urllib.parse import urlparse
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from functools import wraps
 from flask import (
     Flask, render_template, request, redirect, url_for,
@@ -885,6 +885,50 @@ def _bump_session_version(db, user_id):
         db.rollback()
         app.logger.error('users.session_version is missing: apply migration 0023_session_version.sql')
         return 0
+
+
+@app.route('/account/export', methods=['POST'])
+def account_export():
+    """Download everything the app holds about the logged-in user as one JSON file: the account, memberships, and the
+    characters, factions, maps and dice rolls they made.  Never includes the password hash, session data or anyone
+    else's account details."""
+    db = get_db()
+    user = _account_row(db, session['user_id'])
+    if user is None:
+        session.clear()
+        return redirect(url_for('login'))
+    uid = user['id']
+    joined = db.execute('SELECT created_at FROM users WHERE id = ?', (uid,)).fetchone()['created_at']
+    rows = lambda sql, *a: [dict(r) for r in db.execute(sql, a).fetchall()]
+    data = {
+        'exported_at': datetime.now(timezone.utc).isoformat(timespec='seconds'),
+        'account': {
+            'username': user['username'], 'display_name': user['display_name'], 'bio': user['bio'],
+            'email': user.get('email'), 'email_verified': bool(user.get('email_verified_at')),
+            'created_at': joined,
+        },
+        'campaign_memberships': rows(
+            'SELECT c.name AS campaign, cm.role, cm.status FROM campaign_members cm JOIN campaigns c ON c.id = cm.campaign_id '
+            'WHERE cm.user_id = ? ORDER BY c.id', uid),
+        'characters_you_made': rows(
+            'SELECT c.name AS campaign, ch.* FROM characters ch JOIN campaigns c ON c.id = ch.campaign_id WHERE ch.created_by = ? ORDER BY ch.id', uid),
+        'factions_you_made': rows(
+            'SELECT c.name AS campaign, g.* FROM groups g JOIN campaigns c ON c.id = g.campaign_id WHERE g.created_by = ? ORDER BY g.id', uid),
+        'maps_you_made': rows(
+            'SELECT c.name AS campaign, m.id, m.name, m.created_at FROM maps m JOIN campaigns c ON c.id = m.campaign_id WHERE m.created_by = ? ORDER BY m.id', uid),
+        'dice_rolls': rows(
+            'SELECT c.name AS campaign, d.label, d.dice, d.modifier, d.total, d.mode, d.created_at FROM dice_rolls d '
+            'JOIN campaigns c ON c.id = d.campaign_id WHERE d.user_id = ? ORDER BY d.id', uid),
+    }
+    for item in data['characters_you_made']:
+        item.pop('created_by', None)
+    for key in ('factions_you_made', 'maps_you_made'):
+        for item in data[key]:
+            item.pop('created_by', None)
+    db.close()
+    body = json.dumps(data, indent=2, ensure_ascii=False, default=str)
+    return Response(body, mimetype='application/json',
+                    headers={'Content-Disposition': 'attachment; filename="campaign-ledger-%s.json"' % re.sub(r'[^A-Za-z0-9_-]+', '_', user['username'])})
 
 
 @app.route('/account/sessions/logout-all', methods=['POST'])

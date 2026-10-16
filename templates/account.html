@@ -133,6 +133,14 @@
   </div>
 </form>
 
+<form class="form-panel account-form" method="POST" action="{{ url_for('account_export') }}" id="export-form">{{ csrf_field() }}
+  <div class="form-section">
+    <p class="form-section-title">Your data</p>
+    <p class="hint-text" style="margin:0 0 12px;">Download a copy of what Campaign Ledger holds about you: your account details, the campaigns you belong to, and the characters, factions, maps and dice rolls you made. It never includes your password.</p>
+    <button type="submit" class="btn btn-ghost">{{ icon('download') }} Download my data</button>
+  </div>
+</form>
+
 {% set owned = owned_campaigns() %}
 <form class="form-panel account-form danger-panel" method="POST" action="{{ url_for('account_delete') }}" id="delete-form" data-confirm="Delete your account for good? Campaigns you own and did not hand to someone else are deleted with it and cannot be recovered.">{{ csrf_field() }}
   <div class="form-section">
