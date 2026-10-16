@@ -11,8 +11,11 @@ It also runs locally.
   profile at `/account` (display name, avatar, bio); the display name replaces the username in the sidebar, the
   username stays the login. Profiles are private to their owner for now and need no campaign. `/account` also
   changes the password (current password required; wrong guesses share the login throttle) and offers "sign out
-  everywhere else". An optional email address is confirmed with a signed 24-hour link sent over SMTP (`mailer.py`, any
-  provider; settings in `.env.example`). Both bump `users.session_version`, which ends every other session on its next request.
+  everywhere else"; both bump `users.session_version`, which ends every other session on its next request. An optional
+  email address is confirmed with a signed 24-hour link sent over SMTP (`mailer.py`, any provider; settings in
+  `.env.example`). A forgotten password is reset from the login page with a one-hour, single-use link sent to a
+  *confirmed* address (the answer never reveals whether an address has an account); a reset ends every session and
+  mails the owner a notice.
   Roles per campaign: DM (full control) and Player. Authorization is enforced on the
   server for every campaign route.
 - **Characters and factions.** Profiles with class, abilities, saves, skills, speed,

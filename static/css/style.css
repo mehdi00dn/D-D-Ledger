@@ -272,6 +272,16 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
   font-size: 13px;
   margin: 0 0 16px;
 }
+.auth-note {
+  background: rgba(201, 162, 75, 0.10);
+  border: 1px solid rgba(201, 162, 75, 0.35);
+  color: var(--parchment);
+  border-radius: var(--radius-s);
+  padding: 9px 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 0 0 16px;
+}
 .auth-submit { width: 100%; justify-content: center; margin-top: 6px; }
 .auth-switch { text-align: center; margin: 18px 0 0; font-size: 13px; color: var(--parchment-dim); }
 .auth-switch a { color: var(--brass); font-weight: 500; }

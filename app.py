@@ -114,7 +114,7 @@ def _campaign_access_field(form):
 # Full accounts: anyone can self-register, and every route requires a
 # logged-in session except the handful that must stay reachable to get one.
 
-PUBLIC_ENDPOINTS = {'login', 'register', 'static', 'healthz'}
+PUBLIC_ENDPOINTS = {'login', 'register', 'static', 'healthz', 'forgot_password', 'reset_password'}
 
 
 # Which classification of connection failure gets which fixed, secret-free hint.
@@ -478,6 +478,7 @@ def my_profile():
 
 
 app.jinja_env.globals['my_profile'] = my_profile
+app.jinja_env.globals['mail_enabled'] = mailer.enabled
 
 
 EMAIL_MAX = 254
@@ -592,6 +593,93 @@ def account_email_remove():
         db.execute('UPDATE users SET email = NULL, email_verified_at = NULL WHERE id = ?', (user['id'],))
         db.commit()
     return redirect(url_for('account', mail='removed'))
+
+
+# ---- password reset by email (DL-38) ----
+RESET_TOKEN_MAX_AGE = 3600
+
+
+def _reset_serializer():
+    return URLSafeTimedSerializer(app.secret_key, salt='reset-password')
+
+
+def _password_fingerprint(password_hash):
+    """Ties a reset link to the password it was issued for, so it stops working once the password changes."""
+    return hashlib.sha256((password_hash or '').encode()).hexdigest()[:16]
+
+
+@app.route('/forgot-password', methods=['GET', 'POST'])
+def forgot_password():
+    """Ask for a reset link.  The answer never says whether the address belongs to an account."""
+    if session.get('user_id'):
+        return redirect(url_for('account'))
+    if not mailer.enabled():
+        return render_template('forgot_password.html', sent=False, email='', error='Password reset by email is not available on this server yet.'), 503
+    if request.method == 'GET':
+        return render_template('forgot_password.html', sent=False, email='', error=None)
+    address = request.form.get('email', '').strip()
+    if _email_error(address):
+        return render_template('forgot_password.html', sent=False, email=address[:254], error='Enter a valid email address.'), 400
+    db = get_db()
+    ip = client_ip()
+    wait = security.mail_blocked_for(db, app.secret_key, 0, address, ip)
+    if wait:
+        return render_template('forgot_password.html', sent=False, email=address, error=_wait_message(wait)), 429
+    security.record_mail(db, app.secret_key, 0, address, ip)
+    db.commit()
+    try:
+        user = db.execute('SELECT id, username, display_name, password_hash FROM users '
+                          'WHERE lower(email) = lower(?) AND email_verified_at IS NOT NULL', (address,)).fetchone()
+    except pgerr.UndefinedColumn:
+        db.rollback()
+        user = None
+    if user is not None and user['password_hash']:
+        token = _reset_serializer().dumps({'u': user['id'], 'f': _password_fingerprint(user['password_hash'])})
+        ctx = {'name': user['display_name'] or user['username'], 'username': user['username'],
+               'link': url_for('reset_password', token=token, _external=True)}
+        try:
+            mailer.send(address, 'Reset your Campaign Ledger password',
+                        render_template('email/password_reset.txt', **ctx), render_template('email/password_reset.html', **ctx))
+        except mailer.MailError:
+            pass                                    # same answer either way; the failure is already in the log
+    return render_template('forgot_password.html', sent=True, email='', error=None)
+
+
+@app.route('/reset-password/<token>', methods=['GET', 'POST'])
+def reset_password(token):
+    """The link from the reset email: choose a new password.  Ends every session of the account."""
+    try:
+        data = _reset_serializer().loads(token, max_age=RESET_TOKEN_MAX_AGE)
+    except BadSignature:                            # includes SignatureExpired
+        return render_template('reset_password.html', invalid=True), 400
+    db = get_db()
+    user = db.execute('SELECT id, username, display_name, email, password_hash FROM users WHERE id = ?', (data.get('u'),)).fetchone()
+    if user is None or not user['password_hash'] or _password_fingerprint(user['password_hash']) != data.get('f'):
+        return render_template('reset_password.html', invalid=True), 400
+    if request.method == 'GET':
+        return render_template('reset_password.html', invalid=False, error=None)
+    new = request.form.get('new_password', '')
+    error = None
+    if new != request.form.get('confirm_password', ''):
+        error = 'The new passwords do not match.'
+    elif len(new) < 8:
+        error = 'Password must be at least 8 characters.'
+    elif len(new) > 128:
+        error = 'Password must be at most 128 characters.'
+    if error:
+        return render_template('reset_password.html', invalid=False, error=error), 400
+    db.execute('UPDATE users SET password_hash = ? WHERE id = ?', (generate_password_hash(new), user['id']))
+    security.clear_login_failures(db, app.secret_key, user['username'], client_ip())
+    db.commit()
+    _bump_session_version(db, user['id'])           # every device is signed out, including whoever had the old password
+    if user['email']:
+        try:
+            mailer.send(user['email'], 'Your Campaign Ledger password was changed',
+                        render_template('email/password_changed.txt', name=user['display_name'] or user['username'], username=user['username']))
+        except mailer.MailError:
+            pass
+    session.clear()
+    return redirect(url_for('login', reset=1))
 
 
 @app.route('/verify-email/<token>')
