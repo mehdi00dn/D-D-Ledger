@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% set active_page = 'activity' %}
+{% block title %}Activity — Campaign Ledger{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Activity</h1>
+    <p class="page-sub">Who joined or left, and what was added or removed lately. Dice rolls are on the Dice page.</p>
+  </div>
+</div>
+
+{% if events %}
+<ol class="activity-list">
+  {% for e in events %}
+  <li class="activity-item activity-{{ e.kind }}">
+    <span class="activity-ico">{{ icon('history') }}</span>
+    <div class="activity-main">
+      <p class="activity-text"><strong>{{ e.actor or 'A former member' }}</strong> {{ e.text }}{% if e.link %} · <a href="{{ e.link }}">Open</a>{% endif %}</p>
+      <p class="activity-time">{{ e.created_at }} UTC</p>
+    </div>
+  </li>
+  {% endfor %}
+</ol>
+{% else %}
+<div class="empty-state">
+  <h3>Nothing yet</h3>
+  <p>Joins, new characters, factions and maps show up here as they happen.</p>
+</div>
+{% endif %}
+{% endblock %}

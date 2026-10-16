@@ -69,6 +69,9 @@
       <a href="{{ url_for('reference_view') }}" data-more class="nav-tab {{ 'active' if active_page == 'reference' else '' }}" title="Spells, monsters and items">
         {{ icon('book-open') }}<span>Reference</span>
       </a>
+      <a href="{{ url_for('activity_view') }}" data-more class="nav-tab {{ 'active' if active_page == 'activity' else '' }}" title="What happened lately">
+        {{ icon('history') }}<span>Activity</span>
+      </a>
       {% if g.real_is_dm %}
       <form method="POST" action="{{ url_for('preview_as_player') }}" class="nav-form" data-more>{{ csrf_field() }}
         <input type="hidden" name="on" value="{{ '0' if g.previewing else '1' }}">
@@ -90,7 +93,7 @@
       {% endif %}
       {% endif %}
       {# Phone only: the bar keeps four places; everything else (and the quick settings) lives in this sheet. #}
-      <button type="button" class="nav-tab nav-more-btn {{ 'active' if active_page in ('factions', 'reference') else '' }}" id="nav-more-btn" aria-haspopup="dialog" aria-expanded="false" aria-controls="more-sheet" title="More">
+      <button type="button" class="nav-tab nav-more-btn {{ 'active' if active_page in ('factions', 'reference', 'activity') else '' }}" id="nav-more-btn" aria-haspopup="dialog" aria-expanded="false" aria-controls="more-sheet" title="More">
         {{ icon('more') }}<span>More</span>
       </button>
     </nav>

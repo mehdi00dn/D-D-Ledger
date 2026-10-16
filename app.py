@@ -1164,6 +1164,25 @@ MAX_PENDING_INVITATIONS = 25          # open invitations per campaign (keeps inv
 STATUS_LABELS = {'dm': 'DM', 'player': 'Player'}
 
 
+ACTIVITY_KEEP = 200            # events kept per campaign; older ones are deleted as new ones arrive
+
+
+def log_activity(db, campaign_id, kind, text, link=None):
+    """Record one event in the campaign's activity feed by the logged-in user (the caller commits).  `text` says what
+    happened without naming the actor: the page adds the name when it is shown, so a deleted account leaves no name."""
+    if link and not (link.startswith('/') and not link.startswith('//')):
+        link = None
+    try:
+        db.execute('INSERT INTO campaign_activity (campaign_id, user_id, kind, text, link) VALUES (?, ?, ?, ?, ?)',
+                   (campaign_id, session.get('user_id'), kind, text[:300], link))
+        db.execute('DELETE FROM campaign_activity WHERE campaign_id = ? AND id NOT IN '
+                   '(SELECT id FROM campaign_activity WHERE campaign_id = ? ORDER BY id DESC LIMIT ?)',
+                   (campaign_id, campaign_id, ACTIVITY_KEEP))
+    except pgerr.UndefinedTable:
+        db.rollback()                                       # code deployed before migration 0025: skip rather than fail the action
+        app.logger.error('campaign_activity is missing: apply migration 0025_campaign_activity.sql')
+
+
 def notify(db, user_id, kind, title, body='', link=None, invitation_id=None):
     """Add an in-app notification for one user (the caller commits)."""
     if link and not (link.startswith('/') and not link.startswith('//')):
@@ -1388,6 +1407,7 @@ def join_via_link_accept(token):
     if link['created_by_id'] and link['created_by_id'] != session['user_id']:
         notify(db, link['created_by_id'], 'invite_link_joined', '%s joined %s' % (session['username'], link['campaign_name']),
                'They used your invite link and joined as a Player.', url_for('campaign_edit', campaign_id=link['campaign_id']))
+    log_activity(db, link['campaign_id'], 'member_joined', 'joined the campaign')
     db.commit()
     db.close()
     return redirect(url_for('characters_list', campaign_id=link['campaign_id']))
@@ -1457,6 +1477,8 @@ def _respond_to_invitation(invitation_id, accept):
                        ON CONFLICT (campaign_id, user_id) DO NOTHING''', (inv['campaign_id'], session['user_id'], inv['status']))
     db.execute('UPDATE notifications SET read_at = ' + _UTC_NOW + ' WHERE invitation_id = ? AND user_id = ? AND read_at IS NULL',
                (invitation_id, session['user_id']))
+    if accept:
+        log_activity(db, inv['campaign_id'], 'member_joined', 'joined the campaign')
     if inv['invited_by_id']:
         notify(db, inv['invited_by_id'], 'invite_accepted' if accept else 'invite_declined',
                '%s %s your invitation' % (session['username'], 'accepted' if accept else 'declined'),
@@ -1560,6 +1582,7 @@ def campaign_leave():
             db.close()
             return redirect(url_for('campaign_edit', campaign_id=g.campaign_id))
     db.execute('DELETE FROM campaign_members WHERE campaign_id = ? AND user_id = ?', (g.campaign_id, session['user_id']))
+    log_activity(db, g.campaign_id, 'member_left', 'left the campaign')
     db.commit()
     db.close()
     if session.get('last_campaign_id') == g.campaign_id:
@@ -2346,6 +2369,8 @@ def _save_character(db, char_id):
               wis_score, cha_score, armor_class, avatar_path, notes, group_id, class_key, g.campaign_id, session['user_id'],
               speed, skill_prof, save_prof))
         char_id = cur.lastrowid
+        log_activity(db, g.campaign_id, 'character_created', 'added the %s %s' % ('NPC' if is_npc else 'character', name),
+                     url_for('character_detail', campaign_id=g.campaign_id, char_id=char_id))
     else:
         if avatar_path:
             old = db.execute('SELECT avatar_path FROM characters WHERE id = ?', (char_id,)).fetchone()
@@ -2382,7 +2407,7 @@ def _save_character(db, char_id):
 @campaign_access_required
 def character_delete(char_id):
     db = get_db()
-    char = db.execute('SELECT avatar_path, created_by FROM characters WHERE id = ? AND campaign_id = ?',
+    char = db.execute('SELECT name, avatar_path, created_by FROM characters WHERE id = ? AND campaign_id = ?',
                        (char_id, g.campaign_id)).fetchone()
     if char and not can_delete(char['created_by']):
         db.close()
@@ -2393,6 +2418,7 @@ def character_delete(char_id):
         for s in sheets:
             delete_upload(s['image_path'])
         db.execute('DELETE FROM characters WHERE id = ? AND campaign_id = ?', (char_id, g.campaign_id))
+        log_activity(db, g.campaign_id, 'character_deleted', 'removed the character %s' % char['name'])
         db.commit()
     db.close()
     return redirect(url_for('characters_list'))
@@ -2539,6 +2565,8 @@ def _save_faction(db, group_id):
     if group_id is None:
         group_id = db.execute('INSERT INTO groups (name, avatar_path, bio, color, campaign_id, created_by) VALUES (?, ?, ?, ?, ?, ?)',
                               (name, avatar_path, bio, color, g.campaign_id, session['user_id'])).lastrowid
+        log_activity(db, g.campaign_id, 'faction_created', 'added the faction %s' % name,
+                     url_for('faction_detail', campaign_id=g.campaign_id, group_id=group_id))
     else:
         if avatar_path:
             old = db.execute('SELECT avatar_path FROM groups WHERE id = ?', (group_id,)).fetchone()
@@ -2570,7 +2598,7 @@ def _save_faction(db, group_id):
 @dm_required
 def faction_delete(group_id):
     db = get_db()
-    group = db.execute('SELECT avatar_path, created_by FROM groups WHERE id = ? AND campaign_id = ?', (group_id, g.campaign_id)).fetchone()
+    group = db.execute('SELECT name, avatar_path, created_by FROM groups WHERE id = ? AND campaign_id = ?', (group_id, g.campaign_id)).fetchone()
     if group and not can_delete(group['created_by']):
         db.close()
         abort(403)
@@ -2581,6 +2609,7 @@ def faction_delete(group_id):
         db.execute('DELETE FROM groups WHERE id = ? AND campaign_id = ?', (group_id, g.campaign_id))
         for cid_ in members:                       # anyone whose MAIN faction this was moves on to their next one
             _resync_main_faction(db, cid_)
+        log_activity(db, g.campaign_id, 'faction_deleted', 'removed the faction %s' % group['name'])
         db.commit()
     db.close()
     return redirect(url_for('factions_list'))
@@ -3291,6 +3320,22 @@ def api_battle_clear():
     return jsonify([])
 
 
+@app.route('/campaigns/<int:campaign_id>/activity')
+@campaign_access_required
+def activity_view():
+    """What has happened in this campaign lately: members joining or leaving, and things added or removed."""
+    db = get_db()
+    try:
+        events = db.execute('''SELECT a.id, a.kind, a.text, a.link, a.created_at, COALESCE(NULLIF(u.display_name, ''), u.username) AS actor
+                                FROM campaign_activity a LEFT JOIN users u ON u.id = a.user_id
+                                WHERE a.campaign_id = ? ORDER BY a.id DESC LIMIT 100''', (g.campaign_id,)).fetchall()
+    except pgerr.UndefinedTable:
+        db.rollback()
+        events = []
+    db.close()
+    return render_template('activity.html', events=events)
+
+
 @app.route('/campaigns/<int:campaign_id>/dice')
 @campaign_access_required
 def dice_view():
@@ -3835,6 +3880,7 @@ def map_new():
         (name, image_path, width, height, g.campaign_id, session['user_id'])
     )
     map_id = cur.lastrowid
+    log_activity(db, g.campaign_id, 'map_created', 'added the map %s' % name, url_for('map_editor', campaign_id=g.campaign_id, map_id=map_id))
     db.commit()
     db.close()
     return redirect(url_for('map_editor', map_id=map_id))
@@ -3879,7 +3925,7 @@ def map_editor(map_id):
 @campaign_access_required
 def map_delete(map_id):
     db = get_db()
-    m = db.execute('SELECT image_path, created_by FROM maps WHERE id = ? AND campaign_id = ?', (map_id, g.campaign_id)).fetchone()
+    m = db.execute('SELECT name, image_path, created_by FROM maps WHERE id = ? AND campaign_id = ?', (map_id, g.campaign_id)).fetchone()
     if m and not can_delete(m['created_by']):
         db.close()
         abort(403)
@@ -3887,6 +3933,7 @@ def map_delete(map_id):
         _cleanup_familiar_participants(db, map_id)
         delete_upload(m['image_path'])
         db.execute('DELETE FROM maps WHERE id = ? AND campaign_id = ?', (map_id, g.campaign_id))
+        log_activity(db, g.campaign_id, 'map_deleted', 'removed the map %s' % m['name'])
         db.commit()
     db.close()
     last_map_by_campaign = session.get('last_map_by_campaign', {})
