@@ -11,7 +11,8 @@ It also runs locally.
   profile at `/account` (display name, avatar, bio); the display name replaces the username in the sidebar, the
   username stays the login. Profiles are private to their owner for now and need no campaign. `/account` also
   changes the password (current password required; wrong guesses share the login throttle) and offers "sign out
-  everywhere else". Both bump `users.session_version`, which ends every other session on its next request.
+  everywhere else". An optional email address is confirmed with a signed 24-hour link sent over SMTP (`mailer.py`, any
+  provider; settings in `.env.example`). Both bump `users.session_version`, which ends every other session on its next request.
   Roles per campaign: DM (full control) and Player. Authorization is enforced on the
   server for every campaign route.
 - **Characters and factions.** Profiles with class, abilities, saves, skills, speed,
@@ -119,6 +120,7 @@ hand with `python scripts/check_srd_contract.py`, or from the Actions tab (Run w
 | `app.py` | Flask app: routes, auth, authorization |
 | `database.py`, `migrations/`, `migrate.py` | Postgres access and versioned schema |
 | `storage.py`, `images.py`, `quotas.py` | Object storage, image validation/optimization, upload quotas |
+| `mailer.py` | Provider-neutral outgoing email over SMTP |
 | `security.py` | CSRF, rate limiting, sanitization helpers |
 | `observability.py` | Structured logs, request ids, error handling, optional Sentry |
 | `THIRD_PARTY.md` | Audit of third-party requests, tracking, browser storage and bundled-asset licences |

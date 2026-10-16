@@ -20,6 +20,8 @@ import nh3
 import psycopg.errors as pgerr
 from markupsafe import Markup
 import security
+import mailer
+from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 import realtime
 import observability
 from concurrent.futures import ThreadPoolExecutor
@@ -478,11 +480,151 @@ def my_profile():
 app.jinja_env.globals['my_profile'] = my_profile
 
 
+EMAIL_MAX = 254
+EMAIL_TOKEN_MAX_AGE = 24 * 3600
+
+
+def _email_error(address):
+    """None when `address` looks like a usable email address (the real test is the verification link)."""
+    if not address or len(address) > EMAIL_MAX or any(c.isspace() or c in '<>,;"\\' for c in address) or address.count('@') != 1:
+        return 'Enter a valid email address.'
+    local, domain = address.split('@')
+    if not local or len(local) > 64 or '.' not in domain or domain.startswith('.') or domain.endswith('.') or '..' in domain or not domain.isascii():
+        return 'Enter a valid email address.'
+    return None
+
+
+def _account_row(db, user_id):
+    """The signed-in user's account row as a dict, with `email_ready` telling whether migration 0024 is applied."""
+    try:
+        row = db.execute('SELECT id, username, display_name, avatar_path, bio, email, email_verified_at FROM users WHERE id = ?', (user_id,)).fetchone()
+        ready = True
+    except pgerr.UndefinedColumn:
+        db.rollback()
+        app.logger.error('users.email is missing: apply migration 0024_user_email.sql')
+        row = db.execute('SELECT id, username, display_name, avatar_path, bio FROM users WHERE id = ?', (user_id,)).fetchone()
+        ready = False
+    if row is None:
+        return None
+    d = dict(row)
+    d.setdefault('email', None)
+    d.setdefault('email_verified_at', None)
+    d['email_ready'] = ready
+    d['mail_enabled'] = mailer.enabled()
+    return d
+
+
+def _email_serializer():
+    return URLSafeTimedSerializer(app.secret_key, salt='verify-email')
+
+
+def _send_verification(db, user, address):
+    """Rate-limit, then mail a verification link.  Returns an error message or None."""
+    ip = client_ip()
+    wait = security.mail_blocked_for(db, app.secret_key, user['id'], address, ip)
+    if wait:
+        return _wait_message(wait)
+    token = _email_serializer().dumps({'u': user['id'], 'e': address.lower()})
+    link = url_for('verify_email', token=token, _external=True)
+    ctx = {'name': user.get('display_name') or user['username'], 'username': user['username'], 'link': link}
+    try:
+        security.record_mail(db, app.secret_key, user['id'], address, ip)
+        db.commit()                                                     # the attempt counts even if sending fails
+        mailer.send(address, 'Confirm your email for Campaign Ledger',
+                    render_template('email/verify_email.txt', **ctx), render_template('email/verify_email.html', **ctx))
+    except mailer.MailError as exc:
+        return str(exc)
+    return None
+
+
+@app.route('/account/email', methods=['POST'])
+def account_email():
+    """Set (or change) the account's email and send the verification link.  Changing it clears the verified mark."""
+    db = get_db()
+    user = _account_row(db, session['user_id'])
+    if user is None:
+        session.clear()
+        return redirect(url_for('login'))
+    if not user['email_ready']:
+        return api_error('Email needs a database update that has not been applied yet (migration 0024_user_email.sql).', 503, code='migration_pending')
+
+    def fail(message, status=400):
+        return render_template('account.html', profile=user, form=user, error=None, email_error=message), status
+
+    address = request.form.get('email', '').strip()
+    error = _email_error(address)
+    if error:
+        return fail(error)
+    if not mailer.enabled():
+        return fail('Email is not set up on this server yet, so addresses cannot be confirmed.', 503)
+    if (user['email'] or '').lower() != address.lower():
+        db.execute('UPDATE users SET email = ?, email_verified_at = NULL WHERE id = ?', (address, user['id']))
+        db.commit()
+        user['email'], user['email_verified_at'] = address, None
+    elif user['email_verified_at']:
+        return redirect(url_for('account', mail='already'))
+    error = _send_verification(db, user, address)
+    if error:
+        return fail(error, 429 if error.startswith('Too many') else 502)
+    return redirect(url_for('account', mail='sent'))
+
+
+@app.route('/account/email/resend', methods=['POST'])
+def account_email_resend():
+    db = get_db()
+    user = _account_row(db, session['user_id'])
+    if user is None:
+        session.clear()
+        return redirect(url_for('login'))
+    if not user['email_ready'] or not user['email'] or user['email_verified_at']:
+        return redirect(url_for('account'))
+    error = _send_verification(db, user, user['email'])
+    if error:
+        return render_template('account.html', profile=user, form=user, error=None, email_error=error), (429 if error.startswith('Too many') else 502)
+    return redirect(url_for('account', mail='sent'))
+
+
+@app.route('/account/email/remove', methods=['POST'])
+def account_email_remove():
+    db = get_db()
+    user = _account_row(db, session['user_id'])
+    if user is not None and user['email_ready']:
+        db.execute('UPDATE users SET email = NULL, email_verified_at = NULL WHERE id = ?', (user['id'],))
+        db.commit()
+    return redirect(url_for('account', mail='removed'))
+
+
+@app.route('/verify-email/<token>')
+def verify_email(token):
+    """The link from the verification email.  Needs the same signed-in account the link was issued for."""
+    try:
+        data = _email_serializer().loads(token, max_age=EMAIL_TOKEN_MAX_AGE)
+    except SignatureExpired:
+        return redirect(url_for('account', mail='expired'))
+    except BadSignature:
+        return redirect(url_for('account', mail='invalid'))
+    if data.get('u') != session.get('user_id'):
+        return redirect(url_for('account', mail='wrong_account'))
+    db = get_db()
+    user = _account_row(db, session['user_id'])
+    if user is None or not user['email_ready'] or (user['email'] or '').lower() != data.get('e'):
+        return redirect(url_for('account', mail='invalid'))        # the address was changed or removed since
+    if user['email_verified_at']:
+        return redirect(url_for('account', mail='verified'))
+    try:
+        db.execute('UPDATE users SET email_verified_at = ' + _UTC_NOW + ' WHERE id = ?', (user['id'],))
+        db.commit()
+    except UniqueViolation:                                        # someone else verified this address first
+        db.rollback()
+        return redirect(url_for('account', mail='taken'))
+    return redirect(url_for('account', mail='verified'))
+
+
 @app.route('/account', methods=['GET', 'POST'])
 def account():
     db = get_db()
     try:
-        user = db.execute('SELECT id, username, display_name, avatar_path, bio FROM users WHERE id = ?', (session['user_id'],)).fetchone()
+        user = _account_row(db, session['user_id'])
     except pgerr.UndefinedColumn:
         db.rollback()
         return api_error('Profiles need a database update that has not been applied yet (migration 0022_user_profile.sql).', 503, code='migration_pending')
@@ -494,7 +636,7 @@ def account():
         bio = request.form.get('bio', '').replace('\r\n', '\n').strip()
         error = _profile_error(display_name, bio)
         if error:
-            return render_template('account.html', profile=dict(user), form={'display_name': display_name, 'bio': bio}, error=error), 400
+            return render_template('account.html', profile=user, form={'display_name': display_name, 'bio': bio}, error=error), 400
         new_avatar = save_upload_field('avatar', 'avatars')      # a full quota is answered by the app-wide banner
         old_avatar = user['avatar_path']
         if new_avatar:
@@ -506,7 +648,7 @@ def account():
         db.execute('UPDATE users SET display_name = ?, bio = ? WHERE id = ?', (display_name or None, bio or None, user['id']))
         db.commit()
         return redirect(url_for('account', saved=1))
-    return render_template('account.html', profile=dict(user), form=dict(user), error=None)
+    return render_template('account.html', profile=user, form=user, error=None)
 
 
 @app.route('/account/password', methods=['POST'])
@@ -524,7 +666,7 @@ def account_password():
     ip = client_ip()
 
     def fail(message, status=400):
-        return render_template('account.html', profile=dict(user), form=dict(user), error=None, password_error=message), status
+        return render_template('account.html', profile=_account_row(db, user['id']), form=user, error=None, password_error=message), status
 
     wait = security.login_blocked_for(db, app.secret_key, user['username'], ip)
     if wait:

@@ -191,3 +191,12 @@ def test_sessions_survive_migration_0023_not_applied(user):
         assert user.post('/account/sessions/logout-all').status_code == 503
     finally:
         rename('session_version_off', 'session_version')
+
+
+def test_account_page_structure(user):
+    """Regression: the password form once ended up inside the <title> block."""
+    html = user.get('/account').get_data(as_text=True)
+    title = html[html.index('<title>'):html.index('</title>')]
+    assert '<' not in title[len('<title>'):] and 'Your profile' in title
+    for form_id in ('account-form', 'email-panel', 'password-form', 'sessions-form'):
+        assert html.count(f'id="{form_id}"') == 1, form_id

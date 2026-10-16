@@ -79,7 +79,8 @@ def test_player_npc_detail_is_notes_only(make_user):
     for leaked in ('str_score', 'dex_score', 'con_score', 'int_score', 'wis_score', 'cha_score',
                    'max_hp', 'armor_class', 'notes', 'created_by'):
         assert leaked not in body
-    assert '77' not in r.data.decode() and '19' not in [str(v) for v in body.values()]
+    raw = r.data.decode().replace(dm.name, '')          # the maker's random username may contain digits like '77'
+    assert '77' not in raw and '19' not in [str(v) for v in body.values()]
 
     # Dossier page: notes visible, real numbers absent, fogged placeholders present.
     page = player.get(f'/campaigns/{cid}/characters/{npc}').data.decode()

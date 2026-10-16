@@ -25,6 +25,10 @@ WINDOWS = {
     # Per (user, campaign): generous enough for genuine autocomplete-while-typing, tight enough
     # that it can't be used to enumerate every username on the platform.
     'member-search': (int(os.environ.get('MEMBER_SEARCH_LIMIT', 30)), 60),
+    # Mail costs money and can be used to pester someone: per account, per address and per visitor address.
+    'mail-user': (int(os.environ.get('MAIL_LIMIT_USER', 5)), 60 * 60),
+    'mail-address': (int(os.environ.get('MAIL_LIMIT_ADDRESS', 3)), 60 * 60),
+    'mail-ip': (int(os.environ.get('MAIL_LIMIT_IP', 20)), 60 * 60),
 }
 _NOW = "(CURRENT_TIMESTAMP AT TIME ZONE 'UTC')"
 
@@ -91,4 +95,21 @@ def member_search_blocked_for(db, secret, user_id, campaign_id):
 def record_member_search(db, secret, user_id, campaign_id):
     db.execute('INSERT INTO login_attempts (kind, key) VALUES (?, ?)',
                ('member-search', _key(secret, 'msearch', '%s|%s' % (user_id, campaign_id))))
+    _maybe_cleanup(db)
+
+
+def _mail_keys(secret, user_id, address, ip):
+    return {'mail-user': _key(secret, 'mailuser', str(user_id)),
+            'mail-address': _key(secret, 'mailaddr', address),
+            'mail-ip': _key(secret, 'mailip', ip)}
+
+
+def mail_blocked_for(db, secret, user_id, address, ip):
+    """Seconds to wait before another email may be sent for this account, address or visitor, or 0."""
+    return max((_retry_after(db, kind, key) for kind, key in _mail_keys(secret, user_id, address, ip).items()), default=0)
+
+
+def record_mail(db, secret, user_id, address, ip):
+    for kind, key in _mail_keys(secret, user_id, address, ip).items():
+        db.execute('INSERT INTO login_attempts (kind, key) VALUES (?, ?)', (kind, key))
     _maybe_cleanup(db)

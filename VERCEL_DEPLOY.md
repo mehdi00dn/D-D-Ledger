@@ -94,6 +94,11 @@ to Production** (instant rollback). Nothing in the database changes.
   `python migrate.py --sql > supabase_setup.sql`. CI never touches your live database.
   If the order is ever wrong, pages that read the new profile columns fall back to the username (and `/account`
   answers 503) instead of failing, and the log says which migration to apply.
+* **Email.** Optional. Pick a transactional provider, add its SMTP settings as Vercel environment variables
+  (`MAIL_HOST`, `MAIL_PORT`, `MAIL_USER`, `MAIL_PASSWORD`, `MAIL_FROM`; see `.env.example`) and redeploy. Publish the
+  SPF and DKIM records the provider gives you for the sending domain, or messages land in spam. Until `MAIL_HOST` is
+  set the account page says addresses cannot be confirmed. Sending is limited per account, per address and per
+  visitor (`MAIL_LIMIT_*`), and messages carry no tracking pixels or tracked links.
 * **Vercel storage.** Every deployment stores its own copy of the app (about 50 MB, almost all of it
   Pillow and the Postgres driver), and every push to a non-production branch makes a Preview
   deployment too. To keep usage down: set **Settings -> Build and Deployment -> Deployment Retention**

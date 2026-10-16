@@ -1,29 +1,7 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon %}
 {% set active_page = 'account' %}
-{% block title %}Your profile — Campaign Ledger
-<form class="form-panel account-form" method="POST" action="{{ url_for('account_password') }}" id="password-form">{{ csrf_field() }}
-  <div class="form-section">
-    <p class="form-section-title">Password</p>
-    <div class="field" style="margin-bottom:14px;">
-      <label for="current_password">Current password</label>
-      <input type="password" id="current_password" name="current_password" required autocomplete="current-password">
-    </div>
-    <div class="field" style="margin-bottom:14px;">
-      <label for="new_password">New password</label>
-      <input type="password" id="new_password" name="new_password" required minlength="8" maxlength="128" autocomplete="new-password">
-      <p class="hint-text">At least 8 characters.</p>
-    </div>
-    <div class="field">
-      <label for="confirm_password">Repeat new password</label>
-      <input type="password" id="confirm_password" name="confirm_password" required minlength="8" maxlength="128" autocomplete="new-password">
-    </div>
-  </div>
-  <div class="form-actions">
-    <button type="submit" class="btn btn-primary">{{ icon('lock') }} Change password</button>
-  </div>
-</form>
-{% endblock %}
+{% block title %}Your profile — Campaign Ledger{% endblock %}
 
 {% block content %}
 <div class="page-header">
@@ -36,6 +14,11 @@
 {% if request.args.get('saved') %}<div class="banner-notice" role="status">Profile saved.</div>{% endif %}
 {% if request.args.get('pw') %}<div class="banner-notice" role="status">Password changed. Your other devices were signed out.</div>{% endif %}
 {% if request.args.get('out') %}<div class="banner-notice" role="status">Signed out everywhere else.</div>{% endif %}
+{% set mail_notes = {'sent': 'Confirmation email sent. Open the link in it to finish (it works for 24 hours).', 'verified': 'Email address confirmed.', 'already': 'That address is already confirmed.', 'removed': 'Email address removed.'} %}
+{% set mail_errors = {'expired': 'That confirmation link has expired. Send a new one below.', 'invalid': 'That confirmation link is not valid any more. Send a new one below.', 'wrong_account': 'That link belongs to a different account. Sign in with the account you asked from.', 'taken': 'Another account has already confirmed that address.'} %}
+{% if request.args.get('mail') in mail_notes %}<div class="banner-notice" role="status">{{ mail_notes[request.args.get('mail')] }}</div>{% endif %}
+{% if request.args.get('mail') in mail_errors %}<div class="banner-notice banner-error" role="alert">{{ mail_errors[request.args.get('mail')] }}</div>{% endif %}
+{% if email_error %}<div class="banner-notice banner-error" role="alert" id="email-error">{{ email_error }}</div>{% endif %}
 {% if error %}<div class="banner-notice banner-error" role="alert">{{ error }}</div>{% endif %}
 {% if password_error %}<div class="banner-notice banner-error" role="alert" id="password-error">{{ password_error }}</div>{% endif %}
 
@@ -84,6 +67,40 @@
     <button type="submit" class="btn btn-primary">{{ icon('check') }} Save profile</button>
   </div>
 </form>
+
+{% if profile.email_ready %}
+<div class="form-panel account-form" id="email-panel">
+  <div class="form-section">
+    <p class="form-section-title">Email</p>
+    {% if profile.email %}
+    <p class="email-state">
+      <b>{{ profile.email }}</b>
+      {% if profile.email_verified_at %}<span class="role-badge role-badge-owner">Confirmed</span>{% else %}<span class="role-badge role-badge-player">Not confirmed</span>{% endif %}
+    </p>
+    {% else %}
+    <p class="hint-text" style="margin:0 0 12px;">No email on this account yet. It is optional; it lets us confirm it is you and, soon, reset a forgotten password.</p>
+    {% endif %}
+    {% if not profile.mail_enabled %}
+    <p class="hint-text" style="margin:0 0 12px;">Email sending is not set up on this server yet, so addresses cannot be confirmed.</p>
+    {% endif %}
+    <form method="POST" action="{{ url_for('account_email') }}" id="email-form">{{ csrf_field() }}
+      <div class="field" style="margin-bottom:14px;">
+        <label for="email">{{ 'Change email address' if profile.email else 'Email address' }}</label>
+        <input type="email" id="email" name="email" maxlength="254" required autocomplete="email" placeholder="you@example.com">
+      </div>
+      <button type="submit" class="btn btn-primary" {{ '' if profile.mail_enabled else 'disabled' }}>{{ icon('mail') }} Send confirmation link</button>
+    </form>
+    {% if profile.email %}
+    <div class="email-actions">
+      {% if not profile.email_verified_at %}
+      <form method="POST" action="{{ url_for('account_email_resend') }}">{{ csrf_field() }}<button type="submit" class="btn btn-ghost btn-sm" {{ '' if profile.mail_enabled else 'disabled' }}>Send the link again</button></form>
+      {% endif %}
+      <form method="POST" action="{{ url_for('account_email_remove') }}" data-confirm="Remove the email address from your account?">{{ csrf_field() }}<button type="submit" class="btn btn-ghost btn-sm">{{ icon('trash-2') }} Remove email</button></form>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
 
 <form class="form-panel account-form" method="POST" action="{{ url_for('account_password') }}" id="password-form">{{ csrf_field() }}
   <div class="form-section">

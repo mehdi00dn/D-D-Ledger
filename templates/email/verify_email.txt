@@ -1,0 +1,7 @@
+Hi {{ name }},
+
+Confirm this email address for your Campaign Ledger account ({{ username }}) by opening this link:
+
+{{ link }}
+
+The link works for 24 hours. If you did not ask for this, ignore this message: nothing changes until the link is opened.

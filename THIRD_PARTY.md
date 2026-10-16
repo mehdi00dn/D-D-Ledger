@@ -44,6 +44,7 @@ belongs to DL-80 (applicable local laws) and DL-82.
 | Vercel (hosting) | Serves the app; sees visitor IP addresses and request logs | IP addresses |
 | dnd5eapi.co | Server-side lookups for the rules reference (spell, monster, item name) | None: the visitor's browser never contacts it |
 | Sentry (optional, off by default) | Error reports | None sent |
+| Email provider (optional, off until `MAIL_HOST` is set; provider not chosen yet) | The recipient address and the message (a one-time confirmation link) when a user asks to confirm their email | Yes: the email address the user typed. No tracking pixels or tracked links are added |
 
 ## 5. Bundled assets and their licences
 
