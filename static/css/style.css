@@ -455,6 +455,10 @@ a.user-name:hover, a.user-name:focus-visible { color: var(--parchment); }
 .user-avatar { width: 22px; height: 22px; flex-shrink: 0; border-radius: 50%; object-fit: cover; }
 .account-form { max-width: 640px; }
 .account-form + .account-form { margin-top: 18px; }
+.danger-panel { border-color: rgba(196, 84, 84, 0.35); }
+.danger-panel .form-section-title { color: #d98080; }
+.delete-warning { margin: 0 0 14px; padding: 9px 12px; font-size: 13px; line-height: 1.5; border-radius: var(--radius-s); background: rgba(196, 84, 84, 0.12); border: 1px solid rgba(196, 84, 84, 0.35); color: #e3a0a0; }
+.delete-campaign-name { margin: 0 0 4px; font-size: 14px; }
 .email-state { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 0 0 12px; }
 .email-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
 .account-form .avatar-preview-row .avatar-frame { border-radius: 50%; }

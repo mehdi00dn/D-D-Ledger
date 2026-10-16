@@ -19,6 +19,7 @@
 {% if request.args.get('mail') in mail_notes %}<div class="banner-notice" role="status">{{ mail_notes[request.args.get('mail')] }}</div>{% endif %}
 {% if request.args.get('mail') in mail_errors %}<div class="banner-notice banner-error" role="alert">{{ mail_errors[request.args.get('mail')] }}</div>{% endif %}
 {% if email_error %}<div class="banner-notice banner-error" role="alert" id="email-error">{{ email_error }}</div>{% endif %}
+{% if delete_error %}<div class="banner-notice banner-error" role="alert" id="delete-error">{{ delete_error }}</div>{% endif %}
 {% if error %}<div class="banner-notice banner-error" role="alert">{{ error }}</div>{% endif %}
 {% if password_error %}<div class="banner-notice banner-error" role="alert" id="password-error">{{ password_error }}</div>{% endif %}
 
@@ -129,6 +130,43 @@
     <p class="form-section-title">Sessions</p>
     <p class="hint-text" style="margin:0 0 12px;">Lost a phone or used a shared computer? This signs you out everywhere except here. Changing your password does the same.</p>
     <button type="submit" class="btn btn-ghost">{{ icon('log-out') }} Sign out everywhere else</button>
+  </div>
+</form>
+
+{% set owned = owned_campaigns() %}
+<form class="form-panel account-form danger-panel" method="POST" action="{{ url_for('account_delete') }}" id="delete-form" data-confirm="Delete your account for good? Campaigns you own and did not hand to someone else are deleted with it and cannot be recovered.">{{ csrf_field() }}
+  <div class="form-section">
+    <p class="form-section-title">Delete account</p>
+    <p class="hint-text" style="margin:0 0 12px;">This removes your account, profile and memberships for good. Characters, factions and maps you made in other people's campaigns stay there, without your name on them.</p>
+    {% for c in owned %}
+    <div class="field delete-campaign" style="margin-bottom:14px;">
+      {% if c.has_other_owner %}
+      <p class="delete-campaign-name"><b>{{ c.name }}</b></p>
+      <p class="hint-text" style="margin:0;">Has another owner, so it carries on without you.</p>
+      {% else %}
+      <label for="transfer_{{ c.id }}">{{ c.name }}</label>
+      <select id="transfer_{{ c.id }}" name="transfer_{{ c.id }}">
+        <option value="">Delete this campaign (cannot be recovered)</option>
+        {% for m in c.members %}<option value="{{ m.id }}">Hand it to {{ m.display_name or m.username }}{% if m.display_name %} ({{ m.username }}){% endif %}</option>{% endfor %}
+      </select>
+      {% if not c.members %}<p class="hint-text">Nobody else is in this campaign, so it will be deleted.</p>{% endif %}
+      {% endif %}
+    </div>
+    {% endfor %}
+    {% if owned and owned|selectattr('has_other_owner', 'false')|list %}
+    <p class="delete-warning" role="note">Campaigns you do not hand to another member are deleted with their characters, maps and images. This cannot be undone.</p>
+    {% endif %}
+    <div class="field" style="margin-bottom:14px;">
+      <label for="delete_password">Current password</label>
+      <input type="password" id="delete_password" name="current_password" required autocomplete="current-password">
+    </div>
+    <div class="field">
+      <label for="confirm_delete">Type DELETE to confirm</label>
+      <input type="text" id="confirm_delete" name="confirm_delete" required autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="DELETE">
+    </div>
+  </div>
+  <div class="form-actions">
+    <button type="submit" class="btn btn-danger">{{ icon('trash-2') }} Delete my account</button>
   </div>
 </form>
 {% endblock %}

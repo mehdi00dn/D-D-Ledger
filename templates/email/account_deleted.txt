@@ -1,0 +1,5 @@
+Hi {{ name }},
+
+Your Campaign Ledger account "{{ username }}" was deleted, together with the campaigns you owned and did not hand over.
+
+If you did not do this, someone had your password: reset it on any other service where you used it. This account cannot be restored.

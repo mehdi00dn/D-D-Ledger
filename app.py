@@ -595,6 +595,96 @@ def account_email_remove():
     return redirect(url_for('account', mail='removed'))
 
 
+# ---- delete account (DL-38) ----
+
+def _owned_campaigns(db, user_id):
+    """Campaigns the user is an owner of, each with whether it would be deleted and who could take it over."""
+    out = []
+    for c in db.execute('SELECT c.id, c.name FROM campaigns c JOIN campaign_members cm ON cm.campaign_id = c.id '
+                        "WHERE cm.user_id = ? AND cm.role = 'owner' ORDER BY c.name", (user_id,)).fetchall():
+        others = db.execute('SELECT u.id, u.username, u.display_name, cm.role FROM campaign_members cm JOIN users u ON u.id = cm.user_id '
+                            'WHERE cm.campaign_id = ? AND cm.user_id != ? ORDER BY u.username', (c['id'], user_id)).fetchall()
+        out.append({'id': c['id'], 'name': c['name'], 'members': [dict(o) for o in others],
+                    'has_other_owner': any(o['role'] == 'owner' for o in others)})
+    return out
+
+
+def owned_campaigns_for_page():
+    if 'owned' not in g:
+        g.owned = _owned_campaigns(get_db(), session['user_id']) if session.get('user_id') else []
+    return g.owned
+
+
+app.jinja_env.globals['owned_campaigns'] = owned_campaigns_for_page
+
+
+@app.route('/account/delete', methods=['POST'])
+def account_delete():
+    """Delete the account.  Campaigns the user solely owns are deleted for good unless the user hands each one to a
+    member first (the form says so); campaigns with another owner just lose this member."""
+    db = get_db()
+    user = _account_row(db, session['user_id'])
+    if user is None:
+        session.clear()
+        return redirect(url_for('login'))
+    row = db.execute('SELECT password_hash FROM users WHERE id = ?', (user['id'],)).fetchone()
+    ip = client_ip()
+
+    def fail(message, status=400):
+        return render_template('account.html', profile=user, form=user, error=None, delete_error=message), status
+
+    wait = security.login_blocked_for(db, app.secret_key, user['username'], ip)
+    if wait:
+        return fail(_wait_message(wait), 429)
+    if not row['password_hash'] or not check_password_hash(row['password_hash'], request.form.get('current_password', '')[:1024]):
+        security.record_login_failure(db, app.secret_key, user['username'], ip)
+        db.commit()
+        return fail('Your current password is not correct.')
+    if request.form.get('confirm_delete') != 'DELETE':
+        return fail('Type DELETE to confirm.')
+
+    plan = []                                      # (campaign, new owner id or None)
+    for c in _owned_campaigns(db, user['id']):
+        if c['has_other_owner']:
+            plan.append((c, None))
+            continue
+        choice = request.form.get('transfer_%d' % c['id'], '')
+        new_owner = None
+        if choice:
+            if not choice.isdigit() or int(choice) not in {m['id'] for m in c['members']}:
+                return fail('Pick one of the campaign\'s members to hand it to.')
+            new_owner = int(choice)
+        plan.append((c, new_owner))
+
+    files = []
+    for c, new_owner in plan:
+        if c['has_other_owner']:
+            continue                               # membership goes with the user row below
+        if new_owner is not None:
+            db.execute("UPDATE campaign_members SET role = 'owner', status = 'dm' WHERE campaign_id = ? AND user_id = ?", (c['id'], new_owner))
+            notify(db, new_owner, 'ownership_transferred', '%s handed you the campaign %s' % (user['username'], c['name']),
+                   link=url_for('characters_list', campaign_id=c['id']))
+        else:
+            files += _delete_campaign_rows(db, c['id'])
+    if user['avatar_path']:
+        files.append(user['avatar_path'])
+    if user['avatar_path']:
+        db.execute('DELETE FROM stored_files WHERE key = ?', (user['avatar_path'],))
+    db.execute('UPDATE stored_files SET user_id = NULL WHERE user_id = ?', (user['id'],))       # files stay with their campaigns
+    db.execute('DELETE FROM users WHERE id = ?', (user['id'],))    # memberships, invitations, notifications cascade; "made by" fields clear
+    db.commit()
+    db.close()
+    delete_uploads(files)
+    if user.get('email') and user.get('email_verified_at'):
+        try:
+            mailer.send(user['email'], 'Your Campaign Ledger account was deleted',
+                        render_template('email/account_deleted.txt', name=user['display_name'] or user['username'], username=user['username']))
+        except mailer.MailError:
+            pass
+    session.clear()
+    return redirect(url_for('login', deleted=1))
+
+
 # ---- password reset by email (DL-38) ----
 RESET_TOKEN_MAX_AGE = 3600
 
@@ -1449,6 +1539,37 @@ def campaign_member_remove(user_id):
     return redirect(url_for('campaign_edit', campaign_id=g.campaign_id))
 
 
+def _delete_campaign_rows(db, campaign_id):
+    """Delete a campaign and everything in it inside the caller's transaction; returns the uploaded files to remove
+    after the caller commits (once the rows are gone the files could no longer be found).  The explicit deletes are
+    kept even though Postgres enforces the same ON DELETE CASCADE constraints -- belt and braces."""
+    avatar_paths = [r['avatar_path'] for r in db.execute(
+        'SELECT avatar_path FROM characters WHERE campaign_id = ? AND avatar_path IS NOT NULL', (campaign_id,))]
+    avatar_paths += [r['avatar_path'] for r in db.execute(
+        'SELECT avatar_path FROM groups WHERE campaign_id = ? AND avatar_path IS NOT NULL', (campaign_id,))]
+    avatar_paths += [r['avatar_path'] for r in db.execute(
+        'SELECT avatar_path FROM campaigns WHERE id = ? AND avatar_path IS NOT NULL', (campaign_id,))]
+    sheet_paths = [r['image_path'] for r in db.execute('''
+        SELECT cs.image_path FROM character_sheets cs
+        JOIN characters c ON cs.character_id = c.id
+        WHERE c.campaign_id = ?
+    ''', (campaign_id,))]
+    map_paths = [r['image_path'] for r in db.execute(
+        'SELECT image_path FROM maps WHERE campaign_id = ? AND image_path IS NOT NULL', (campaign_id,))]
+
+    db.execute('DELETE FROM battle_participants WHERE character_id IN (SELECT id FROM characters WHERE campaign_id = ?)', (campaign_id,))
+    db.execute('DELETE FROM character_sheets WHERE character_id IN (SELECT id FROM characters WHERE campaign_id = ?)', (campaign_id,))
+    db.execute('DELETE FROM map_drawings WHERE map_id IN (SELECT id FROM maps WHERE campaign_id = ?)', (campaign_id,))
+    db.execute('DELETE FROM map_pins WHERE map_id IN (SELECT id FROM maps WHERE campaign_id = ?)', (campaign_id,))
+    db.execute('DELETE FROM characters WHERE campaign_id = ?', (campaign_id,))
+    db.execute('DELETE FROM groups WHERE campaign_id = ?', (campaign_id,))
+    db.execute('DELETE FROM maps WHERE campaign_id = ?', (campaign_id,))
+    db.execute('DELETE FROM campaign_members WHERE campaign_id = ?', (campaign_id,))
+    db.execute('DELETE FROM stored_files WHERE campaign_id = ?', (campaign_id,))
+    db.execute('DELETE FROM campaigns WHERE id = ?', (campaign_id,))
+    return [p for p in avatar_paths + sheet_paths + map_paths if p]
+
+
 @app.route('/campaigns/<int:campaign_id>/delete', methods=['POST'])
 @campaign_access_required
 def campaign_delete():
@@ -1456,41 +1577,11 @@ def campaign_delete():
         abort(403)
     db = get_db()
 
-    # Collect every uploaded file this campaign owns before touching any
-    # rows (once the rows are gone we could no longer find the files). The
-    # explicit deletes below are kept even though Postgres enforces the same
-    # ON DELETE CASCADE constraints -- belt and braces.
-    avatar_paths = [r['avatar_path'] for r in db.execute(
-        'SELECT avatar_path FROM characters WHERE campaign_id = ? AND avatar_path IS NOT NULL', (g.campaign_id,)
-    )]
-    avatar_paths += [r['avatar_path'] for r in db.execute(
-        'SELECT avatar_path FROM groups WHERE campaign_id = ? AND avatar_path IS NOT NULL', (g.campaign_id,)
-    )]
-    if g.campaign['avatar_path']:
-        avatar_paths.append(g.campaign['avatar_path'])
-    sheet_paths = [r['image_path'] for r in db.execute('''
-        SELECT cs.image_path FROM character_sheets cs
-        JOIN characters c ON cs.character_id = c.id
-        WHERE c.campaign_id = ?
-    ''', (g.campaign_id,))]
-    map_paths = [r['image_path'] for r in db.execute(
-        'SELECT image_path FROM maps WHERE campaign_id = ? AND image_path IS NOT NULL', (g.campaign_id,)
-    )]
-
-    db.execute('DELETE FROM battle_participants WHERE character_id IN (SELECT id FROM characters WHERE campaign_id = ?)', (g.campaign_id,))
-    db.execute('DELETE FROM character_sheets WHERE character_id IN (SELECT id FROM characters WHERE campaign_id = ?)', (g.campaign_id,))
-    db.execute('DELETE FROM map_drawings WHERE map_id IN (SELECT id FROM maps WHERE campaign_id = ?)', (g.campaign_id,))
-    db.execute('DELETE FROM map_pins WHERE map_id IN (SELECT id FROM maps WHERE campaign_id = ?)', (g.campaign_id,))
-    db.execute('DELETE FROM characters WHERE campaign_id = ?', (g.campaign_id,))
-    db.execute('DELETE FROM groups WHERE campaign_id = ?', (g.campaign_id,))
-    db.execute('DELETE FROM maps WHERE campaign_id = ?', (g.campaign_id,))
-    db.execute('DELETE FROM campaign_members WHERE campaign_id = ?', (g.campaign_id,))
-    db.execute('DELETE FROM stored_files WHERE campaign_id = ?', (g.campaign_id,))
-    db.execute('DELETE FROM campaigns WHERE id = ?', (g.campaign_id,))
+    files = _delete_campaign_rows(db, g.campaign_id)
     db.commit()
     db.close()
 
-    delete_uploads(avatar_paths + sheet_paths + map_paths)
+    delete_uploads(files)
 
     if session.get('last_campaign_id') == g.campaign_id:
         session.pop('last_campaign_id', None)
