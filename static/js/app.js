@@ -181,3 +181,21 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 });
+
+
+// Sign-in style forms: a second tap while the first submit is still travelling would post the page's old token again
+// (the first submit rotates it), so the button is disabled as soon as the form is sent.  It comes back if the browser
+// restores the page from its back/forward cache.
+(function () {
+  document.addEventListener('submit', function (e) {
+    var form = e.target;
+    if (!(form instanceof HTMLFormElement) || !form.hasAttribute('data-once') || e.defaultPrevented) return;
+    setTimeout(function () {
+      form.querySelectorAll('button[type=submit], input[type=submit]').forEach(function (b) { b.disabled = true; });
+    }, 0);
+  });
+  window.addEventListener('pageshow', function (e) {
+    if (!e.persisted) return;
+    document.querySelectorAll('form[data-once] button[type=submit]').forEach(function (b) { b.disabled = false; });
+  });
+})();

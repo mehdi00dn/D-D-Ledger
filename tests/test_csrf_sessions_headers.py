@@ -17,6 +17,15 @@ def token_of(client, path='/login'):
 
 
 # ------------------------------------------------------------------ CSRF
+def test_resubmitted_login_form_after_signing_in_is_not_an_error(appmod, user):
+    # The first submit signed the person in and rotated the token; a second submit still carries the old one.
+    c = user.c; c.csrf_enabled = False
+    r = c.post('/login', data={'username': user.name, 'password': user.password, 'csrf_token': 'old-token'})
+    assert r.status_code == 302 and r.headers['Location'].endswith('/campaigns')
+    anon = appmod.app.test_client(); anon.csrf_enabled = False
+    assert anon.post('/login', data={'username': 'x', 'password': 'y', 'csrf_token': 'old-token'}).status_code == 403   # signed-out still refused
+
+
 def test_logout_always_signs_out_even_with_a_stale_token_or_odd_origin(appmod, user):
     # A failed security check must never leave someone signed in behind an error page (phone "Log out" bug).
     c = user.c; c.csrf_enabled = False

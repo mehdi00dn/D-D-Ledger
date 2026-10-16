@@ -180,6 +180,11 @@ app.jinja_env.globals['csrf_token'] = _csrf_token
 app.jinja_env.globals['csrf_field'] = lambda: Markup('<input type="hidden" name="csrf_token" value="%s">' % _csrf_token())
 
 
+# Sign-in style forms: a second submit with the old token arrives after the first one already signed the person in
+# (double tap, slow first request, autofill).  That is not an error, they are signed in -- send them on.
+_AUTH_FORM_ENDPOINTS = {'login', 'register', 'forgot_password', 'reset_password'}
+
+
 @app.before_request
 def csrf_protect():
     """Every state-changing request must prove it came from one of our own pages:
@@ -194,6 +199,8 @@ def csrf_protect():
     sent = request.headers.get('X-CSRF-Token') or request.form.get('csrf_token', '')
     expected = session.get('csrf_token', '')
     if not expected or not sent or not hmac.compare_digest(str(sent), expected):
+        if request.endpoint in _AUTH_FORM_ENDPOINTS and session.get('user_id'):
+            return redirect(url_for('campaigns_list'))      # the page was submitted again after signing in succeeded: nothing to do
         return _reject_request('Your session expired or the form was not valid. Reload the page and try again.', 403)
 
 
