@@ -17,13 +17,20 @@ def token_of(client, path='/login'):
 
 
 # ------------------------------------------------------------------ CSRF
+def test_logout_always_signs_out_even_with_a_stale_token_or_odd_origin(appmod, user):
+    # A failed security check must never leave someone signed in behind an error page (phone "Log out" bug).
+    c = user.c; c.csrf_enabled = False
+    r = c.post('/logout', data={'csrf_token': 'stale'}, headers={'Origin': 'null'})
+    assert r.status_code == 302 and r.headers['Location'].endswith('/login')
+    assert c.get('/campaigns').status_code == 302
+
+
 def test_state_changing_requests_without_a_token_are_rejected(appmod, user):
     cid = user.new_campaign(); ch = user.new_character(cid)
     c = user.c; c.csrf_enabled = False
     assert c.post(f'/campaigns/{cid}/characters/{ch}/delete').status_code == 403
     assert c.post(f'/campaigns/{cid}/api/battle/add', json={'character_id': ch}).status_code == 403
     assert c.post(f'/campaigns/{cid}/delete').status_code == 403
-    assert c.post('/logout').status_code == 403
     assert c.post('/uploads/sign', json={'purpose': 'avatar', 'size': 5}).status_code == 403
     assert q('SELECT COUNT(*) AS n FROM characters WHERE id = ?', ch)[0]['n'] == 1 and c.get('/campaigns').status_code == 200   # nothing happened, still logged in
 

@@ -186,6 +186,8 @@ def csrf_protect():
     a per-session token (form field or X-CSRF-Token header), plus a same-origin check."""
     if request.method in ('GET', 'HEAD', 'OPTIONS'):
         return
+    if request.endpoint == 'logout':
+        return          # signing out must always work: a stale page or an odd Origin header must never leave someone signed in
     origin = request.headers.get('Origin')
     if (origin and urlparse(origin).netloc != request.host) or request.headers.get('Sec-Fetch-Site') == 'cross-site':
         return _reject_request('Cross-site requests are not allowed.', 403)
@@ -438,6 +440,8 @@ def login():
 
 @app.route('/logout', methods=['POST'])
 def logout():
+    # Exempt from the CSRF check on purpose (see csrf_protect): the worst a forged logout can do is sign someone out,
+    # while a failed check here used to leave a real user signed in with an error page.
     session.clear()
     return redirect(url_for('login'))
 
