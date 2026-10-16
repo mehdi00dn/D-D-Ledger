@@ -709,9 +709,14 @@ def _password_fingerprint(password_hash):
     return hashlib.sha256((password_hash or '').encode()).hexdigest()[:16]
 
 
+NO_CONFIRMED_ACCOUNT = ('No account has this email address confirmed. Check the spelling, or log in and confirm it on your account page first. '
+                        'Accounts without a confirmed email cannot be reset this way.')
+
+
 @app.route('/forgot-password', methods=['GET', 'POST'])
 def forgot_password():
-    """Ask for a reset link.  The answer never says whether the address belongs to an account."""
+    """Ask for a reset link.  The address must be one an account has confirmed; if not, the page says so (the throttles
+    below keep that from being used to scan for addresses in bulk)."""
     if session.get('user_id'):
         return redirect(url_for('account'))
     if not mailer.enabled():
@@ -734,15 +739,20 @@ def forgot_password():
     except pgerr.UndefinedColumn:
         db.rollback()
         user = None
-    if user is not None and user['password_hash']:
-        token = _reset_serializer().dumps({'u': user['id'], 'f': _password_fingerprint(user['password_hash'])})
-        ctx = {'name': user['display_name'] or user['username'], 'username': user['username'],
-               'link': url_for('reset_password', token=token, _external=True)}
-        try:
-            mailer.send(address, 'Reset your Campaign Ledger password',
-                        render_template('email/password_reset.txt', **ctx), render_template('email/password_reset.html', **ctx))
-        except mailer.MailError:
-            pass                                    # same answer either way; the failure is already in the log
+    if user is None or not user['password_hash']:
+        db.close()
+        return render_template('forgot_password.html', sent=False, email=address, error=NO_CONFIRMED_ACCOUNT), 404
+    token = _reset_serializer().dumps({'u': user['id'], 'f': _password_fingerprint(user['password_hash'])})
+    ctx = {'name': user['display_name'] or user['username'], 'username': user['username'],
+           'link': url_for('reset_password', token=token, _external=True)}
+    try:
+        mailer.send(address, 'Reset your Campaign Ledger password',
+                    render_template('email/password_reset.txt', **ctx), render_template('email/password_reset.html', **ctx))
+    except mailer.MailError:                    # the details are already in the log
+        db.close()
+        return render_template('forgot_password.html', sent=False, email=address,
+                               error='The email could not be sent right now. Try again in a few minutes.'), 502
+    db.close()
     return render_template('forgot_password.html', sent=True, email='', error=None)
 
 

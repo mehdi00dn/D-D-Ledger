@@ -1,4 +1,4 @@
-"""DL-38: password reset by confirmed email: no account enumeration, one-hour single-use links, ends all sessions."""
+"""DL-38: password reset by confirmed email: unknown addresses are told so, one-hour single-use links, ends all sessions."""
 import re
 from unittest import mock
 import pytest
@@ -83,17 +83,24 @@ def test_expired_and_forged_links(appmod, make_user):
     assert c.get(path[:-3] + 'abc').status_code == 400
 
 
-def test_no_account_enumeration(appmod, make_user):
+def test_only_confirmed_addresses_are_accepted_and_others_are_told_so(appmod, make_user):
     u, address = confirmed_user(make_user)
     unconfirmed = make_user(); unconfirmed.post('/account/email', data={'email': 'unconfirmed@example.com'}); mailer.outbox.clear()
     c = anon(appmod)
     known = forgot(c, address, '10.2.2.1'); n_known = len(mailer.outbox)
     unknown = forgot(c, 'nobody-here@example.com', '10.2.2.2')
     unconf = forgot(c, 'unconfirmed@example.com', '10.2.2.3')
-    assert known.status_code == unknown.status_code == unconf.status_code == 200
-    strip = lambda r: re.sub(r'value="[^"]*"|nonce="[^"]*"|name="csrf-token" content="[^"]*"', '', r.get_data(as_text=True))
-    assert strip(known) == strip(unknown) == strip(unconf)
+    assert known.status_code == 200 and 'on its way' in known.get_data(as_text=True)
+    for r_ in (unknown, unconf):
+        assert r_.status_code == 404 and 'No account has this email address confirmed' in r_.get_data(as_text=True)
     assert n_known == 1 and len(mailer.outbox) == 1                                  # only the confirmed address got mail
+
+
+def test_a_failed_send_is_reported_not_hidden(appmod, make_user):
+    u, address = confirmed_user(make_user)
+    with mock.patch('app.mailer.send', side_effect=mailer.MailError('smtp down')):
+        r = forgot(anon(appmod), address, '10.2.2.9')
+    assert r.status_code == 502 and 'could not be sent' in r.get_data(as_text=True)
 
 
 def test_address_match_is_case_insensitive(appmod, make_user):
@@ -106,7 +113,7 @@ def test_forgot_is_rate_limited(appmod):
     c = anon(appmod)
     with mock.patch.dict(security.WINDOWS, {'mail-address': (2, 3600)}):
         codes = [forgot(c, 'spam-target@example.com', '10.3.3.3').status_code for _ in range(4)]
-    assert codes[:2] == [200, 200] and codes[2] == 429
+    assert codes[:2] == [404, 404] and codes[2] == 429
 
 
 def test_validation_and_csrf(appmod, make_user):

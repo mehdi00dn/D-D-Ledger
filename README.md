@@ -14,7 +14,7 @@ It also runs locally.
   everywhere else"; both bump `users.session_version`, which ends every other session on its next request. An optional
   email address is confirmed with a signed 24-hour link sent over SMTP (`mailer.py`, any provider; settings in
   `.env.example`). A forgotten password is reset from the login page with a one-hour, single-use link sent to a
-  *confirmed* address (the answer never reveals whether an address has an account); a reset ends every session and
+  *confirmed* address (an address no account has confirmed is told so on the page, and the mail throttles limit how fast addresses can be tried); a reset ends every session and
   mails the owner a notice. Accounts can be deleted from `/account` (password + typed DELETE): campaigns the
   user solely owns are deleted for good unless handed to a member first, and the page says so next to each one. "Download my data" on `/account` returns your account, memberships and
   the characters, factions, maps and dice rolls you made as one JSON file (never the password).
