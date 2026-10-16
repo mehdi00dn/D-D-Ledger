@@ -850,6 +850,56 @@ def account():
     return render_template('account.html', profile=user, form=user, error=None)
 
 
+@app.route('/account/username', methods=['POST'])
+def account_username():
+    """Change the username (what you log in with): needs the current password, counted like a login attempt so the form
+    cannot be used to guess it.  Sessions stay signed in; a confirmed email address is told about the change."""
+    db = get_db()
+    user = _account_row(db, session['user_id'])
+    if user is None:
+        session.clear()
+        return redirect(url_for('login'))
+    row = db.execute('SELECT password_hash FROM users WHERE id = ?', (user['id'],)).fetchone()
+    new = request.form.get('username', '').strip()
+    ip = client_ip()
+
+    def fail(message, status=400):
+        db.close()
+        return render_template('account.html', profile=user, form=user, error=None, username_error=message, new_username=new[:64]), status
+
+    wait = security.login_blocked_for(db, app.secret_key, user['username'], ip)
+    if wait:
+        return fail(_wait_message(wait), 429)
+    if not row['password_hash'] or not check_password_hash(row['password_hash'], request.form.get('current_password', '')[:1024]):
+        security.record_login_failure(db, app.secret_key, user['username'], ip)
+        db.commit()
+        return fail('Your current password is not correct.')
+    old = user['username']
+    if _username_error(new) or not new:
+        return fail(_username_error(new) or 'Enter a new username.')
+    if new == old:
+        return fail('That is already your username.')
+    if db.execute('SELECT id FROM users WHERE lower(username) = lower(?) AND id <> ?', (new, user['id'])).fetchone():
+        return fail('That username is already taken.')
+    try:
+        db.execute('UPDATE users SET username = ? WHERE id = ?', (new, user['id']))
+    except UniqueViolation:                       # someone took it a moment ago
+        db.rollback()
+        return fail('That username is already taken.')
+    security.clear_login_failures(db, app.secret_key, old, ip)
+    db.commit()
+    db.close()
+    session['username'] = new
+    g.pop('_profile', None)
+    if user.get('email') and user.get('email_verified_at') and mailer.enabled():
+        try:
+            mailer.send(user['email'], 'Your Campaign Ledger username was changed',
+                        render_template('email/username_changed.txt', name=user['display_name'] or new, old=old, new=new))
+        except mailer.MailError:
+            pass                                  # the change is made; the notice is a courtesy and the failure is in the log
+    return redirect(url_for('account', un=1))
+
+
 @app.route('/account/password', methods=['POST'])
 def account_password():
     """Change the password: needs the current one.  A wrong current password counts as a failed login

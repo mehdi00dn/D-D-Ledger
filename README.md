@@ -15,7 +15,7 @@ It also runs locally.
   email address is confirmed with a signed 24-hour link sent over SMTP (`mailer.py`, any provider; settings in
   `.env.example`). A forgotten password is reset from the login page with a one-hour, single-use link sent to a
   *confirmed* address (an address no account has confirmed is told so on the page, and the mail throttles limit how fast addresses can be tried); a reset ends every session and
-  mails the owner a notice. Accounts can be deleted from `/account` (password + typed DELETE): campaigns the
+  mails the owner a notice. The username can be changed from `/account` (current password required; you stay signed in and a confirmed email is told). Accounts can be deleted from `/account` (password + typed DELETE): campaigns the
   user solely owns are deleted for good unless handed to a member first, and the page says so next to each one. "Download my data" on `/account` returns your account, memberships and
   the characters, factions, maps and dice rolls you made as one JSON file (never the password).
   Roles per campaign: DM (full control) and Player. Authorization is enforced on the

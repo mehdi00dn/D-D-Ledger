@@ -13,6 +13,7 @@
 
 {% if request.args.get('saved') %}<div class="banner-notice" role="status">Profile saved.</div>{% endif %}
 {% if request.args.get('pw') %}<div class="banner-notice" role="status">Password changed. Your other devices were signed out.</div>{% endif %}
+{% if request.args.get('un') %}<div class="banner-notice" role="status">Username changed. Use the new one next time you log in.</div>{% endif %}
 {% if request.args.get('out') %}<div class="banner-notice" role="status">Signed out everywhere else.</div>{% endif %}
 {% set mail_notes = {'sent': 'Confirmation email sent. Open the link in it to finish (it works for 24 hours).', 'verified': 'Email address confirmed.', 'already': 'That address is already confirmed.', 'removed': 'Email address removed.'} %}
 {% set mail_errors = {'expired': 'That confirmation link has expired. Send a new one below.', 'invalid': 'That confirmation link is not valid any more. Send a new one below.', 'wrong_account': 'That link belongs to a different account. Sign in with the account you asked from.', 'taken': 'Another account has already confirmed that address.'} %}
@@ -21,6 +22,7 @@
 {% if email_error %}<div class="banner-notice banner-error" role="alert" id="email-error">{{ email_error }}</div>{% endif %}
 {% if delete_error %}<div class="banner-notice banner-error" role="alert" id="delete-error">{{ delete_error }}</div>{% endif %}
 {% if error %}<div class="banner-notice banner-error" role="alert">{{ error }}</div>{% endif %}
+{% if username_error %}<div class="banner-notice banner-error" role="alert" id="username-error">{{ username_error }}</div>{% endif %}
 {% if password_error %}<div class="banner-notice banner-error" role="alert" id="password-error">{{ password_error }}</div>{% endif %}
 
 <form class="form-panel account-form" method="POST" enctype="multipart/form-data" id="account-form">{{ csrf_field() }}
@@ -55,7 +57,7 @@
     <div class="field" style="margin-bottom:14px;">
       <label for="display_name">Display name</label>
       <input type="text" id="display_name" name="display_name" value="{{ form.display_name or '' }}" maxlength="40" placeholder="{{ profile.username }}" autocomplete="nickname">
-      <p class="hint-text">Shown instead of your username. Leave empty to use <b>{{ profile.username }}</b>. Your username stays the same and is what you log in with.</p>
+      <p class="hint-text">Shown instead of your username. Leave empty to use <b>{{ profile.username }}</b>. Your username is what you log in with; you can change it below.</p>
     </div>
 
     <div class="field">
@@ -102,6 +104,26 @@
   </div>
 </div>
 {% endif %}
+
+<form class="form-panel account-form" method="POST" action="{{ url_for('account_username') }}" id="username-form">{{ csrf_field() }}
+  <div class="form-section">
+    <p class="form-section-title">Username</p>
+    <p class="hint-text" style="margin:0 0 12px;">Your username is what you log in with and what other people use to invite you. You are <b>{{ profile.username }}</b> now. Your password stays the same, and you stay signed in.</p>
+    <div class="field-row-2">
+      <div class="field">
+        <label for="new_username">New username</label>
+        <input type="text" id="new_username" name="username" value="{{ new_username or '' }}" required minlength="3" maxlength="32" autocomplete="off" autocapitalize="none" spellcheck="false">
+      </div>
+      <div class="field">
+        <label for="username_current_password">Current password</label>
+        <input type="password" id="username_current_password" name="current_password" required maxlength="128" autocomplete="current-password">
+      </div>
+    </div>
+  </div>
+  <div class="form-actions">
+    <button type="submit" class="btn btn-primary">{{ icon('check') }} Change username</button>
+  </div>
+</form>
 
 <form class="form-panel account-form" method="POST" action="{{ url_for('account_password') }}" id="password-form">{{ csrf_field() }}
   <div class="form-section">

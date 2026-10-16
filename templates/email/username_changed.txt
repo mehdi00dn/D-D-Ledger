@@ -1,0 +1,5 @@
+Hi {{ name }},
+
+The username of your Campaign Ledger account was just changed from "{{ old }}" to "{{ new }}". From now on, log in with the new username; your password is the same.
+
+If this was you, nothing more to do. If not, reset your password right away from the login page (Forgot your password?) and check your email account's security.
