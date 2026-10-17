@@ -2056,7 +2056,7 @@ body.page-leaving .content {
 .dw-art { overflow: visible; }
 .dw-body { fill: color-mix(in srgb, var(--brass) 16%, transparent); stroke: currentColor; stroke-width: 1.5; stroke-linejoin: round; transition: fill 160ms ease; }
 .dw-facet { fill: none; stroke: currentColor; stroke-width: 1; stroke-linejoin: round; opacity: 0.55; }
-.dw-num { fill: currentColor; font: 600 9.5px/1 var(--font-mono); }
+.dw-num { fill: currentColor; font: 600 9.5px/1 var(--font-mono); paint-order: stroke; stroke: color-mix(in srgb, var(--bg-panel) 82%, transparent); stroke-width: 2.4px; stroke-linejoin: round; }
 .dw-pips circle { fill: currentColor; }
 
 .dice-tray { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
