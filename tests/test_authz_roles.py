@@ -56,7 +56,7 @@ POLICY = {
     'dice_view': MEMBER, 'activity_view': MEMBER, 'dice_roll': MEMBER, 'dice_rolls': MEMBER, 'reference_view': MEMBER, 'reference_search': MEMBER, 'reference_detail': MEMBER, 'export_data': MEMBER, 'character_export': MEMBER, 'faction_export': MEMBER,
     'import_data': MEMBER,
     # --- battle ---
-    'battle_view': MEMBER, 'api_battle_list': MEMBER,
+    'battle_view': MEMBER, 'api_battle_list': MEMBER, 'api_battle_log': MEMBER,
     **{e: DM for e in (
         'api_battle_add', 'api_battle_add_group', 'api_battle_add_monster', 'api_battle_roll_initiative', 'api_battle_heal', 'api_battle_damage', 'api_battle_temphp',
         'api_battle_set_hp', 'api_battle_initiative', 'api_battle_ac', 'api_battle_max_hp', 'api_battle_die',

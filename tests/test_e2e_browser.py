@@ -1891,3 +1891,38 @@ def test_dice_toasts_leave_after_a_few_seconds_even_if_the_tab_was_in_the_backgr
     playwright.expect(ppage.locator('.dice-toast').first).to_contain_text('Second', timeout=15000)
     ppage.evaluate("window.__skew = 20000; document.dispatchEvent(new Event('visibilitychange'))")
     playwright.expect(ppage.locator('.dice-toast')).to_have_count(0, timeout=1500)
+
+
+def test_battle_log_is_collapsible_small_and_live(pw, shared_server):
+    base = shared_server.url; dm = Api(base); pl = Api(base); cid = dm.campaign('LogUI')
+    dm.add_member(cid, pl)
+    pid = dm.post(f'/campaigns/{cid}/api/battle/add', json={'character_id': dm.character(cid, 'Aria')}).json()[0]['id']
+    dctx = dm.context(pw, base); dpage = dctx.new_page(); dbad, derrs = _collect(dpage)
+    pctx = pl.context(pw, base); ppage = pctx.new_page()
+    dpage.goto(base + f'/campaigns/{cid}/battle'); ppage.goto(base + f'/campaigns/{cid}/battle')
+    dpage.wait_for_selector('#battle-log:not([hidden])'); ppage.wait_for_selector('#battle-log:not([hidden])')
+    bar = dpage.locator('#battle-log-toggle')
+    assert bar.get_attribute('aria-expanded') == 'false'                             # starts closed: one slim bar
+    box = bar.bounding_box(); vh = dpage.viewport_size['height']
+    assert box['height'] < 44 and box['y'] + box['height'] > vh - 70                  # fixed to the bottom of the page
+    assert 'Aria joined the battle' in dpage.inner_text('#battle-log-latest')
+    assert dpage.locator('#battle-log-sheet').is_hidden()
+    bar.click()
+    playwright.expect(dpage.locator('#battle-log-sheet')).to_be_visible()
+    assert dpage.locator('#battle-log-list .bl-item').count() == 1
+    blur = lambda sel: dpage.locator(sel).evaluate('(el) => getComputedStyle(el).backdropFilter || getComputedStyle(el).webkitBackdropFilter')
+    assert blur('#battle-log-sheet') != 'none'                                       # the card itself is frosted glass...
+    assert blur('#battle-log-backdrop') in ('none', '')                              # ...and the page behind is NOT blurred
+    assert dpage.locator('#battle-log-sheet').bounding_box()['y'] + dpage.locator('#battle-log-sheet').bounding_box()['height'] < dpage.locator('#battle-log-toggle').bounding_box()['y']   # floats above the bar
+    dm.post(f'/campaigns/{cid}/api/battle/{pid}/damage', json={'amount': 4})
+    playwright.expect(dpage.locator('#battle-log-list .bl-item').first).to_contain_text('Aria took', timeout=15000)
+    playwright.expect(ppage.locator('#battle-log-list .bl-item').first).to_contain_text('Aria took', timeout=15000)   # live for the Player too
+    assert dpage.locator('#battle-log-list').evaluate('(el) => getComputedStyle(el).maxHeight') != 'none'            # a short, scrolling list
+    assert float(dpage.locator('#battle-log-list .bl-item').first.evaluate('(el) => parseFloat(getComputedStyle(el).fontSize)')) <= 12
+    dpage.keyboard.press('Escape')
+    assert bar.get_attribute('aria-expanded') == 'false'
+    bar.click(); dpage.mouse.click(20, 20)                                           # a click on the blurred page closes it too
+    assert bar.get_attribute('aria-expanded') == 'false'
+    dpage.reload(); dpage.wait_for_selector('#battle-log:not([hidden])')
+    assert dpage.locator('#battle-log-toggle').get_attribute('aria-expanded') == 'false'   # nothing is remembered: always starts closed
+    assert not dbad and not derrs

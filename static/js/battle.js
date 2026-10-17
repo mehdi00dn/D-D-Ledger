@@ -388,6 +388,78 @@
     }
   }
 
+  // ---- Battle log: a slim bar fixed to the bottom of the page; opened, it becomes a small sheet over a blurred page ----
+  const logBox = document.getElementById('battle-log');
+  const logBar = document.getElementById('battle-log-toggle');
+  const logSheet = document.getElementById('battle-log-sheet');
+  const logBackdrop = document.getElementById('battle-log-backdrop');
+  const logList = document.getElementById('battle-log-list');
+  const logLatest = document.getElementById('battle-log-latest');
+  let logSig = '', logTimer = null, logHideTimer = null;
+  const clock = (iso) => { const d = new Date(iso); return isNaN(d) ? '' : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); };
+
+  // The bar lines up with the page content (the sidebar is not part of it), whatever the sidebar is doing.
+  function fitLogToContent() {
+    const main = document.getElementById('main-content');
+    if (!main || !logBox) return;
+    const r = main.getBoundingClientRect();
+    logBox.style.setProperty('--bl-left', `${Math.max(0, r.left)}px`);
+    logBox.style.setProperty('--bl-width', `${Math.min(r.width, window.innerWidth - Math.max(0, r.left))}px`);
+  }
+  if (logBox) {
+    fitLogToContent();
+    window.addEventListener('resize', fitLogToContent);
+    const main = document.getElementById('main-content');
+    if (main && window.ResizeObserver) new ResizeObserver(fitLogToContent).observe(main);
+  }
+
+  function setLogOpen(open) {
+    if (!logBox) return;
+    clearTimeout(logHideTimer);
+    logBar.setAttribute('aria-expanded', String(open));
+    if (open) {
+      logSheet.hidden = false; logList.scrollTop = 0;
+      void logSheet.offsetWidth;                                   // let the closed state paint once, so the card eases in
+      logBox.classList.add('is-open');
+    } else {
+      logBox.classList.remove('is-open');
+      logHideTimer = setTimeout(() => { logSheet.hidden = true; }, 160);   // after the quick fade out
+    }
+  }
+  if (logBar) {
+    logBar.addEventListener('click', () => setLogOpen(!logBox.classList.contains('is-open')));
+    logBackdrop.addEventListener('click', () => setLogOpen(false));
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && logBox.classList.contains('is-open')) { setLogOpen(false); logBar.focus(); }
+    });
+  }
+  function renderLog(entries) {
+    if (!logBox) return;
+    logBox.hidden = entries.length === 0;
+    if (entries.length === 0) setLogOpen(false);
+    const sig = entries.map((e) => e.id).join(',');
+    if (sig === logSig) return;
+    logSig = sig;
+    logList.replaceChildren(...entries.map((e) => {
+      const li = document.createElement('li');
+      li.className = 'bl-item bl-' + String(e.kind).replace(/[^a-z]/g, '');
+      const t = document.createElement('time'); t.dateTime = e.at; t.textContent = clock(e.at);
+      const span = document.createElement('span'); span.textContent = e.text;
+      li.append(t, span);
+      return li;
+    }));
+    if (logLatest) logLatest.textContent = entries.length ? entries[0].text : '';
+    fitLogToContent();
+  }
+  async function loadLog() {
+    try {
+      const res = await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/battle/log`, { headers: { Accept: 'application/json' }, credentials: 'same-origin' });
+      if (res.ok) renderLog(await res.json());
+    } catch (e) { /* the log is a nicety: a failed fetch just leaves the old one on screen */ }
+  }
+  function refreshLogSoon() { clearTimeout(logTimer); logTimer = setTimeout(loadLog, 120); }
+  loadLog();
+
   async function apiCall(path, body) {
     const res = await fetch(`/campaigns/${window.CAMPAIGN_ID}${path}`, {
       method: 'POST',
@@ -399,6 +471,7 @@
       LedgerApi.notify(message);                 // say why (no permission, session ended, ...) instead of failing silently
       throw new LedgerApi.Error(message, res.status);
     }
+    refreshLogSoon();                              // whatever just changed may have a line in the log
     return res.json();
   }
 
@@ -851,6 +924,7 @@
       participants = rows;
       render();
     }
+    if (serverChanged) loadLog();
     return serverChanged;
   }, { base: 3000, max: 12000 });
 

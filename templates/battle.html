@@ -45,6 +45,20 @@
 
 <div id="battle-root" data-added-id="{{ added_id or '' }}"></div>
 
+<div class="battle-log" id="battle-log" hidden>
+  <div class="bl-backdrop" id="battle-log-backdrop"></div>
+  <div class="bl-dock">
+    <section class="bl-sheet" id="battle-log-sheet" aria-label="Battle log" hidden>
+      <ol class="bl-list" id="battle-log-list" aria-label="Newest first"></ol>
+    </section>
+    <button type="button" class="bl-bar" id="battle-log-toggle" aria-expanded="false" aria-controls="battle-log-sheet">
+      <span class="bl-title">{{ icon('history') }} Battle log</span>
+      <span class="bl-latest" id="battle-log-latest"></span>
+      <span class="bl-chev" aria-hidden="true">{{ icon('chevron-down') }}</span>
+    </button>
+  </div>
+</div>
+
 <template id="empty-battle-template">
   <div class="empty-state">
     <span>{{ icon('swords') }}</span>
