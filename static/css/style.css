@@ -4426,30 +4426,47 @@ body.has-dice-fab .modifier-hint { inset-inline-end: 80px; max-width: calc(100vw
 .activity-text { margin: 0; font-size: 14px; line-height: 1.4; overflow-wrap: anywhere; }
 .activity-time { margin: 2px 0 0; font-size: 12px; color: var(--text-dim, #8b8a96); }
 
-/* ---- Battle log: a slim bar floating at the bottom of the page; opened, a small frosted card rises out of it ---- */
+/* ---- Battle log: a ledger strip pinned to the bottom-left of the battle page; opened, a small card of the last lines rises out of it ----
+   It sits in the page flow (sticky), not at a fixed screen position, so it follows the content when the sidebar opens or closes. */
+.content:has(> .battle-log) { display: flex; flex-direction: column; min-height: 100vh; padding-block-end: 0; }   /* the strip rests on the page's very bottom, so the sticky offset alone decides its height */
 .battle-log {
-  position: fixed; z-index: 75; bottom: calc(var(--bar-h, 0px) + env(safe-area-inset-bottom) + 10px);
-  left: var(--bl-left, 0px); width: var(--bl-width, 100%);          /* phys */
-  font-size: 11.5px; pointer-events: none;
+  --bl-kind: var(--parchment-dim);                                   /* colour of the newest entry; set from script via data-kind */
+  position: sticky; z-index: 75; margin-top: auto; align-self: flex-start; width: min(27rem, 100%);
+  bottom: calc(var(--bar-h, 0px) + env(safe-area-inset-bottom) + 20px);      /* the strip's centre line is the dice button's: that is 16px + (48 - 40) / 2 */
+  font-size: 12px; padding-block-start: 72px; pointer-events: none;      /* the padding keeps the last page content clear of the strip; clicks pass through it */
 }
+@media (max-width: 880px), (max-height: 500px) and (orientation: landscape) { .battle-log { bottom: calc(var(--bar-h, 0px) + env(safe-area-inset-bottom) + 16px); } }   /* the button sits 12px up here */
+@media (orientation: landscape) and (max-height: 500px) { .battle-log { bottom: calc(var(--bar-h, 0px) + env(safe-area-inset-bottom) + 12px); } }                 /* and 8px up in a sideways phone */
 .battle-log[hidden] { display: none; }
+.battle-log[data-kind="damage"], .battle-log[data-kind="down"], .battle-log[data-kind="died"] { --bl-kind: var(--blood-ink); }
+.battle-log[data-kind="heal"], .battle-log[data-kind="revive"] { --bl-kind: var(--moss-ink); }
+.battle-log[data-kind="condition"], .battle-log[data-kind="temp"], .battle-log[data-kind="round"], .battle-log[data-kind="initiative"] { --bl-kind: var(--brass-ink); }
 .bl-backdrop { position: fixed; inset: 0; pointer-events: none; }     /* invisible: only there so a click outside closes the log */
 .battle-log.is-open .bl-backdrop { pointer-events: auto; }
-.bl-dock { position: relative; margin-inline: clamp(10px, 2.5vw, 28px); pointer-events: none; }
+.bl-dock { position: relative; pointer-events: auto; }
 .bl-bar, .bl-sheet {
-  background: color-mix(in srgb, var(--bg-panel) 84%, transparent); -webkit-backdrop-filter: blur(20px) saturate(1.3); backdrop-filter: blur(20px) saturate(1.3);
-  border: 1px solid color-mix(in srgb, var(--parchment) 14%, transparent); box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28), inset 0 1px 0 color-mix(in srgb, var(--parchment) 8%, transparent);
+  background: color-mix(in srgb, var(--bg-panel-raised) 90%, transparent); -webkit-backdrop-filter: blur(18px) saturate(1.3); backdrop-filter: blur(18px) saturate(1.3);
+  border: 1px solid color-mix(in srgb, var(--brass) 34%, var(--hairline));
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.32), inset 0 1px 0 color-mix(in srgb, var(--parchment) 9%, transparent);
 }
 .bl-bar {
-  pointer-events: auto; position: relative; display: flex; align-items: center; gap: 10px; min-height: 38px; padding: 6px 8px 6px 14px; width: calc(100% - 62px);    /* the dice button sits beside the bar, so the arrow is at the bar's real end */
+  position: relative; display: flex; align-items: center; gap: 10px; width: 100%; height: 40px; padding: 0 8px 0 16px; overflow: hidden;
   border-radius: 12px; color: var(--parchment-dim); font: inherit; text-align: start; cursor: pointer;
-  transition: transform 140ms var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));
+  transition: transform 140ms var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), border-color 140ms ease;
 }
+.bl-bar::before {                                                    /* the newest entry's colour, so the closed strip says what just happened */
+  content: ''; position: absolute; inset-block: 0; inset-inline-start: 0; width: 4px; background: var(--bl-kind); transition: background-color 200ms ease;
+}
+.bl-bar::after {                                                     /* a brief wash when something new lands while it is closed */
+  content: ''; position: absolute; inset: 0; background: var(--bl-kind); opacity: 0; pointer-events: none;
+}
+.battle-log.has-new .bl-bar::after { animation: bl-new 900ms var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)); }
+@keyframes bl-new { from { opacity: 0.22; } to { opacity: 0; } }
 .bl-bar:active { transform: scale(0.99); }
-.bl-bar:hover { color: var(--parchment); }
+.bl-bar:hover { border-color: color-mix(in srgb, var(--brass) 60%, var(--hairline)); color: var(--parchment); }
 .bl-bar:focus-visible { outline: 2px solid var(--brass-bright); outline-offset: 2px; }
-.bl-title { display: inline-flex; align-items: center; gap: 6px; font: 600 10.5px var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--parchment); flex: none; }
-.bl-title svg { width: 14px; height: 14px; }
+.bl-title { display: inline-flex; align-items: center; gap: 6px; font: 600 13.5px/1 var(--font-display); letter-spacing: 0.01em; color: var(--parchment); flex: none; }
+.bl-title svg { width: 14px; height: 14px; color: var(--brass-ink); }
 .bl-latest { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--parchment-dim); transition: opacity 140ms var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)); }
 .battle-log.is-open .bl-latest { opacity: 0; }                       /* the card above already shows it */
 .bl-chev { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; background: color-mix(in srgb, var(--parchment) 10%, transparent); color: var(--parchment); transition: transform 200ms var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), background-color 140ms ease; }
@@ -4457,21 +4474,31 @@ body.has-dice-fab .modifier-hint { inset-inline-end: 80px; max-width: calc(100vw
 .bl-chev svg { width: 14px; height: 14px; }
 .battle-log:not(.is-open) .bl-chev { transform: rotate(180deg); }    /* closed: points up (it opens upward); open: points down */
 .bl-sheet {
-  pointer-events: auto; position: absolute; inset-inline: 0; bottom: calc(100% + 8px); padding: 8px 4px 6px; border-radius: 14px;
-  background: color-mix(in srgb, var(--bg-panel) 92%, transparent);
-  transform-origin: bottom center; opacity: 0; transform: translateY(10px) scale(0.96);
+  position: absolute; inset-inline: 0; bottom: calc(100% + 8px); padding: 10px 6px 8px; border-radius: 14px;
+  background: color-mix(in srgb, var(--bg-panel-raised) 95%, transparent);
+  transform-origin: bottom left; opacity: 0; transform: translateY(10px) scale(0.96);
   transition: opacity 200ms var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), transform 200ms var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));
 }
 .bl-sheet[hidden] { display: none; }
 .battle-log.is-open .bl-sheet { opacity: 1; transform: none; }
 .battle-log:not(.is-open) .bl-sheet { transition-duration: 140ms; }  /* leaving is quicker than arriving */
-.bl-list { list-style: none; margin: 0; padding: 2px 10px 4px; max-height: min(46vh, 20rem); overflow-y: auto; overscroll-behavior: contain; }
-.bl-item { display: flex; gap: 8px; align-items: baseline; padding: 2px 0 2px 8px; line-height: 1.4; color: var(--parchment); border-inline-start: 2px solid var(--hairline); }
-.bl-item time { flex: none; font: 500 10px var(--font-mono); color: var(--parchment-faint); font-variant-numeric: tabular-nums; }
-.bl-damage, .bl-down, .bl-died { border-inline-start-color: var(--blood-ink); }
-.bl-heal, .bl-revive { border-inline-start-color: var(--moss-ink); }
-.bl-condition, .bl-temp { border-inline-start-color: var(--brass-ink); }
-.bl-round { border-inline-start-color: var(--parchment-dim); }
-#battle-root { padding-bottom: 64px; }                               /* the last row is never hidden behind the bar */
-@media (prefers-reduced-motion: reduce) { .bl-sheet, .bl-chev, .bl-bar, .bl-latest { transition-duration: 0.01ms; } .bl-sheet { transform: none; } }
-@media (prefers-reduced-transparency: reduce) { .bl-bar, .bl-sheet { -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--bg-panel); } }
+/* Six lines tall (oldest at the top, newest at the bottom); older ones scroll and fade out at the top edge. */
+.bl-list {
+  --bl-line: 18px; list-style: none; margin: 0; padding: 4px 10px; max-height: calc(6 * (var(--bl-line) + 3px) + 8px); overflow-y: auto; overscroll-behavior: contain;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 16px); mask-image: linear-gradient(to bottom, transparent 0, #000 16px);
+  scrollbar-width: thin;
+}
+.bl-item { display: flex; gap: 9px; align-items: baseline; padding: 1.5px 0 1.5px 9px; line-height: var(--bl-line); color: var(--parchment-dim); border-inline-start: 2px solid var(--hairline); }
+.bl-item:last-child { color: var(--parchment); }                     /* the newest line reads a little stronger */
+.bl-item time { flex: none; font: 500 10px/var(--bl-line) var(--font-mono); color: var(--parchment-faint); font-variant-numeric: tabular-nums; }
+.bl-text { min-width: 0; overflow-wrap: anywhere; }
+.bl-who { font-weight: 650; color: var(--parchment); }
+.bl-v { font-weight: 600; color: var(--bl-item, var(--parchment-dim)); }
+.bl-n { font-weight: 700; color: var(--bl-item, var(--parchment)); font-variant-numeric: tabular-nums; }
+.bl-damage, .bl-down, .bl-died { --bl-item: var(--blood-ink); border-inline-start-color: var(--blood-ink); }
+.bl-heal, .bl-revive { --bl-item: var(--moss-ink); border-inline-start-color: var(--moss-ink); }
+.bl-condition, .bl-temp { --bl-item: var(--brass-ink); border-inline-start-color: var(--brass-ink); }
+.bl-round, .bl-initiative { --bl-item: var(--brass-bright-ink); border-inline-start-color: var(--parchment-dim); }
+@media (max-width: 880px) { .bl-bar { width: calc(100% - 62px); } }   /* the dice button sits beside the strip on a phone, never over its arrow */
+@media (prefers-reduced-motion: reduce) { .bl-sheet, .bl-chev, .bl-bar, .bl-latest { transition-duration: 0.01ms; } .bl-sheet { transform: none; } .battle-log.has-new .bl-bar::after { animation: none; } }
+@media (prefers-reduced-transparency: reduce) { .bl-bar, .bl-sheet { -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--bg-panel-raised); } }

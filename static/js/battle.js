@@ -388,7 +388,7 @@
     }
   }
 
-  // ---- Battle log: a slim bar fixed to the bottom of the page; opened, it becomes a small sheet over a blurred page ----
+  // ---- Battle log: a ledger strip pinned to the bottom-left of the page; opened, a small card of the last lines rises out of it ----
   const logBox = document.getElementById('battle-log');
   const logBar = document.getElementById('battle-log-toggle');
   const logSheet = document.getElementById('battle-log-sheet');
@@ -398,29 +398,15 @@
   let logSig = '', logTimer = null, logHideTimer = null;
   const clock = (iso) => { const d = new Date(iso); return isNaN(d) ? '' : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); };
 
-  // The bar lines up with the page content (the sidebar is not part of it), whatever the sidebar is doing.
-  function fitLogToContent() {
-    const main = document.getElementById('main-content');
-    if (!main || !logBox) return;
-    const r = main.getBoundingClientRect();
-    logBox.style.setProperty('--bl-left', `${Math.max(0, r.left)}px`);
-    logBox.style.setProperty('--bl-width', `${Math.min(r.width, window.innerWidth - Math.max(0, r.left))}px`);
-  }
-  if (logBox) {
-    fitLogToContent();
-    window.addEventListener('resize', fitLogToContent);
-    const main = document.getElementById('main-content');
-    if (main && window.ResizeObserver) new ResizeObserver(fitLogToContent).observe(main);
-  }
-
   function setLogOpen(open) {
     if (!logBox) return;
     clearTimeout(logHideTimer);
     logBar.setAttribute('aria-expanded', String(open));
     if (open) {
-      logSheet.hidden = false; logList.scrollTop = 0;
+      logSheet.hidden = false;
       void logSheet.offsetWidth;                                   // let the closed state paint once, so the card eases in
       logBox.classList.add('is-open');
+      logList.scrollTop = logList.scrollHeight;                    // newest at the bottom, and that is where it opens
     } else {
       logBox.classList.remove('is-open');
       logHideTimer = setTimeout(() => { logSheet.hidden = true; }, 160);   // after the quick fade out
@@ -433,23 +419,55 @@
       if (e.key === 'Escape' && logBox.classList.contains('is-open')) { setLogOpen(false); logBar.focus(); }
     });
   }
+  // The words that follow a name ("Mira took 9 damage", "Grub is now Hexed"), so the name, the verb and the numbers can each be styled.
+  const VERBS = [' took ', ' healed ', ' is down', ' died', ' was revived', ' was hurt', ' was healed', ' is back on', ' has ', ' lost their',
+                 ' is now ', ' is no longer ', ' joined the', ' left the', "'s HP set"];
+  function span(cls, text) { const el = document.createElement('span'); el.className = cls; el.textContent = text; return el; }
+  function withNumbers(text, cls) {                                // digits get their own bold, tabular style
+    const out = document.createDocumentFragment();
+    text.split(/(\d+)/).forEach((part, i) => { if (part) out.append(i % 2 ? span('bl-n', part) : span(cls, part)); });
+    return out;
+  }
+  function styledText(e) {
+    const text = String(e.text), box = document.createElement('span');
+    box.className = 'bl-text'; box.title = text;
+    if (e.kind === 'round' || e.kind === 'initiative' || (e.kind === 'left' && !/ left the/.test(text))) { box.append(withNumbers(text, 'bl-v')); return box; }
+    let at = -1;
+    VERBS.forEach((v) => { const i = text.indexOf(v); if (i > 0 && (at < 0 || i < at)) at = i; });
+    if (at < 0) { box.append(withNumbers(text, 'bl-v')); return box; }
+    box.append(span('bl-who', text.slice(0, at)));
+    let rest = text.slice(at);
+    if (e.kind === 'condition') {                                  // " is now " / " is no longer " + the condition, which is the point of the line
+      const m = rest.match(/^( is now | is no longer )(.*)$/);
+      if (m) { box.append(span('bl-v', m[1]), span('bl-who bl-cond', m[2])); return box; }
+    }
+    box.append(withNumbers(rest, 'bl-v'));
+    return box;
+  }
   function renderLog(entries) {
     if (!logBox) return;
     logBox.hidden = entries.length === 0;
     if (entries.length === 0) setLogOpen(false);
     const sig = entries.map((e) => e.id).join(',');
     if (sig === logSig) return;
+    const hadAny = logSig !== '';
     logSig = sig;
-    logList.replaceChildren(...entries.map((e) => {
+    const oldestFirst = entries.slice().reverse();                 // the API sends newest first; the card reads like a ledger, newest at the bottom
+    const nearBottom = logList.scrollHeight - logList.scrollTop - logList.clientHeight < 40;
+    logList.replaceChildren(...oldestFirst.map((e) => {
       const li = document.createElement('li');
       li.className = 'bl-item bl-' + String(e.kind).replace(/[^a-z]/g, '');
       const t = document.createElement('time'); t.dateTime = e.at; t.textContent = clock(e.at);
-      const span = document.createElement('span'); span.textContent = e.text;
-      li.append(t, span);
+      li.append(t, styledText(e));
       return li;
     }));
-    if (logLatest) logLatest.textContent = entries.length ? entries[0].text : '';
-    fitLogToContent();
+    if (nearBottom || !logBox.classList.contains('is-open')) logList.scrollTop = logList.scrollHeight;
+    const newest = entries[0];
+    logBox.dataset.kind = String(newest.kind).replace(/[^a-z]/g, '');
+    if (logLatest) logLatest.textContent = newest.text;
+    if (hadAny && !logBox.classList.contains('is-open')) {         // a quick wash on the closed strip when something new lands
+      logBox.classList.remove('has-new'); void logBox.offsetWidth; logBox.classList.add('has-new');
+    }
   }
   async function loadLog() {
     try {

@@ -24,9 +24,8 @@ It also runs locally.
   avatars, sheet images, notes (individual notes can be hidden from Players), and
   factions (many-to-many). NPC stats are hidden from Players.
 - **Battle tracker.** Initiative, turn tracker, HP/temp HP, conditions (including
-  custom ones), group colors, live sync between players. A slim battle log bar fixed to the bottom of the page (opens upward as a small frosted card)
-  (battle page only) records damage, healing, temp HP, conditions, down / died / revived,
-  rounds and arrivals; it keeps the latest 50 entries per campaign, is wiped when the battle
+  custom ones), group colors, live sync between players. A battle log strip sits at the bottom-left of the battle page (it follows the content when the sidebar opens or closes; the closed strip shows the newest entry in its colour, and a short wash when something new lands). Opened, a small card shows the last six lines, newest at the bottom, with names, verbs and numbers styled by kind; it records damage, healing, temp HP, conditions, down / died / revived,
+  rounds and arrivals, keeps the latest 50 entries per campaign, is wiped when the battle
   is cleared, and shows Players enemy events without numbers (`migrations/0026_battle_log.sql`).
 - **Map editor.** Shapes, pins, grid setup, zoom/pan, fog of war, DM-only layers,
   token ownership (DMs assign tokens to players), familiars that sync into the

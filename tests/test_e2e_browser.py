@@ -1904,7 +1904,20 @@ def test_battle_log_is_collapsible_small_and_live(pw, shared_server):
     bar = dpage.locator('#battle-log-toggle')
     assert bar.get_attribute('aria-expanded') == 'false'                             # starts closed: one slim bar
     box = bar.bounding_box(); vh = dpage.viewport_size['height']
-    assert box['height'] < 44 and box['y'] + box['height'] > vh - 70                  # fixed to the bottom of the page
+    assert box['height'] < 48 and box['y'] + box['height'] > vh - 70                  # pinned to the bottom of the page
+    main_left = dpage.locator('#main-content').bounding_box()['x']
+    assert box['width'] < 460 and abs(box['x'] - (main_left + 32)) < 80               # short, and on the left (not full width)
+    fab = dpage.locator('.dice-fab').bounding_box()
+    assert abs((box['y'] + box['height'] / 2) - (fab['y'] + fab['height'] / 2)) <= 1.5   # the strip and the dice button share one centre line
+    dpage.set_viewport_size({'width': 390, 'height': 800}); dpage.wait_for_timeout(400)         # on a phone: same centre line, and the strip stops short of the dice button
+    box = bar.bounding_box(); fab = dpage.locator('.dice-fab').bounding_box()
+    assert abs((box['y'] + box['height'] / 2) - (fab['y'] + fab['height'] / 2)) <= 1.5 and box['x'] + box['width'] <= fab['x'] - 4
+    dpage.set_viewport_size({'width': 1280, 'height': 900}); dpage.wait_for_timeout(400)
+    toggle = dpage.locator('#sidebar-toggle-btn')
+    for _ in range(2):                                                                # closing and reopening the sidebar keeps it with the content
+        toggle.click(); dpage.wait_for_timeout(600)
+        ml = dpage.locator('#main-content').bounding_box()['x']
+        assert abs(bar.bounding_box()['x'] - (ml + 32)) < 80 and bar.bounding_box()['y'] + bar.bounding_box()['height'] > vh - 70
     assert 'Aria joined the battle' in dpage.inner_text('#battle-log-latest')
     assert dpage.locator('#battle-log-sheet').is_hidden()
     bar.click()
@@ -1915,10 +1928,10 @@ def test_battle_log_is_collapsible_small_and_live(pw, shared_server):
     assert blur('#battle-log-backdrop') in ('none', '')                              # ...and the page behind is NOT blurred
     assert dpage.locator('#battle-log-sheet').bounding_box()['y'] + dpage.locator('#battle-log-sheet').bounding_box()['height'] < dpage.locator('#battle-log-toggle').bounding_box()['y']   # floats above the bar
     dm.post(f'/campaigns/{cid}/api/battle/{pid}/damage', json={'amount': 4})
-    playwright.expect(dpage.locator('#battle-log-list .bl-item').first).to_contain_text('Aria took', timeout=15000)
-    playwright.expect(ppage.locator('#battle-log-list .bl-item').first).to_contain_text('Aria took', timeout=15000)   # live for the Player too
-    assert dpage.locator('#battle-log-list').evaluate('(el) => getComputedStyle(el).maxHeight') != 'none'            # a short, scrolling list
-    assert float(dpage.locator('#battle-log-list .bl-item').first.evaluate('(el) => parseFloat(getComputedStyle(el).fontSize)')) <= 12
+    playwright.expect(dpage.locator('#battle-log-list .bl-item').last).to_contain_text('Aria took', timeout=15000)       # newest at the bottom
+    playwright.expect(ppage.locator('#battle-log-list .bl-item').last).to_contain_text('Aria took', timeout=15000)   # live for the Player too
+    assert float(dpage.locator('#battle-log-list').evaluate('(el) => parseFloat(getComputedStyle(el).maxHeight)')) <= 140   # about six lines, then it scrolls
+    assert float(dpage.locator('#battle-log-list .bl-item').last.evaluate('(el) => parseFloat(getComputedStyle(el).fontSize)')) <= 12
     dpage.keyboard.press('Escape')
     assert bar.get_attribute('aria-expanded') == 'false'
     bar.click(); dpage.mouse.click(20, 20)                                           # a click on the blurred page closes it too

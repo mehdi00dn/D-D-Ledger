@@ -3624,7 +3624,7 @@ def dice_view():
 # ---------------- DICE: rolls are made on the server and shared with the whole campaign ----------------
 
 DICE_SIDES = (4, 6, 8, 10, 12, 20, 100)
-DICE_MAX_PER_ROLL = 40
+DICE_MAX_PER_ROLL = 30
 DICE_KEEP = 20                  # rolls kept per campaign: older ones are deleted as new ones arrive, so the table stays tiny
 DICE_FEED_LIMIT = DICE_KEEP
 DICE_NEEDS_MIGRATION = 'The dice log is not set up in this database yet. Run the database migrations (python migrate.py) and try again.'
