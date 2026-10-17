@@ -2774,6 +2774,15 @@ body.page-leaving .content {
   max-width: 100%;
 }
 .cond-chip:hover, .cond-chip:focus-within { border-color: var(--brass); background: rgba(201, 162, 75, 0.12); }
+.cond-rule-tip {
+  position: fixed; z-index: 90; max-width: min(320px, calc(100vw - 16px)); padding: 10px 12px;
+  background: var(--bg-panel-raised); color: var(--parchment); border: 1px solid var(--brass);
+  border-radius: 8px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35); font-size: 13px; line-height: 1.45; pointer-events: none;
+}
+.cond-rule-tip[hidden] { display: none; }
+.cond-rule-tip strong { display: block; margin-bottom: 4px; color: var(--brass-ink); }
+.cond-rule-tip p { margin: 0 0 4px; }
+.cond-rule-tip p:last-child { margin-bottom: 0; }
 .cond-chip.is-new { animation: cond-pop 0.28s cubic-bezier(0.2, 0.9, 0.3, 1.3) both; }
 .cond-chip.is-leaving { opacity: 0; transform: scale(0.82); pointer-events: none; }
 @keyframes cond-pop { from { opacity: 0; transform: scale(0.72); } to { opacity: 1; transform: scale(1); } }

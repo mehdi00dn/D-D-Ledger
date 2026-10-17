@@ -20,6 +20,7 @@ LISTS = {
     '/spells': {'results': [{'index': 'fireball', 'name': 'Fireball', 'level': 3}, {'index': 'fire-bolt', 'name': 'Fire Bolt', 'level': 0},
                             {'index': 'bless', 'name': 'Bless', 'level': 1}]},
     '/monsters': {'results': [{'index': 'goblin-warrior', 'name': 'Goblin Warrior'}, {'index': 'aboleth', 'name': 'Aboleth'}]},
+    '/conditions': {'results': [{'index': 'blinded', 'name': 'Blinded'}, {'index': 'prone', 'name': 'Prone'}]},
     '/equipment': {'results': [{'index': 'longsword', 'name': 'Longsword'}]},
     '/magic-items': {'results': [{'index': 'bag-of-holding', 'name': 'Bag of Holding'}, {'index': 'longsword-1', 'name': 'Longsword +1'}]},
 }
@@ -28,6 +29,7 @@ DETAILS = {
     '/spells/fireball': {'name': 'Fireball', 'level': 3, 'school': {'name': 'Evocation'}, 'casting_time': 'Action', 'range': '150 feet',
                          'components': ['V', 'S', 'M'], 'material': 'a ball of bat guano', 'duration': 'Instantaneous', 'concentration': False,
                          'ritual': False, 'classes': [{'name': 'Wizard'}], 'description': 'A bright streak flashes.', 'higher_level': 'More dice.'},
+    '/conditions/blinded': {'name': 'Blinded', 'description': 'While you have the Blinded condition, you experience the following effects.\n**Can\'t See.** You can\'t see.'},
     '/equipment/longsword': {'name': 'Longsword', 'cost': {'quantity': 15, 'unit': 'gp'}, 'weight': 3,
                              'equipment_categories': [{'name': 'Weapons'}, {'name': 'Martial Melee Weapons'}],
                              'damage': {'damage_dice': '1d8', 'damage_type': {'name': 'Slashing'}}, 'properties': [{'name': 'Versatile'}]},
@@ -83,6 +85,13 @@ def test_monster_notes_are_escaped_whitelisted_html():
     assert 'Small humanoid, chaotic neutral' in text and 'Challenge 1/4' in text and 'Speed: walk 30 ft.' in text
     assert '<script>' not in text and '&lt;script&gt;' in text
     assert '<b>Actions</b><ul><li><b>Scimitar.</b>' in text
+
+
+def test_condition_rules_are_readable_plain_text():
+    assert [r['name'] for r in srd.search('conditions', '')] == ['Blinded', 'Prone']
+    c = srd.detail('conditions', 'conditions/blinded')
+    assert c['title'] == 'Blinded' and c['subtitle'] == 'Condition' and '**' not in c['body']
+    assert "Can't See. You can't see." in c['body']
 
 
 def test_spell_and_item_details_read_well():

@@ -1839,3 +1839,24 @@ def test_phone_grid_settings_lightbox_fits_and_the_grid_drags_by_touch(pw, share
     assert not [b for b in bad if b[0] >= 400], bad
     assert not errs, errs
     ctx.close()
+
+
+def test_condition_chip_hover_shows_its_rule(pw, shared_server):
+    base = shared_server.url; dm = Api(base); cid = dm.campaign('RuleTip')
+    pid = dm.post(f'/campaigns/{cid}/api/battle/add', json={'character_id': dm.character(cid, 'Aria')}).json()[0]['id']
+    dm.post(f'/campaigns/{cid}/api/battle/{pid}/conditions', json={'conditions': ['prone'], 'custom_conditions': ['Hexed']})
+    dctx = dm.context(pw, base); dpage = dctx.new_page()
+    asked = []
+    def fake(route):
+        asked.append(route.request.url)
+        route.fulfill(status=200, content_type='application/json', body='{"title":"Prone","subtitle":"Condition","facts":[],"body":"Crawl only.\\nAttacks against you have <b>x</b>."}')
+    dpage.route('**/api/reference/entry**', fake)
+    dpage.goto(base + f'/campaigns/{cid}/battle'); dpage.wait_for_selector('.cond-chip')
+    dpage.hover('.cond-chip.cond-prone .cond-name'); dpage.wait_for_selector('#cond-rule-tip:not([hidden])')
+    tip = dpage.inner_text('#cond-rule-tip')
+    assert 'Prone' in tip and 'Crawl only.' in tip and '<b>x</b>' in tip            # shown as text, never parsed as html
+    assert dpage.locator('#cond-rule-tip b').count() == 0
+    assert 'kind=conditions' in asked[0] and 'conditions%2Fprone' in asked[0]
+    dpage.mouse.move(5, 5); dpage.wait_for_selector('#cond-rule-tip', state='hidden')
+    dpage.hover('.cond-chip.cond-custom .cond-name'); dpage.wait_for_timeout(600)       # custom conditions have no rule
+    assert dpage.locator('#cond-rule-tip').is_hidden() and len(asked) == 1

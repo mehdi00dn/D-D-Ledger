@@ -32,7 +32,7 @@ It also runs locally.
 - **Activity.** `/campaigns/<id>/activity` lists the latest 200 events (members joining or leaving, characters,
   factions and maps added or removed). The actor is stored as a user id, so a deleted account shows as "a former
   member". Table `campaign_activity` (migration 0025).
-- **Reference.** Spells, monsters and items from the 2024 rules (dnd5eapi.co).
+- **Reference.** Spells, monsters, items and conditions from the 2024 rules (dnd5eapi.co). Hovering (or focusing/tapping) a condition chip on the battle page shows its rule.
 - **Import / export** of campaigns as ZIP bundles.
 
 ## Running locally

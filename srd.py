@@ -1,4 +1,4 @@
-"""Rules reference (spells, monsters, items) from the public D&D 5e API, 2024 edition (https://www.dnd5eapi.co/api/2024).
+"""Rules reference (spells, monsters, items, conditions) from the public D&D 5e API, 2024 edition (https://www.dnd5eapi.co/api/2024).
 
 The browser never talks to the API: the server fetches, normalises and caches it, so the Content-Security-Policy stays
 strict, the data is shaped once here, and a flaky API only ever costs the reference pages (never a campaign).
@@ -24,7 +24,7 @@ MAX_RESULTS = 60
 INDEX_RE = re.compile(r'^[a-z0-9][a-z0-9-]{0,80}$')
 
 # kind -> the API collections it is served from (items are two collections on the API)
-KINDS = {'spells': ['spells'], 'monsters': ['monsters'], 'items': ['equipment', 'magic-items']}
+KINDS = {'spells': ['spells'], 'monsters': ['monsters'], 'items': ['equipment', 'magic-items'], 'conditions': ['conditions']}
 
 
 class SrdError(Exception):
@@ -239,6 +239,12 @@ def _item(coll, d):
     return {'title': d.get('name', ''), 'subtitle': sub, 'facts': facts, 'body': body}
 
 
+def _condition(d):
+    """A condition's rules text.  The API marks bold with ** which the page shows as plain text, so those are dropped."""
+    body = _text(d.get('description') or d.get('desc')).replace('**', '')
+    return {'title': d.get('name', ''), 'subtitle': 'Condition', 'facts': [], 'body': body}
+
+
 def detail(kind, ref):
     """One entry ('spells/fireball', 'monsters/aboleth', 'equipment/longsword', 'magic-items/bag-of-holding')."""
     if kind not in KINDS or not isinstance(ref, str) or '/' not in ref:
@@ -253,6 +259,8 @@ def detail(kind, ref):
         return _spell(d)
     if kind == 'items':
         return _item(coll, d)
+    if kind == 'conditions':
+        return _condition(d)
     return {'title': d['name'], 'subtitle': ' '.join(x for x in (d.get('size'), d.get('type')) if x),
             'facts': [('Challenge', _cr(d.get('challenge_rating', 0))), ('Armor Class', str(_monster_prefill(d)['armor_class'])),
                       ('Hit Points', str(d.get('hit_points', ''))), ('Speed', ', '.join(f'{k} {v}' for k, v in (d.get('speed') or {}).items()))],

@@ -57,6 +57,58 @@
   let condSeen = null;
   let condNow = new Set();
 
+  // Hover (or focus / tap) a standard condition to read its 2024 rule.  The text comes from the rules reference
+  // (fetched once per condition, then kept); custom conditions have no rule.
+  const ruleCache = new Map();
+  let ruleTip = null, ruleTimer = null, ruleFor = null;
+  function hideRule() {
+    clearTimeout(ruleTimer); ruleFor = null;
+    if (ruleTip) { ruleTip.hidden = true; }
+    document.querySelectorAll('[aria-describedby="cond-rule-tip"]').forEach((n) => n.removeAttribute('aria-describedby'));
+  }
+  async function ruleText(key) {
+    if (ruleCache.has(key)) return ruleCache.get(key);
+    const res = await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/reference/entry?kind=conditions&ref=${encodeURIComponent('conditions/' + key)}`, { headers: { Accept: 'application/json' }, credentials: 'same-origin' });
+    if (!res.ok) throw new Error('unavailable');
+    const d = await res.json();
+    ruleCache.set(key, d);
+    return d;
+  }
+  async function showRule(chip) {
+    const key = chip.dataset.rule;
+    ruleFor = chip;
+    let d;
+    try { d = await ruleText(key); } catch (e) { return; }      // no rule shown when the reference is down; the chip still works
+    if (ruleFor !== chip || !chip.isConnected) return;
+    if (!ruleTip) {
+      ruleTip = document.createElement('div');
+      ruleTip.id = 'cond-rule-tip'; ruleTip.className = 'cond-rule-tip'; ruleTip.setAttribute('role', 'tooltip');
+      document.body.append(ruleTip);
+    }
+    ruleTip.replaceChildren();
+    const h = document.createElement('strong'); h.textContent = d.title;
+    ruleTip.append(h);
+    String(d.body || '').split(/\n+/).filter(Boolean).forEach((line) => { const p = document.createElement('p'); p.textContent = line; ruleTip.append(p); });
+    ruleTip.hidden = false;
+    const r = chip.getBoundingClientRect(), w = ruleTip.offsetWidth, ht = ruleTip.offsetHeight;
+    const left = Math.max(8, Math.min(window.innerWidth - w - 8, r.left + r.width / 2 - w / 2));
+    const top = r.top - ht - 8 >= 8 ? r.top - ht - 8 : r.bottom + 8;
+    ruleTip.style.left = `${left}px`; ruleTip.style.top = `${top}px`;
+    chip.setAttribute('aria-describedby', 'cond-rule-tip');
+  }
+  function ruleTarget(e) { return e.target.closest ? e.target.closest('.cond-chip[data-rule]') : null; }
+  document.addEventListener('mouseover', (e) => {
+    const chip = ruleTarget(e);
+    if (!chip || chip === ruleFor) return;
+    hideRule(); ruleTimer = setTimeout(() => showRule(chip), 250);
+  });
+  document.addEventListener('mouseout', (e) => { const chip = ruleTarget(e); if (chip && !chip.contains(e.relatedTarget)) hideRule(); });
+  document.addEventListener('focusin', (e) => { const chip = ruleTarget(e); if (chip) { hideRule(); showRule(chip); } });
+  document.addEventListener('focusout', (e) => { if (ruleTarget(e)) hideRule(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideRule(); });
+  document.addEventListener('pointerdown', (e) => { if (!ruleTarget(e)) hideRule(); });
+  window.addEventListener('scroll', hideRule, true);
+
   function conditionChips(p) {
     const list = (p.conditions || []).filter((k) => CONDITION_LABEL[k]);
     const customs = p.custom_conditions || [];
@@ -71,7 +123,7 @@
       const slot = isDM
         ? `<span class="cond-slot">${condIcon(icon)}<button type="button" class="cond-x" ${removeAttrs} title="Remove ${escapeHtml(name)}" aria-label="Remove ${escapeHtml(name)}"></button></span>`
         : `<span class="cond-slot">${condIcon(icon)}</span>`;
-      return `<span class="cond-chip ${cls}${isNew ? ' is-new' : ''}">${slot}<span class="cond-name">${escapeHtml(name)}</span></span>`;
+      return `<span class="cond-chip ${cls}${isNew ? ' is-new' : ''}" data-rule="${escapeHtml(icon)}" tabindex="0">${slot}<span class="cond-name">${escapeHtml(name)}</span></span>`;
     };
     const chips = list.map((k) => chip(`${p.id}:s:${k}`, `cond-${escapeHtml(k)}`, k, CONDITION_LABEL[k], `data-action="cond-remove" data-cond="${escapeHtml(k)}"`)).join('')
       + customs.map((n, i) => chip(`${p.id}:c:${n}`, 'cond-custom', 'custom', n, `data-action="cond-remove" data-chip-custom="${i}"`)).join('');
