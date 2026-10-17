@@ -57,7 +57,7 @@
   let condSeen = null;
   let condNow = new Set();
 
-  // Hover (or focus / tap) a standard condition to read its 2024 rule.  The text comes from the rules reference
+  // Hover (or focus / tap) a standard condition (a chip on the row, or a tile in the picker) to read its 2024 rule.  The text comes from the rules reference
   // (fetched once per condition, then kept); custom conditions have no rule.
   const ruleCache = new Map();
   let ruleTip = null, ruleTimer = null, ruleFor = null;
@@ -96,7 +96,7 @@
     ruleTip.style.left = `${left}px`; ruleTip.style.top = `${top}px`;
     chip.setAttribute('aria-describedby', 'cond-rule-tip');
   }
-  function ruleTarget(e) { return e.target.closest ? e.target.closest('.cond-chip[data-rule]') : null; }
+  function ruleTarget(e) { return e.target.closest ? e.target.closest('[data-rule]') : null; }
   document.addEventListener('mouseover', (e) => {
     const chip = ruleTarget(e);
     if (!chip || chip === ruleFor) return;
@@ -635,11 +635,12 @@
   function renderConditionPicker() {
     const p = participants.find((x) => String(x.id) === String(condPid));
     if (!p) { condModal.hidden = true; return; }
+    hideRule();                                   // the tiles below are rebuilt, so a tip pointing at an old one would be stale
     document.getElementById('conditions-modal-title').textContent = `Conditions — ${p.display_name}`;
     const on = new Set(p.conditions || []);
     const customs = p.custom_conditions || [];
     condPicker.innerHTML = CONDITIONS.map((c) => `
-      <button type="button" class="cond-tile ${on.has(c.key) ? 'active' : ''}" data-cond="${escapeHtml(c.key)}" aria-pressed="${on.has(c.key)}">${condIcon(c.key, 'cond-icon-lg')}<span>${escapeHtml(c.label)}</span></button>`).join('')
+      <button type="button" class="cond-tile ${on.has(c.key) ? 'active' : ''}" data-cond="${escapeHtml(c.key)}" data-rule="${escapeHtml(c.key)}" aria-pressed="${on.has(c.key)}">${condIcon(c.key, 'cond-icon-lg')}<span>${escapeHtml(c.label)}</span></button>`).join('')
       + customs.map((n, i) => `
       <button type="button" class="cond-tile cond-tile-custom active" data-custom-index="${i}" aria-pressed="true" title="Click to remove"><span>${escapeHtml(n)}</span></button>`).join('')
       + (customs.length < MAX_CUSTOM ? `

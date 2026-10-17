@@ -1860,3 +1860,17 @@ def test_condition_chip_hover_shows_its_rule(pw, shared_server):
     dpage.mouse.move(5, 5); dpage.wait_for_selector('#cond-rule-tip', state='hidden')
     dpage.hover('.cond-chip.cond-custom .cond-name'); dpage.wait_for_timeout(600)       # custom conditions have no rule
     assert dpage.locator('#cond-rule-tip').is_hidden() and len(asked) == 1
+
+
+def test_condition_picker_tiles_show_the_rule_too(pw, shared_server):
+    base = shared_server.url; dm = Api(base); cid = dm.campaign('PickerTip')
+    dm.post(f'/campaigns/{cid}/api/battle/add', json={'character_id': dm.character(cid, 'Aria')})
+    dctx = dm.context(pw, base); dpage = dctx.new_page()
+    dpage.route('**/api/reference/entry**', lambda route: route.fulfill(status=200, content_type='application/json', body='{"title":"Poisoned","subtitle":"Condition","facts":[],"body":"Disadvantage on attacks."}'))
+    dpage.goto(base + f'/campaigns/{cid}/battle'); dpage.click('.cond-add'); dpage.wait_for_selector('#conditions-modal:not([hidden])')
+    dpage.hover('#conditions-picker [data-cond="poisoned"]'); dpage.wait_for_selector('#cond-rule-tip:not([hidden])')
+    assert 'Disadvantage on attacks.' in dpage.inner_text('#cond-rule-tip')
+    tip = dpage.locator('#cond-rule-tip').bounding_box(); tile = dpage.locator('#conditions-picker [data-cond="poisoned"]').bounding_box()
+    assert tip['y'] + tip['height'] <= tile['y'] + 1 or tip['y'] >= tile['y'] + tile['height'] - 1      # beside the tile, not covering it
+    dpage.click('#conditions-picker [data-cond="poisoned"]')                                           # toggling still works and drops the tip
+    dpage.wait_for_selector('#conditions-picker [data-cond="poisoned"].active'); dpage.wait_for_selector('#cond-rule-tip', state='hidden')

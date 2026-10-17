@@ -2775,7 +2775,7 @@ body.page-leaving .content {
 }
 .cond-chip:hover, .cond-chip:focus-within { border-color: var(--brass); background: rgba(201, 162, 75, 0.12); }
 .cond-rule-tip {
-  position: fixed; z-index: 90; max-width: min(320px, calc(100vw - 16px)); padding: 10px 12px;
+  position: fixed; z-index: 400; max-width: min(320px, calc(100vw - 16px)); padding: 10px 12px;
   background: var(--bg-panel-raised); color: var(--parchment); border: 1px solid var(--brass);
   border-radius: 8px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35); font-size: 13px; line-height: 1.45; pointer-events: none;
 }
