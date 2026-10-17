@@ -137,3 +137,7 @@ hand with `python scripts/check_srd_contract.py`, or from the Actions tab (Run w
 | `templates/`, `static/` | Jinja templates, CSS, vanilla JS |
 | `scripts/` | Live check, temp cleanup, image optimization, backup and restore drill, storage-usage backfill |
 | `tests/` | Pytest suite (including Playwright browser tests) |
+
+## Colour contrast
+
+Both themes pass an axe-core `color-contrast` audit (WCAG AA, 0 violations across the main pages). Convention in `static/css/style.css`: use the `-ink` tokens (`--brass-ink`, `--moss-ink`, `--blood-ink`) for text, never the raw fill colours, and `--on-brass` for text on a solid `--brass` fill.
