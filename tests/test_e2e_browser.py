@@ -1874,3 +1874,20 @@ def test_condition_picker_tiles_show_the_rule_too(pw, shared_server):
     assert tip['y'] + tip['height'] <= tile['y'] + 1 or tip['y'] >= tile['y'] + tile['height'] - 1      # beside the tile, not covering it
     dpage.click('#conditions-picker [data-cond="poisoned"]')                                           # toggling still works and drops the tip
     dpage.wait_for_selector('#conditions-picker [data-cond="poisoned"].active'); dpage.wait_for_selector('#cond-rule-tip', state='hidden')
+
+
+def test_dice_toasts_leave_after_a_few_seconds_even_if_the_tab_was_in_the_background(pw, shared_server):
+    base = shared_server.url
+    dm, pl = Api(base), Api(base); cid = dm.campaign('Toast timing')
+    dm.add_member(cid, pl)
+    pctx = pl.context(pw, base); ppage = pctx.new_page()
+    ppage.goto(base + f'/campaigns/{cid}/characters'); ppage.wait_for_load_state('networkidle'); time.sleep(0.8)
+    dm.post(f'/campaigns/{cid}/api/dice/roll', json={'dice': {'20': 1}, 'label': 'First'})
+    playwright.expect(ppage.locator('.dice-toast').first).to_contain_text('First', timeout=15000)
+    playwright.expect(ppage.locator('.dice-toast')).to_have_count(0, timeout=9000)       # gone by itself (5 s + a moment)
+    # a background tab has its timers throttled: pretend 20 s passed without a single timer firing, then come back
+    ppage.evaluate("window.__realNow = Date.now.bind(Date); window.__skew = 0; Date.now = () => window.__realNow() + window.__skew")
+    dm.post(f'/campaigns/{cid}/api/dice/roll', json={'dice': {'20': 1}, 'label': 'Second'})
+    playwright.expect(ppage.locator('.dice-toast').first).to_contain_text('Second', timeout=15000)
+    ppage.evaluate("window.__skew = 20000; document.dispatchEvent(new Event('visibilitychange'))")
+    playwright.expect(ppage.locator('.dice-toast')).to_have_count(0, timeout=1500)

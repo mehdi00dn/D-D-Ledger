@@ -14,7 +14,7 @@
   if (!cid || !window.fetch) return;
   var base = '/campaigns/' + cid + '/api/dice/';
   var latest = null, seen = {}, listeners = [], holder = null;
-  var SHOW_MS = 8000, MAX_TOASTS = 4;
+  var SHOW_MS = 5000, MAX_TOASTS = 4;
 
   function node(tag, cls, text) {
     var n = document.createElement(tag);
@@ -54,6 +54,18 @@
     return kept[0].value === 20 ? 'is-crit' : (kept[0].value === 1 ? 'is-fumble' : '');
   }
 
+  function sweep() {
+    if (!holder) return;
+    var now = Date.now();
+    Array.prototype.slice.call(holder.children).forEach(function (t) {
+      if (!t._hover && now >= t._expires && t._gone) t._gone();
+    });
+  }
+  document.addEventListener('visibilitychange', sweep);
+  window.addEventListener('focus', sweep);
+  window.addEventListener('pageshow', sweep);
+  setInterval(sweep, 1000);
+
   function toast(roll) {
     var box = container();
     var t = node('div', 'dice-toast ' + isNat(roll) + (roll.private ? ' is-private' : ''));
@@ -75,9 +87,14 @@
     t.appendChild(close);
     function gone() { if (t.parentNode) t.parentNode.removeChild(t); }
     close.addEventListener('click', gone);
-    var timer = setTimeout(gone, SHOW_MS);
-    t.addEventListener('mouseenter', function () { clearTimeout(timer); });
-    t.addEventListener('mouseleave', function () { timer = setTimeout(gone, 2500); });
+    // Each toast carries its own deadline.  A timer alone is not enough: a tab in the background has its timers
+    // slowed right down (or frozen), so the toast would still be on screen when you come back.  The deadline is
+    // checked by a sweep that also runs the moment the tab becomes visible again.
+    t._expires = Date.now() + SHOW_MS;
+    t._gone = gone;
+    t.addEventListener('mouseenter', function () { t._hover = true; });
+    t.addEventListener('mouseleave', function () { t._hover = false; t._expires = Date.now() + 2000; });
+    setTimeout(sweep, SHOW_MS + 50);
     box.appendChild(t);
     while (box.children.length > MAX_TOASTS) box.removeChild(box.firstChild);
   }

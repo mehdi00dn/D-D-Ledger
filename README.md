@@ -28,7 +28,7 @@ It also runs locally.
 - **Map editor.** Shapes, pins, grid setup, zoom/pan, fog of war, DM-only layers,
   token ownership (DMs assign tokens to players), familiars that sync into the
   battle, link-to-battle.
-- **Dice.** Dice page and a quick-roll widget on every page, with a shared roll feed. The die drawings (shared with the corner widget) keep their numbers readable over the facet lines.
+- **Dice.** Dice page and a quick-roll widget on every page, with a shared roll feed. The die drawings (shared with the corner widget) keep their numbers readable over the facet lines. Roll toasts leave after about five seconds, also in a tab that was in the background (each toast has its own deadline, swept when the tab is shown again).
 - **Activity.** `/campaigns/<id>/activity` lists the latest 200 events (members joining or leaving, characters,
   factions and maps added or removed). The actor is stored as a user id, so a deleted account shows as "a former
   member". Table `campaign_activity` (migration 0025).
