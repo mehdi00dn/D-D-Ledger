@@ -114,7 +114,7 @@ def _campaign_access_field(form):
 # Full accounts: anyone can self-register, and every route requires a
 # logged-in session except the handful that must stay reachable to get one.
 
-PUBLIC_ENDPOINTS = {'login', 'register', 'static', 'healthz', 'forgot_password', 'reset_password'}
+PUBLIC_ENDPOINTS = {'login', 'register', 'static', 'healthz', 'forgot_password', 'reset_password', 'robots_txt', 'security_txt'}
 
 
 # Which classification of connection failure gets which fixed, secret-free hint.
@@ -128,6 +128,24 @@ _CONNECT_HINTS = (
     ('timeout', 'The database did not answer in time (wrong host/port, or the Supabase project is paused).'),
     ('connection refused', 'Nothing is listening at that host/port (use the pooler on port 6543).'),
 )
+
+
+@app.route('/robots.txt')
+def robots_txt():
+    """Search engines may read the sign-in pages and nothing else: campaigns, accounts and uploads are private."""
+    body = 'User-agent: *\nAllow: /login\nAllow: /register\nDisallow: /campaigns\nDisallow: /account\nDisallow: /notifications\nDisallow: /uploads\n'
+    return Response(body, mimetype='text/plain', headers={'Cache-Control': 'public, max-age=86400'})
+
+
+@app.route('/.well-known/security.txt')
+def security_txt():
+    """RFC 9116: where to report a vulnerability.  Published only once SECURITY_CONTACT (a mailto: or https: URL) is set."""
+    contact = os.environ.get('SECURITY_CONTACT', '').strip()
+    if not contact.startswith(('mailto:', 'https://')):
+        abort(404)
+    expires = (datetime.now(timezone.utc) + timedelta(days=365)).strftime('%Y-%m-%dT%H:%M:%SZ')
+    body = 'Contact: %s\nExpires: %s\nPreferred-Languages: en\n' % (contact, expires)
+    return Response(body, mimetype='text/plain', headers={'Cache-Control': 'public, max-age=86400'})
 
 
 @app.route('/healthz')
@@ -263,6 +281,28 @@ def require_login():
         if _wants_json():
             return api_error(None, 401, login_url=url_for('login'))
         return redirect(url_for('login', next=request.path))
+
+
+@app.before_request
+def limit_writes():
+    """A signed-in account can only change things so fast (security.WINDOWS['write-user']): enough for a busy fight,
+    not enough for a script to flood a campaign.  Reads are never limited; signing out always works."""
+    if request.method in ('GET', 'HEAD', 'OPTIONS') or request.endpoint in (None, 'logout') or not session.get('user_id'):
+        return
+    db = get_db()
+    try:
+        wait = security.hit(db, app.secret_key, 'write-user', session['user_id'])
+        db.commit()
+    except pgerr.UndefinedTable:
+        db.rollback()
+        return
+    finally:
+        db.close()
+    if wait:
+        resp = api_error('You are doing that too fast. Wait a moment and try again.', 429) if _wants_json() \
+            else Response('You are doing that too fast. Wait a moment and try again.', status=429, mimetype='text/plain')
+        resp.headers['Retry-After'] = str(wait)
+        return resp
 
 
 def _session_is_current():
@@ -1147,6 +1187,18 @@ def campaign_new():
         status = _campaign_status_field(request.form)
         access_mode = _campaign_access_field(request.form)
         db = get_db()
+        owned = db.execute("SELECT COUNT(*) AS n FROM campaign_members WHERE user_id = ? AND role = 'owner'", (session['user_id'],)).fetchone()['n']
+        wait = 0 if owned >= security.MAX_OWNED_CAMPAIGNS else security.hit(db, app.secret_key, 'campaign-create', session['user_id'])
+        if owned >= security.MAX_OWNED_CAMPAIGNS or wait:
+            db.commit()
+            db.close()
+            msg = ('You already own %d campaigns, the most one account can have. Delete one you no longer use first.' % security.MAX_OWNED_CAMPAIGNS
+                   if owned >= security.MAX_OWNED_CAMPAIGNS else 'You are creating campaigns too fast. Try again in a little while.')
+            resp = Response(msg, status=429, mimetype='text/plain')
+            if wait:
+                resp.headers['Retry-After'] = str(wait)
+            return resp
+        db.commit()
         cur = db.execute('''
             INSERT INTO campaigns (name, description, avatar_path, setting, status, access_mode)
             VALUES (?, ?, ?, ?, ?, ?)
@@ -2136,6 +2188,8 @@ def security_headers(resp):
     h.setdefault('Referrer-Policy', 'same-origin')
     h.setdefault('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=(), usb=()')
     h.setdefault('Cross-Origin-Opener-Policy', 'same-origin')
+    if request.endpoint not in PUBLIC_ENDPOINTS:
+        h.setdefault('X-Robots-Tag', 'noindex, nofollow')            # everything behind sign-in stays out of search results
     if resp.mimetype in ('text/html', 'application/json'):
         h.setdefault('Content-Security-Policy', _csp(getattr(g, 'csp_nonce', None)))
         h.setdefault('Cache-Control', 'no-store')                  # logged-in pages never linger in caches / back button
@@ -3631,6 +3685,19 @@ def dice_roll():
     data = request.get_json(silent=True)
     if not isinstance(data, dict):
         return _dice_error('bad request')
+    _db = get_db()
+    try:
+        _wait = security.hit(_db, app.secret_key, 'dice-user', session['user_id'])
+        _db.commit()
+    except pgerr.UndefinedTable:
+        _db.rollback()
+        _wait = 0
+    finally:
+        _db.close()
+    if _wait:
+        r = api_error('Rolling too fast -- give it a moment.', 429)
+        r.headers['Retry-After'] = str(_wait)
+        return r
     spec = data.get('dice')
     if not isinstance(spec, dict) or not spec:
         return _dice_error('Pick at least one die.')

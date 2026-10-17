@@ -33,7 +33,7 @@ RANK = {PUBLIC: 0, LOGIN: 1, MEMBER: 2, DM: 3, OWNER: 4}
 
 POLICY = {
     # --- outside any campaign ---
-    'healthz': PUBLIC, 'register': PUBLIC, 'forgot_password': PUBLIC, 'reset_password': PUBLIC, 'login': PUBLIC, 'static': PUBLIC,
+    'healthz': PUBLIC, 'robots_txt': PUBLIC, 'security_txt': PUBLIC, 'register': PUBLIC, 'forgot_password': PUBLIC, 'reset_password': PUBLIC, 'login': PUBLIC, 'static': PUBLIC,
     'logout': LOGIN, 'index': LOGIN, 'campaigns_list': LOGIN, 'campaign_new': LOGIN,
     'join_via_link': LOGIN, 'join_via_link_accept': LOGIN,
     'notifications_page': LOGIN, 'account': LOGIN, 'account_password': LOGIN, 'account_username': LOGIN, 'account_logout_all': LOGIN, 'account_delete': LOGIN, 'account_export': LOGIN, 'account_email': LOGIN, 'account_email_resend': LOGIN, 'account_email_remove': LOGIN, 'verify_email': LOGIN, 'notification_read': LOGIN, 'notifications_read_all': LOGIN,

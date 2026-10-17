@@ -29,7 +29,12 @@ WINDOWS = {
     'mail-user': (int(os.environ.get('MAIL_LIMIT_USER', 5)), 60 * 60),
     'mail-address': (int(os.environ.get('MAIL_LIMIT_ADDRESS', 3)), 60 * 60),
     'mail-ip': (int(os.environ.get('MAIL_LIMIT_IP', 20)), 60 * 60),
+    # Signed-in writes.  Generous for a DM clicking through a fight, far below what a script can do.
+    'write-user': (int(os.environ.get('WRITE_LIMIT_USER', 240)), 60),         # any change, per account, per minute
+    'dice-user': (int(os.environ.get('DICE_LIMIT_USER', 60)), 60),            # dice rolls fill the shared log, so they get their own cap
+    'campaign-create': (int(os.environ.get('CAMPAIGN_CREATE_LIMIT', 5)), 60 * 60),
 }
+MAX_OWNED_CAMPAIGNS = int(os.environ.get('MAX_OWNED_CAMPAIGNS', 25))
 _NOW = "(CURRENT_TIMESTAMP AT TIME ZONE 'UTC')"
 
 
@@ -81,6 +86,17 @@ def register_blocked_for(db, secret, ip):
 def record_registration(db, secret, ip):
     db.execute('INSERT INTO login_attempts (kind, key) VALUES (?, ?)', ('register-ip', _key(secret, 'regip', ip)))
     _maybe_cleanup(db)
+
+
+def hit(db, secret, kind, scope):
+    """Count one use of `kind` for `scope` (e.g. a user id).  Returns 0 when it is allowed (and recorded), or the seconds to
+    wait when the limit is reached (nothing is recorded then, so waiting really does clear it)."""
+    key = _key(secret, kind, str(scope))
+    wait = _retry_after(db, kind, key)
+    if not wait:
+        db.execute('INSERT INTO login_attempts (kind, key) VALUES (?, ?)', (kind, key))
+        _maybe_cleanup(db)
+    return wait
 
 
 def _maybe_cleanup(db):

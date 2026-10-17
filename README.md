@@ -70,6 +70,18 @@ import adds nothing. Deleting or replacing an image frees its space. Images uplo
 count as 0 bytes until you run `python scripts/backfill_storage_usage.py` once after applying migration 0021.
 The campaign settings page shows the current usage.
 
+## Request limits
+
+Besides the sign-in, mail and member-search throttles, signed-in changes are limited per account (counted in the
+same `login_attempts` table by `security.hit`): **240 changes a minute**, **60 dice rolls a minute**, **5 new
+campaigns an hour** and **25 owned campaigns** in total. A limited request gets `429` with `Retry-After`; reads are
+never limited and signing out always works. Override with `WRITE_LIMIT_USER`, `DICE_LIMIT_USER`,
+`CAMPAIGN_CREATE_LIMIT` and `MAX_OWNED_CAMPAIGNS`.
+
+`/robots.txt` lets search engines see only the sign-in pages, and every page behind sign-in carries
+`X-Robots-Tag: noindex`. `/.well-known/security.txt` (RFC 9116) is published once you set `SECURITY_CONTACT` to a
+`mailto:` or `https://` address; until then it returns 404.
+
 ## Backups
 
 Supabase's own backups do not cover uploaded images (and the Free plan has none at all), so the repo ships its

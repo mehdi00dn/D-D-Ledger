@@ -18,7 +18,8 @@ os.environ['SECRET_KEY'] = SECRET
 # The suite registers/logs in hundreds of times from one address; production limits would trip.
 # (tests/test_login_throttle.py lowers them explicitly to prove they work.)
 os.environ.update(REGISTER_LIMIT_IP='1000000', LOGIN_LIMIT_PAIR='1000000', LOGIN_LIMIT_USER='1000000', LOGIN_LIMIT_IP='1000000',
-                  MAIL_LIMIT_USER='1000000', MAIL_LIMIT_ADDRESS='1000000', MAIL_LIMIT_IP='1000000')
+                  MAIL_LIMIT_USER='1000000', MAIL_LIMIT_ADDRESS='1000000', MAIL_LIMIT_IP='1000000',
+                  WRITE_LIMIT_USER='1000000', DICE_LIMIT_USER='1000000', CAMPAIGN_CREATE_LIMIT='1000000')
 os.environ.pop('VERCEL', None)
 
 _TMP = tempfile.mkdtemp(prefix='ledger-tests-')
