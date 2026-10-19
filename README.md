@@ -119,6 +119,12 @@ rewriting the stylesheet. A deliberate physical `left`/`right` (centering with `
 carries a `/* phys */` marker; `tests/test_css_logical.py` fails on any unmarked one. Translating the interface is a
 separate decision (only worth it if players read Persian).
 
+Native form controls are themed in one block at the end of `style.css` (DL-154): checkboxes, radios and range sliders are
+drawn in brass (light and dark theme) instead of browser blue, with a visible empty-box border (3:1 or better), press
+feedback, and larger targets on touch screens. Controls that already have their own look (toggle switch, access cards,
+faction chips, skill tri-state, saving-throw pip, dice roll-mode) are excluded in that block's selectors; a new custom
+control that hides its `<input>` needs adding to the same `:not(:is(...))` list.
+
 ## Tests
 
 ```

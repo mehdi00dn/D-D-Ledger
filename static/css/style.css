@@ -4502,3 +4502,112 @@ body.has-dice-fab .modifier-hint { inset-inline-end: 80px; max-width: calc(100vw
 @media (max-width: 880px) { .bl-bar { width: calc(100% - 62px); } }   /* the dice button sits beside the strip on a phone, never over its arrow */
 @media (prefers-reduced-motion: reduce) { .bl-sheet, .bl-chev, .bl-bar, .bl-latest { transition-duration: 0.01ms; } .bl-sheet { transform: none; } .battle-log.has-new .bl-bar::after { animation: none; } }
 @media (prefers-reduced-transparency: reduce) { .bl-bar, .bl-sheet { -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--bg-panel-raised); } }
+
+/* ==========================================================================
+   Native controls, themed (DL-154): checkboxes, radios and range sliders drawn in brass instead of browser blue.
+   Controls that already have their own look (toggle switch, access cards, faction chips, skill tri-state, the saving-throw
+   pip, the dice roll-mode segmented control) keep their own rules and are left out of the selectors below.
+   ========================================================================== */
+:root { accent-color: var(--brass); }   /* safety net for any native control not drawn below */
+
+input:is([type="checkbox"], [type="radio"]):not(:is(.toggle-switch, .access-option, .faction-pick, .tri, .ab-save, .dice-options .roll-mode) input) {
+  -webkit-appearance: none;
+  appearance: none;
+  flex: none;
+  box-sizing: border-box;
+  inline-size: 16px;
+  block-size: 16px;
+  margin: 0;
+  border: 1.5px solid var(--parchment-faint);     /* the empty box has to be visible on its own (3:1 against the panel) */
+  background-color: var(--bg-panel-inset);
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 100% 100%;
+  cursor: pointer;
+  transition: background-color 140ms ease, border-color 140ms ease, transform 100ms ease-out;
+}
+input[type="checkbox"]:not(:is(.toggle-switch, .access-option, .faction-pick, .tri, .ab-save, .dice-options .roll-mode) input) { border-radius: 4px; }
+input[type="radio"]:not(:is(.toggle-switch, .access-option, .faction-pick, .tri, .ab-save, .dice-options .roll-mode) input) { border-radius: 50%; }
+
+input:is([type="checkbox"], [type="radio"]):not(:is(.toggle-switch, .access-option, .faction-pick, .tri, .ab-save, .dice-options .roll-mode) input):hover:not(:disabled) { border-color: var(--brass); }
+/* feedback on press, not on release */
+input:is([type="checkbox"], [type="radio"]):not(:is(.toggle-switch, .access-option, .faction-pick, .tri, .ab-save, .dice-options .roll-mode) input):active:not(:disabled) { transform: scale(0.9); }
+
+input:is([type="checkbox"], [type="radio"]):not(:is(.toggle-switch, .access-option, .faction-pick, .tri, .ab-save, .dice-options .roll-mode) input):checked {
+  background-color: var(--brass);
+  border-color: var(--brass);
+}
+/* the tick is an inline SVG, so it cannot read a CSS variable: one copy per theme (dark ink on brass, cream on the darker light-theme brass) */
+input[type="checkbox"]:not(:is(.toggle-switch, .access-option, .faction-pick, .tri, .ab-save, .dice-options .roll-mode) input):checked {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.6 8.6l2.8 2.8 6-6.4' fill='none' stroke='%2310121a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+:root[data-theme="light"] input[type="checkbox"]:not(:is(.toggle-switch, .access-option, .faction-pick, .tri, .ab-save, .dice-options .roll-mode) input):checked {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.6 8.6l2.8 2.8 6-6.4' fill='none' stroke='%23fbf7ec' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+input[type="radio"]:not(:is(.toggle-switch, .access-option, .faction-pick, .tri, .ab-save, .dice-options .roll-mode) input):checked {
+  background-image: radial-gradient(circle, var(--on-brass) 0 3px, transparent 3.5px);
+}
+input:is([type="checkbox"], [type="radio"]):not(:is(.toggle-switch, .access-option, .faction-pick, .tri, .ab-save, .dice-options .roll-mode) input):disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Range sliders: a quiet inset track and a brass thumb that lifts a little under the pointer */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  block-size: 20px;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+}
+input[type="range"]::-webkit-slider-runnable-track {
+  box-sizing: border-box;
+  block-size: 6px;
+  border-radius: 999px;
+  border: 1px solid var(--hairline-strong);
+  background: var(--bg-panel-inset);
+}
+input[type="range"]::-moz-range-track {
+  box-sizing: border-box;
+  block-size: 6px;
+  border-radius: 999px;
+  border: 1px solid var(--hairline-strong);
+  background: var(--bg-panel-inset);
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  box-sizing: border-box;
+  inline-size: 16px;
+  block-size: 16px;
+  margin-top: -5px;                       /* centres the 16px thumb on the 6px track */
+  border-radius: 50%;
+  border: 2px solid var(--bg-panel);
+  background: var(--brass);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+  transition: transform 100ms ease-out, background-color 140ms ease, box-shadow 140ms ease;
+}
+input[type="range"]::-moz-range-thumb {
+  box-sizing: border-box;
+  inline-size: 16px;
+  block-size: 16px;
+  border-radius: 50%;
+  border: 2px solid var(--bg-panel);
+  background: var(--brass);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+  transition: transform 100ms ease-out, background-color 140ms ease, box-shadow 140ms ease;
+}
+input[type="range"]:hover:not(:disabled)::-webkit-slider-thumb { background: var(--brass-bright); }
+input[type="range"]:hover:not(:disabled)::-moz-range-thumb { background: var(--brass-bright); }
+input[type="range"]:active:not(:disabled)::-webkit-slider-thumb { transform: scale(1.15); }
+input[type="range"]:active:not(:disabled)::-moz-range-thumb { transform: scale(1.15); }
+input[type="range"]:focus-visible { outline: none; }
+input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 3px rgba(201, 162, 75, 0.45); }
+input[type="range"]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 3px rgba(201, 162, 75, 0.45); }
+input[type="range"]:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* bigger targets on touch screens */
+@media (pointer: coarse) {
+  input:is([type="checkbox"], [type="radio"]):not(:is(.toggle-switch, .access-option, .faction-pick, .tri, .ab-save, .dice-options .roll-mode) input) { inline-size: 20px; block-size: 20px; }
+  input[type="range"] { block-size: 28px; }
+  input[type="range"]::-webkit-slider-thumb { inline-size: 22px; block-size: 22px; margin-top: -8px; }
+  input[type="range"]::-moz-range-thumb { inline-size: 22px; block-size: 22px; }
+}
