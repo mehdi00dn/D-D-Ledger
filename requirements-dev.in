@@ -2,5 +2,5 @@
 #   uv pip compile requirements-dev.in --python-version 3.12 --universal -c requirements.txt -o requirements-dev.txt
 -r requirements.in
 pytest>=8
-playwright>=1.45
+playwright>=1.64.0
 pip-audit>=2.7
