@@ -89,6 +89,14 @@ never limited and signing out always works. Override with `WRITE_LIMIT_USER`, `D
 `X-Robots-Tag: noindex`. `/.well-known/security.txt` (RFC 9116) is published once you set `SECURITY_CONTACT` to a
 `mailto:` or `https://` address; until then it returns 404.
 
+## Database housekeeping
+
+Foreign keys that child tables are looked up by carry covering indexes (`migrations/0028_fk_indexes.sql`, from the Supabase
+performance advisor). Tables that only grow are bounded without a cron job: `login_attempts` (24 h), `campaign_activity`
+(200 per campaign), `dice_rolls` and `battle_log` (per campaign) and `notifications` (200 per user, pruned when a new one
+arrives). The advisor's "RLS enabled, no policy" notices are intentional: every table is deny-all and the server uses the
+service role, so do not add policies to "fix" them.
+
 ## Backups
 
 Supabase's own backups do not cover uploaded images (and the Free plan has none at all), so the repo ships its

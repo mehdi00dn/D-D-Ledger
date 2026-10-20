@@ -1283,6 +1283,7 @@ MAX_PENDING_INVITATIONS = 25          # open invitations per campaign (keeps inv
 STATUS_LABELS = {'dm': 'DM', 'player': 'Player'}
 
 
+NOTIFICATION_KEEP = 200        # notifications kept per user; older ones are deleted as new ones arrive
 ACTIVITY_KEEP = 200            # events kept per campaign; older ones are deleted as new ones arrive
 
 
@@ -1308,6 +1309,9 @@ def notify(db, user_id, kind, title, body='', link=None, invitation_id=None):
         link = None                                         # notification links are in-app paths only, never an external URL
     db.execute('INSERT INTO notifications (user_id, kind, title, body, link, invitation_id) VALUES (?, ?, ?, ?, ?, ?)',
                (user_id, kind, title[:200], body[:500], link, invitation_id))
+    db.execute('DELETE FROM notifications WHERE user_id = ? AND id NOT IN '
+               '(SELECT id FROM notifications WHERE user_id = ? ORDER BY id DESC LIMIT ?)',
+               (user_id, user_id, NOTIFICATION_KEEP))      # DL-141: a user's inbox stays bounded without a cron job
 
 
 def unread_notification_count():
