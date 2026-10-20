@@ -2930,6 +2930,10 @@ def _battle_rows(db, redact_enemies=False):
         mine = me is not None and r['owner_id'] == me
         r['is_stable'] = bool(r['is_stable'])
         r['can_death_save'] = bool(r['is_downed'] and not r['is_npc'] and not r['is_stable'] and (dm or mine))
+        # Action economy and concentration (DL-146): the DM edits everyone's, a Player only their own character's
+        r['spent'] = [k for k in ECONOMY_KEYS if k in (r['spent'] or '').split(',')]
+        r['concentrating'] = bool(r['concentrating'])
+        r['can_economy'] = bool(not r['is_dead'] and (dm or (mine and not r['is_npc'])))
         if not (dm or mine):
             r['death_successes'] = r['death_failures'] = None
         r.pop('owner_id', None)
@@ -2963,6 +2967,7 @@ def _battle_rows(db, redact_enemies=False):
                 r['ac_override'] = None
                 r['effective_ac'] = None
                 r['base_ac'] = None
+                r['spent'] = r['concentrating'] = None  # what a monster has used, and whether it concentrates, is the DM's business
     return rows
 
 
@@ -3000,6 +3005,23 @@ def _bp_state(db, pid):
                      'conditions': [k for k in _CONDITION_KEYS if k in (r['conditions'] or '').split(',')],
                      'custom': _load_custom_conditions(r['custom_conditions'])}
     return found
+
+
+ECONOMY_KEYS = ('action', 'bonus', 'reaction', 'move')       # what a creature can spend each turn (DL-146)
+
+
+def _concentration_after_damage(db, pid, b, a):
+    """A concentrating creature that took damage must make a Constitution save (DC 10 or half the damage, whichever is
+    higher); one that went down loses concentration.  Logged; Players are told nothing about an enemy's concentration."""
+    taken = (b['hp'] + b['temp']) - (a['hp'] + a['temp'])
+    if taken <= 0 or not db.execute('SELECT 1 FROM battle_participants WHERE id = ? AND concentrating = 1', (pid,)).fetchone():
+        return
+    n, hide = a['name'], ('' if a['npc'] else None)
+    if a['hp'] <= 0 or a['dead']:
+        db.execute('UPDATE battle_participants SET concentrating = 0 WHERE id = ?', (pid,))
+        log_battle(db, f'{n} lost their concentration', hide, 'concentration')
+    else:
+        log_battle(db, f'{n} must make a Concentration save (DC {max(10, taken // 2)})', hide, 'concentration')
 
 
 def _reset_death_saves(db, pid, force=False):
@@ -3072,6 +3094,8 @@ def _pass_turn(db, skip_id=None, step=1):
     cur = db.execute(
         'UPDATE campaigns SET battle_turn_id = ?, battle_round = ? WHERE id = ? AND battle_turn_id IS NOT DISTINCT FROM CAST(? AS INTEGER)',
         (nxt, rnd if nxt is not None else camp['battle_round'], g.campaign_id, current))
+    if cur.rowcount == 1 and nxt is not None:
+        db.execute("UPDATE battle_participants SET spent = '' WHERE id = ?", (nxt,))   # a new turn: action, bonus action, reaction and movement are back
     return cur.rowcount == 1
 
 
@@ -3322,7 +3346,9 @@ def api_battle_damage(pid):
         db.rollback()
         db.close()
         return api_error(None, 404)
-    _log_hp_change(db, before, _bp_state(db, pid), 'damage')
+    after = _bp_state(db, pid)
+    _log_hp_change(db, before, after, 'damage')
+    _concentration_after_damage(db, pid, before, after)
     db.commit()
     rows = _battle_rows(db)
     db.close()
@@ -3373,7 +3399,9 @@ def api_battle_set_hp(pid):
         db.rollback()
         db.close()
         return api_error(None, 404)
-    _log_hp_change(db, before, _bp_state(db, pid), 'set')
+    after = _bp_state(db, pid)
+    _log_hp_change(db, before, after, 'set')
+    _concentration_after_damage(db, pid, before, after)
     _reset_death_saves(db, pid)
     db.commit()
     rows = _battle_rows(db)
@@ -3460,7 +3488,7 @@ def api_battle_die(pid):
     if before is None:
         db.close()
         return api_error(None, 404)
-    db.execute('UPDATE battle_participants SET is_dead = 1 WHERE id = ?', (pid,))
+    db.execute('UPDATE battle_participants SET is_dead = 1, concentrating = 0 WHERE id = ?', (pid,))
     if not before['dead']:
         log_battle(db, f"{before['name']} died", None, 'died')
     db.commit()
@@ -3556,6 +3584,54 @@ def api_battle_death_save(pid):
     return jsonify({'roll': roll, 'outcome': outcome, 'rows': rows})
 
 
+@app.route('/campaigns/<int:campaign_id>/api/battle/<int:pid>/economy', methods=['POST'])
+@campaign_access_required
+def api_battle_economy(pid):
+    """Tick or untick one of action / bonus / reaction / movement for this turn, or turn concentration on or off
+    (DL-146).  Body: {"key": "action" | "bonus" | "reaction" | "move" | "concentration", "on": true | false}.
+    The DM may do it for anyone; a Player only for a player character they made.  Spent ticks are cleared when the
+    participant's turn starts.  Starting and ending concentration is logged (Players are not told about an enemy's)."""
+    db = get_db()
+    row = db.execute('''SELECT bp.spent, bp.concentrating, bp.is_dead, c.is_npc, c.created_by
+                        FROM battle_participants bp JOIN characters c ON c.id = bp.character_id
+                        WHERE bp.id = ? AND c.campaign_id = ?''', (pid, g.campaign_id)).fetchone()
+    if row is None:
+        db.close()
+        return api_error(None, 404)
+    mine = row['created_by'] is not None and row['created_by'] == session.get('user_id')
+    if not (g.is_dm or (mine and not row['is_npc'])):
+        db.close()
+        return api_error(None, 403)
+    data = request.get_json(silent=True) or {}
+    key, on = data.get('key'), data.get('on')
+    if key not in ECONOMY_KEYS + ('concentration',) or not isinstance(on, bool):
+        db.close()
+        return api_error('Say which of action, bonus, reaction, move or concentration, and on or off.', 400, code='bad_request')
+    if row['is_dead']:
+        db.close()
+        return api_error('A dead creature has nothing to spend.', 409, code='dead')
+    if key == 'concentration':
+        cur = db.execute('UPDATE battle_participants SET concentrating = ? WHERE id = ? AND concentrating <> ?',
+                         (1 if on else 0, pid, 1 if on else 0))
+        if cur.rowcount:
+            st = _bp_state(db, pid)
+            hide = '' if st['npc'] else None
+            log_battle(db, f"{st['name']} is concentrating" if on else f"{st['name']} dropped concentration", hide, 'concentration')
+    else:
+        spent = {k for k in (row['spent'] or '').split(',') if k}
+        spent.add(key) if on else spent.discard(key)
+        new = ','.join(k for k in ECONOMY_KEYS if k in spent)
+        cur = db.execute('UPDATE battle_participants SET spent = ? WHERE id = ? AND spent = ?', (new, pid, row['spent'] or ''))
+        if cur.rowcount == 0:
+            db.rollback()
+            db.close()
+            return api_error('Someone else just changed this; look again and retry.', 409, code='conflict')
+    db.commit()
+    rows = _battle_rows(db, redact_enemies=not g.is_dm)
+    db.close()
+    return jsonify(rows)
+
+
 @app.route('/campaigns/<int:campaign_id>/api/battle/<int:pid>/conditions', methods=['POST'])
 @campaign_access_required
 @dm_required
@@ -3637,6 +3713,7 @@ def api_battle_restart_turns():
     db = get_db()
     first = next((i for i, dead in _turn_order(db) if not dead), None)
     db.execute('UPDATE campaigns SET battle_round = 1, battle_turn_id = ? WHERE id = ?', (first, g.campaign_id))
+    db.execute("UPDATE battle_participants SET spent = '' WHERE character_id IN (SELECT id FROM characters WHERE campaign_id = ?)", (g.campaign_id,))
     log_battle(db, 'Turns restarted: round 1', None, 'round')
     db.commit()
     rows = _battle_rows(db)

@@ -65,7 +65,7 @@ def test_players_see_placed_characters_with_monster_numbers_hidden(make_user):
     ogre = dm.new_character(cid, name='Ogre', max_hp=59, is_npc='on'); hero = dm.new_character(cid, name='Aria')
     _place(dm, cid, mid, ogre); _place(dm, cid, mid, hero)
     seen = {p['char_name']: p for p in _pins(pl, cid, mid)}
-    assert set(seen) == {'Ogre', 'Aria'} and seen['Ogre']['hidden_stats'] is True and '59' not in str(seen['Ogre'])
+    assert set(seen) == {'Ogre', 'Aria'} and seen['Ogre']['hidden_stats'] is True and seen['Ogre']['current_hp'] is None and not any(v == 59 for v in seen['Ogre'].values())   # (a substring check flaked when an id happened to contain 59)
 
 
 def test_a_linked_map_and_the_battle_share_one_roster(make_user):

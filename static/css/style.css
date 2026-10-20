@@ -1744,6 +1744,29 @@ body.page-leaving .content {
 .ds-stable { color: var(--moss-ink); font-weight: 600; }
 .ds-note { font: 400 12px var(--font-body); letter-spacing: 0; text-transform: none; color: var(--parchment-faint); }
 
+/* Action economy and concentration (DL-146): toggles under a row once combat has started */
+.eco {
+  flex: 1 0 100%;
+  display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px;
+  margin-top: 2px; padding-top: 8px;
+  border-top: 1px dashed var(--hairline-strong);
+  font: 500 11px var(--font-mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--parchment-dim);
+}
+.eco-title { color: var(--brass-ink); margin-inline-end: 2px; }
+.eco-sep { flex: 1 1 8px; }
+.eco-chip {
+  box-sizing: border-box; min-block-size: 26px; padding: 0 10px;
+  border-radius: 999px; border: 1px solid var(--hairline-strong); background: transparent; color: var(--parchment);
+  font: inherit; letter-spacing: inherit; text-transform: inherit;
+  display: inline-flex; align-items: center; justify-content: center;
+  transition: background-color 160ms ease, color 160ms ease, border-color 160ms ease, transform 160ms var(--ease-out);
+}
+button.eco-chip { cursor: pointer; }
+button.eco-chip:active { transform: scale(0.96); }
+button.eco-chip:disabled { opacity: 0.5; cursor: default; }
+.eco-used.is-on { color: var(--parchment-faint); border-color: var(--hairline); text-decoration: line-through; background: var(--bg-panel-inset); }
+.eco-conc.is-on { background: var(--brass); border-color: var(--brass); color: var(--on-brass); }
+
 /* Fogged stats: placeholder digits under a CSS blur. The real numbers are
    never sent to a Player, so this is presentation only. */
 .stats-fogged {
@@ -3736,6 +3759,8 @@ body.page-leaving .content {
   .battle-extra:empty { display: none; }
   .battle-extra .btn-sm { width: 100%; min-height: 42px; justify-content: center; }
   .battle-row > .death-saves { grid-column: 1 / -1; }                  /* its own full-width line under the stats and the HP buttons */
+  .battle-row > .eco { grid-column: 1 / -1; }
+  .eco-chip { min-block-size: 36px; }
   .death-saves .ds-roll { flex: 1 1 100%; min-height: 42px; justify-content: center; }
   .battle-rank { display: none; }
   .turn-now { display: none; }
@@ -4469,7 +4494,7 @@ body.has-dice-fab .modifier-hint { inset-inline-end: 80px; max-width: calc(100vw
 .battle-log[hidden] { display: none; }
 .battle-log[data-kind="damage"], .battle-log[data-kind="down"], .battle-log[data-kind="died"] { --bl-kind: var(--blood-ink); }
 .battle-log[data-kind="heal"], .battle-log[data-kind="revive"], .battle-log[data-kind="stable"] { --bl-kind: var(--moss-ink); }
-.battle-log[data-kind="condition"], .battle-log[data-kind="temp"], .battle-log[data-kind="deathsave"], .battle-log[data-kind="round"], .battle-log[data-kind="initiative"] { --bl-kind: var(--brass-ink); }
+.battle-log[data-kind="condition"], .battle-log[data-kind="concentration"], .battle-log[data-kind="temp"], .battle-log[data-kind="deathsave"], .battle-log[data-kind="round"], .battle-log[data-kind="initiative"] { --bl-kind: var(--brass-ink); }
 .bl-backdrop { position: fixed; inset: 0; pointer-events: none; }     /* invisible: only there so a click outside closes the log */
 .battle-log.is-open .bl-backdrop { pointer-events: auto; }
 .bl-dock { position: relative; pointer-events: auto; }
@@ -4526,7 +4551,7 @@ body.has-dice-fab .modifier-hint { inset-inline-end: 80px; max-width: calc(100vw
 .bl-n { font-weight: 700; color: var(--bl-item, var(--parchment)); font-variant-numeric: tabular-nums; }
 .bl-damage, .bl-down, .bl-died { --bl-item: var(--blood-ink); border-inline-start-color: var(--blood-ink); }
 .bl-heal, .bl-revive, .bl-stable { --bl-item: var(--moss-ink); border-inline-start-color: var(--moss-ink); }
-.bl-condition, .bl-temp, .bl-deathsave { --bl-item: var(--brass-ink); border-inline-start-color: var(--brass-ink); }
+.bl-condition, .bl-concentration, .bl-temp, .bl-deathsave { --bl-item: var(--brass-ink); border-inline-start-color: var(--brass-ink); }
 .bl-round, .bl-initiative { --bl-item: var(--brass-bright-ink); border-inline-start-color: var(--parchment-dim); }
 @media (max-width: 880px) { .bl-bar { width: calc(100% - 62px); } }   /* the dice button sits beside the strip on a phone, never over its arrow */
 @media (prefers-reduced-motion: reduce) { .bl-sheet, .bl-chev, .bl-bar, .bl-latest { transition-duration: 0.01ms; } .bl-sheet { transform: none; } .battle-log.has-new .bl-bar::after { animation: none; } }
