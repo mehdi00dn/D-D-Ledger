@@ -133,6 +133,35 @@
     return (chips || addBtn) ? `<div class="cond-row">${chips}${addBtn}</div>` : '';
   }
 
+  // Death saves (DL-145).  Only a downed player character has them.  Everyone sees "Stable"; the 3-and-3 tally and the Roll
+  // button come only to the DM and the player who made the character (the server sends null tallies to everyone else).
+  const lastSave = {};                                              // participant id -> what the latest roll was, shown for a few seconds
+  const SAVE_SHOWN_MS = 5000;
+  function saveResultText(r) {
+    if (r.outcome === 'revived') return 'Natural 20: back on 1 HP';
+    const verdict = { success: 'success', failure: r.roll === 1 ? 'two failures' : 'failure', stable: 'stable', dead: 'dead' }[r.outcome] || '';
+    return `Rolled ${r.roll}: ${verdict}`;
+  }
+  function deathSavesMarkup(p) {
+    if (p.is_npc || p.is_dead || !p.is_downed) return '';
+    if (p.is_stable) {
+      return `<div class="death-saves is-stable" role="group" aria-label="${escapeHtml(p.display_name)} is stable"><span class="ds-stable">Stable</span><span class="ds-note">Unconscious at 0 HP; no more death saves.</span></div>`;
+    }
+    if (p.death_successes === null || p.death_successes === undefined) return '';
+    const pips = (n, kind) => `<span class="ds-pips ds-pips--${kind}" role="img" aria-label="${n} of 3 ${kind === 'ok' ? 'successes' : 'failures'}">`
+      + [0, 1, 2].map((i) => `<i class="ds-pip${i < n ? ' is-on' : ''}"></i>`).join('') + '</span>';
+    const shown = lastSave[p.id];
+    const result = shown && Date.now() < shown.until
+      ? `<span class="ds-result is-${escapeHtml(shown.outcome)}" role="status">${escapeHtml(saveResultText(shown))}</span>` : '';
+    const roll = p.can_death_save
+      ? `<button type="button" class="btn btn-ghost btn-sm ds-roll" data-action="death-save" aria-label="Roll a death save for ${escapeHtml(p.display_name)}">Roll death save</button>` : '';
+    return `<div class="death-saves" role="group" aria-label="Death saves for ${escapeHtml(p.display_name)}">`
+      + `<span class="ds-title">Death saves</span>`
+      + `<span class="ds-tag">Pass</span>${pips(p.death_successes, 'ok')}`
+      + `<span class="ds-tag">Fail</span>${pips(p.death_failures, 'bad')}`
+      + `${result}${roll}</div>`;
+  }
+
   function rowMarkup(p, rank) {
     const hidden = !!p.hidden_stats; // enemy stats redacted server-side for Players
     const pct = hidden ? 0 : hpPercent(p);
@@ -228,6 +257,7 @@
       ${statsArea}
       ${hpControls}
       ${detailControl}
+      ${deathSavesMarkup(p)}
 
       ${isDM ? `<div class="battle-extra">${showDiedBtn ? `<button type="button" class="btn btn-danger btn-sm" data-action="die">${ICONS.skull} Died?</button>` : ''}${dead ? `<button type="button" class="btn btn-ghost btn-sm" data-action="revive">Revive</button>` : ''}</div>` : ''}
 
@@ -420,7 +450,7 @@
     });
   }
   // The words that follow a name ("Mira took 9 damage", "Grub is now Hexed"), so the name, the verb and the numbers can each be styled.
-  const VERBS = [' took ', ' healed ', ' is down', ' died', ' was revived', ' was hurt', ' was healed', ' is back on', ' has ', ' lost their',
+  const VERBS = [' took ', ' healed ', ' is down', ' died', ' is stable', ' rolled ', ' was revived', ' was hurt', ' was healed', ' is back on', ' has ', ' lost their',
                  ' is now ', ' is no longer ', ' joined the', ' left the', "'s HP set"];
   function span(cls, text) { const el = document.createElement('span'); el.className = cls; el.textContent = text; return el; }
   function withNumbers(text, cls) {                                // digits get their own bold, tabular style
@@ -536,6 +566,16 @@
     } else if (action === 'revive') {
       participants = await apiCall(`/api/battle/${pid}/revive`, {});
       render();
+    } else if (action === 'death-save') {
+      btn.disabled = true;                                          // one roll per click; the row is redrawn from the answer
+      try {
+        const out = await apiCall(`/api/battle/${pid}/death-save`, {});
+        lastSave[pid] = { roll: out.roll, outcome: out.outcome, until: Date.now() + SAVE_SHOWN_MS };
+        participants = out.rows;
+        render();
+      } catch (err) {
+        btn.disabled = false;                                       // apiCall has already said why
+      }
     } else if (action === 'remove') {
       const p = participants.find((x) => String(x.id) === pid);
       const label = p ? p.display_name : 'this character';

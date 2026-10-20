@@ -27,6 +27,14 @@ It also runs locally.
   custom ones), group colors, live sync between players. A battle log strip sits at the bottom-left of the battle page (it follows the content when the sidebar opens or closes; the closed strip shows the newest entry in its colour, and a short wash when something new lands). Opened, a small card shows the last six lines, newest at the bottom, with names, verbs and numbers styled by kind; it records damage, healing, temp HP, conditions, down / died / revived,
   rounds and arrivals, keeps the latest 50 entries per campaign, is wiped when the battle
   is cleared, and shows Players enemy events without numbers (`migrations/0026_battle_log.sql`).
+  **Death saving throws** (2024 rules): a player character at 0 HP gets a "Death saves" line under its row with three pass
+  and three fail pips and a "Roll death save" button. The server rolls the d20: 10+ is a success, 9 or less a failure, a
+  natural 1 counts as two failures, a natural 20 puts the character back on 1 HP; three successes make it stable, three
+  failures kill it. The DM can roll for any player character, a Player only for a character they made; monsters and NPCs
+  never roll. Only the DM and the owner see the tally (everyone sees "Stable"). The DM's log shows every roll, Players see
+  only the outcomes (stable, back on 1 HP, died). Healing, setting HP above 0 or reviving clears the tally
+  (`migrations/0027_death_saves.sql`). Not included: damage taken at 0 HP does not add a failure, and there is no
+  instant-death rule for massive damage.
 - **Map editor.** Shapes, pins, grid setup, zoom/pan, fog of war, DM-only layers,
   token ownership (DMs assign tokens to players), familiars that sync into the
   battle, link-to-battle.

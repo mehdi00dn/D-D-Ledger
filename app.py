@@ -2893,7 +2893,7 @@ def _battle_rows(db, redact_enemies=False):
     never redacted -- a party can see its own stats."""
     rows = db.execute('''
         SELECT bp.*, c.name AS char_name, c.avatar_path, c.is_npc, c.max_hp AS char_max_hp,
-               c.armor_class AS base_ac, c.is_temp_familiar, c.familiar_icon_key, c.class_key,
+               c.armor_class AS base_ac, c.is_temp_familiar, c.familiar_icon_key, c.class_key, c.created_by AS owner_id,
                g.id AS gid, g.name AS group_name, g.color AS group_color
         FROM battle_participants bp
         JOIN characters c ON bp.character_id = c.id
@@ -2916,6 +2916,19 @@ def _battle_rows(db, redact_enemies=False):
         # even when the exact HP is redacted -- it's what lets a Player see
         # a hidden enemy go down without ever learning its actual numbers.
         r['is_downed'] = bool(r['current_hp'] is not None and r['current_hp'] <= 0 and not r['is_dead'])
+
+    # Death saves (DL-145) belong to player characters; monsters just die.  Whether a character is stable is visible to
+    # everyone, but the 3-and-3 tally only to the DM and to the player who made the character.
+    me, dm = session.get('user_id'), getattr(g, 'is_dm', False)
+    if getattr(g, 'previewing', False):                       # "View as player" sees what a Player who did not make the character sees
+        me = None
+    for r in rows:
+        mine = me is not None and r['owner_id'] == me
+        r['is_stable'] = bool(r['is_stable'])
+        r['can_death_save'] = bool(r['is_downed'] and not r['is_npc'] and not r['is_stable'] and (dm or mine))
+        if not (dm or mine):
+            r['death_successes'] = r['death_failures'] = None
+        r.pop('owner_id', None)
 
     # compute duplicate-name suffixes, in the order participants were added
     name_counts = {}
@@ -2983,6 +2996,14 @@ def _bp_state(db, pid):
                      'conditions': [k for k in _CONDITION_KEYS if k in (r['conditions'] or '').split(',')],
                      'custom': _load_custom_conditions(r['custom_conditions'])}
     return found
+
+
+def _reset_death_saves(db, pid, force=False):
+    """Back to 0 successes, 0 failures, not stable (the caller commits).  Without `force` this only happens once the
+    participant is above 0 HP, so a heal that still leaves them down keeps the tally."""
+    db.execute('UPDATE battle_participants SET death_successes = 0, death_failures = 0, is_stable = 0 '
+               'WHERE id = ? AND (? OR current_hp > 0) AND (death_successes <> 0 OR death_failures <> 0 OR is_stable <> 0)',
+               (pid, bool(force)))
 
 
 def _log_hp_change(db, b, a, intent):
@@ -3266,6 +3287,7 @@ def api_battle_heal(pid):
         db.close()
         return api_error(None, 404)
     _log_hp_change(db, before, _bp_state(db, pid), 'heal')
+    _reset_death_saves(db, pid)
     db.commit()
     rows = _battle_rows(db)
     db.close()
@@ -3348,6 +3370,7 @@ def api_battle_set_hp(pid):
         db.close()
         return api_error(None, 404)
     _log_hp_change(db, before, _bp_state(db, pid), 'set')
+    _reset_death_saves(db, pid)
     db.commit()
     rows = _battle_rows(db)
     db.close()
@@ -3452,12 +3475,81 @@ def api_battle_revive(pid):
         db.close()
         return api_error(None, 404)
     db.execute('UPDATE battle_participants SET is_dead = 0 WHERE id = ?', (pid,))
+    _reset_death_saves(db, pid, force=True)                 # a revived character starts the count again
     if before['dead']:
         log_battle(db, f"{before['name']} was revived", None, 'revive')
     db.commit()
     rows = _battle_rows(db)
     db.close()
     return jsonify(rows)
+
+
+@app.route('/campaigns/<int:campaign_id>/api/battle/<int:pid>/death-save', methods=['POST'])
+@campaign_access_required
+def api_battle_death_save(pid):
+    """One death saving throw for a character who is down at 0 HP (2024 rules).  The DM can roll for any player
+    character; a Player only for a character they made.  The d20 is rolled here, never in the browser.
+    10 or more is a success, 9 or less a failure, a natural 1 counts as two failures and a natural 20 puts the character
+    back on 1 HP.  Three successes make them stable, three failures kill them.  The tally lives on the participant
+    (migration 0027) and is cleared by healing, setting HP above 0 or reviving.  A Player's own roll is not announced
+    in the log (the table sees only the outcome: stable, back on 1 HP, died); the DM gets every roll."""
+    db = get_db()
+    row = db.execute('''SELECT bp.current_hp, bp.is_dead, bp.is_stable, bp.death_successes AS ok, bp.death_failures AS bad,
+                               c.is_npc, c.created_by
+                        FROM battle_participants bp JOIN characters c ON c.id = bp.character_id
+                        WHERE bp.id = ? AND c.campaign_id = ?''', (pid, g.campaign_id)).fetchone()
+    if row is None:
+        db.close()
+        return api_error(None, 404)
+    if not (g.is_dm or (row['created_by'] is not None and row['created_by'] == session.get('user_id'))):
+        db.close()
+        return api_error(None, 403)
+    if row['is_npc']:
+        db.close()
+        return api_error('Monsters and NPCs do not make death saves.', 400, code='not_applicable')
+    if row['current_hp'] > 0 or row['is_dead'] or row['is_stable']:
+        db.close()
+        return api_error('Only a character who is down and not yet stable can make a death save.', 409, code='not_downed')
+    before = _bp_state(db, pid)
+    roll = secrets.randbelow(20) + 1
+    ok, bad, hp, stable, dead = row['ok'], row['bad'], 0, 0, 0
+    if roll == 20:
+        outcome, hp, ok, bad = 'revived', 1, 0, 0
+    else:
+        if roll >= 10:
+            ok += 1
+        else:
+            bad = min(3, bad + (2 if roll == 1 else 1))
+        outcome = 'success' if roll >= 10 else 'failure'
+    tally = (ok, bad)                                       # as it stands after this roll (before a reset)
+    if outcome in ('success', 'failure'):
+        if ok >= 3:
+            outcome, stable, ok, bad = 'stable', 1, 0, 0
+        elif bad >= 3:
+            outcome, dead = 'dead', 1
+    # compare-and-swap on the tally we read, so two rolls at the same instant cannot overwrite each other
+    cur = db.execute('''UPDATE battle_participants SET current_hp = ?, death_successes = ?, death_failures = ?, is_stable = ?, is_dead = ?
+                        WHERE id = ? AND current_hp <= 0 AND is_dead = 0 AND is_stable = 0
+                          AND death_successes = ? AND death_failures = ?''',
+                     (hp, ok, bad, stable, dead, pid, row['ok'], row['bad']))
+    if cur.rowcount == 0:
+        db.rollback()
+        db.close()
+        return api_error('Someone else just rolled for this character; look again and retry.', 409, code='conflict')
+    n = before['name']
+    if outcome != 'revived':
+        verdict = 'two failures' if roll == 1 else ('success' if roll >= 10 else 'failure')
+        log_battle(db, f"{n} rolled {roll} on a death save: {verdict} ({tally[0]} of 3 successes, {tally[1]} of 3 failures)", '', 'deathsave')
+    if outcome == 'revived':
+        log_battle(db, f'{n} rolled a natural 20 on a death save and is back on 1 HP', None, 'revive')
+    elif outcome == 'stable':
+        log_battle(db, f'{n} is stable', None, 'stable')
+    elif outcome == 'dead':
+        log_battle(db, f'{n} died', None, 'died')
+    db.commit()
+    rows = _battle_rows(db, redact_enemies=not g.is_dm)
+    db.close()
+    return jsonify({'roll': roll, 'outcome': outcome, 'rows': rows})
 
 
 @app.route('/campaigns/<int:campaign_id>/api/battle/<int:pid>/conditions', methods=['POST'])

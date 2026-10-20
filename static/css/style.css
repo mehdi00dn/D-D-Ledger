@@ -1717,6 +1717,33 @@ body.page-leaving .content {
   border-color: rgba(224, 163, 92, 0.35);
 }
 
+/* Death saves (DL-145): a sub-row under a downed player character - three pass pips, three fail pips, a roll button */
+.death-saves {
+  flex: 1 0 100%;
+  display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px;
+  margin-top: 2px; padding-top: 10px;
+  border-top: 1px dashed var(--hairline-strong);
+  font: 500 11px var(--font-mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--parchment-dim);
+}
+.ds-title { color: var(--brass-ink); }
+.ds-tag { color: var(--parchment-faint); }
+.ds-pips { display: inline-flex; gap: 5px; }
+.ds-pip {
+  box-sizing: border-box; inline-size: 12px; block-size: 12px; border-radius: 50%;
+  border: 1.5px solid var(--parchment-faint);
+  transition: background-color 160ms ease, border-color 160ms ease;
+}
+.ds-pips--ok .ds-pip.is-on { background: var(--moss); border-color: var(--moss); }
+.ds-pips--bad .ds-pip.is-on { background: var(--blood); border-color: var(--blood); }
+.ds-roll { margin-inline-start: auto; }
+.ds-result { margin-inline-start: auto; font: 600 12px var(--font-body); letter-spacing: 0; text-transform: none; color: var(--parchment); }
+.ds-result + .ds-roll { margin-inline-start: 0; }
+.ds-result.is-success, .ds-result.is-stable, .ds-result.is-revived { color: var(--moss-ink); }
+.ds-result.is-failure, .ds-result.is-dead { color: var(--blood-ink); }
+.death-saves.is-stable { gap: 10px; }
+.ds-stable { color: var(--moss-ink); font-weight: 600; }
+.ds-note { font: 400 12px var(--font-body); letter-spacing: 0; text-transform: none; color: var(--parchment-faint); }
+
 /* Fogged stats: placeholder digits under a CSS blur. The real numbers are
    never sent to a Player, so this is presentation only. */
 .stats-fogged {
@@ -3708,6 +3735,8 @@ body.page-leaving .content {
   .battle-row > .stats-hidden-badge, .battle-row > .stat-chip, .battle-row > .battle-extra { grid-column: 1 / -1; min-height: 42px; justify-content: center; }
   .battle-extra:empty { display: none; }
   .battle-extra .btn-sm { width: 100%; min-height: 42px; justify-content: center; }
+  .battle-row > .death-saves { grid-column: 1 / -1; }                  /* its own full-width line under the stats and the HP buttons */
+  .death-saves .ds-roll { flex: 1 1 100%; min-height: 42px; justify-content: center; }
   .battle-rank { display: none; }
   .turn-now { display: none; }
   .battle-row .hp-controls { padding: 0; background: none; border: 0; border-radius: 0; gap: 6px; }
@@ -4439,8 +4468,8 @@ body.has-dice-fab .modifier-hint { inset-inline-end: 80px; max-width: calc(100vw
 @media (orientation: landscape) and (max-height: 500px) { .battle-log { bottom: calc(var(--bar-h, 0px) + env(safe-area-inset-bottom) + 12px); } }                 /* and 8px up in a sideways phone */
 .battle-log[hidden] { display: none; }
 .battle-log[data-kind="damage"], .battle-log[data-kind="down"], .battle-log[data-kind="died"] { --bl-kind: var(--blood-ink); }
-.battle-log[data-kind="heal"], .battle-log[data-kind="revive"] { --bl-kind: var(--moss-ink); }
-.battle-log[data-kind="condition"], .battle-log[data-kind="temp"], .battle-log[data-kind="round"], .battle-log[data-kind="initiative"] { --bl-kind: var(--brass-ink); }
+.battle-log[data-kind="heal"], .battle-log[data-kind="revive"], .battle-log[data-kind="stable"] { --bl-kind: var(--moss-ink); }
+.battle-log[data-kind="condition"], .battle-log[data-kind="temp"], .battle-log[data-kind="deathsave"], .battle-log[data-kind="round"], .battle-log[data-kind="initiative"] { --bl-kind: var(--brass-ink); }
 .bl-backdrop { position: fixed; inset: 0; pointer-events: none; }     /* invisible: only there so a click outside closes the log */
 .battle-log.is-open .bl-backdrop { pointer-events: auto; }
 .bl-dock { position: relative; pointer-events: auto; }
@@ -4496,8 +4525,8 @@ body.has-dice-fab .modifier-hint { inset-inline-end: 80px; max-width: calc(100vw
 .bl-v { font-weight: 600; color: var(--bl-item, var(--parchment-dim)); }
 .bl-n { font-weight: 700; color: var(--bl-item, var(--parchment)); font-variant-numeric: tabular-nums; }
 .bl-damage, .bl-down, .bl-died { --bl-item: var(--blood-ink); border-inline-start-color: var(--blood-ink); }
-.bl-heal, .bl-revive { --bl-item: var(--moss-ink); border-inline-start-color: var(--moss-ink); }
-.bl-condition, .bl-temp { --bl-item: var(--brass-ink); border-inline-start-color: var(--brass-ink); }
+.bl-heal, .bl-revive, .bl-stable { --bl-item: var(--moss-ink); border-inline-start-color: var(--moss-ink); }
+.bl-condition, .bl-temp, .bl-deathsave { --bl-item: var(--brass-ink); border-inline-start-color: var(--brass-ink); }
 .bl-round, .bl-initiative { --bl-item: var(--brass-bright-ink); border-inline-start-color: var(--parchment-dim); }
 @media (max-width: 880px) { .bl-bar { width: calc(100% - 62px); } }   /* the dice button sits beside the strip on a phone, never over its arrow */
 @media (prefers-reduced-motion: reduce) { .bl-sheet, .bl-chev, .bl-bar, .bl-latest { transition-duration: 0.01ms; } .bl-sheet { transform: none; } .battle-log.has-new .bl-bar::after { animation: none; } }
