@@ -60,7 +60,7 @@ POLICY = {
     **{e: DM for e in (
         'api_battle_add', 'api_battle_add_group', 'api_battle_add_monster', 'api_battle_roll_initiative', 'api_battle_heal', 'api_battle_damage', 'api_battle_temphp',
         'api_battle_set_hp', 'api_battle_initiative', 'api_battle_ac', 'api_battle_max_hp', 'api_battle_die',
-        'api_battle_revive', 'api_battle_death_save', 'api_battle_economy', 'api_battle_conditions', 'api_battle_next_turn', 'api_battle_prev_turn',
+        'api_battle_revive', 'api_battle_death_save', 'api_battle_conditions', 'api_battle_next_turn', 'api_battle_prev_turn',
         'api_battle_restart_turns', 'api_battle_remove', 'api_battle_clear')},
     # --- maps (Players may edit a map the DM has not locked; see test_locked_map_* below) ---
     'maps_list': MEMBER, 'map_new': MEMBER, 'map_editor': MEMBER, 'map_delete': OWNER,

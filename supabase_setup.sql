@@ -691,4 +691,12 @@ ALTER TABLE battle_participants ADD COLUMN concentrating INTEGER NOT NULL DEFAUL
 
 INSERT INTO schema_migrations (version) VALUES ('0029_action_economy.sql');
 
+-- ---- 0030_drop_action_economy.sql ----
+
+-- The action-economy and concentration toggles (migration 0029) were taken out again: the battle rows stay simple.
+ALTER TABLE battle_participants DROP COLUMN IF EXISTS spent;
+ALTER TABLE battle_participants DROP COLUMN IF EXISTS concentrating;
+
+INSERT INTO schema_migrations (version) VALUES ('0030_drop_action_economy.sql');
+
 COMMIT;

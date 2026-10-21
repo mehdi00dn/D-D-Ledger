@@ -1744,29 +1744,6 @@ body.page-leaving .content {
 .ds-stable { color: var(--moss-ink); font-weight: 600; }
 .ds-note { font: 400 12px var(--font-body); letter-spacing: 0; text-transform: none; color: var(--parchment-faint); }
 
-/* Action economy and concentration (DL-146): toggles under a row once combat has started */
-.eco {
-  flex: 1 0 100%;
-  display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px;
-  margin-top: 2px; padding-top: 8px;
-  border-top: 1px dashed var(--hairline-strong);
-  font: 500 11px var(--font-mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--parchment-dim);
-}
-.eco-title { color: var(--brass-ink); margin-inline-end: 2px; }
-.eco-sep { flex: 1 1 8px; }
-.eco-chip {
-  box-sizing: border-box; min-block-size: 26px; padding: 0 10px;
-  border-radius: 999px; border: 1px solid var(--hairline-strong); background: transparent; color: var(--parchment);
-  font: inherit; letter-spacing: inherit; text-transform: inherit;
-  display: inline-flex; align-items: center; justify-content: center;
-  transition: background-color 160ms ease, color 160ms ease, border-color 160ms ease, transform 160ms var(--ease-out);
-}
-button.eco-chip { cursor: pointer; }
-button.eco-chip:active { transform: scale(0.96); }
-button.eco-chip:disabled { opacity: 0.5; cursor: default; }
-.eco-used.is-on { color: var(--parchment-faint); border-color: var(--hairline); text-decoration: line-through; background: var(--bg-panel-inset); }
-.eco-conc.is-on { background: var(--brass); border-color: var(--brass); color: var(--on-brass); }
-
 /* Fogged stats: placeholder digits under a CSS blur. The real numbers are
    never sent to a Player, so this is presentation only. */
 .stats-fogged {
@@ -3759,8 +3736,6 @@ button.eco-chip:disabled { opacity: 0.5; cursor: default; }
   .battle-extra:empty { display: none; }
   .battle-extra .btn-sm { width: 100%; min-height: 42px; justify-content: center; }
   .battle-row > .death-saves { grid-column: 1 / -1; }                  /* its own full-width line under the stats and the HP buttons */
-  .battle-row > .eco { grid-column: 1 / -1; }
-  .eco-chip { min-block-size: 36px; }
   .death-saves .ds-roll { flex: 1 1 100%; min-height: 42px; justify-content: center; }
   .battle-rank { display: none; }
   .turn-now { display: none; }
@@ -4494,7 +4469,7 @@ body.has-dice-fab .modifier-hint { inset-inline-end: 80px; max-width: calc(100vw
 .battle-log[hidden] { display: none; }
 .battle-log[data-kind="damage"], .battle-log[data-kind="down"], .battle-log[data-kind="died"] { --bl-kind: var(--blood-ink); }
 .battle-log[data-kind="heal"], .battle-log[data-kind="revive"], .battle-log[data-kind="stable"] { --bl-kind: var(--moss-ink); }
-.battle-log[data-kind="condition"], .battle-log[data-kind="concentration"], .battle-log[data-kind="temp"], .battle-log[data-kind="deathsave"], .battle-log[data-kind="round"], .battle-log[data-kind="initiative"] { --bl-kind: var(--brass-ink); }
+.battle-log[data-kind="condition"], .battle-log[data-kind="temp"], .battle-log[data-kind="deathsave"], .battle-log[data-kind="round"], .battle-log[data-kind="initiative"] { --bl-kind: var(--brass-ink); }
 .bl-backdrop { position: fixed; inset: 0; pointer-events: none; }     /* invisible: only there so a click outside closes the log */
 .battle-log.is-open .bl-backdrop { pointer-events: auto; }
 .bl-dock { position: relative; pointer-events: auto; }
@@ -4551,7 +4526,7 @@ body.has-dice-fab .modifier-hint { inset-inline-end: 80px; max-width: calc(100vw
 .bl-n { font-weight: 700; color: var(--bl-item, var(--parchment)); font-variant-numeric: tabular-nums; }
 .bl-damage, .bl-down, .bl-died { --bl-item: var(--blood-ink); border-inline-start-color: var(--blood-ink); }
 .bl-heal, .bl-revive, .bl-stable { --bl-item: var(--moss-ink); border-inline-start-color: var(--moss-ink); }
-.bl-condition, .bl-concentration, .bl-temp, .bl-deathsave { --bl-item: var(--brass-ink); border-inline-start-color: var(--brass-ink); }
+.bl-condition, .bl-temp, .bl-deathsave { --bl-item: var(--brass-ink); border-inline-start-color: var(--brass-ink); }
 .bl-round, .bl-initiative { --bl-item: var(--brass-bright-ink); border-inline-start-color: var(--parchment-dim); }
 @media (max-width: 880px) { .bl-bar { width: calc(100% - 62px); } }   /* the dice button sits beside the strip on a phone, never over its arrow */
 @media (prefers-reduced-motion: reduce) { .bl-sheet, .bl-chev, .bl-bar, .bl-latest { transition-duration: 0.01ms; } .bl-sheet { transform: none; } .battle-log.has-new .bl-bar::after { animation: none; } }
@@ -4664,4 +4639,59 @@ input[type="range"]:disabled { opacity: 0.5; cursor: not-allowed; }
   input[type="range"] { block-size: 28px; }
   input[type="range"]::-webkit-slider-thumb { inline-size: 22px; block-size: 22px; margin-top: -8px; }
   input[type="range"]::-moz-range-thumb { inline-size: 22px; block-size: 22px; }
+}
+
+/* ==========================================================================
+   Battle rows, compact: one line per creature on desktop
+   The faction and the conditions share a line under the name, INIT and AC sit label-beside-value, and
+   "Died?" and "Remove" are small icon buttons at the end of the row.
+   ========================================================================== */
+.battle-list { gap: 6px; }
+.battle-row { gap: 6px 12px; padding: 7px 10px 7px 12px; }
+.battle-row::before { top: 9px; bottom: 9px; }
+.battle-avatar { width: 36px; height: 36px; border-width: 2px; }
+.battle-name-block { min-width: 150px; flex: 1 1 190px; }
+.battle-name { font-size: 15px; line-height: 1.25; }
+.battle-sub { display: flex; flex-wrap: wrap; align-items: center; gap: 3px 10px; margin-top: 2px; }
+.battle-sub .battle-meta { margin-top: 0; }
+.battle-sub .cond-row { margin-top: 0; gap: 4px; }
+.cond-chip, .cond-add { height: 22px; }
+.cond-add { padding: 0; min-width: 22px; }
+.cond-add svg { width: 9px; height: 9px; }
+.stat-chip { flex-direction: row; gap: 5px; }
+.stat-chip-input { width: 38px; padding: 3px 2px; }
+.hp-block { gap: 8px; }
+.hp-bar-track { width: 96px; height: 12px; }
+.hp-controls { padding: 2px; }
+.hp-amount-input { width: 38px; height: 28px; }
+.hp-btn { width: 28px; height: 28px; border-radius: 8px; }
+.hp-btn svg { width: 14px; height: 14px; }
+.battle-end { margin-inline-start: auto; display: flex; align-items: center; gap: 4px; flex: none; }
+.battle-end .battle-remove { margin-inline-start: 0; }
+.battle-end .btn-icon { min-width: 28px; min-height: 28px; width: 28px; height: 28px; padding: 0; }
+.battle-end .btn-icon svg { width: 14px; height: 14px; }
+.battle-die { color: var(--blood-ink); border-color: transparent; }
+.battle-die:hover { color: var(--blood-ink); border-color: rgba(179, 69, 63, 0.5); background: rgba(196, 84, 84, 0.12); }
+.battle-end .btn-sm { min-height: 28px; padding: 0 10px; }
+.battle-row > .death-saves { order: 2; }                     /* under the row, so the end buttons stay on the first line */
+.death-saves { margin-top: 0; padding-top: 6px; gap: 6px 10px; border-top-style: dotted; }
+.ds-roll { min-height: 26px; padding-block: 0; }
+.stats-hidden-badge { padding: 5px 12px; }
+
+@media (max-width: 760px) {
+  .battle-list { gap: 6px; }
+  .battle-row { grid-template-columns: 40px minmax(0, 1fr) auto; grid-template-areas: "av name end" "stats stats stats" "ctl ctl ctl"; gap: 6px 10px; padding: 8px; }
+  .battle-avatar { width: 40px; height: 40px; }
+  .battle-end { grid-area: end; align-self: start; }
+  .battle-end .btn-icon { width: 34px; height: 34px; min-width: 34px; min-height: 34px; }
+  .battle-end .btn-icon svg { width: 15px; height: 15px; }
+  .battle-end .btn-sm { min-height: 34px; width: auto; }
+  .battle-row .battle-stats { padding: 3px 8px; gap: 8px; }
+  .battle-row .stat-chip-input { min-height: 30px; width: 44px; padding: 2px 4px; }
+  .battle-row .hp-controls { gap: 6px; }
+  .battle-row .hp-amount-input, .battle-row .hp-btn { height: 40px; min-height: 40px; }
+  .battle-row .hp-btn { flex-direction: row; gap: 5px; font-size: 12px; }
+  .battle-row .hp-btn svg { width: 15px; height: 15px; }
+  .battle-row > .death-saves { padding-top: 4px; }
+  .death-saves .ds-roll { flex: 1 1 100%; min-height: 40px; }
 }

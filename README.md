@@ -35,11 +35,6 @@ It also runs locally.
   only the outcomes (stable, back on 1 HP, died). Healing, setting HP above 0 or reviving clears the tally
   (`migrations/0027_death_saves.sql`). Not included: damage taken at 0 HP does not add a failure, and there is no
   instant-death rule for massive damage.
-  **Action economy and concentration**: once combat has started, every row has a "Turn" line with Action, Bonus, Reaction and
-  Move toggles (tick what has been used) and a Concentrating toggle. Ticks clear when that creature's turn starts (and for
-  everyone on "restart turns"); concentration stays until dropped. The DM edits every row, a Player only their own character's.
-  An NPC's line is never sent to Players. Damage to a concentrating creature logs the Constitution save to make (DC 10 or
-  half the damage, whichever is higher); dropping to 0 HP or dying ends concentration (`migrations/0029_action_economy.sql`).
 - **Map editor.** Shapes, pins, grid setup, zoom/pan, fog of war, DM-only layers,
   token ownership (DMs assign tokens to players), familiars that sync into the
   battle, link-to-battle.

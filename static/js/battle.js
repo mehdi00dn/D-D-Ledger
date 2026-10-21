@@ -128,7 +128,7 @@
     const chips = list.map((k) => chip(`${p.id}:s:${k}`, `cond-${escapeHtml(k)}`, k, CONDITION_LABEL[k], `data-action="cond-remove" data-cond="${escapeHtml(k)}"`)).join('')
       + customs.map((n, i) => chip(`${p.id}:c:${n}`, 'cond-custom', 'custom', n, `data-action="cond-remove" data-chip-custom="${i}"`)).join('');
     const addBtn = isDM
-      ? `<button type="button" class="cond-add" data-action="conditions" title="Conditions" aria-label="Conditions for ${escapeHtml(p.display_name)}">${ICONS.heart}${(list.length || customs.length) ? '' : '<span>Conditions</span>'}</button>`
+      ? `<button type="button" class="cond-add" data-action="conditions" title="Conditions" aria-label="Conditions for ${escapeHtml(p.display_name)}">${ICONS.heart}</button>`
       : '';
     return (chips || addBtn) ? `<div class="cond-row">${chips}${addBtn}</div>` : '';
   }
@@ -160,21 +160,6 @@
       + `<span class="ds-tag">Pass</span>${pips(p.death_successes, 'ok')}`
       + `<span class="ds-tag">Fail</span>${pips(p.death_failures, 'bad')}`
       + `${result}${roll}</div>`;
-  }
-
-  // Action economy and concentration (DL-146): a line of toggles under each row once combat has started.
-  const ECONOMY = [['action', 'Action'], ['bonus', 'Bonus'], ['reaction', 'Reaction'], ['move', 'Move']];
-  function economyMarkup(p) {
-    if (p.is_dead || !Array.isArray(p.spent) || !participants.some((x) => x.is_active)) return '';
-    const spent = p.spent, conc = !!p.concentrating, editable = !!p.can_economy;
-    if (!editable && !spent.length && !conc) return '';
-    const name = escapeHtml(p.display_name);
-    const chip = (key, label, on, cls, aria) => editable
-      ? `<button type="button" class="eco-chip ${cls}${on ? ' is-on' : ''}" data-action="economy" data-key="${key}" aria-pressed="${on}" aria-label="${aria}">${label}</button>`
-      : (on ? `<span class="eco-chip ${cls} is-on">${label}</span>` : '');
-    const used = ECONOMY.map(([k, l]) => chip(k, l, spent.includes(k), 'eco-used', `${escapeHtml(l)} used for ${name}`)).join('');
-    return `<div class="eco" role="group" aria-label="This turn for ${name}"><span class="eco-title">Turn</span>${used}`
-      + `<span class="eco-sep"></span>${chip('concentration', 'Concentrating', conc, 'eco-conc', `${name} is concentrating`)}</div>`;
   }
 
   function rowMarkup(p, rank) {
@@ -265,19 +250,18 @@
 
       <div class="battle-name-block">
         <div class="battle-name${openAttrs ? ' is-link' : ''}"${openAttrs}>${classIconHtml(p.class_key)}${escapeHtml(p.display_name)}</div>
-        <div class="battle-meta">${groupDot}${p.group_name ? escapeHtml(p.group_name) : 'No Faction'} &middot; ${p.is_npc ? 'NPC' : 'PC'}</div>
-        ${conditionChips(p)}
+        <div class="battle-sub">
+          <div class="battle-meta">${groupDot}${p.group_name ? escapeHtml(p.group_name) : 'No Faction'} &middot; ${p.is_npc ? 'NPC' : 'PC'}</div>
+          ${conditionChips(p)}
+        </div>
       </div>
 
       ${statsArea}
       ${hpControls}
       ${detailControl}
       ${deathSavesMarkup(p)}
-      ${economyMarkup(p)}
 
-      ${isDM ? `<div class="battle-extra">${showDiedBtn ? `<button type="button" class="btn btn-danger btn-sm" data-action="die">${ICONS.skull} Died?</button>` : ''}${dead ? `<button type="button" class="btn btn-ghost btn-sm" data-action="revive">Revive</button>` : ''}</div>` : ''}
-
-      ${isDM ? `<button type="button" class="btn-icon battle-remove" data-action="remove" title="Remove from battle">${ICONS.x}</button>` : ''}
+      ${isDM ? `<div class="battle-end">${showDiedBtn ? `<button type="button" class="btn-icon battle-die" data-action="die" title="Mark as died" aria-label="Mark ${escapeHtml(p.display_name)} as died">${ICONS.skull}</button>` : ''}${dead ? `<button type="button" class="btn btn-ghost btn-sm" data-action="revive">Revive</button>` : ''}<button type="button" class="btn-icon battle-remove" data-action="remove" title="Remove from battle" aria-label="Remove ${escapeHtml(p.display_name)} from battle">${ICONS.x}</button></div>` : ''}
     </div>`;
   }
 
@@ -466,7 +450,7 @@
     });
   }
   // The words that follow a name ("Mira took 9 damage", "Grub is now Hexed"), so the name, the verb and the numbers can each be styled.
-  const VERBS = [' took ', ' healed ', ' is down', ' died', ' is stable', ' rolled ', ' is concentrating', ' dropped concentration', ' must make a', ' was revived', ' was hurt', ' was healed', ' is back on', ' has ', ' lost their',
+  const VERBS = [' took ', ' healed ', ' is down', ' died', ' is stable', ' rolled ', ' was revived', ' was hurt', ' was healed', ' is back on', ' has ', ' lost their',
                  ' is now ', ' is no longer ', ' joined the', ' left the', "'s HP set"];
   function span(cls, text) { const el = document.createElement('span'); el.className = cls; el.textContent = text; return el; }
   function withNumbers(text, cls) {                                // digits get their own bold, tabular style
@@ -591,14 +575,6 @@
         render();
       } catch (err) {
         btn.disabled = false;                                       // apiCall has already said why
-      }
-    } else if (action === 'economy') {
-      btn.disabled = true;                                          // redrawn from the answer
-      try {
-        participants = await apiCall(`/api/battle/${pid}/economy`, { key: btn.dataset.key, on: btn.getAttribute('aria-pressed') !== 'true' });
-        render();
-      } catch (err) {
-        btn.disabled = false;
       }
     } else if (action === 'remove') {
       const p = participants.find((x) => String(x.id) === pid);
