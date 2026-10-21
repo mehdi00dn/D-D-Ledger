@@ -4695,3 +4695,15 @@ input[type="range"]:disabled { opacity: 0.5; cursor: not-allowed; }
   .battle-row > .death-saves { padding-top: 4px; }
   .death-saves .ds-roll { flex: 1 1 100%; min-height: 40px; }
 }
+
+/* Stats by level (DL-105) */
+.cf-level-hint { margin: 6px 0 12px; }
+.lv-scroll { overflow-x: auto; }
+.lv-table { inline-size: 100%; border-collapse: collapse; font: 500 13px var(--font-mono); font-variant-numeric: tabular-nums; }
+.lv-table th, .lv-table td { padding: 7px 10px; text-align: end; border-block-end: 1px solid var(--hairline); white-space: nowrap; }
+.lv-table thead th { color: var(--parchment-faint); font-size: 11px; font-weight: 500; letter-spacing: 0.06em; }
+.lv-table tbody th { text-align: start; color: var(--parchment); font-weight: 600; }
+.lv-table td { color: var(--parchment); }
+.lv-table thead th:first-child { text-align: start; }
+.lv-table tr.is-current td, .lv-table tr.is-current th { color: var(--brass-ink); background: rgba(201, 162, 75, 0.08); }
+.lv-now { margin-inline-start: 6px; font-size: 10px; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--brass-ink); }

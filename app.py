@@ -2315,9 +2315,10 @@ def character_detail(char_id):
     sheets = [] if stats_hidden else db.execute(
         'SELECT * FROM character_sheets WHERE character_id = ? ORDER BY sort_order', (char_id,)).fetchall()
     factions = _factions_by_character(db, g.campaign_id).get(char_id, [])
+    level_history = [] if stats_hidden else _level_history(db, char_id)
     db.close()
     can_edit = g.is_dm or character['created_by'] == session['user_id']
-    return render_template('character_detail.html', character=character, sheets=sheets, factions=factions,
+    return render_template('character_detail.html', character=character, sheets=sheets, factions=factions, level_history=level_history,
                             notes_html=notes_to_html(character['notes'], show_hidden=can_see_hidden_notes(character)), can_edit=can_edit,
                             can_delete=can_delete(character['created_by']), stats_hidden=stats_hidden,
                             sheet=None if stats_hidden else dnd5e.derive(character))
@@ -2345,6 +2346,7 @@ def character_edit(char_id):
     sheets = db.execute('SELECT * FROM character_sheets WHERE character_id = ? ORDER BY sort_order', (char_id,)).fetchall()
     groups = db.execute('SELECT * FROM groups WHERE campaign_id = ? ORDER BY lower(name) ASC', (g.campaign_id,)).fetchall()
     faction_ids = [f['id'] for f in _factions_by_character(db, g.campaign_id).get(char_id, [])]
+    level_history = _level_history(db, char_id)
     db.close()
     if character is None:
         return redirect(url_for('characters_list'))
@@ -2352,7 +2354,8 @@ def character_edit(char_id):
     return render_template('character_form.html', character=character, sheets=sheets, groups=groups, from_battle=False, notes_entries=notes_entries,
                            can_delete_sheets=can_delete(owner_row['created_by']), character_faction_ids=faction_ids,
                            character_save_prof=dnd5e.clean_save_prof(character['save_prof']),
-                           character_skill_prof=dnd5e.clean_skill_prof(character['skill_prof']))
+                           character_skill_prof=dnd5e.clean_skill_prof(character['skill_prof']),
+                           level_history={str(r['level']): r for r in level_history})
 
 
 # Character classes (DL-43).  Optional on a character.  The text is the hover guide in the picker.
@@ -2459,11 +2462,39 @@ def _factions_by_character(db, campaign_id):
     return out
 
 
+LEVEL_STAT_KEYS = ('max_hp', 'armor_class', 'str_score', 'dex_score', 'con_score', 'int_score', 'wis_score', 'cha_score', 'speed')
+
+
+def _save_level_stats(db, char_id, level, max_hp, armor_class, scores, speed, skill_prof, save_prof):
+    """Remember the stats the character has at this level (DL-105); saving the same level again replaces them."""
+    db.execute('''INSERT INTO character_levels (character_id, level, max_hp, armor_class, str_score, dex_score, con_score, int_score, wis_score, cha_score,
+                                                speed, skill_prof, save_prof)
+                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                  ON CONFLICT (character_id, level) DO UPDATE SET max_hp = EXCLUDED.max_hp, armor_class = EXCLUDED.armor_class,
+                      str_score = EXCLUDED.str_score, dex_score = EXCLUDED.dex_score, con_score = EXCLUDED.con_score,
+                      int_score = EXCLUDED.int_score, wis_score = EXCLUDED.wis_score, cha_score = EXCLUDED.cha_score,
+                      speed = EXCLUDED.speed, skill_prof = EXCLUDED.skill_prof, save_prof = EXCLUDED.save_prof
+                  RETURNING character_id''',            # (this table has no id column, so the db layer must not add its own RETURNING id)
+               (char_id, level, max_hp, armor_class, *scores, speed, skill_prof, save_prof))
+
+
+def _level_history(db, char_id):
+    """Every level that has saved stats, lowest first.  Proficiencies come back as real objects (what the form needs)."""
+    out = []
+    for r in db.execute('SELECT level, ' + ', '.join(LEVEL_STAT_KEYS) + ', skill_prof, save_prof FROM character_levels '
+                        'WHERE character_id = ? ORDER BY level', (char_id,)).fetchall():
+        r = dict(r)
+        r['skill_prof'] = dnd5e.clean_skill_prof(r['skill_prof'])
+        r['save_prof'] = dnd5e.clean_save_prof(r['save_prof'])
+        out.append(r)
+    return out
+
+
 def _save_character(db, char_id):
     form = request.form
     name = form.get('name', '').strip() or 'Unnamed'
     is_npc = 1 if form.get('is_npc') == 'on' else 0
-    level = int(form.get('level') or 1)
+    level = max(1, min(30, int(form.get('level') or 1)))
     max_hp = int(form.get('max_hp') or 10)
     str_score = int(form.get('str_score') or 10)
     dex_score = int(form.get('dex_score') or 10)
@@ -2516,6 +2547,8 @@ def _save_character(db, char_id):
               wis_score, cha_score, armor_class, notes, class_key, speed, skill_prof, save_prof, char_id))
 
     _set_character_factions(db, char_id, faction_ids)
+    _save_level_stats(db, char_id, level, max_hp, armor_class, (str_score, dex_score, con_score, int_score, wis_score, cha_score),
+                      speed, skill_prof, save_prof)
 
     # multiple sheet images
     max_order = db.execute('SELECT COALESCE(MAX(sort_order), -1) AS m FROM character_sheets WHERE character_id = ?', (char_id,)).fetchone()['m']

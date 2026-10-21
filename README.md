@@ -23,6 +23,12 @@ It also runs locally.
 - **Characters and factions.** Profiles with class, abilities, saves, skills, speed,
   avatars, sheet images, notes (individual notes can be hidden from Players), and
   factions (many-to-many). NPC stats are hidden from Players.
+  Each character keeps its stats **level by level** (`migrations/0031_character_levels.sql`): max HP, AC, the six scores, speed and the
+  saving-throw and skill proficiencies are saved for the level you save the form at. On the edit form, changing Level brings back the stats saved for that level (an
+  unsaved edit survives going back and forth); a level with nothing saved starts from the current numbers. The character's own
+  columns are always the active level's stats, so battle, the sheet and exports keep working unchanged, and the details page
+  lists the history once more than one level is saved. Not carried: import/export bundles and campaign copies hold only the
+  active level.
 - **Battle tracker.** Initiative, turn tracker, HP/temp HP, conditions (including
   custom ones), group colors, live sync between players. A battle log strip sits at the bottom-left of the battle page (it follows the content when the sidebar opens or closes; the closed strip shows the newest entry in its colour, and a short wash when something new lands). Opened, a small card shows the last six lines, newest at the bottom, with names, verbs and numbers styled by kind; it records damage, healing, temp HP, conditions, down / died / revived,
   rounds and arrivals, keeps the latest 50 entries per campaign, is wiped when the battle

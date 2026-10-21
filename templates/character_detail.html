@@ -110,6 +110,26 @@
     </div>
     <p class="cd-legend">○ untrained &nbsp; ● proficient &nbsp; ◆ expertise (double proficiency)</p>
   </section>
+
+  {% if level_history|length > 1 %}
+  <section class="cf-card" aria-label="Stats by level">
+    <h2 class="cf-title">Stats by level <span class="cf-count">{{ level_history|length }} saved</span></h2>
+    <div class="lv-scroll">
+      <table class="lv-table">
+        <thead><tr><th scope="col">Level</th><th scope="col">HP</th><th scope="col">AC</th><th scope="col">Speed</th><th scope="col">STR</th><th scope="col">DEX</th><th scope="col">CON</th><th scope="col">INT</th><th scope="col">WIS</th><th scope="col">CHA</th></tr></thead>
+        <tbody>
+          {% for r in level_history %}
+          <tr{% if r.level == character.level %} class="is-current" aria-current="true"{% endif %}>
+            <th scope="row">{{ r.level }}{% if r.level == character.level %} <span class="lv-now">now</span>{% endif %}</th>
+            <td>{{ r.max_hp }}</td><td>{{ r.armor_class }}</td><td>{{ r.speed }}</td><td>{{ r.str_score }}</td><td>{{ r.dex_score }}</td><td>{{ r.con_score }}</td><td>{{ r.int_score }}</td><td>{{ r.wis_score }}</td><td>{{ r.cha_score }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <p class="cd-legend">The row marked "now" is what battle and the sheet above use. {% if can_edit %}Change the level in Edit to switch.{% endif %}</p>
+  </section>
+  {% endif %}
   {% endif %}
 
   <section class="cf-card" aria-label="Notes">
