@@ -1118,6 +1118,25 @@ def campaign_access_required(view_func):
     return wrapped
 
 
+def npcs_hidden_from_viewer():
+    """True when this campaign hides its NPCs and the person asking is not the DM (the DM viewing as a player counts as a Player)."""
+    c = getattr(g, 'campaign', None)
+    return bool(c is not None and c['hide_npcs'] and not g.is_dm)
+
+
+def npc_is_hidden(is_npc, created_by):
+    """One character's visibility: an NPC is hidden from a Player while the switch is on, except from the Player who made it."""
+    mine = created_by == session.get('user_id') and not getattr(g, 'previewing', False)     # "View as player" shows what a Player who did not make it sees
+    return bool(is_npc) and npcs_hidden_from_viewer() and not mine
+
+
+def npc_filter(alias='c'):
+    """(sql, params) to AND onto a characters query so a Player never gets a hidden NPC; empty when nothing is hidden."""
+    if not npcs_hidden_from_viewer():
+        return '', []
+    return f' AND ({alias}.is_npc = 0 OR {alias}.created_by = ?)', [None if getattr(g, 'previewing', False) else session.get('user_id')]
+
+
 @app.route('/campaigns/<int:campaign_id>/preview-as-player', methods=['POST'])
 @campaign_access_required
 def preview_as_player():
@@ -1669,6 +1688,21 @@ def campaign_member_status(user_id):
     db = get_db()
     db.execute('UPDATE campaign_members SET status = ? WHERE campaign_id = ? AND user_id = ?',
                (status, g.campaign_id, user_id))
+    db.commit()
+    db.close()
+    return redirect(url_for('campaign_edit', campaign_id=g.campaign_id))
+
+
+@app.route('/campaigns/<int:campaign_id>/npc-visibility', methods=['POST'])
+@campaign_access_required
+def campaign_npc_visibility():
+    """The DM or an owner switches "Hide NPCs from Players" on or off.  Judged by the real status, so a DM previewing as
+    a Player can still turn it off."""
+    if not (g.real_is_dm or g.campaign_role == 'owner'):
+        abort(403)
+    hide = request.form.get('hide_npcs') == 'on'
+    db = get_db()
+    db.execute('UPDATE campaigns SET hide_npcs = ? WHERE id = ?', (hide, g.campaign_id))
     db.commit()
     db.close()
     return redirect(url_for('campaign_edit', campaign_id=g.campaign_id))
@@ -2264,14 +2298,15 @@ def index():
 @campaign_access_required
 def characters_list():
     db = get_db()
+    hide_sql, hide_params = npc_filter()
     characters = db.execute('''
         SELECT c.*, g.name AS group_name, g.color AS group_color, mk.username AS made_by
         FROM characters c
         LEFT JOIN groups g ON c.group_id = g.id
         LEFT JOIN users mk ON mk.id = c.created_by
-        WHERE c.is_temp_familiar = 0 AND c.campaign_id = ?
+        WHERE c.is_temp_familiar = 0 AND c.campaign_id = ?''' + hide_sql + '''
         ORDER BY lower(c.name) ASC
-    ''', (g.campaign_id,)).fetchall()
+    ''', [g.campaign_id] + hide_params).fetchall()
     groups = db.execute('SELECT * FROM groups WHERE campaign_id = ? ORDER BY lower(name) ASC', (g.campaign_id,)).fetchall()
     by_char = _factions_by_character(db, g.campaign_id)
     characters = [dict(c, factions=by_char.get(c['id'], [])) for c in characters]
@@ -2306,7 +2341,7 @@ def character_detail(char_id):
         LEFT JOIN users mk ON mk.id = c.created_by
         WHERE c.id = ? AND c.campaign_id = ?
     ''', (char_id, g.campaign_id)).fetchone()
-    if character is None:
+    if character is None or npc_is_hidden(character['is_npc'], character['created_by']):
         db.close()
         return redirect(url_for('characters_list'))
     # A Player can open an NPC's dossier for its notes only: stats and sheet
@@ -2635,10 +2670,10 @@ def sheet_delete(char_id, sheet_id):
 def factions_list():
     db = get_db()
     groups = db.execute('''
-        SELECT g.*, (SELECT COUNT(*) FROM character_groups cg JOIN characters c ON c.id = cg.character_id WHERE cg.group_id = g.id AND c.is_temp_familiar = 0) AS member_count, mk.username AS made_by
+        SELECT g.*, (SELECT COUNT(*) FROM character_groups cg JOIN characters c ON c.id = cg.character_id WHERE cg.group_id = g.id AND c.is_temp_familiar = 0 AND (? = 0 OR c.is_npc = 0 OR c.created_by = ?)) AS member_count, mk.username AS made_by
         FROM groups g LEFT JOIN users mk ON mk.id = g.created_by
         WHERE g.campaign_id = ? ORDER BY lower(g.name) ASC
-    ''', (g.campaign_id,)).fetchall()
+    ''', (1 if npcs_hidden_from_viewer() else 0, None if getattr(g, 'previewing', False) else session.get('user_id'), g.campaign_id)).fetchall()
     db.close()
     return render_template('groups_list.html', groups=groups,
                            deletable={x['id'] for x in groups if can_delete(x['created_by'])})
@@ -2669,12 +2704,13 @@ def faction_detail(group_id):
     if group is None:
         db.close()
         return redirect(url_for('factions_list'))
+    hide_sql, hide_params = npc_filter()
     members = db.execute('''
         SELECT c.id, c.name, c.avatar_path, c.is_npc, c.level, c.class_key
         FROM characters c JOIN character_groups cg ON cg.character_id = c.id
-        WHERE cg.group_id = ? AND c.campaign_id = ? AND c.is_temp_familiar = 0
+        WHERE cg.group_id = ? AND c.campaign_id = ? AND c.is_temp_familiar = 0''' + hide_sql + '''
         ORDER BY lower(c.name) ASC
-    ''', (group_id, g.campaign_id)).fetchall()
+    ''', [group_id, g.campaign_id] + hide_params).fetchall()
     db.close()
     return render_template('group_detail.html', group=group, members=members)
 
@@ -2807,12 +2843,13 @@ def faction_delete(group_id):
 @campaign_access_required
 def api_characters():
     db = get_db()
+    hide_sql, hide_params = npc_filter()
     rows = db.execute('''
         SELECT c.*, g.name AS group_name, g.color AS group_color
         FROM characters c LEFT JOIN groups g ON c.group_id = g.id
-        WHERE c.is_temp_familiar = 0 AND c.campaign_id = ?
+        WHERE c.is_temp_familiar = 0 AND c.campaign_id = ?''' + hide_sql + '''
         ORDER BY lower(c.name) ASC
-    ''', (g.campaign_id,)).fetchall()
+    ''', [g.campaign_id] + hide_params).fetchall()
     by_char = _factions_by_character(db, g.campaign_id)
     db.close()
     out = []
@@ -2840,7 +2877,7 @@ def api_character_detail(char_id):
         LEFT JOIN users mk ON mk.id = c.created_by
         WHERE c.id = ? AND c.campaign_id = ?
     ''', (char_id, g.campaign_id)).fetchone()
-    if character is None:
+    if character is None or npc_is_hidden(character['is_npc'], character['created_by']):
         db.close()
         return api_error(None, 404)
     if not g.is_dm and character['is_npc']:
@@ -2888,12 +2925,13 @@ def api_character_detail(char_id):
 @campaign_access_required
 def battle_view():
     db = get_db()
+    hide_sql, hide_params = npc_filter()
     characters = db.execute('''
         SELECT c.*, g.name AS group_name, g.color AS group_color
         FROM characters c LEFT JOIN groups g ON c.group_id = g.id
-        WHERE c.is_temp_familiar = 0 AND c.campaign_id = ?
+        WHERE c.is_temp_familiar = 0 AND c.campaign_id = ?''' + hide_sql + '''
         ORDER BY lower(c.name) ASC
-    ''', (g.campaign_id,)).fetchall()
+    ''', [g.campaign_id] + hide_params).fetchall()
     by_char = _factions_by_character(db, g.campaign_id)
     db.close()
     characters = [dict(c, factions=by_char.get(c['id'], [])) for c in characters]
@@ -2995,7 +3033,7 @@ def _battle_rows(db, redact_enemies=False):
         r['can_death_save'] = bool(r['is_downed'] and not r['is_npc'] and not r['is_stable'] and (dm or mine))
         if not (dm or mine):
             r['death_successes'] = r['death_failures'] = None
-        r.pop('owner_id', None)
+        r['owner_id_'] = r.pop('owner_id', None)
 
     # compute duplicate-name suffixes, in the order participants were added
     name_counts = {}
@@ -3010,6 +3048,10 @@ def _battle_rows(db, redact_enemies=False):
         else:
             r['display_name'] = n
 
+    if redact_enemies and getattr(g, 'campaign', None) is not None and g.campaign['hide_npcs']:
+        rows = [r for r in rows if not r['is_npc'] or (me is not None and r['owner_id_'] == me)]   # gone from a Player's battle unless they made it
+    for r in rows:
+        r.pop('owner_id_', None)
     if redact_enemies:
         for r in rows:
             # A familiar the DM has marked as an NPC gets the same treatment
@@ -3032,12 +3074,12 @@ def _battle_rows(db, redact_enemies=False):
 BATTLE_LOG_KEEP = 50           # entries kept per campaign; older ones are deleted as new ones arrive
 
 
-def log_battle(db, text, public=None, kind='info'):
+def log_battle(db, text, public=None, kind='info', npc=False):
     """One line in the battle log (the caller commits).  `public` is what Players read: None = the same text, '' = hidden
     from Players (used for enemy numbers they must not see)."""
     try:
-        db.execute('INSERT INTO battle_log (campaign_id, kind, text, public_text) VALUES (?, ?, ?, ?)',
-                   (g.campaign_id, kind, text[:200], None if public is None else public[:200]))
+        db.execute('INSERT INTO battle_log (campaign_id, kind, text, public_text, about_npc) VALUES (?, ?, ?, ?, ?)',
+                   (g.campaign_id, kind, text[:200], None if public is None else public[:200], bool(npc)))
         db.execute('DELETE FROM battle_log WHERE campaign_id = ? AND id NOT IN '
                    '(SELECT id FROM battle_log WHERE campaign_id = ? ORDER BY id DESC LIMIT ?)',
                    (g.campaign_id, g.campaign_id, BATTLE_LOG_KEEP))
@@ -3080,19 +3122,19 @@ def _log_hp_change(db, b, a, intent):
     absorbed, lost, gained = b['temp'] - a['temp'], b['hp'] - a['hp'], a['hp'] - b['hp']
     if intent == 'damage' and absorbed + lost > 0:
         extra = f' ({absorbed} absorbed by temp HP)' if absorbed > 0 else ''
-        log_battle(db, f'{n} took {absorbed + lost} damage{extra}', f'{n} was hurt' if npc else None, 'damage')
+        log_battle(db, f'{n} took {absorbed + lost} damage{extra}', f'{n} was hurt' if npc else None, 'damage', npc=npc)
     elif intent == 'heal' and gained > 0:
-        log_battle(db, f'{n} healed {gained} HP', f'{n} was healed' if npc else None, 'heal')
+        log_battle(db, f'{n} healed {gained} HP', f'{n} was healed' if npc else None, 'heal', npc=npc)
     elif intent == 'set' and a['hp'] != b['hp']:
         sign = '+' if gained > 0 else '\u2212'
         log_battle(db, f"{n}'s HP set to {a['hp']} ({sign}{abs(gained)})",
-                   (f'{n} was healed' if gained > 0 else f'{n} was hurt') if npc else None, 'heal' if gained > 0 else 'damage')
+                   (f'{n} was healed' if gained > 0 else f'{n} was hurt') if npc else None, 'heal' if gained > 0 else 'damage', npc=npc)
     if b['dead'] and not a['dead']:
-        log_battle(db, f'{n} was revived', None, 'revive')
+        log_battle(db, f'{n} was revived', None, 'revive', npc=npc)
     elif b['hp'] <= 0 and a['hp'] > 0 and not b['dead']:
-        log_battle(db, f'{n} is back on their feet', None, 'revive')
+        log_battle(db, f'{n} is back on their feet', None, 'revive', npc=npc)
     if b['hp'] > 0 and a['hp'] <= 0 and not a['dead']:
-        log_battle(db, f'{n} is down', None, 'down')
+        log_battle(db, f'{n} is down', None, 'down', npc=npc)
 
 
 def _turn_order(db):
@@ -3204,14 +3246,17 @@ def api_battle_log():
     """The battle log, newest first.  Players get the public wording of enemy events (and none of the hidden ones)."""
     db = get_db()
     try:
-        rows = db.execute('SELECT id, kind, text, public_text, created_at FROM battle_log WHERE campaign_id = ? ORDER BY id DESC LIMIT ?',
+        rows = db.execute('SELECT id, kind, text, public_text, about_npc, created_at FROM battle_log WHERE campaign_id = ? ORDER BY id DESC LIMIT ?',
                           (g.campaign_id, BATTLE_LOG_KEEP)).fetchall()
     except pgerr.UndefinedTable:
         db.rollback()
         rows = []                                           # not migrated yet: an empty log, not an error on the battle page
     db.close()
     out = []
+    hide_npc_lines = npcs_hidden_from_viewer()
     for r in rows:
+        if hide_npc_lines and r['about_npc']:
+            continue
         text = r['text'] if g.is_dm or r['public_text'] is None else r['public_text']
         if text:
             out.append({'id': r['id'], 'kind': r['kind'], 'text': text, 'at': str(r['created_at']).replace(' ', 'T') + 'Z'})      # UTC, shown in the viewer's own time zone
@@ -3225,7 +3270,7 @@ def api_battle_add():
     data = request.get_json(force=True)
     character_id = data.get('character_id')
     db = get_db()
-    char = db.execute('SELECT max_hp, name FROM characters WHERE id = ? AND campaign_id = ?', (character_id, g.campaign_id)).fetchone()
+    char = db.execute('SELECT max_hp, name, is_npc FROM characters WHERE id = ? AND campaign_id = ?', (character_id, g.campaign_id)).fetchone()
     if char is None:
         db.close()
         return api_error('That character could not be found.', 404)
@@ -3234,7 +3279,7 @@ def api_battle_add():
         INSERT INTO battle_participants (character_id, current_hp, initiative, is_dead, sort_order)
         VALUES (?, ?, 0, 0, ?)
     ''', (character_id, char['max_hp'], max_order + 1))
-    log_battle(db, f"{char['name']} joined the battle", None, 'joined')
+    log_battle(db, f"{char['name']} joined the battle", None, 'joined', npc=bool(char['is_npc']))
     db.commit()
     rows = _battle_rows(db)
     db.close()
@@ -3297,7 +3342,7 @@ def api_battle_add_monster():
         max_order += 1
         db.execute('INSERT INTO battle_participants (character_id, current_hp, initiative, is_dead, sort_order) VALUES (?, ?, 0, 0, ?)',
                    (cur.lastrowid, hp, max_order))
-    log_battle(db, f"{c['name']} joined the battle" if count == 1 else f"{count} \u00d7 {c['name']} joined the battle", None, 'joined')
+    log_battle(db, f"{c['name']} joined the battle" if count == 1 else f"{count} \u00d7 {c['name']} joined the battle", None, 'joined', npc=True)
     db.commit()
     rows = _battle_rows(db)
     db.close()
@@ -3406,7 +3451,7 @@ def api_battle_temphp(pid):
     db.execute('UPDATE battle_participants SET temp_hp = ? WHERE id = ?', (value, pid))
     if value != before['temp']:
         log_battle(db, f"{before['name']} has {value} temp HP" if value else f"{before['name']} lost their temp HP",
-                   '' if before['npc'] else None, 'temp')            # an enemy's temp HP is not for Players to see
+                   '' if before['npc'] else None, 'temp', npc=before['npc'])            # an enemy's temp HP is not for Players to see
     db.commit()
     rows = _battle_rows(db)
     db.close()
@@ -3525,7 +3570,7 @@ def api_battle_die(pid):
         return api_error(None, 404)
     db.execute('UPDATE battle_participants SET is_dead = 1 WHERE id = ?', (pid,))
     if not before['dead']:
-        log_battle(db, f"{before['name']} died", None, 'died')
+        log_battle(db, f"{before['name']} died", None, 'died', npc=before['npc'])
     db.commit()
     rows = _battle_rows(db)
     db.close()
@@ -3544,7 +3589,7 @@ def api_battle_revive(pid):
     db.execute('UPDATE battle_participants SET is_dead = 0 WHERE id = ?', (pid,))
     _reset_death_saves(db, pid, force=True)                 # a revived character starts the count again
     if before['dead']:
-        log_battle(db, f"{before['name']} was revived", None, 'revive')
+        log_battle(db, f"{before['name']} was revived", None, 'revive', npc=before['npc'])
     db.commit()
     rows = _battle_rows(db)
     db.close()
@@ -3648,17 +3693,17 @@ def api_battle_conditions(pid):
     now_std = [k for k in _CONDITION_KEYS if k in wanted]
     for k in now_std:
         if k not in before['conditions']:
-            log_battle(db, f"{before['name']} is now {labels[k]}", None, 'condition')
+            log_battle(db, f"{before['name']} is now {labels[k]}", None, 'condition', npc=before['npc'])
     for k in before['conditions']:
         if k not in now_std:
-            log_battle(db, f"{before['name']} is no longer {labels[k]}", None, 'condition')
+            log_battle(db, f"{before['name']} is no longer {labels[k]}", None, 'condition', npc=before['npc'])
     if custom is not None:
         for c in custom:
             if c not in before['custom']:
-                log_battle(db, f"{before['name']} is now {c}", None, 'condition')
+                log_battle(db, f"{before['name']} is now {c}", None, 'condition', npc=before['npc'])
         for c in before['custom']:
             if c not in custom:
-                log_battle(db, f"{before['name']} is no longer {c}", None, 'condition')
+                log_battle(db, f"{before['name']} is no longer {c}", None, 'condition', npc=before['npc'])
     db.commit()
     rows = _battle_rows(db)
     db.close()
@@ -3731,7 +3776,7 @@ def api_battle_remove(pid):
     db = get_db()
     before = _bp_state(db, pid)
     if _remove_participant(db, pid) and before:
-        log_battle(db, f"{before['name']} left the battle", None, 'left')
+        log_battle(db, f"{before['name']} left the battle", None, 'left', npc=before['npc'])
     db.commit()
     rows = _battle_rows(db)
     db.close()
@@ -3770,6 +3815,11 @@ def activity_view():
     except pgerr.UndefinedTable:
         db.rollback()
         events = []
+    if npcs_hidden_from_viewer():                  # nothing about an NPC (its name is in the text) while they are hidden from Players
+        hidden_ids = {str(r['id']) for r in db.execute('SELECT id, created_by FROM characters WHERE campaign_id = ? AND is_npc = 1',
+                                                      (g.campaign_id,)).fetchall() if npc_is_hidden(1, r['created_by'])}
+        events = [e for e in events if not (e['link'] and e['link'].rstrip('/').rsplit('/', 1)[-1] in hidden_ids and '/characters/' in e['link'])
+                  and not (e['text'] or '').startswith('added the NPC ')]
     db.close()
     return render_template('activity.html', events=events)
 
@@ -3829,10 +3879,11 @@ def _dice_feed(db, after=None, limit=DICE_FEED_LIMIT):
     names = {r['id']: r['username'] for r in db.execute(
         'SELECT u.id, u.username FROM users u JOIN campaign_members cm ON cm.user_id = u.id WHERE cm.campaign_id = ?',
         (g.campaign_id,)).fetchall()}
-    for r in db.execute('SELECT id, name, is_npc FROM characters WHERE campaign_id = ?', (g.campaign_id,)).fetchall():
+    for r in db.execute('SELECT id, name, is_npc, created_by FROM characters WHERE campaign_id = ?', (g.campaign_id,)).fetchall():
         names[('c', r['id'])] = r['name']
         names[('npc', r['id'])] = bool(r['is_npc'])
-    return [_roll_row_out(r, names) for r in rows]
+        names[('gone', r['id'])] = npc_is_hidden(r['is_npc'], r['created_by'])      # an NPC the DM hid: its rolls are not for Players
+    return [_roll_row_out(r, names) for r in rows if not names.get(('gone', r['character_id']))]
 
 
 @app.route('/campaigns/<int:campaign_id>/api/dice/roll', methods=['POST'])
@@ -4752,7 +4803,7 @@ def _reconcile_map_battle(db, map_id):
             db.execute('DELETE FROM map_pins WHERE id = ?', (pin['id'],))
     max_order = db.execute('SELECT COALESCE(MAX(sort_order), -1) AS m FROM battle_participants').fetchone()['m']
     for pin in unplaced:
-        char = db.execute('SELECT max_hp, name FROM characters WHERE id = ? AND campaign_id = ?', (pin['character_id'], g.campaign_id)).fetchone()
+        char = db.execute('SELECT max_hp, name, is_npc FROM characters WHERE id = ? AND campaign_id = ?', (pin['character_id'], g.campaign_id)).fetchone()
         if char is None:
             continue
         pid = next((r['id'] for r in parts if r['character_id'] == pin['character_id'] and r['id'] not in pinned), None)
@@ -4769,7 +4820,7 @@ def _reconcile_map_battle(db, map_id):
         if won:
             pinned.add(pid)
             if created:
-                log_battle(db, f"{char['name']} joined the battle", None, 'joined')      # put on the map: now on the field too
+                log_battle(db, f"{char['name']} joined the battle", None, 'joined', npc=bool(char['is_npc']))      # put on the map: now on the field too
         elif created:                                           # another request got there first: don't leave a stray row
             db.execute('DELETE FROM battle_participants WHERE id = ?', (pid,))
     missing = [r for r in parts if r['id'] not in pinned]
@@ -4798,7 +4849,7 @@ def _map_pins_payload(db, map_id):
         marks = ','.join('?' * len(char_ids))
         for c in db.execute(f'''
             SELECT c.id AS character_id, c.name AS char_name, c.avatar_path, c.max_hp AS char_max_hp, c.is_npc,
-                   c.is_temp_familiar, c.class_key, g.color AS group_color
+                   c.is_temp_familiar, c.class_key, g.color AS group_color, c.created_by AS char_made_by
             FROM characters c LEFT JOIN groups g ON c.group_id = g.id
             WHERE c.campaign_id = ? AND c.id IN ({marks})
         ''', [g.campaign_id] + char_ids).fetchall():
@@ -4814,9 +4865,10 @@ def _map_pins_payload(db, map_id):
     for p in rows:
         if p['pin_type'] == 'character':
             c = chars.get(p['character_id'])
-            if c is None:
+            if c is None or npc_is_hidden(c['is_npc'], c['char_made_by']):
                 continue
             p.update(c)
+            p.pop('char_made_by', None)
             live = None
             if p['participant_id']:
                 live = db.execute('SELECT current_hp, is_dead FROM battle_participants WHERE id = ?', (p['participant_id'],)).fetchone()
@@ -4838,15 +4890,16 @@ def _map_pins_payload(db, map_id):
             # is_npc/HP too, so a familiar the DM has marked as an NPC gets the same PC/NPC-aware treatment.
             live = db.execute('''
                 SELECT bp.current_hp, bp.is_dead, c.id AS character_id, c.name AS char_name, c.avatar_path,
-                       c.max_hp AS char_max_hp, c.is_npc, c.is_temp_familiar, c.class_key, g.color AS group_color
+                       c.max_hp AS char_max_hp, c.is_npc, c.is_temp_familiar, c.class_key, g.color AS group_color, c.created_by AS char_made_by
                 FROM battle_participants bp
                 JOIN characters c ON bp.character_id = c.id
                 LEFT JOIN groups g ON c.group_id = g.id
                 WHERE bp.id = ?
             ''', (p['participant_id'],)).fetchone()
-            if live is None:
+            if live is None or npc_is_hidden(live['is_npc'], live['char_made_by']):
                 continue
             p.update(dict(live))
+            p.pop('char_made_by', None)
             p['char_name'] = battle_display_names.get(p['participant_id'], p['char_name'])
             if not g.is_dm and p['is_npc']:
                 p['hidden_stats'] = True

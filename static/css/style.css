@@ -431,25 +431,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* the campaign's name and a "Change campaign" prompt share one spot; hovering swaps them (and the icon) */
-.cs-icons { display: grid; width: 15px; height: 15px; flex-shrink: 0; }
-.cs-icons svg { grid-area: 1 / 1; transition: opacity 0.16s var(--ease-out), transform 0.16s var(--ease-out); }
-.cs-icon-hover { opacity: 0; transform: scale(0.9); }
-.cs-labels {
-  display: grid; flex: 1; min-width: 0; max-width: 140px; opacity: 1;
-  transition: opacity 0.18s ease, max-width 0.32s cubic-bezier(0.4, 0, 0.2, 1);
-}
-.cs-labels > span { grid-area: 1 / 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: opacity 0.16s var(--ease-out); }
-.cs-hover { opacity: 0; }
-@media (hover: hover) {
-  .campaign-switcher:hover .cs-icon-rest, .campaign-switcher:focus-visible .cs-icon-rest { opacity: 0; transform: scale(0.9); }
-  .campaign-switcher:hover .cs-icon-hover, .campaign-switcher:focus-visible .cs-icon-hover { opacity: 1; transform: none; }
-  .campaign-switcher:hover .campaign-switcher-name, .campaign-switcher:focus-visible .campaign-switcher-name { opacity: 0; }
-  .campaign-switcher:hover .cs-hover, .campaign-switcher:focus-visible .cs-hover { opacity: 1; }
-}
-@media (prefers-reduced-motion: reduce) { .cs-icons svg { transition: opacity 0.01s; transform: none !important; } }
 :root[data-sidebar="collapsed"] .campaign-switcher { justify-content: center; gap: 0; padding: 9px 0; }
-:root[data-sidebar="collapsed"] .cs-labels { opacity: 0; max-width: 0; }
 
 .sidebar-foot { margin-top: auto; padding: 0 6px; transition: padding 0.32s cubic-bezier(0.4, 0, 0.2, 1); }
 :root[data-sidebar="collapsed"] .sidebar-foot { padding: 0; }
@@ -4727,3 +4709,39 @@ input[type="range"]:disabled { opacity: 0.5; cursor: not-allowed; }
 .atk-edit-row { display: grid; grid-template-columns: 4.2em minmax(0, 1fr) minmax(0, 1fr) auto; gap: 6px; align-items: center; padding-block-end: 8px; border-block-end: 1px solid var(--hairline); }
 .atk-edit-row input[name="attack_name"] { grid-column: 1 / -1; }
 .atk-edit-row .btn-icon { grid-column: 4; grid-row: 2; }
+
+
+/* ==========================================================================
+   Sidebar redesign: a campaign card, grouped navigation, a Settings link and a calmer footer
+   ========================================================================== */
+.sidebar-nav { gap: 2px; margin-top: 4px; }
+.campaign-switcher { gap: 10px; padding: 10px 12px; margin-bottom: 6px; border-radius: 12px; background: color-mix(in srgb, var(--brass) 6%, transparent); border-color: var(--hairline-strong); }
+.campaign-switcher:hover { background: color-mix(in srgb, var(--brass) 12%, transparent); }
+.cs-avatar { display: grid; place-items: center; flex: none; inline-size: 34px; block-size: 34px; border-radius: 50%; overflow: hidden; border: 1px solid var(--hairline-strong); color: var(--brass-ink); background: var(--bg-panel-inset); }
+.cs-avatar svg { inline-size: 16px; block-size: 16px; }
+.cs-avatar img { inline-size: 100%; block-size: 100%; object-fit: cover; display: block; }
+.cs-labels { display: grid; gap: 1px; flex: 1; min-inline-size: 0; max-inline-size: 150px; opacity: 1; transition: opacity 0.18s ease, max-width 0.32s cubic-bezier(0.4, 0, 0.2, 1); }
+.cs-labels > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.campaign-switcher-name { color: var(--parchment); font-weight: 600; font-size: 13.5px; line-height: 1.25; white-space: normal !important; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.cs-meta { font: 500 10px var(--font-mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--brass-ink); }
+.cs-swap { display: grid; place-items: center; flex: none; color: var(--parchment-faint); transition: opacity 0.18s ease, color 0.15s ease; }
+.cs-swap svg { inline-size: 14px; block-size: 14px; }
+.campaign-switcher:hover .cs-swap { color: var(--brass-ink); }
+:root[data-sidebar="collapsed"] .campaign-switcher { padding: 8px 0; }
+:root[data-sidebar="collapsed"] .cs-labels, :root[data-sidebar="collapsed"] .cs-swap { display: none; }
+
+.nav-group { display: block; margin: 14px 12px 4px; font: 600 10px var(--font-mono); letter-spacing: 0.16em; text-transform: uppercase; color: var(--parchment-faint); white-space: nowrap; overflow: hidden; transition: opacity 0.18s ease; }
+.campaign-switcher + .nav-group { margin-top: 10px; }
+:root[data-sidebar="collapsed"] .nav-group { block-size: 1px; margin: 12px 10px 8px; padding: 0; font-size: 0; background: var(--hairline); }
+:root[data-sidebar="collapsed"] .campaign-switcher + .nav-group { display: none; }
+.sidebar-nav .nav-form { margin-top: 0; padding-top: 0; border-top: 0; }
+.nav-tab { padding: 8px 12px; }
+
+.user-row { padding: 8px 8px 8px 10px; border-radius: 12px; background: color-mix(in srgb, var(--parchment) 3%, transparent); }
+.user-avatar { inline-size: 26px; block-size: 26px; }
+.foot-label { text-align: center; }
+
+@media (max-width: 880px), (max-height: 500px) and (orientation: landscape) {
+  .nav-group, .cs-avatar, .cs-swap { display: none; }
+}
+.field-hint { margin: 10px 0 0; font-size: 12.5px; line-height: 1.5; color: var(--parchment-faint); }

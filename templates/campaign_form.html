@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon %}
+{% if campaign %}{% set active_page = 'settings' %}{% endif %}
 {% block title %}{{ 'Edit' if campaign else 'New' }} Campaign — Campaign Ledger{% endblock %}
 
 {% block content %}
@@ -127,6 +128,21 @@
 <aside class="campaign-edit-side">
 {% set owner_count = members|selectattr('role', 'equalto', 'owner')|list|length %}
 {% set can_leave_freely = not is_owner or owner_count > 1 %}
+{% if g.real_is_dm or is_owner %}
+<div class="form-panel">
+  <div class="form-section" style="margin-bottom:0;">
+    <p class="form-section-title">Players &amp; NPCs</p>
+    <form method="POST" action="{{ url_for('campaign_npc_visibility', campaign_id=campaign.id) }}" id="npc-visibility-form">{{ csrf_field() }}
+      <label class="toggle-switch">
+        <input type="checkbox" name="hide_npcs" {{ 'checked' if campaign.hide_npcs else '' }} data-auto-submit>
+        <span class="toggle-switch-track"></span>
+        <span class="toggle-switch-label">Hide NPCs from Players</span>
+      </label>
+      <p class="field-hint">While this is on, Players don't see NPCs anywhere: the character list, factions, battle, map, dice log or activity. An NPC a Player made themselves stays visible to them. The DM sees everything.</p>
+    </form>
+  </div>
+</div>
+{% endif %}
 <div class="form-panel members-panel">
   <div class="form-section" style="margin-bottom:0;">
     <p class="form-section-title">Members</p>
