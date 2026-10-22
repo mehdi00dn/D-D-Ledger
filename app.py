@@ -1907,7 +1907,8 @@ def notes_plain_preview(raw, show_hidden=False):
     blocks = [e['t'] for e in notes_parse_entries(raw) if show_hidden or not e['h']]
     if not blocks:
         return ''
-    joined = re.sub(r'<(br|/div|/li|/p)\s*/?>', '\n', '\n'.join(blocks), flags=re.I)
+    # a line break comes before a block opens as well as after it closes: the editor stores "line 1<div>line 2</div>"
+    joined = re.sub(r'<(br|/?div|/?li|/?p|/?ul)\s*/?>', '\n', '\n'.join(blocks), flags=re.I)
     joined = _NOTE_STRIP_TAGS_RE.sub('', joined)
     joined = joined.replace('&lt;', '<').replace('&gt;', '>').replace('&amp;', '&')
     return preview_lines(joined)
@@ -2866,8 +2867,10 @@ def api_character_detail(char_id):
         })
     sheets = db.execute('SELECT * FROM character_sheets WHERE character_id = ? ORDER BY sort_order', (char_id,)).fetchall()
     factions = _factions_by_character(db, g.campaign_id).get(char_id, [])
+    attacks = _attacks_for(db, char_id)
     db.close()
     data = dict(character)
+    data['attacks'] = attacks
     data['factions'] = factions
     data['can_delete'] = can_delete(character['created_by'])
     can_see_hidden = can_see_hidden_notes(character)

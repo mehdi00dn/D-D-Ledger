@@ -88,6 +88,19 @@
             'Roll ' + ab.name + ' saving throw' + (sv.proficient ? ' (proficient)' : '')) + '</div>';
       }).join('') + '</div>';
 
+      if (c.attacks && c.attacks.length) {
+        html += '<div class="peek-section" aria-label="Attacks"><div class="peek-section-title">Attacks</div><ul class="atk-list">' +
+          c.attacks.map(function (a) {
+            return '<li class="atk-row"><span class="atk-name">' + esc(a.name) +
+              (a.damage_type ? '<small class="atk-type">' + esc(a.damage_type) + '</small>' : '') + '</span>' +
+              '<button type="button" class="atk-btn atk-btn--hit" title="Roll ' + esc(a.name) + ' to hit" data-roll-bonus="' + a.attack_bonus +
+              '" data-roll-label="' + esc(a.name) + ' attack"><small>To hit</small><b>' + esc(a.to_hit_text) + '</b></button>' +
+              (a.damage && a.dice_json ? '<button type="button" class="atk-btn atk-btn--dmg" title="Roll ' + esc(a.name) + ' damage" data-roll-bonus="' + a.damage_bonus +
+                '" data-roll-dice="' + esc(a.dice_json) + '" data-roll-label="' + esc(a.name) + ' damage' + (a.damage_type ? ' (' + esc(a.damage_type) + ')' : '') +
+                '"><small>Damage</small><b>' + esc(a.damage) + '</b></button>' : '') + '</li>';
+          }).join('') + '</ul></div>';
+      }
+
       var trained = s.skills.filter(function (k) { return k.level; });
       function skill(k, cls) {
         return '<div class="sheet-skill' + (k.level === 1 ? ' is-prof' : '') + (k.level === 2 ? ' is-expert' : '') + (cls || '') + '" role="button" tabindex="0"' +

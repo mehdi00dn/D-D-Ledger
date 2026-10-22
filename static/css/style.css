@@ -4709,14 +4709,20 @@ input[type="range"]:disabled { opacity: 0.5; cursor: not-allowed; }
 .lv-now { margin-inline-start: 6px; font-size: 10px; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--brass-ink); }
 
 /* Saved attacks (DL-150) */
-.atk-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
-.atk-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 0; border-block-end: 1px solid var(--hairline); }
-.atk-row:last-child { border-block-end: 0; }
-.atk-name { flex: 1 1 8em; font-weight: 600; min-inline-size: 0; overflow-wrap: anywhere; }
-.atk-btn { font: 600 13px var(--font-mono); font-variant-numeric: tabular-nums; padding: 6px 10px; min-block-size: 36px; border: 1px solid var(--hairline); border-radius: 8px; background: transparent; color: inherit; cursor: pointer; }
-.atk-btn small { font: 500 11px var(--font-body, inherit); opacity: .65; }
-.atk-btn:hover, .atk-btn:focus-visible { border-color: var(--accent, currentColor); }
+.atk-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.atk-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--hairline); border-radius: 10px; background: color-mix(in srgb, var(--parchment-faint) 6%, transparent); }
+.atk-name { display: grid; gap: 1px; font-weight: 600; min-inline-size: 0; overflow-wrap: anywhere; }
+.atk-type { font: 500 11px var(--font-mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--parchment-faint); }
+.atk-btn { display: grid; justify-items: center; gap: 0; min-inline-size: 64px; min-block-size: 44px; padding: 4px 10px; border: 1px solid var(--hairline); border-radius: 8px; background: transparent; color: inherit; cursor: pointer; font: inherit; }
+.atk-btn small { font: 500 10px var(--font-mono); letter-spacing: 0.1em; text-transform: uppercase; opacity: .65; }
+.atk-btn b { font: 700 15px var(--font-mono); font-variant-numeric: tabular-nums; }
+.atk-btn--dmg { border-color: color-mix(in srgb, var(--brass-ink, #c9a24b) 55%, transparent); }
+.atk-btn--dmg b { color: var(--brass-ink, #c9a24b); }
+.atk-btn:hover, .atk-btn:focus-visible { border-color: var(--brass-ink, currentColor); background: color-mix(in srgb, var(--brass-ink, #c9a24b) 10%, transparent); }
 .atk-btn.is-rolling { opacity: .5; }
+@media (max-width: 420px) { .atk-row { grid-template-columns: 1fr 1fr; } .atk-name { grid-column: 1 / -1; } }
+.peek-section { display: grid; gap: 6px; }
+.peek-section-title { font: 600 11px var(--font-mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--brass-ink); }
 .atk-edit { display: grid; gap: 8px; margin-block-end: 10px; }
 .atk-edit-row { display: grid; grid-template-columns: 4.2em minmax(0, 1fr) minmax(0, 1fr) auto; gap: 6px; align-items: center; padding-block-end: 8px; border-block-end: 1px solid var(--hairline); }
 .atk-edit-row input[name="attack_name"] { grid-column: 1 / -1; }

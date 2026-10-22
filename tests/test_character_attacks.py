@@ -79,3 +79,18 @@ def test_deleting_the_character_removes_attacks(make_user):
     _save(dm, cid, ch, [('Bow', '4', '1d6', '')])
     dm.post(f'/campaigns/{cid}/characters/{ch}/delete')
     assert _rows(ch) == []
+
+
+def test_popup_detail_carries_attacks(make_user):
+    dm = make_user(); cid = dm.new_campaign()
+    ch = dm.new_character(cid, name='Mira')
+    _save(dm, cid, ch, [('Longsword', '5', '1d8+3', 'slashing')])
+    data = dm.get(f'/campaigns/{cid}/api/characters/{ch}/detail').get_json()
+    a = data['attacks'][0]
+    assert a['name'] == 'Longsword' and a['to_hit_text'] == '+5' and a['damage_bonus'] == 3 and a['dice_json'] == '{"8": 1}'
+
+
+def test_note_preview_breaks_lines_where_the_editor_starts_a_new_one():
+    import app
+    raw = app.sanitize_notes_payload(json.dumps(['"Quote."<div>Second line.</div><div>Third.</div>']))
+    assert app.notes_plain_preview(raw) == '"Quote."\nSecond line.\nThird.'

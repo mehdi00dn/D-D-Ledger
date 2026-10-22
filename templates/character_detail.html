@@ -117,10 +117,10 @@
     <ul class="atk-list">
       {% for a in attacks %}
       <li class="atk-row">
-        <span class="atk-name">{{ a.name }}</span>
-        <button type="button" class="atk-btn" title="Roll {{ a.name }} to hit" data-roll-bonus="{{ a.attack_bonus }}" data-roll-label="{{ a.name }} attack"><small>To hit</small> {{ a.to_hit_text }}</button>
+        <span class="atk-name">{{ a.name }}{% if a.damage_type %}<small class="atk-type">{{ a.damage_type }}</small>{% endif %}</span>
+        <button type="button" class="atk-btn atk-btn--hit" title="Roll {{ a.name }} to hit" data-roll-bonus="{{ a.attack_bonus }}" data-roll-label="{{ a.name }} attack"><small>To hit</small><b>{{ a.to_hit_text }}</b></button>
         {% if a.damage %}
-        <button type="button" class="atk-btn" title="Roll {{ a.name }} damage" data-roll-bonus="{{ a.damage_bonus }}" data-roll-dice='{{ a.dice_json }}' data-roll-label="{{ a.name }} damage{{ ' (' ~ a.damage_type ~ ')' if a.damage_type }}"><small>Damage</small> {{ a.damage }}{% if a.damage_type %} <small>{{ a.damage_type }}</small>{% endif %}</button>
+        <button type="button" class="atk-btn atk-btn--dmg" title="Roll {{ a.name }} damage" data-roll-bonus="{{ a.damage_bonus }}" data-roll-dice='{{ a.dice_json }}' data-roll-label="{{ a.name }} damage{{ ' (' ~ a.damage_type ~ ')' if a.damage_type }}"><small>Damage</small><b>{{ a.damage }}</b></button>
         {% endif %}
       </li>
       {% endfor %}

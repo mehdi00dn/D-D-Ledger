@@ -49,7 +49,7 @@ def test_add_attacks_and_roll_them(shared_server, pw):
     page.goto(f'{base}/campaigns/{cid}/characters/{ch}')
     page.wait_for_selector('.atk-row')
     assert page.locator('.atk-row').count() == 2
-    assert page.locator('.atk-row .atk-name').all_inner_texts() == ['Dagger', 'Longsword']
+    assert page.locator('.atk-row .atk-name').all_inner_texts() == ['Dagger\nPIERCING', 'Longsword\nSLASHING']
     _shot(page, 'attacks-details')
     page.locator('.atk-row').nth(1).get_by_title('Roll Longsword damage').click()
     toast = page.locator('.dice-toast').first
@@ -58,3 +58,27 @@ def test_add_attacks_and_roll_them(shared_server, pw):
     playwright.expect(page.locator('.dice-toast').filter(has_text='Longsword attack').first).to_be_visible(timeout=15000)
     ctx.close()
     assert not [e for e in errors if 'favicon' not in e], errors
+
+
+def test_attacks_in_the_character_popup(shared_server, pw):
+    base = shared_server.url
+    dm = Api(base)
+    cid = dm.campaign('Popup')
+    ch = dm.character(cid, 'Kael', level=1, max_hp=12, armor_class=16)
+    r = dm.post(f'/campaigns/{cid}/characters/{ch}/edit', data={'name': 'Kael', 'level': 1, 'max_hp': 12, 'armor_class': 16, 'attacks_present': '1',
+                'attack_name': ['Longsword', 'Shortbow'], 'attack_bonus': ['5', '4'], 'attack_damage': ['1d8+3', '1d6+2'], 'attack_type': ['slashing', 'piercing']})
+    assert r.status_code == 302
+    errors = []
+    ctx = dm.context(pw, base)
+    page = ctx.new_page()
+    page.on('pageerror', lambda x: errors.append(str(x)))
+    page.goto(f'{base}/campaigns/{cid}/battle')
+    page.wait_for_function('window.CharPeek')
+    page.evaluate(f'CharPeek.open({ch})')
+    page.wait_for_selector('#detail-modal .atk-row')
+    assert page.locator('#detail-modal .atk-row').count() == 2
+    _shot(page, 'attacks-popup')
+    page.locator('#detail-modal .atk-row').first.locator('.atk-btn--dmg').click()
+    playwright.expect(page.locator('.dice-toast').filter(has_text='Longsword damage').first).to_be_visible(timeout=15000)
+    ctx.close()
+    assert not errors, errors
