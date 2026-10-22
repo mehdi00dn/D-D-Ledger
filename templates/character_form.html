@@ -200,6 +200,32 @@
       </div>
     </section>
 
+    <section class="cf-card" aria-labelledby="cf-attacks">
+      <h2 class="cf-title" id="cf-attacks">Attacks <span class="cf-count">to-hit and damage</span></h2>
+      <input type="hidden" name="attacks_present" value="1">
+      <div class="atk-edit" data-attacks>
+        {% for a in (attacks or []) %}
+        <div class="atk-edit-row field">
+          <input type="text" name="attack_name" value="{{ a.name }}" maxlength="40" placeholder="Longsword" aria-label="Attack name">
+          <input type="number" name="attack_bonus" value="{{ a.attack_bonus }}" min="-20" max="99" aria-label="To-hit bonus">
+          <input type="text" name="attack_damage" value="{{ a.damage }}" maxlength="12" placeholder="1d8+3" aria-label="Damage dice">
+          <input type="text" name="attack_type" value="{{ a.damage_type }}" maxlength="16" placeholder="slashing" aria-label="Damage type">
+          <button type="button" class="btn-icon" data-attack-remove title="Remove attack" aria-label="Remove attack">{{ icon('x') }}</button>
+        </div>
+        {% endfor %}
+      </div>
+      <button type="button" class="btn btn-ghost" data-attack-add>{{ icon('plus') }} Add attack</button>
+      <template data-attack-template>
+        <div class="atk-edit-row field">
+          <input type="text" name="attack_name" maxlength="40" placeholder="Longsword" aria-label="Attack name">
+          <input type="number" name="attack_bonus" value="0" min="-20" max="99" aria-label="To-hit bonus">
+          <input type="text" name="attack_damage" maxlength="12" placeholder="1d8+3" aria-label="Damage dice">
+          <input type="text" name="attack_type" maxlength="16" placeholder="slashing" aria-label="Damage type">
+          <button type="button" class="btn-icon" data-attack-remove title="Remove attack" aria-label="Remove attack">{{ icon('x') }}</button>
+        </div>
+      </template>
+    </section>
+
     <section class="cf-card" aria-labelledby="cf-sheets">
       <h2 class="cf-title" id="cf-sheets">Character Sheets <span class="cf-count">multiple images</span></h2>
       <div class="field">
@@ -240,5 +266,6 @@
 {% block extra_scripts %}
 <script src="{{ url_for('static', filename='js/character-proficiencies.js') }}"></script>
 <script src="{{ url_for('static', filename='js/character-levels.js') }}"></script>
+<script src="{{ url_for('static', filename='js/character-attacks.js') }}"></script>
 {% if not character %}<script src="{{ url_for('static', filename='js/reference.js') }}"></script>{% endif %}
 {% endblock %}

@@ -23,6 +23,7 @@ It also runs locally.
 - **Characters and factions.** Profiles with class, abilities, saves, skills, speed,
   avatars, sheet images, notes (individual notes can be hidden from Players), and
   factions (many-to-many). NPC stats are hidden from Players.
+  A character can keep **saved attacks** (`migrations/0032_character_attacks.sql`, up to 12): name, to-hit bonus, damage dice (e.g. `1d8+3`) and damage type, added on the edit form. The sheet shows a **To hit** and a **Damage** button for each; both roll on the server like any other roll and show to everyone in the campaign (damage never uses advantage). Attacks travel with import/export, not with campaign copies.
   Each character keeps its stats **level by level** (`migrations/0031_character_levels.sql`): max HP, AC, the six scores, speed and the
   saving-throw and skill proficiencies are saved for the level you save the form at. On the edit form, changing Level brings back the stats saved for that level (an
   unsaved edit survives going back and forth); a level with nothing saved starts from the current numbers. The character's own

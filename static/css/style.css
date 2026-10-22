@@ -4707,3 +4707,17 @@ input[type="range"]:disabled { opacity: 0.5; cursor: not-allowed; }
 .lv-table thead th:first-child { text-align: start; }
 .lv-table tr.is-current td, .lv-table tr.is-current th { color: var(--brass-ink); background: rgba(201, 162, 75, 0.08); }
 .lv-now { margin-inline-start: 6px; font-size: 10px; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--brass-ink); }
+
+/* Saved attacks (DL-150) */
+.atk-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.atk-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 0; border-block-end: 1px solid var(--hairline); }
+.atk-row:last-child { border-block-end: 0; }
+.atk-name { flex: 1 1 8em; font-weight: 600; min-inline-size: 0; overflow-wrap: anywhere; }
+.atk-btn { font: 600 13px var(--font-mono); font-variant-numeric: tabular-nums; padding: 6px 10px; min-block-size: 36px; border: 1px solid var(--hairline); border-radius: 8px; background: transparent; color: inherit; cursor: pointer; }
+.atk-btn small { font: 500 11px var(--font-body, inherit); opacity: .65; }
+.atk-btn:hover, .atk-btn:focus-visible { border-color: var(--accent, currentColor); }
+.atk-btn.is-rolling { opacity: .5; }
+.atk-edit { display: grid; gap: 8px; margin-block-end: 10px; }
+.atk-edit-row { display: grid; grid-template-columns: 4.2em minmax(0, 1fr) minmax(0, 1fr) auto; gap: 6px; align-items: center; padding-block-end: 8px; border-block-end: 1px solid var(--hairline); }
+.atk-edit-row input[name="attack_name"] { grid-column: 1 / -1; }
+.atk-edit-row .btn-icon { grid-column: 4; grid-row: 2; }

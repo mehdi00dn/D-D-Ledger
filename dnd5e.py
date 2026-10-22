@@ -5,6 +5,7 @@ proficient in), so there is nothing to keep in sync.  The skill list and its abi
 (the same 18 skills dnd5eapi.co serves); they are written out here so the app needs no network at runtime.
 """
 import json
+import re
 
 ABILITIES = [('str', 'STR', 'Strength'), ('dex', 'DEX', 'Dexterity'), ('con', 'CON', 'Constitution'),
              ('int', 'INT', 'Intelligence'), ('wis', 'WIS', 'Wisdom'), ('cha', 'CHA', 'Charisma')]
@@ -113,3 +114,68 @@ def derive(c):
                    'text': signed(mods[k] + (prof if k in saves_with else 0))} for k, s, _n in ABILITIES],
         'skills': skills,
     }
+
+
+# --- Saved attacks (DL-150) -------------------------------------------------------------------------------------
+# An attack is a name, a to-hit bonus and a damage roll of ONE kind of die plus a flat bonus ("1d8+3", "2d6-1").
+# The server rolls it through the same dice route as everything else, so a damage roll needs nothing more than the
+# dice map {sides: count} and the flat bonus that route already accepts.
+DAMAGE_SIDES = (4, 6, 8, 10, 12, 20, 100)
+MAX_DAMAGE_DICE = 30                    # the dice route's per-roll cap
+MAX_ATTACKS = 12
+_DAMAGE_RE = re.compile(r'^\s*(\d{1,2})\s*d\s*(\d{1,3})\s*(?:([+-])\s*(\d{1,3}))?\s*$', re.IGNORECASE)
+
+
+def parse_damage(raw):
+    """'2d6 + 3' -> (2, 6, 3); None when it is not one kind of die plus an optional flat bonus."""
+    m = _DAMAGE_RE.match(raw) if isinstance(raw, str) else None
+    if not m:
+        return None
+    count, sides = int(m.group(1)), int(m.group(2))
+    if not 1 <= count <= MAX_DAMAGE_DICE or sides not in DAMAGE_SIDES:
+        return None
+    bonus = int(m.group(4) or 0) * (-1 if m.group(3) == '-' else 1)
+    return count, sides, bonus
+
+
+def clean_damage(raw):
+    """The normal form of a damage roll ('2d6+3'), or '' when there is none or it is not understood."""
+    parsed = parse_damage(raw)
+    if not parsed:
+        return ''
+    count, sides, bonus = parsed
+    return '%dd%d%s' % (count, sides, ('%+d' % bonus) if bonus else '')
+
+
+def clean_attack(name, bonus, damage, damage_type):
+    """One attack as stored, or None when it has no name."""
+    name = ' '.join(str(name or '').split())[:40]
+    if not name:
+        return None
+    try:
+        bonus = max(-20, min(99, int(str(bonus).strip().lstrip('+') or 0)))
+    except (TypeError, ValueError):
+        bonus = 0
+    return {'name': name, 'attack_bonus': bonus, 'damage': clean_damage(damage),
+            'damage_type': ' '.join(str(damage_type or '').split())[:16]}
+
+
+def clean_attacks(rows):
+    """A list of (name, bonus, damage, type) or dicts -> at most MAX_ATTACKS cleaned attacks, nameless ones dropped."""
+    out = []
+    for r in rows or []:
+        if isinstance(r, dict):
+            r = (r.get('name'), r.get('attack_bonus'), r.get('damage'), r.get('damage_type'))
+        a = clean_attack(*r)
+        if a:
+            out.append(a)
+    return out[:MAX_ATTACKS]
+
+
+def damage_roll_spec(damage):
+    """The dice map and flat bonus for the dice route, e.g. '2d6+3' -> ({'6': 2}, 3); None without a damage roll."""
+    parsed = parse_damage(damage)
+    if not parsed:
+        return None
+    count, sides, bonus = parsed
+    return {str(sides): count}, bonus

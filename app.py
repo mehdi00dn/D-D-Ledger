@@ -2316,9 +2316,10 @@ def character_detail(char_id):
         'SELECT * FROM character_sheets WHERE character_id = ? ORDER BY sort_order', (char_id,)).fetchall()
     factions = _factions_by_character(db, g.campaign_id).get(char_id, [])
     level_history = [] if stats_hidden else _level_history(db, char_id)
+    attacks = [] if stats_hidden else _attacks_for(db, char_id)
     db.close()
     can_edit = g.is_dm or character['created_by'] == session['user_id']
-    return render_template('character_detail.html', character=character, sheets=sheets, factions=factions, level_history=level_history,
+    return render_template('character_detail.html', character=character, sheets=sheets, factions=factions, level_history=level_history, attacks=attacks,
                             notes_html=notes_to_html(character['notes'], show_hidden=can_see_hidden_notes(character)), can_edit=can_edit,
                             can_delete=can_delete(character['created_by']), stats_hidden=stats_hidden,
                             sheet=None if stats_hidden else dnd5e.derive(character))
@@ -2347,6 +2348,7 @@ def character_edit(char_id):
     groups = db.execute('SELECT * FROM groups WHERE campaign_id = ? ORDER BY lower(name) ASC', (g.campaign_id,)).fetchall()
     faction_ids = [f['id'] for f in _factions_by_character(db, g.campaign_id).get(char_id, [])]
     level_history = _level_history(db, char_id)
+    attacks = _attacks_for(db, char_id)
     db.close()
     if character is None:
         return redirect(url_for('characters_list'))
@@ -2355,7 +2357,7 @@ def character_edit(char_id):
                            can_delete_sheets=can_delete(owner_row['created_by']), character_faction_ids=faction_ids,
                            character_save_prof=dnd5e.clean_save_prof(character['save_prof']),
                            character_skill_prof=dnd5e.clean_skill_prof(character['skill_prof']),
-                           level_history={str(r['level']): r for r in level_history})
+                           level_history={str(r['level']): r for r in level_history}, attacks=attacks)
 
 
 # Character classes (DL-43).  Optional on a character.  The text is the hover guide in the picker.
@@ -2478,6 +2480,28 @@ def _save_level_stats(db, char_id, level, max_hp, armor_class, scores, speed, sk
                (char_id, level, max_hp, armor_class, *scores, speed, skill_prof, save_prof))
 
 
+def _attacks_for(db, char_id):
+    """A character's saved attacks in order, each with what its two roll buttons need (DL-150)."""
+    out = []
+    for r in db.execute('SELECT name, attack_bonus, damage, damage_type FROM character_attacks WHERE character_id = ? '
+                        'ORDER BY position, id', (char_id,)).fetchall():
+        a = dict(r)
+        spec = dnd5e.damage_roll_spec(a['damage'])
+        a['dice_json'] = json.dumps(spec[0]) if spec else ''
+        a['damage_bonus'] = spec[1] if spec else 0
+        a['to_hit_text'] = '%+d' % a['attack_bonus']
+        out.append(a)
+    return out
+
+
+def _save_attacks(db, char_id, attacks):
+    """Replace a character's attacks with the (already cleaned) list."""
+    db.execute('DELETE FROM character_attacks WHERE character_id = ?', (char_id,))
+    for pos, a in enumerate(attacks):
+        db.execute('INSERT INTO character_attacks (character_id, position, name, attack_bonus, damage, damage_type) VALUES (?, ?, ?, ?, ?, ?)',
+                   (char_id, pos, a['name'], a['attack_bonus'], a['damage'], a['damage_type']))
+
+
 def _level_history(db, char_id):
     """Every level that has saved stats, lowest first.  Proficiencies come back as real objects (what the form needs)."""
     out = []
@@ -2549,6 +2573,9 @@ def _save_character(db, char_id):
     _set_character_factions(db, char_id, faction_ids)
     _save_level_stats(db, char_id, level, max_hp, armor_class, (str_score, dex_score, con_score, int_score, wis_score, cha_score),
                       speed, skill_prof, save_prof)
+    if form.get('attacks_present') == '1':            # only a form that shows the Attacks card may replace them (DL-150)
+        _save_attacks(db, char_id, dnd5e.clean_attacks(zip(form.getlist('attack_name'), form.getlist('attack_bonus'),
+                                                           form.getlist('attack_damage'), form.getlist('attack_type'))))
 
     # multiple sheet images
     max_order = db.execute('SELECT COALESCE(MAX(sort_order), -1) AS m FROM character_sheets WHERE character_id = ?', (char_id,)).fetchone()['m']
@@ -4010,6 +4037,13 @@ def _build_export_zip(campaign_id, group_ids=None, character_ids=None, download_
         groups = list(groups) + list(extra_groups)
 
     char_ids_for_sheets = [c['id'] for c in characters]
+    attacks_by_char = {}
+    if char_ids_for_sheets:
+        placeholders = ','.join('?' * len(char_ids_for_sheets))
+        for a in db.execute(f'SELECT character_id, name, attack_bonus, damage, damage_type FROM character_attacks '
+                            f'WHERE character_id IN ({placeholders}) ORDER BY character_id, position, id', char_ids_for_sheets).fetchall():
+            attacks_by_char.setdefault(a['character_id'], []).append(
+                {'name': a['name'], 'attack_bonus': a['attack_bonus'], 'damage': a['damage'], 'damage_type': a['damage_type']})
     sheets_by_char = {}
     if char_ids_for_sheets:
         placeholders = ','.join('?' * len(char_ids_for_sheets))
@@ -4049,6 +4083,7 @@ def _build_export_zip(campaign_id, group_ids=None, character_ids=None, download_
                 'speed': dnd5e.clean_speed(c['speed']),
                 'skill_prof': dnd5e.clean_skill_prof(c['skill_prof']),
                 'save_prof': dnd5e.clean_save_prof(c['save_prof']),
+                'attacks': attacks_by_char.get(c['id'], []),
                 'notes': notes_for_viewer(c['notes'], can_see_hidden_notes(c)),
                 'group_name': group_id_to_name.get(c['group_id']),
                 'group_names': [group_id_to_name[i] for i in groups_of.get(c['id'], []) if i in group_id_to_name],
@@ -4214,6 +4249,7 @@ def import_data():
               dnd5e.clean_speed(c.get('speed')), json.dumps(dnd5e.clean_skill_prof(c.get('skill_prof'))),
               json.dumps(dnd5e.clean_save_prof(c.get('save_prof')))))
         new_char_id = cur.lastrowid
+        _save_attacks(db, new_char_id, c['attacks'])
         for pos, gid_ in enumerate(import_group_ids):
             db.execute('INSERT INTO character_groups (character_id, group_id, position) VALUES (?, ?, ?) RETURNING character_id', (new_char_id, gid_, pos))
 

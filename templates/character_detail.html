@@ -111,6 +111,23 @@
     <p class="cd-legend">○ untrained &nbsp; ● proficient &nbsp; ◆ expertise (double proficiency)</p>
   </section>
 
+  {% if attacks %}
+  <section class="cf-card" aria-label="Attacks">
+    <h2 class="cf-title">Attacks <span class="cf-count">{{ attacks|length }}</span></h2>
+    <ul class="atk-list">
+      {% for a in attacks %}
+      <li class="atk-row">
+        <span class="atk-name">{{ a.name }}</span>
+        <button type="button" class="atk-btn" title="Roll {{ a.name }} to hit" data-roll-bonus="{{ a.attack_bonus }}" data-roll-label="{{ a.name }} attack"><small>To hit</small> {{ a.to_hit_text }}</button>
+        {% if a.damage %}
+        <button type="button" class="atk-btn" title="Roll {{ a.name }} damage" data-roll-bonus="{{ a.damage_bonus }}" data-roll-dice='{{ a.dice_json }}' data-roll-label="{{ a.name }} damage{{ ' (' ~ a.damage_type ~ ')' if a.damage_type }}"><small>Damage</small> {{ a.damage }}{% if a.damage_type %} <small>{{ a.damage_type }}</small>{% endif %}</button>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
   {% if level_history|length > 1 %}
   <section class="cf-card" aria-label="Stats by level">
     <h2 class="cf-title">Stats by level <span class="cf-count">{{ level_history|length }} saved</span></h2>
