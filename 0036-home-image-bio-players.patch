@@ -1,0 +1,194 @@
+From 4e037875aa9bc37f16f7f15f78b6889a7bb34a5c Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Fri, 23 Oct 2026 10:57:53 +0330
+Subject: [PATCH] Campaign Home: show the campaign image, full bio and player
+ list
+
+The Home page now opens with the campaign's banner image beside its name
+and bio, and lists the campaign's members with their DM/Player role.
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01Wf44YCbxE54Ru8RTSDGrKF
+---
+ README.md                    |  2 +-
+ app.py                       |  6 +++++-
+ static/css/style.css         | 14 ++++++++++++++
+ templates/campaign_home.html | 30 +++++++++++++++++++++---------
+ tests/test_campaign_home.py  |  8 ++++++++
+ tests/test_e2e_sidebar.py    |  9 +++++++--
+ 6 files changed, 56 insertions(+), 13 deletions(-)
+
+diff --git a/README.md b/README.md
+index 18edfdd..da13bcc 100644
+--- a/README.md
++++ b/README.md
+@@ -150,7 +150,7 @@ feedback, and larger targets on touch screens. Controls that already have their
+ faction chips, skill tri-state, saving-throw pip, dice roll-mode) are excluded in that block's selectors; a new custom
+ control that hides its `<input>` needs adding to the same `:not(:is(...))` list.
+ 
+-Each campaign opens on a Home page (DL-144, `campaign_home`): count tiles, the party, the running battle, the latest dice rolls
++Each campaign opens on a Home page (DL-144, `campaign_home`): the campaign image and bio, count tiles, the player list (DM or Player), the party, the running battle, the latest dice rolls
+ and recent activity. It reuses the Battle, dice and Activity queries, so NPC hiding and enemy redaction apply to it unchanged. A
+ "next session" card is left for DL-152.
+ 
+diff --git a/app.py b/app.py
+index 58cee32..65f35ba 100644
+--- a/app.py
++++ b/app.py
+@@ -3839,6 +3839,10 @@ def campaign_home():
+     party = db.execute('''SELECT c.id, c.name, c.level, c.max_hp, c.armor_class, c.avatar_path, c.class_key
+                            FROM characters c WHERE c.campaign_id = ? AND c.is_temp_familiar = 0 AND c.is_npc = 0
+                            ORDER BY lower(c.name) ASC''', (g.campaign_id,)).fetchall()
++    members = db.execute('''SELECT u.id, u.username, cm.role, cm.status
++                             FROM campaign_members cm JOIN users u ON u.id = cm.user_id
++                             WHERE cm.campaign_id = ?
++                             ORDER BY (cm.status = 'dm') DESC, lower(u.username) ASC''', (g.campaign_id,)).fetchall()
+     counts = db.execute('''SELECT (SELECT COUNT(*) FROM characters c WHERE c.campaign_id = ? AND c.is_temp_familiar = 0''' + hide_sql + ''') AS characters,
+                                   (SELECT COUNT(*) FROM groups WHERE campaign_id = ?) AS factions,
+                                   (SELECT COUNT(*) FROM maps WHERE campaign_id = ?) AS maps''',
+@@ -3849,7 +3853,7 @@ def campaign_home():
+     events = _activity_events(db, 5)
+     rolls = list(reversed(_dice_feed(db, limit=5)))
+     db.close()
+-    return render_template('campaign_home.html', party=party, counts=counts, battle=battle, events=events, rolls=rolls)
++    return render_template('campaign_home.html', members=members, party=party, counts=counts, battle=battle, events=events, rolls=rolls)
+ 
+ 
+ @app.route('/campaigns/<int:campaign_id>/dice')
+diff --git a/static/css/style.css b/static/css/style.css
+index 731b0a1..447d7a3 100644
+--- a/static/css/style.css
++++ b/static/css/style.css
+@@ -4779,3 +4779,17 @@ input[type="range"]:disabled { opacity: 0.5; cursor: not-allowed; }
+ .home-empty { margin: 0; color: var(--parchment-dim); font-size: 13.5px; }
+ .home-more { font-size: 12.5px; }
+ @media (max-width: 880px) { .home-grid { grid-template-columns: minmax(0, 1fr); } }
++
++/* Campaign Home hero: banner image beside the name and bio, then the player list. */
++.home-hero { display: flex; flex-wrap: wrap; gap: 20px; align-items: center; margin-block-end: 16px; }
++.home-banner { flex: 0 0 280px; max-inline-size: 100%; aspect-ratio: 5 / 3; border-radius: var(--radius-m); overflow: hidden; border: 1px solid var(--hairline); }
++.home-banner img { inline-size: 100%; block-size: 100%; object-fit: cover; display: block; }
++.home-hero-text { flex: 1 1 320px; min-inline-size: 0; }
++.home-bio { max-inline-size: 70ch; margin: 8px 0 14px; white-space: pre-line; overflow-wrap: anywhere; color: var(--parchment-dim); }
++.home-hero .home-actions { display: flex; flex-wrap: wrap; gap: 8px; }
++.home-member-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
++.home-member-list li { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 0; border-block-end: 1px solid var(--hairline); }
++.home-member-list li:last-child { border-block-end: 0; }
++.home-member-name { display: inline-flex; align-items: center; gap: 8px; min-inline-size: 0; overflow-wrap: anywhere; }
++.home-member-name svg { flex: 0 0 auto; inline-size: 18px; block-size: 18px; }
++.home-member-name span { min-inline-size: 0; }
+diff --git a/templates/campaign_home.html b/templates/campaign_home.html
+index 849b378..5e09abf 100644
+--- a/templates/campaign_home.html
++++ b/templates/campaign_home.html
+@@ -4,16 +4,19 @@
+ {% block title %}{{ g.campaign.name }} — Campaign Ledger{% endblock %}
+ 
+ {% block content %}
+-<div class="page-header home-header">
+-  <div class="home-title">
++<header class="home-hero">
++  {% if g.campaign.avatar_path %}
++  <div class="home-banner"><img src="{{ url_for('uploaded_file', filename=g.campaign.avatar_path) }}" alt=""></div>
++  {% endif %}
++  <div class="home-hero-text">
+     <h1 class="page-title">{{ g.campaign.name }}</h1>
+-    {% if g.campaign.description %}<p class="page-sub home-desc">{{ g.campaign.description }}</p>{% endif %}
++    {% if g.campaign.description %}<p class="home-bio">{{ g.campaign.description }}</p>{% endif %}
++    <div class="home-actions">
++      <a href="{{ url_for('character_new') }}" class="btn btn-primary">{{ icon('plus') }} New Character</a>
++      <a href="{{ url_for('battle_view') }}" class="btn btn-ghost">{{ icon('swords') }} Battle</a>
++    </div>
+   </div>
+-  <div class="home-actions">
+-    <a href="{{ url_for('character_new') }}" class="btn btn-primary">{{ icon('plus') }} New Character</a>
+-    <a href="{{ url_for('battle_view') }}" class="btn btn-ghost">{{ icon('swords') }} Battle</a>
+-  </div>
+-</div>
++</header>
+ 
+ <div class="home-tiles">
+   <a class="home-tile" href="{{ url_for('characters_list') }}"><b>{{ counts.characters }}</b><span>Characters</span></a>
+@@ -22,7 +25,7 @@
+ </div>
+ 
+ <div class="home-grid">
+-  <section class="cf-card home-party" aria-label="The party">
++<section class="cf-card home-party" aria-label="The party">
+     <h2 class="cf-title">The party <span class="cf-count">{{ party|length }}</span></h2>
+     {% if party %}
+     <ul class="home-party-list">
+@@ -40,6 +43,15 @@
+   </section>
+ 
+   <div class="home-side">
++    <section class="cf-card home-members" aria-label="Players">
++    <h2 class="cf-title">Players <span class="cf-count">{{ members|length }}</span></h2>
++    <ul class="home-member-list">
++      {% for m in members %}
++      <li><span class="home-member-name">{{ icon('user') }}<span>{{ m.username }}</span></span>
++        <span class="role-badge role-badge-{{ m.status }}">{{ 'DM' if m.status == 'dm' else 'Player' }}</span></li>
++      {% endfor %}
++    </ul>
++    </section>
+     <section class="cf-card" aria-label="Battle">
+       <h2 class="cf-title">Battle</h2>
+       {% if battle.count %}
+diff --git a/tests/test_campaign_home.py b/tests/test_campaign_home.py
+index b1049da..7cd42b0 100644
+--- a/tests/test_campaign_home.py
++++ b/tests/test_campaign_home.py
+@@ -25,3 +25,11 @@ def test_opening_the_site_lands_on_home(make_user):
+     dm.get(f'/campaigns/{cid}/home')                      # remembers the campaign
+     r = dm.get('/')
+     assert r.status_code == 302 and r.headers['Location'].endswith(f'/campaigns/{cid}/home')
++
++
++def test_home_shows_the_bio_and_the_player_list(make_user):
++    dm = make_user(); cid = dm.new_campaign()
++    html = dm.get(f'/campaigns/{cid}/home').data.decode()
++    assert 'class="home-bio"' in html                       # new_campaign saves description 'd'
++    assert 'aria-label="Players"' in html and 'role-badge-dm' in html
++    assert 'home-banner' not in html                        # no image uploaded, so no empty frame
+diff --git a/tests/test_e2e_sidebar.py b/tests/test_e2e_sidebar.py
+index 50ebdb6..e583ce4 100644
+--- a/tests/test_e2e_sidebar.py
++++ b/tests/test_e2e_sidebar.py
+@@ -1,12 +1,13 @@
+ """The sidebar in a real browser: grouped links, a Settings link inside a campaign, and the Hide NPCs switch on that page.
+ Set SHOT_DIR to save screenshots."""
+ import os
++import re
+ import pytest
+ if os.path.isdir('/opt/pw-browsers'):
+     os.environ.setdefault('PLAYWRIGHT_BROWSERS_PATH', '/opt/pw-browsers')
+ playwright = pytest.importorskip('playwright.sync_api')
+ from test_e2e_browser import Api, pw                      # noqa: F401  (pw is a fixture)
+-from conftest import BACKEND, q
++from conftest import BACKEND, q, png_bytes
+ 
+ pytestmark = pytest.mark.skipif(BACKEND == 'sqlite', reason='new-code tests')
+ 
+@@ -50,7 +51,9 @@ def test_settings_link_and_hide_npcs_switch(shared_server, pw):
+ def test_campaign_home_page(shared_server, pw):
+     base = shared_server.url
+     dm = Api(base)
+-    cid = dm.campaign('The Ashfall Chronicles')
++    r = dm.post('/campaigns/new', data={'name': 'The Ashfall Chronicles', 'description': 'Ash falls on the Cinder Coast.\nThe party hunts the Ember King.'},
++                files={'avatar': ('c.png', png_bytes(640, 384, (120, 60, 30)), 'image/png')})
++    cid = int(re.search(r'/campaigns/(\d+)/', r.headers['Location']).group(1))
+     ids = [dm.character(cid, n, level=lv, max_hp=hp, armor_class=ac) for n, lv, hp, ac in (('Kael Thorne', 3, 28, 16), ('Nyx', 3, 21, 14), ('Sera Veyl', 3, 24, 14))]
+     r = dm.post(f'/campaigns/{cid}/api/dice/roll', json={'dice': {'20': 1}, 'modifier': 4, 'label': 'Perception', 'character_id': ids[1]})
+     ctx = dm.context(pw, base)
+@@ -59,6 +62,8 @@ def test_campaign_home_page(shared_server, pw):
+     page.on('pageerror', lambda x: errors.append(str(x)))
+     page.goto(f'{base}/campaigns/{cid}/home')
+     assert page.locator('.home-pc').count() == 3
++    assert page.locator('.home-banner img').count() == 1 and 'Ember King' in page.locator('.home-bio').inner_text()
++    assert page.locator('.home-member-list li').count() == 1
+     assert page.locator('.sidebar-nav a.nav-tab.active').inner_text().strip() == 'Home'
+     _shot(page, 'home-desktop')
+     page.set_viewport_size({'width': 390, 'height': 780})
+-- 
+2.43.0
+

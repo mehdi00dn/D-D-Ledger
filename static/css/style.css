@@ -4779,3 +4779,17 @@ input[type="range"]:disabled { opacity: 0.5; cursor: not-allowed; }
 .home-empty { margin: 0; color: var(--parchment-dim); font-size: 13.5px; }
 .home-more { font-size: 12.5px; }
 @media (max-width: 880px) { .home-grid { grid-template-columns: minmax(0, 1fr); } }
+
+/* Campaign Home hero: banner image beside the name and bio, then the player list. */
+.home-hero { display: flex; flex-wrap: wrap; gap: 20px; align-items: center; margin-block-end: 16px; }
+.home-banner { flex: 0 0 280px; max-inline-size: 100%; aspect-ratio: 5 / 3; border-radius: var(--radius-m); overflow: hidden; border: 1px solid var(--hairline); }
+.home-banner img { inline-size: 100%; block-size: 100%; object-fit: cover; display: block; }
+.home-hero-text { flex: 1 1 320px; min-inline-size: 0; }
+.home-bio { max-inline-size: 70ch; margin: 8px 0 14px; white-space: pre-line; overflow-wrap: anywhere; color: var(--parchment-dim); }
+.home-hero .home-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.home-member-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.home-member-list li { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 0; border-block-end: 1px solid var(--hairline); }
+.home-member-list li:last-child { border-block-end: 0; }
+.home-member-name { display: inline-flex; align-items: center; gap: 8px; min-inline-size: 0; overflow-wrap: anywhere; }
+.home-member-name svg { flex: 0 0 auto; inline-size: 18px; block-size: 18px; }
+.home-member-name span { min-inline-size: 0; }

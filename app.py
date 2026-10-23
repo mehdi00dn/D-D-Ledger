@@ -3839,6 +3839,10 @@ def campaign_home():
     party = db.execute('''SELECT c.id, c.name, c.level, c.max_hp, c.armor_class, c.avatar_path, c.class_key
                            FROM characters c WHERE c.campaign_id = ? AND c.is_temp_familiar = 0 AND c.is_npc = 0
                            ORDER BY lower(c.name) ASC''', (g.campaign_id,)).fetchall()
+    members = db.execute('''SELECT u.id, u.username, cm.role, cm.status
+                             FROM campaign_members cm JOIN users u ON u.id = cm.user_id
+                             WHERE cm.campaign_id = ?
+                             ORDER BY (cm.status = 'dm') DESC, lower(u.username) ASC''', (g.campaign_id,)).fetchall()
     counts = db.execute('''SELECT (SELECT COUNT(*) FROM characters c WHERE c.campaign_id = ? AND c.is_temp_familiar = 0''' + hide_sql + ''') AS characters,
                                   (SELECT COUNT(*) FROM groups WHERE campaign_id = ?) AS factions,
                                   (SELECT COUNT(*) FROM maps WHERE campaign_id = ?) AS maps''',
@@ -3849,7 +3853,7 @@ def campaign_home():
     events = _activity_events(db, 5)
     rolls = list(reversed(_dice_feed(db, limit=5)))
     db.close()
-    return render_template('campaign_home.html', party=party, counts=counts, battle=battle, events=events, rolls=rolls)
+    return render_template('campaign_home.html', members=members, party=party, counts=counts, battle=battle, events=events, rolls=rolls)
 
 
 @app.route('/campaigns/<int:campaign_id>/dice')

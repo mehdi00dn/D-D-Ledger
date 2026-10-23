@@ -25,3 +25,11 @@ def test_opening_the_site_lands_on_home(make_user):
     dm.get(f'/campaigns/{cid}/home')                      # remembers the campaign
     r = dm.get('/')
     assert r.status_code == 302 and r.headers['Location'].endswith(f'/campaigns/{cid}/home')
+
+
+def test_home_shows_the_bio_and_the_player_list(make_user):
+    dm = make_user(); cid = dm.new_campaign()
+    html = dm.get(f'/campaigns/{cid}/home').data.decode()
+    assert 'class="home-bio"' in html                       # new_campaign saves description 'd'
+    assert 'aria-label="Players"' in html and 'role-badge-dm' in html
+    assert 'home-banner' not in html                        # no image uploaded, so no empty frame

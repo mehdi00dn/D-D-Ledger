@@ -4,16 +4,19 @@
 {% block title %}{{ g.campaign.name }} — Campaign Ledger{% endblock %}
 
 {% block content %}
-<div class="page-header home-header">
-  <div class="home-title">
+<header class="home-hero">
+  {% if g.campaign.avatar_path %}
+  <div class="home-banner"><img src="{{ url_for('uploaded_file', filename=g.campaign.avatar_path) }}" alt=""></div>
+  {% endif %}
+  <div class="home-hero-text">
     <h1 class="page-title">{{ g.campaign.name }}</h1>
-    {% if g.campaign.description %}<p class="page-sub home-desc">{{ g.campaign.description }}</p>{% endif %}
+    {% if g.campaign.description %}<p class="home-bio">{{ g.campaign.description }}</p>{% endif %}
+    <div class="home-actions">
+      <a href="{{ url_for('character_new') }}" class="btn btn-primary">{{ icon('plus') }} New Character</a>
+      <a href="{{ url_for('battle_view') }}" class="btn btn-ghost">{{ icon('swords') }} Battle</a>
+    </div>
   </div>
-  <div class="home-actions">
-    <a href="{{ url_for('character_new') }}" class="btn btn-primary">{{ icon('plus') }} New Character</a>
-    <a href="{{ url_for('battle_view') }}" class="btn btn-ghost">{{ icon('swords') }} Battle</a>
-  </div>
-</div>
+</header>
 
 <div class="home-tiles">
   <a class="home-tile" href="{{ url_for('characters_list') }}"><b>{{ counts.characters }}</b><span>Characters</span></a>
@@ -22,7 +25,7 @@
 </div>
 
 <div class="home-grid">
-  <section class="cf-card home-party" aria-label="The party">
+<section class="cf-card home-party" aria-label="The party">
     <h2 class="cf-title">The party <span class="cf-count">{{ party|length }}</span></h2>
     {% if party %}
     <ul class="home-party-list">
@@ -40,6 +43,15 @@
   </section>
 
   <div class="home-side">
+    <section class="cf-card home-members" aria-label="Players">
+    <h2 class="cf-title">Players <span class="cf-count">{{ members|length }}</span></h2>
+    <ul class="home-member-list">
+      {% for m in members %}
+      <li><span class="home-member-name">{{ icon('user') }}<span>{{ m.username }}</span></span>
+        <span class="role-badge role-badge-{{ m.status }}">{{ 'DM' if m.status == 'dm' else 'Player' }}</span></li>
+      {% endfor %}
+    </ul>
+    </section>
     <section class="cf-card" aria-label="Battle">
       <h2 class="cf-title">Battle</h2>
       {% if battle.count %}

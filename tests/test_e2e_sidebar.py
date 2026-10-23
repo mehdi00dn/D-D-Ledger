@@ -1,12 +1,13 @@
 """The sidebar in a real browser: grouped links, a Settings link inside a campaign, and the Hide NPCs switch on that page.
 Set SHOT_DIR to save screenshots."""
 import os
+import re
 import pytest
 if os.path.isdir('/opt/pw-browsers'):
     os.environ.setdefault('PLAYWRIGHT_BROWSERS_PATH', '/opt/pw-browsers')
 playwright = pytest.importorskip('playwright.sync_api')
 from test_e2e_browser import Api, pw                      # noqa: F401  (pw is a fixture)
-from conftest import BACKEND, q
+from conftest import BACKEND, q, png_bytes
 
 pytestmark = pytest.mark.skipif(BACKEND == 'sqlite', reason='new-code tests')
 
@@ -50,7 +51,9 @@ def test_settings_link_and_hide_npcs_switch(shared_server, pw):
 def test_campaign_home_page(shared_server, pw):
     base = shared_server.url
     dm = Api(base)
-    cid = dm.campaign('The Ashfall Chronicles')
+    r = dm.post('/campaigns/new', data={'name': 'The Ashfall Chronicles', 'description': 'Ash falls on the Cinder Coast.\nThe party hunts the Ember King.'},
+                files={'avatar': ('c.png', png_bytes(640, 384, (120, 60, 30)), 'image/png')})
+    cid = int(re.search(r'/campaigns/(\d+)/', r.headers['Location']).group(1))
     ids = [dm.character(cid, n, level=lv, max_hp=hp, armor_class=ac) for n, lv, hp, ac in (('Kael Thorne', 3, 28, 16), ('Nyx', 3, 21, 14), ('Sera Veyl', 3, 24, 14))]
     r = dm.post(f'/campaigns/{cid}/api/dice/roll', json={'dice': {'20': 1}, 'modifier': 4, 'label': 'Perception', 'character_id': ids[1]})
     ctx = dm.context(pw, base)
@@ -59,6 +62,8 @@ def test_campaign_home_page(shared_server, pw):
     page.on('pageerror', lambda x: errors.append(str(x)))
     page.goto(f'{base}/campaigns/{cid}/home')
     assert page.locator('.home-pc').count() == 3
+    assert page.locator('.home-banner img').count() == 1 and 'Ember King' in page.locator('.home-bio').inner_text()
+    assert page.locator('.home-member-list li').count() == 1
     assert page.locator('.sidebar-nav a.nav-tab.active').inner_text().strip() == 'Home'
     _shot(page, 'home-desktop')
     page.set_viewport_size({'width': 390, 'height': 780})
