@@ -45,3 +45,23 @@ def test_settings_link_and_hide_npcs_switch(shared_server, pw):
     _shot(page, 'sidebar-phone-more')
     ctx.close()
     assert not errors, errors
+
+
+def test_campaign_home_page(shared_server, pw):
+    base = shared_server.url
+    dm = Api(base)
+    cid = dm.campaign('The Ashfall Chronicles')
+    ids = [dm.character(cid, n, level=lv, max_hp=hp, armor_class=ac) for n, lv, hp, ac in (('Kael Thorne', 3, 28, 16), ('Nyx', 3, 21, 14), ('Sera Veyl', 3, 24, 14))]
+    r = dm.post(f'/campaigns/{cid}/api/dice/roll', json={'dice': {'20': 1}, 'modifier': 4, 'label': 'Perception', 'character_id': ids[1]})
+    ctx = dm.context(pw, base)
+    page = ctx.new_page(); page.set_viewport_size({'width': 1280, 'height': 800})
+    errors = []
+    page.on('pageerror', lambda x: errors.append(str(x)))
+    page.goto(f'{base}/campaigns/{cid}/home')
+    assert page.locator('.home-pc').count() == 3
+    assert page.locator('.sidebar-nav a.nav-tab.active').inner_text().strip() == 'Home'
+    _shot(page, 'home-desktop')
+    page.set_viewport_size({'width': 390, 'height': 780})
+    _shot(page, 'home-phone')
+    ctx.close()
+    assert not errors, errors

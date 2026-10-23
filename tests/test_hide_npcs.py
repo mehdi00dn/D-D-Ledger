@@ -96,3 +96,14 @@ def test_hidden_npc_tokens_leave_a_players_map(make_user):
     _hide(dm, cid)
     assert names(pl) == ['Hero'] and names(dm) == ['Goblin Boss', 'Hero']
     assert all('char_made_by' not in p for p in pl.get(f'/campaigns/{cid}/api/maps/{mid}/pins').get_json())
+
+
+def test_campaign_home_respects_the_switch(make_user):
+    dm, pl, cid, npc, pc = _setup(make_user)
+    dm.json(f'/campaigns/{cid}/api/dice/roll', {'dice': {'20': 1}, 'label': 'Stealth', 'character_id': npc})
+    page = lambda u: u.get(f'/campaigns/{cid}/home').data.decode()
+    assert 'Hero' in page(pl) and 'Goblin Boss' in page(pl)          # the roll by the NPC is in the latest rolls
+    _hide(dm, cid)
+    html = page(pl)
+    assert 'Hero' in html and 'Goblin Boss' not in html
+    assert 'Goblin Boss' in page(dm)

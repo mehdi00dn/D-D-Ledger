@@ -2279,14 +2279,14 @@ def index():
         'SELECT 1 FROM campaign_members WHERE campaign_id = ? AND user_id = ?', (last_id, session['user_id'])
     ).fetchone():
         db.close()
-        return redirect(url_for('characters_list', campaign_id=last_id))
+        return redirect(url_for('campaign_home', campaign_id=last_id))
     campaigns = db.execute(
         'SELECT c.id FROM campaigns c JOIN campaign_members cm ON cm.campaign_id = c.id WHERE cm.user_id = ?',
         (session['user_id'],)
     ).fetchall()
     db.close()
     if len(campaigns) == 1:
-        return redirect(url_for('characters_list', campaign_id=campaigns[0]['id']))
+        return redirect(url_for('campaign_home', campaign_id=campaigns[0]['id']))
     # Zero campaigns, or more than one with no remembered choice: let the
     # person pick (or create their first one) on the campaigns list.
     return redirect(url_for('campaigns_list'))
@@ -3803,25 +3803,53 @@ def api_battle_clear():
     return jsonify([])
 
 
-@app.route('/campaigns/<int:campaign_id>/activity')
-@campaign_access_required
-def activity_view():
-    """What has happened in this campaign lately: members joining or leaving, and things added or removed."""
-    db = get_db()
+def _activity_events(db, limit=100):
+    """Recent campaign events this person may see (NPC events are left out while NPCs are hidden from Players)."""
     try:
         events = db.execute('''SELECT a.id, a.kind, a.text, a.link, a.created_at, COALESCE(NULLIF(u.display_name, ''), u.username) AS actor
                                 FROM campaign_activity a LEFT JOIN users u ON u.id = a.user_id
-                                WHERE a.campaign_id = ? ORDER BY a.id DESC LIMIT 100''', (g.campaign_id,)).fetchall()
+                                WHERE a.campaign_id = ? ORDER BY a.id DESC LIMIT ?''', (g.campaign_id, limit)).fetchall()
     except pgerr.UndefinedTable:
         db.rollback()
-        events = []
+        return []
     if npcs_hidden_from_viewer():                  # nothing about an NPC (its name is in the text) while they are hidden from Players
         hidden_ids = {str(r['id']) for r in db.execute('SELECT id, created_by FROM characters WHERE campaign_id = ? AND is_npc = 1',
                                                       (g.campaign_id,)).fetchall() if npc_is_hidden(1, r['created_by'])}
         events = [e for e in events if not (e['link'] and e['link'].rstrip('/').rsplit('/', 1)[-1] in hidden_ids and '/characters/' in e['link'])
                   and not (e['text'] or '').startswith('added the NPC ')]
+    return events
+
+
+@app.route('/campaigns/<int:campaign_id>/activity')
+@campaign_access_required
+def activity_view():
+    """What has happened in this campaign lately: members joining or leaving, and things added or removed."""
+    db = get_db()
+    events = _activity_events(db)
     db.close()
     return render_template('activity.html', events=events)
+
+
+@app.route('/campaigns/<int:campaign_id>/home')
+@campaign_access_required
+def campaign_home():
+    """The campaign's front page: the party, where the battle stands, what happened lately and the latest rolls."""
+    db = get_db()
+    hide_sql, hide_params = npc_filter()
+    party = db.execute('''SELECT c.id, c.name, c.level, c.max_hp, c.armor_class, c.avatar_path, c.class_key
+                           FROM characters c WHERE c.campaign_id = ? AND c.is_temp_familiar = 0 AND c.is_npc = 0
+                           ORDER BY lower(c.name) ASC''', (g.campaign_id,)).fetchall()
+    counts = db.execute('''SELECT (SELECT COUNT(*) FROM characters c WHERE c.campaign_id = ? AND c.is_temp_familiar = 0''' + hide_sql + ''') AS characters,
+                                  (SELECT COUNT(*) FROM groups WHERE campaign_id = ?) AS factions,
+                                  (SELECT COUNT(*) FROM maps WHERE campaign_id = ?) AS maps''',
+                        [g.campaign_id] + hide_params + [g.campaign_id, g.campaign_id]).fetchone()
+    rows = _battle_rows(db, redact_enemies=not g.is_dm)
+    battle = {'count': len(rows), 'round': rows[0]['battle_round'] if rows else 1,
+              'active': next((r['display_name'] for r in rows if r['is_active']), None)}
+    events = _activity_events(db, 5)
+    rolls = list(reversed(_dice_feed(db, limit=5)))
+    db.close()
+    return render_template('campaign_home.html', party=party, counts=counts, battle=battle, events=events, rolls=rolls)
 
 
 @app.route('/campaigns/<int:campaign_id>/dice')

@@ -150,6 +150,10 @@ feedback, and larger targets on touch screens. Controls that already have their 
 faction chips, skill tri-state, saving-throw pip, dice roll-mode) are excluded in that block's selectors; a new custom
 control that hides its `<input>` needs adding to the same `:not(:is(...))` list.
 
+Each campaign opens on a Home page (DL-144, `campaign_home`): count tiles, the party, the running battle, the latest dice rolls
+and recent activity. It reuses the Battle, dice and Activity queries, so NPC hiding and enemy redaction apply to it unchanged. A
+"next session" card is left for DL-152.
+
 ## Tests
 
 ```

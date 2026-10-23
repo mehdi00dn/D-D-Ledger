@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon, class_icon %}
+{% set active_page = 'home' %}
+{% block title %}{{ g.campaign.name }} — Campaign Ledger{% endblock %}
+
+{% block content %}
+<div class="page-header home-header">
+  <div class="home-title">
+    <h1 class="page-title">{{ g.campaign.name }}</h1>
+    {% if g.campaign.description %}<p class="page-sub home-desc">{{ g.campaign.description }}</p>{% endif %}
+  </div>
+  <div class="home-actions">
+    <a href="{{ url_for('character_new') }}" class="btn btn-primary">{{ icon('plus') }} New Character</a>
+    <a href="{{ url_for('battle_view') }}" class="btn btn-ghost">{{ icon('swords') }} Battle</a>
+  </div>
+</div>
+
+<div class="home-tiles">
+  <a class="home-tile" href="{{ url_for('characters_list') }}"><b>{{ counts.characters }}</b><span>Characters</span></a>
+  <a class="home-tile" href="{{ url_for('factions_list') }}"><b>{{ counts.factions }}</b><span>Factions</span></a>
+  <a class="home-tile" href="{{ url_for('maps_list') }}"><b>{{ counts.maps }}</b><span>Maps</span></a>
+</div>
+
+<div class="home-grid">
+  <section class="cf-card home-party" aria-label="The party">
+    <h2 class="cf-title">The party <span class="cf-count">{{ party|length }}</span></h2>
+    {% if party %}
+    <ul class="home-party-list">
+      {% for c in party[:12] %}
+      <li><a class="home-pc" href="{{ url_for('character_detail', char_id=c.id) }}">
+        <span class="avatar-frame home-pc-avatar">{% if c.avatar_path %}<img src="{{ url_for('uploaded_file', filename=c.avatar_path) }}" alt="">{% else %}{{ icon('user') }}{% endif %}</span>
+        <span class="home-pc-text"><span class="home-pc-name">{{ class_icon(c.class_key) }}{{ c.name }}</span><span class="home-pc-meta">Lvl {{ c.level }} &middot; {{ c.max_hp }} HP &middot; AC {{ c.armor_class }}</span></span>
+      </a></li>
+      {% endfor %}
+    </ul>
+    {% if party|length > 12 %}<p class="cd-legend"><a href="{{ url_for('characters_list') }}">See all {{ party|length }} characters</a></p>{% endif %}
+    {% else %}
+    <p class="home-empty">No player characters yet. <a href="{{ url_for('character_new') }}">Add the first one</a>.</p>
+    {% endif %}
+  </section>
+
+  <div class="home-side">
+    <section class="cf-card" aria-label="Battle">
+      <h2 class="cf-title">Battle</h2>
+      {% if battle.count %}
+      <p class="home-battle"><b>Round {{ battle.round }}</b> &middot; {{ battle.count }} on the field{% if battle.active %}<br>Up now: <b>{{ battle.active }}</b>{% endif %}</p>
+      <a href="{{ url_for('battle_view') }}" class="btn btn-ghost btn-sm">Open battle</a>
+      {% else %}
+      <p class="home-empty">No battle running.{% if g.is_dm %} Add characters from the Battle page.{% endif %}</p>
+      {% endif %}
+    </section>
+
+    <section class="cf-card" aria-label="Latest rolls">
+      <h2 class="cf-title">Latest rolls</h2>
+      {% if rolls %}
+      <ul class="home-list">
+        {% for r in rolls %}
+        <li><span class="home-list-main">{{ r.character or r.who }}{% if r.label %} <small>{{ r.label }}</small>{% endif %}</span><b class="home-roll">{{ r.total }}</b></li>
+        {% endfor %}
+      </ul>
+      <a href="{{ url_for('dice_view') }}" class="home-more">Open the dice</a>
+      {% else %}
+      <p class="home-empty">Nothing rolled yet. <a href="{{ url_for('dice_view') }}">Open the dice</a>.</p>
+      {% endif %}
+    </section>
+  </div>
+
+  <section class="cf-card home-activity" aria-label="Recent activity">
+    <h2 class="cf-title">Recent activity</h2>
+    {% if events %}
+    <ul class="home-list">
+      {% for e in events %}
+      <li><span class="home-list-main"><strong>{{ e.actor or 'A former member' }}</strong> {{ e.text }}</span><small>{{ e.created_at }}</small></li>
+      {% endfor %}
+    </ul>
+    <a href="{{ url_for('activity_view') }}" class="home-more">All activity</a>
+    {% else %}
+    <p class="home-empty">Joins, new characters, factions and maps show up here as they happen.</p>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

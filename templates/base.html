@@ -56,6 +56,9 @@
         </span>
         <span class="cs-swap" aria-hidden="true">{{ icon('swap') }}</span>
       </a>
+      <a href="{{ url_for('campaign_home') }}" data-more class="nav-tab {{ 'active' if active_page == 'home' else '' }}" title="Campaign home">
+        {{ icon('home') }}<span>Home</span>
+      </a>
       <span class="nav-group">Table</span>
       <a href="{{ url_for('characters_list') }}" class="nav-tab {{ 'active' if active_page == 'characters' else '' }}" title="Characters">
         {{ icon('scroll-text') }}<span>Characters</span>
@@ -105,7 +108,7 @@
       {% endif %}
       {% endif %}
       {# Phone only: the bar keeps four places; everything else (and the quick settings) lives in this sheet. #}
-      <button type="button" class="nav-tab nav-more-btn {{ 'active' if active_page in ('factions', 'reference', 'activity', 'settings') else '' }}" id="nav-more-btn" aria-haspopup="dialog" aria-expanded="false" aria-controls="more-sheet" title="More">
+      <button type="button" class="nav-tab nav-more-btn {{ 'active' if active_page in ('home', 'factions', 'reference', 'activity', 'settings') else '' }}" id="nav-more-btn" aria-haspopup="dialog" aria-expanded="false" aria-controls="more-sheet" title="More">
         {{ icon('more') }}<span>More</span>
       </button>
     </nav>
@@ -177,6 +180,7 @@
   <div class="more-grip" id="more-grip"><span class="more-grabber"></span></div>
   {% if g.campaign_id %}
   <div class="more-links">
+    <a href="{{ url_for('campaign_home') }}" class="more-link {{ 'active' if active_page == 'home' else '' }}">{{ icon('home') }}<span>Home</span></a>
     <a href="{{ url_for('factions_list') }}" class="more-link {{ 'active' if active_page == 'factions' else '' }}">{{ icon('faction') }}<span>Factions</span></a>
     <a href="{{ url_for('reference_view') }}" class="more-link {{ 'active' if active_page == 'reference' else '' }}">{{ icon('book-open') }}<span>Reference</span></a>
     {% if g.real_is_dm %}

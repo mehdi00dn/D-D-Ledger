@@ -53,7 +53,7 @@ POLICY = {
     'factions_list': MEMBER, 'faction_detail': MEMBER,
     'faction_new': DM, 'faction_edit': DM, 'faction_delete': OWNER, 'faction_member_remove': DM,
     'api_characters': MEMBER, 'api_character_detail': MEMBER,
-    'dice_view': MEMBER, 'activity_view': MEMBER, 'dice_roll': MEMBER, 'dice_rolls': MEMBER, 'reference_view': MEMBER, 'reference_search': MEMBER, 'reference_detail': MEMBER, 'export_data': MEMBER, 'character_export': MEMBER, 'faction_export': MEMBER,
+    'campaign_home': MEMBER, 'dice_view': MEMBER, 'activity_view': MEMBER, 'dice_roll': MEMBER, 'dice_rolls': MEMBER, 'reference_view': MEMBER, 'reference_search': MEMBER, 'reference_detail': MEMBER, 'export_data': MEMBER, 'character_export': MEMBER, 'faction_export': MEMBER,
     'import_data': MEMBER,
     # --- battle ---  (api_battle_death_save: DM, or the Player who made the character; the matrix's Player did not -> refused; tests/test_death_saves.py covers the maker)
     'battle_view': MEMBER, 'api_battle_list': MEMBER, 'api_battle_log': MEMBER,
