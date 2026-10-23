@@ -4793,3 +4793,44 @@ input[type="range"]:disabled { opacity: 0.5; cursor: not-allowed; }
 .home-member-name { display: inline-flex; align-items: center; gap: 8px; min-inline-size: 0; overflow-wrap: anywhere; }
 .home-member-name svg { flex: 0 0 auto; inline-size: 18px; block-size: 18px; }
 .home-member-name span { min-inline-size: 0; }
+
+/* Campaign Home, visual pass: the campaign image becomes a wide cover with the name set over it;
+   the party are portrait cards; activity reads as a timeline. */
+.home-hero { position: relative; display: block; margin-block-end: 22px; padding: 22px 0 4px; }
+.home-hero.has-banner { padding: 0; border-radius: var(--radius-m); overflow: hidden; border: 1px solid var(--hairline); min-block-size: 280px; display: flex; align-items: flex-end; box-shadow: var(--shadow-deep); }
+.home-hero.has-banner .home-banner { position: absolute; inset: 0; flex: none; max-inline-size: none; aspect-ratio: auto; border: 0; border-radius: 0; }
+.home-hero.has-banner .home-banner img { filter: saturate(0.9) brightness(0.72); }
+.home-hero.has-banner .home-banner::after { content: ''; position: absolute; inset: 0; background: linear-gradient(to top, rgb(10 12 20 / 0.94) 0%, rgb(10 12 20 / 0.7) 45%, rgb(10 12 20 / 0.1) 100%); }
+.home-hero.has-banner .home-hero-text { position: relative; inline-size: 100%; padding: 28px 28px 22px; }
+.home-name { margin: 0; font: 600 clamp(30px, 4.2vw, 46px)/1.08 var(--font-display, var(--font-serif, inherit)); letter-spacing: -0.01em; color: var(--parchment); text-wrap: balance; }
+.home-hero.has-banner .home-name { text-shadow: 0 2px 18px rgb(0 0 0 / 0.6); }
+.home-hero .home-bio { margin: 10px 0 0; max-inline-size: 62ch; line-height: 1.6; color: color-mix(in srgb, var(--parchment) 82%, transparent); }
+.home-hero-foot { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px 24px; margin-block-start: 18px; }
+.home-hero .home-tiles { display: flex; gap: 22px; margin: 0; max-inline-size: none; }
+.home-hero .home-tile { display: flex; align-items: baseline; gap: 7px; padding: 0; border: 0; background: none; border-radius: 0; }
+.home-hero .home-tile b { font-size: 20px; }
+.home-hero .home-tile span { font-size: 11px; }
+.home-hero .home-tile:hover span, .home-hero .home-tile:focus-visible span { color: var(--brass-bright-ink); }
+.home-hero .home-tile:focus-visible { outline: 2px solid var(--brass); outline-offset: 4px; border-radius: 4px; }
+.home-party-list { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+.home-pc { flex-direction: column; text-align: center; gap: 8px; padding: 16px 10px 12px; background: var(--bg-panel-inset); transition: border-color .15s, transform .15s; }
+.home-pc:hover, .home-pc:focus-visible { transform: translateY(-2px); }
+.home-pc-avatar { inline-size: 68px; block-size: 68px; }
+.home-pc-avatar svg { inline-size: 28px; block-size: 28px; }
+.home-pc-name { display: inline-flex; align-items: center; justify-content: center; gap: 6px; max-inline-size: 100%; font: 600 15px/1.2 var(--font-body, inherit); }
+.home-pc-name > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.home-pc-stats { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 10px; font: 500 11px var(--font-mono); color: var(--parchment-faint); }
+.home-pc-lvl { color: var(--brass-bright-ink); }
+.home-roll { font-size: 20px; }
+.home-activity .home-list { position: relative; padding-inline-start: 18px; }
+.home-activity .home-list::before { content: ''; position: absolute; inset-block: 10px; inset-inline-start: 4px; inline-size: 1px; background: var(--hairline-strong); }
+.home-activity .home-list li { position: relative; border-block-end: 0; padding-block: 8px; }
+.home-activity .home-list li::before { content: ''; position: absolute; inset-inline-start: -18px; inset-block-start: 15px; inline-size: 9px; block-size: 9px; border-radius: 50%; background: var(--brass); box-shadow: 0 0 0 3px var(--bg-panel); }
+@media (max-width: 600px) {
+  .home-hero.has-banner { min-block-size: 240px; }
+  .home-hero.has-banner .home-hero-text { padding: 20px 16px 16px; }
+  .home-hero .home-tiles { gap: 16px; }
+}
+@media (prefers-reduced-motion: reduce) { .home-pc { transition: none; } .home-pc:hover, .home-pc:focus-visible { transform: none; } }
+.home-main { display: grid; gap: 16px; min-inline-size: 0; }
+.home-activity { grid-column: auto; }

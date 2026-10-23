@@ -4,27 +4,29 @@
 {% block title %}{{ g.campaign.name }} — Campaign Ledger{% endblock %}
 
 {% block content %}
-<header class="home-hero">
+<header class="home-hero{{ ' has-banner' if g.campaign.avatar_path else '' }}">
   {% if g.campaign.avatar_path %}
   <div class="home-banner"><img src="{{ url_for('uploaded_file', filename=g.campaign.avatar_path) }}" alt=""></div>
   {% endif %}
   <div class="home-hero-text">
-    <h1 class="page-title">{{ g.campaign.name }}</h1>
+    <h1 class="home-name">{{ g.campaign.name }}</h1>
     {% if g.campaign.description %}<p class="home-bio">{{ g.campaign.description }}</p>{% endif %}
-    <div class="home-actions">
-      <a href="{{ url_for('character_new') }}" class="btn btn-primary">{{ icon('plus') }} New Character</a>
-      <a href="{{ url_for('battle_view') }}" class="btn btn-ghost">{{ icon('swords') }} Battle</a>
+    <div class="home-hero-foot">
+      <div class="home-actions">
+        <a href="{{ url_for('character_new') }}" class="btn btn-primary">{{ icon('plus') }} New Character</a>
+        <a href="{{ url_for('battle_view') }}" class="btn btn-ghost">{{ icon('swords') }} Battle</a>
+      </div>
+      <nav class="home-tiles" aria-label="Campaign contents">
+        <a class="home-tile" href="{{ url_for('characters_list') }}"><b>{{ counts.characters }}</b><span>Characters</span></a>
+        <a class="home-tile" href="{{ url_for('factions_list') }}"><b>{{ counts.factions }}</b><span>Factions</span></a>
+        <a class="home-tile" href="{{ url_for('maps_list') }}"><b>{{ counts.maps }}</b><span>Maps</span></a>
+      </nav>
     </div>
   </div>
 </header>
 
-<div class="home-tiles">
-  <a class="home-tile" href="{{ url_for('characters_list') }}"><b>{{ counts.characters }}</b><span>Characters</span></a>
-  <a class="home-tile" href="{{ url_for('factions_list') }}"><b>{{ counts.factions }}</b><span>Factions</span></a>
-  <a class="home-tile" href="{{ url_for('maps_list') }}"><b>{{ counts.maps }}</b><span>Maps</span></a>
-</div>
-
 <div class="home-grid">
+<div class="home-main">
 <section class="cf-card home-party" aria-label="The party">
     <h2 class="cf-title">The party <span class="cf-count">{{ party|length }}</span></h2>
     {% if party %}
@@ -32,7 +34,8 @@
       {% for c in party[:12] %}
       <li><a class="home-pc" href="{{ url_for('character_detail', char_id=c.id) }}">
         <span class="avatar-frame home-pc-avatar">{% if c.avatar_path %}<img src="{{ url_for('uploaded_file', filename=c.avatar_path) }}" alt="">{% else %}{{ icon('user') }}{% endif %}</span>
-        <span class="home-pc-text"><span class="home-pc-name">{{ class_icon(c.class_key) }}{{ c.name }}</span><span class="home-pc-meta">Lvl {{ c.level }} &middot; {{ c.max_hp }} HP &middot; AC {{ c.armor_class }}</span></span>
+        <span class="home-pc-name">{{ class_icon(c.class_key) }}<span>{{ c.name }}</span></span>
+        <span class="home-pc-stats"><span class="home-pc-lvl">Lvl {{ c.level }}</span><span>{{ c.max_hp }} HP</span><span>AC {{ c.armor_class }}</span></span>
       </a></li>
       {% endfor %}
     </ul>
@@ -41,6 +44,21 @@
     <p class="home-empty">No player characters yet. <a href="{{ url_for('character_new') }}">Add the first one</a>.</p>
     {% endif %}
   </section>
+
+  <section class="cf-card home-activity" aria-label="Recent activity">
+    <h2 class="cf-title">Recent activity</h2>
+    {% if events %}
+    <ul class="home-list">
+      {% for e in events %}
+      <li><span class="home-list-main"><strong>{{ e.actor or 'A former member' }}</strong> {{ e.text }}</span><small>{{ e.created_at }}</small></li>
+      {% endfor %}
+    </ul>
+    <a href="{{ url_for('activity_view') }}" class="home-more">All activity</a>
+    {% else %}
+    <p class="home-empty">Joins, new characters, factions and maps show up here as they happen.</p>
+    {% endif %}
+  </section>
+</div>
 
   <div class="home-side">
     <section class="cf-card home-members" aria-label="Players">
@@ -77,18 +95,5 @@
     </section>
   </div>
 
-  <section class="cf-card home-activity" aria-label="Recent activity">
-    <h2 class="cf-title">Recent activity</h2>
-    {% if events %}
-    <ul class="home-list">
-      {% for e in events %}
-      <li><span class="home-list-main"><strong>{{ e.actor or 'A former member' }}</strong> {{ e.text }}</span><small>{{ e.created_at }}</small></li>
-      {% endfor %}
-    </ul>
-    <a href="{{ url_for('activity_view') }}" class="home-more">All activity</a>
-    {% else %}
-    <p class="home-empty">Joins, new characters, factions and maps show up here as they happen.</p>
-    {% endif %}
-  </section>
 </div>
 {% endblock %}
