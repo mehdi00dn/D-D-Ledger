@@ -1,0 +1,20 @@
+{# One note box: a small rich-text editor (bold, italic, bullets).  Shared by the campaign bio and campaign notes;
+   static/js/app.js (initNotesEditor) turns the boxes into the JSON the server stores.  mode='bio' is a single box with
+   no "hidden from players" switch and no remove button. #}
+{% from "_icons.html" import icon %}
+{% macro note_block(content='', hidden=False, mode='notes', placeholder='') %}
+<div class="note-block" data-note-block>
+  <div class="note-toolbar">
+    <button type="button" class="note-tool-btn" data-cmd="bold" title="Bold" aria-label="Bold">{{ icon('bold') }}</button>
+    <button type="button" class="note-tool-btn" data-cmd="italic" title="Italic" aria-label="Italic">{{ icon('italic') }}</button>
+    <button type="button" class="note-tool-btn" data-cmd="insertUnorderedList" title="Bullet list" aria-label="Bullet list">{{ icon('list') }}</button>
+    {% if mode != 'bio' %}
+    <label class="note-hidden-toggle" title="Players will not see this note; only the DM and the campaign owners can.">
+      <input type="checkbox" data-note-hidden{{ ' checked' if hidden else '' }}> {{ icon('lock') }} Hidden from players
+    </label>
+    <button type="button" class="note-remove-btn btn-icon" data-note-remove title="Remove this note" aria-label="Remove this note">{{ icon('x') }}</button>
+    {% endif %}
+  </div>
+  <div class="note-editor" contenteditable="true" role="textbox" aria-multiline="true" data-placeholder="{{ placeholder }}">{{ content | safe }}</div>
+</div>
+{% endmacro %}

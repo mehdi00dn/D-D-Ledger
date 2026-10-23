@@ -77,11 +77,9 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // ---- Character notes: multi-box rich text editor (bold/italic/bullet list) ----
-  const noteBlocks = document.getElementById('note-blocks');
+  // The same editor serves a character's notes, the campaign bio (one box) and the campaign notes.
+  function initNotesEditor(noteBlocks, addNoteBtn, notesHiddenInput, noteTemplate) {
   if (noteBlocks) {
-    const addNoteBtn = document.getElementById('add-note-btn');
-    const notesHiddenInput = document.getElementById('notes-hidden-input');
-    const noteTemplate = document.getElementById('note-block-template');
     const form = noteBlocks.closest('form');
 
     // Use <div> per line on Enter (not the default <p> in some browsers) so line
@@ -180,6 +178,11 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     }
   }
+  }
+  const byId = (id) => document.getElementById(id);
+  initNotesEditor(byId('note-blocks'), byId('add-note-btn'), byId('notes-hidden-input'), byId('note-block-template'));
+  initNotesEditor(byId('bio-blocks'), null, byId('bio-hidden-input'), null);
+  initNotesEditor(byId('campnotes-blocks'), byId('campnotes-add'), byId('campnotes-hidden'), byId('campnotes-template'));
 });
 
 

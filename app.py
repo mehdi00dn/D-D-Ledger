@@ -1200,7 +1200,7 @@ def campaigns_list():
 def campaign_new():
     if request.method == 'POST':
         name = request.form.get('name', '').strip() or 'Untitled Campaign'
-        description = request.form.get('description', '').strip()
+        description = sanitize_bio(request.form.get('description'))
         avatar_path = save_upload_field('avatar', 'avatars')
         setting = _resolve_campaign_setting(request.form)
         status = _campaign_status_field(request.form)
@@ -1230,9 +1230,9 @@ def campaign_new():
         db.commit()
         db.close()
         session['last_campaign_id'] = campaign_id
-        return redirect(url_for('characters_list', campaign_id=campaign_id))
+        return redirect(url_for('campaign_home', campaign_id=campaign_id))
     setting_preset, setting_custom = _split_campaign_setting(None)
-    return render_template('campaign_form.html', campaign=None, members=None,
+    return render_template('campaign_form.html', campaign=None, members=None, bio_entries=[{'t': '', 'h': False}], notes_entries=[{'t': '', 'h': False}], assignable=[],
                             setting_preset=setting_preset, setting_custom=setting_custom)
 
 
@@ -1244,7 +1244,7 @@ def campaign_edit():
         if g.campaign_role != 'owner':
             abort(403)
         name = request.form.get('name', '').strip() or 'Untitled Campaign'
-        description = request.form.get('description', '').strip()
+        description = sanitize_bio(request.form.get('description'))
         avatar_path = save_upload_field('avatar', 'avatars')
         remove_avatar = request.form.get('remove_avatar') == '1'
         if avatar_path:
@@ -1264,6 +1264,8 @@ def campaign_edit():
             UPDATE campaigns SET name = ?, description = ?, setting = ?, status = ?, access_mode = ?
             WHERE id = ?
         ''', (name, description, setting, status, access_mode, g.campaign_id))
+        if 'notes' in request.form:                         # campaign notes: the same boxes as a character's notes
+            db.execute('UPDATE campaigns SET notes = ? WHERE id = ?', (sanitize_notes_payload(request.form.get('notes')), g.campaign_id))
         if access_mode != 'invite_link':           # leaving invite-link mode kills every outstanding link for good
             db.execute('UPDATE campaign_invite_links SET revoked_at = ' + _UTC_NOW + ' WHERE campaign_id = ? AND revoked_at IS NULL',
                        (g.campaign_id,))
@@ -1289,10 +1291,14 @@ def campaign_edit():
         FROM campaign_invite_links WHERE campaign_id = ? ORDER BY id DESC LIMIT 15
     ''', (g.campaign_id,)).fetchall() if g.campaign_role == 'owner' and campaign['access_mode'] == 'invite_link' else []
     storage = quotas.summary(db, session['user_id'], g.campaign_id)
+    assignable = db.execute('SELECT id, name, is_npc, player_id FROM characters WHERE campaign_id = ? AND is_temp_familiar = 0 '
+                            'ORDER BY is_npc, lower(name)', (g.campaign_id,)).fetchall() if (g.real_is_dm or g.campaign_role == 'owner') else []
     db.close()
     new_invite_link = session.pop('new_invite_link', None) if g.campaign_role == 'owner' else None
     setting_preset, setting_custom = _split_campaign_setting(campaign['setting'])
-    return render_template('campaign_form.html', campaign=campaign, members=members, invitations=invitations,
+    return render_template('campaign_form.html', campaign=campaign, members=members, invitations=invitations, assignable=assignable,
+                            bio_entries=notes_parse_entries(campaign['description']) or [{'t': '', 'h': False}],
+                            notes_entries=notes_parse_entries(campaign['notes']) or [{'t': '', 'h': False}],
                             invite_links=invite_links, new_invite_link=new_invite_link, storage=storage,
                             setting_preset=setting_preset, setting_custom=setting_custom)
 
@@ -1708,6 +1714,33 @@ def campaign_npc_visibility():
     return redirect(url_for('campaign_edit', campaign_id=g.campaign_id))
 
 
+@app.route('/campaigns/<int:campaign_id>/members/<int:user_id>/characters', methods=['POST'])
+@campaign_access_required
+def campaign_member_characters(user_id):
+    """The DM or an owner chooses which characters a member plays.  That member can then edit them and move their map
+    tokens.  A character has at most one player, so choosing it here takes it from whoever had it."""
+    if not (g.real_is_dm or g.campaign_role == 'owner'):
+        abort(403)
+    db = get_db()
+    if db.execute('SELECT 1 FROM campaign_members WHERE campaign_id = ? AND user_id = ?', (g.campaign_id, user_id)).fetchone() is None:
+        db.close()
+        abort(404)
+    wanted = set()
+    for raw in request.form.getlist('character_ids'):
+        try:
+            wanted.add(int(raw))
+        except ValueError:
+            continue
+    valid = {r['id'] for r in db.execute('SELECT id FROM characters WHERE campaign_id = ? AND is_temp_familiar = 0', (g.campaign_id,)).fetchall()}
+    wanted &= valid
+    db.execute('UPDATE characters SET player_id = NULL WHERE campaign_id = ? AND player_id = ?', (g.campaign_id, user_id))
+    for cid in wanted:
+        db.execute('UPDATE characters SET player_id = ? WHERE id = ? AND campaign_id = ?', (user_id, cid, g.campaign_id))
+    db.commit()
+    db.close()
+    return redirect(url_for('campaign_edit', campaign_id=g.campaign_id) + '#member-list')
+
+
 @app.route('/campaigns/<int:campaign_id>/members/<int:user_id>/make-owner', methods=['POST'])
 @campaign_access_required
 def campaign_member_make_owner(user_id):
@@ -1866,6 +1899,22 @@ def sanitize_notes_payload(raw):
     return json.dumps(cleaned)
 
 
+def sanitize_bio(raw):
+    """The campaign bio: bold/italic/list text in the same storage format as notes (one box).  Plain text, including
+    text that happens to be valid JSON such as 123, is kept as plain text."""
+    raw = (raw or '').replace('\x00', '').strip()
+    if not raw:
+        return ''
+    try:
+        parsed = json.loads(raw)
+    except (ValueError, TypeError):
+        parsed = None
+    if isinstance(parsed, list):
+        out = sanitize_notes_payload(raw)
+        return '' if out == '[]' else out
+    return json.dumps([_escape_text(raw).replace('\n', '<br>')])
+
+
 def notes_parse_entries(raw):
     """Parse characters.notes into [{'t': trusted html, 'h': bool hidden-from-Players}, ...],
     one per note box. Plain-string entries (and every note saved before this flag
@@ -1900,12 +1949,23 @@ def notes_parse_blocks(raw):
     return [e['t'] for e in notes_parse_entries(raw)]
 
 
+def owns_character(row):
+    """True when the signed-in member made this character or the DM attached it to them ("played by").
+    Those two may edit it and read its hidden notes; the DM always may.  Works on any row that carries
+    created_by and, when it has one, player_id."""
+    me = session.get('user_id')
+    if me is None:
+        return False
+    keys = row.keys() if hasattr(row, 'keys') else row
+    return bool(row['created_by'] == me or ('player_id' in keys and row['player_id'] == me))
+
+
 def can_see_hidden_notes(character):
-    """The DM and the character's own creator see every note; other members
+    """The DM and the character's own creator (or the member it is attached to) see every note; other members
     never receive a note flagged hidden. Single source of truth for the rule."""
     if getattr(g, 'previewing', False):      # "View as player" shows exactly what a Player gets, even to the DM who made the NPC
         return False
-    return bool(g.is_dm or character['created_by'] == session.get('user_id'))
+    return bool(g.is_dm or owns_character(character))
 
 
 def notes_for_viewer(raw, can_see_hidden):
@@ -2354,7 +2414,7 @@ def character_detail(char_id):
     level_history = [] if stats_hidden else _level_history(db, char_id)
     attacks = [] if stats_hidden else _attacks_for(db, char_id)
     db.close()
-    can_edit = g.is_dm or character['created_by'] == session['user_id']
+    can_edit = bool(g.is_dm or owns_character(character))
     return render_template('character_detail.html', character=character, sheets=sheets, factions=factions, level_history=level_history, attacks=attacks,
                             notes_html=notes_to_html(character['notes'], show_hidden=can_see_hidden_notes(character)), can_edit=can_edit,
                             can_delete=can_delete(character['created_by']), stats_hidden=stats_hidden,
@@ -2365,14 +2425,14 @@ def character_detail(char_id):
 @campaign_access_required
 def character_edit(char_id):
     db = get_db()
-    owner_row = db.execute('SELECT created_by FROM characters WHERE id = ? AND campaign_id = ?',
+    owner_row = db.execute('SELECT created_by, player_id FROM characters WHERE id = ? AND campaign_id = ?',
                             (char_id, g.campaign_id)).fetchone()
     if owner_row is None:
         db.close()
         return redirect(url_for('characters_list'))
-    # A Player can only edit a character they personally added; the DM can
+    # A Player can only edit a character they personally added or that the DM attached to them; the DM can
     # edit anyone's.
-    if not g.is_dm and owner_row['created_by'] != session['user_id']:
+    if not g.is_dm and not owns_character(owner_row):
         db.close()
         abort(403)
     if request.method == 'POST':
@@ -2998,7 +3058,7 @@ def _battle_rows(db, redact_enemies=False):
     never redacted -- a party can see its own stats."""
     rows = db.execute('''
         SELECT bp.*, c.name AS char_name, c.avatar_path, c.is_npc, c.max_hp AS char_max_hp,
-               c.armor_class AS base_ac, c.is_temp_familiar, c.familiar_icon_key, c.class_key, c.created_by AS owner_id,
+               c.armor_class AS base_ac, c.is_temp_familiar, c.familiar_icon_key, c.class_key, c.created_by AS owner_id, c.player_id AS player_id,
                g.id AS gid, g.name AS group_name, g.color AS group_color
         FROM battle_participants bp
         JOIN characters c ON bp.character_id = c.id
@@ -3028,12 +3088,13 @@ def _battle_rows(db, redact_enemies=False):
     if getattr(g, 'previewing', False):                       # "View as player" sees what a Player who did not make the character sees
         me = None
     for r in rows:
-        mine = me is not None and r['owner_id'] == me
+        mine = me is not None and (r['owner_id'] == me or r.get('player_id') == me)
         r['is_stable'] = bool(r['is_stable'])
         r['can_death_save'] = bool(r['is_downed'] and not r['is_npc'] and not r['is_stable'] and (dm or mine))
         if not (dm or mine):
             r['death_successes'] = r['death_failures'] = None
         r['owner_id_'] = r.pop('owner_id', None)
+        r.pop('player_id', None)
 
     # compute duplicate-name suffixes, in the order participants were added
     name_counts = {}
@@ -3607,13 +3668,13 @@ def api_battle_death_save(pid):
     in the log (the table sees only the outcome: stable, back on 1 HP, died); the DM gets every roll."""
     db = get_db()
     row = db.execute('''SELECT bp.current_hp, bp.is_dead, bp.is_stable, bp.death_successes AS ok, bp.death_failures AS bad,
-                               c.is_npc, c.created_by
+                               c.is_npc, c.created_by, c.player_id
                         FROM battle_participants bp JOIN characters c ON c.id = bp.character_id
                         WHERE bp.id = ? AND c.campaign_id = ?''', (pid, g.campaign_id)).fetchone()
     if row is None:
         db.close()
         return api_error(None, 404)
-    if not (g.is_dm or (row['created_by'] is not None and row['created_by'] == session.get('user_id'))):
+    if not (g.is_dm or owns_character(row)):
         db.close()
         return api_error(None, 403)
     if row['is_npc']:
@@ -3852,8 +3913,13 @@ def campaign_home():
               'active': next((r['display_name'] for r in rows if r['is_active']), None)}
     events = _activity_events(db, 5)
     rolls = list(reversed(_dice_feed(db, limit=5)))
+    played = {}
+    for r in db.execute('SELECT c.id, c.name, c.player_id FROM characters c WHERE c.campaign_id = ? AND c.is_temp_familiar = 0 AND c.player_id IS NOT NULL'
+                        + hide_sql + ' ORDER BY lower(c.name)', [g.campaign_id] + hide_params).fetchall():
+        played.setdefault(r['player_id'], []).append(r)
     db.close()
-    return render_template('campaign_home.html', members=members, party=party, counts=counts, battle=battle, events=events, rolls=rolls)
+    return render_template('campaign_home.html', played=played, bio_html=notes_to_html(g.campaign['description']),
+                           campaign_notes=notes_to_html(g.campaign['notes'], show_hidden=g.is_dm), members=members, party=party, counts=counts, battle=battle, events=events, rolls=rolls)
 
 
 @app.route('/campaigns/<int:campaign_id>/dice')
@@ -4881,7 +4947,8 @@ def _map_pins_payload(db, map_id):
         marks = ','.join('?' * len(char_ids))
         for c in db.execute(f'''
             SELECT c.id AS character_id, c.name AS char_name, c.avatar_path, c.max_hp AS char_max_hp, c.is_npc,
-                   c.is_temp_familiar, c.class_key, g.color AS group_color, c.created_by AS char_made_by
+                   c.is_temp_familiar, c.class_key, g.color AS group_color, c.created_by AS char_made_by,
+                   c.player_id AS char_player_id
             FROM characters c LEFT JOIN groups g ON c.group_id = g.id
             WHERE c.campaign_id = ? AND c.id IN ({marks})
         ''', [g.campaign_id] + char_ids).fetchall():
@@ -4948,8 +5015,8 @@ def _map_pins_payload(db, map_id):
     me = session.get('user_id')
     for p in result:                                        # the client greys out what this person may not move
         p['owner_name'] = owner_names.get(p.get('owner_user_id'))
-        p['can_move'] = bool(g.is_dm or (not m['locked_for_players'] and p.get('owner_user_id') is not None
-                                         and p['owner_user_id'] == me))
+        p['can_move'] = bool(g.is_dm or (not m['locked_for_players'] and me is not None
+                                         and me in (p.get('owner_user_id'), p.get('char_player_id'))))
     return result
 
 
@@ -5001,13 +5068,14 @@ def _pin_name(value):
 def _pin_owned_by_me(db, map_id, pin_id):
     """Token ownership: the DM may touch any token; a Player only the ones the DM attached to them (or that they
     placed themselves).  Returns the pin row, or None when there is no such token on this map."""
-    return db.execute('SELECT owner_user_id FROM map_pins WHERE id = ? AND map_id = ?' + ('' if g.is_dm else ' AND dm_only = 0'),
+    return db.execute('SELECT p.owner_user_id, c.player_id AS char_player_id FROM map_pins p LEFT JOIN characters c ON c.id = p.character_id '
+                      'WHERE p.id = ? AND p.map_id = ?' + ('' if g.is_dm else ' AND p.dm_only = 0'),
                       (pin_id, map_id)).fetchone()
 
 
 def _may_move_pin(pin_row):
-    return bool(g.is_dm or (pin_row is not None and pin_row['owner_user_id'] is not None
-                            and pin_row['owner_user_id'] == session.get('user_id')))
+    me = session.get('user_id')
+    return bool(g.is_dm or (pin_row is not None and me is not None and me in (pin_row['owner_user_id'], pin_row['char_player_id'])))
 
 
 @app.route('/campaigns/<int:campaign_id>/api/maps/<int:map_id>/pins', methods=['POST'])
@@ -5153,7 +5221,8 @@ def api_map_pin_update(map_id, pin_id):
 @map_edit_allowed
 def api_map_pin_delete(map_id, pin_id):
     db = get_db()
-    pin = db.execute('SELECT participant_id, pin_type, owner_user_id, dm_only FROM map_pins WHERE id = ? AND map_id = ?', (pin_id, map_id)).fetchone()
+    pin = db.execute('SELECT p.participant_id, p.pin_type, p.owner_user_id, p.dm_only, c.player_id AS char_player_id FROM map_pins p '
+                     'LEFT JOIN characters c ON c.id = p.character_id WHERE p.id = ? AND p.map_id = ?', (pin_id, map_id)).fetchone()
     if pin and not g.is_dm and (pin['dm_only'] or not _may_move_pin(pin)):
         db.close()
         abort(403)

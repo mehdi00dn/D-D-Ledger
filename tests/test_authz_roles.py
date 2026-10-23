@@ -40,7 +40,7 @@ POLICY = {
     'invitation_accept': LOGIN, 'invitation_decline': LOGIN,
     'uploaded_file': LOGIN, 'upload_sign': LOGIN, 'local_direct_upload': LOGIN, 'local_download': LOGIN,
     # --- campaign management ---
-    'preview_as_player': DM, 'campaign_npc_visibility': DM,
+    'preview_as_player': DM, 'campaign_npc_visibility': DM, 'campaign_member_characters': DM,
     'campaign_edit': {'GET': MEMBER, 'POST': OWNER},
     'campaign_member_add': OWNER, 'campaign_member_uninvite': OWNER,
     'invite_link_create': OWNER, 'invite_link_revoke': OWNER, 'api_member_search': OWNER,

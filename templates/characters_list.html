@@ -126,7 +126,7 @@
 
     <div class="dossier-actions">
       <a href="{{ url_for('character_detail', char_id=c.id) }}" class="btn btn-ghost btn-sm">{{ icon('eye') }} Details</a>
-      {% if g.is_dm or c.created_by == session.user_id %}
+      {% if g.is_dm or c.created_by == session.user_id or c.player_id == session.user_id %}
       <a href="{{ url_for('character_export', char_id=c.id) }}" class="btn-icon" title="Export this character">{{ icon('upload') }}</a>
       {% endif %}
       {% if c.id in deletable %}

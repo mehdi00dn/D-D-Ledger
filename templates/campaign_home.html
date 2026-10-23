@@ -4,30 +4,35 @@
 {% block title %}{{ g.campaign.name }} — Campaign Ledger{% endblock %}
 
 {% block content %}
-<header class="home-hero{{ ' has-banner' if g.campaign.avatar_path else '' }}">
-  {% if g.campaign.avatar_path %}
-  <div class="home-banner"><img src="{{ url_for('uploaded_file', filename=g.campaign.avatar_path) }}" alt=""></div>
-  {% endif %}
-  <div class="home-hero-text">
-    <h1 class="home-name">{{ g.campaign.name }}</h1>
-    {% if g.campaign.description %}<p class="home-bio">{{ g.campaign.description }}</p>{% endif %}
-    <div class="home-hero-foot">
-      <div class="home-actions">
-        <a href="{{ url_for('character_new') }}" class="btn btn-primary">{{ icon('plus') }} New Character</a>
-        <a href="{{ url_for('battle_view') }}" class="btn btn-ghost">{{ icon('swords') }} Battle</a>
-      </div>
-      <nav class="home-tiles" aria-label="Campaign contents">
-        <a class="home-tile" href="{{ url_for('characters_list') }}"><b>{{ counts.characters }}</b><span>Characters</span></a>
-        <a class="home-tile" href="{{ url_for('factions_list') }}"><b>{{ counts.factions }}</b><span>Factions</span></a>
-        <a class="home-tile" href="{{ url_for('maps_list') }}"><b>{{ counts.maps }}</b><span>Maps</span></a>
-      </nav>
-    </div>
-  </div>
-</header>
+{% macro clamped(html, cls) %}
+<div class="clamp {{ cls }}" data-clamp>{{ html | safe }}</div>
+<button type="button" class="clamp-toggle" data-clamp-toggle aria-expanded="false" hidden>Read more</button>
+{% endmacro %}
 
 <div class="home-grid">
 <div class="home-main">
-<section class="cf-card home-party" aria-label="The party">
+  <header class="home-hero{{ ' has-banner' if g.campaign.avatar_path else '' }}">
+    {% if g.campaign.avatar_path %}
+    <div class="home-banner"><img src="{{ url_for('uploaded_file', filename=g.campaign.avatar_path) }}" alt=""></div>
+    {% endif %}
+    <div class="home-hero-text">
+      <h1 class="home-name">{{ g.campaign.name }}</h1>
+      {% if bio_html %}<div class="home-bio">{{ clamped(bio_html, 'home-bio-text') }}</div>{% endif %}
+      <div class="home-hero-foot">
+        <div class="home-actions">
+          <a href="{{ url_for('character_new') }}" class="btn btn-primary">{{ icon('plus') }} New Character</a>
+          <a href="{{ url_for('battle_view') }}" class="btn btn-ghost">{{ icon('swords') }} Battle</a>
+        </div>
+        <nav class="home-tiles" aria-label="Campaign contents">
+          <a class="home-tile" href="{{ url_for('characters_list') }}"><b>{{ counts.characters }}</b><span>Characters</span></a>
+          <a class="home-tile" href="{{ url_for('factions_list') }}"><b>{{ counts.factions }}</b><span>Factions</span></a>
+          <a class="home-tile" href="{{ url_for('maps_list') }}"><b>{{ counts.maps }}</b><span>Maps</span></a>
+        </nav>
+      </div>
+    </div>
+  </header>
+
+  <section class="cf-card home-party" aria-label="The party">
     <h2 class="cf-title">The party <span class="cf-count">{{ party|length }}</span></h2>
     {% if party %}
     <ul class="home-party-list">
@@ -45,6 +50,13 @@
     {% endif %}
   </section>
 
+  {% if campaign_notes %}
+  <section class="cf-card home-notes" aria-label="Campaign notes">
+    <h2 class="cf-title">Campaign notes</h2>
+    {{ clamped(campaign_notes, 'home-notes-text') }}
+  </section>
+  {% endif %}
+
   <section class="cf-card home-activity" aria-label="Recent activity">
     <h2 class="cf-title">Recent activity</h2>
     {% if events %}
@@ -60,40 +72,50 @@
   </section>
 </div>
 
-  <div class="home-side">
-    <section class="cf-card home-members" aria-label="Players">
+<div class="home-side">
+  <section class="cf-card home-members" aria-label="Players">
     <h2 class="cf-title">Players <span class="cf-count">{{ members|length }}</span></h2>
     <ul class="home-member-list">
       {% for m in members %}
-      <li><span class="home-member-name">{{ icon('user') }}<span>{{ m.username }}</span></span>
-        <span class="role-badge role-badge-{{ m.status }}">{{ 'DM' if m.status == 'dm' else 'Player' }}</span></li>
+      <li>
+        <div class="home-member-top"><span class="home-member-name">{{ icon('user') }}<span>{{ m.username }}</span></span>
+          <span class="role-badge role-badge-{{ m.status }}">{{ 'DM' if m.status == 'dm' else 'Player' }}</span></div>
+        {% if played.get(m.id) %}
+        <div class="home-member-chars">{% for c in played[m.id] %}<a href="{{ url_for('character_detail', char_id=c.id) }}">{{ c.name }}</a>{% endfor %}</div>
+        {% endif %}
+      </li>
       {% endfor %}
     </ul>
-    </section>
-    <section class="cf-card" aria-label="Battle">
-      <h2 class="cf-title">Battle</h2>
-      {% if battle.count %}
-      <p class="home-battle"><b>Round {{ battle.round }}</b> &middot; {{ battle.count }} on the field{% if battle.active %}<br>Up now: <b>{{ battle.active }}</b>{% endif %}</p>
-      <a href="{{ url_for('battle_view') }}" class="btn btn-ghost btn-sm">Open battle</a>
-      {% else %}
-      <p class="home-empty">No battle running.{% if g.is_dm %} Add characters from the Battle page.{% endif %}</p>
-      {% endif %}
-    </section>
+    {% if g.real_is_dm or g.campaign_role == 'owner' %}<a class="home-more" href="{{ url_for('campaign_edit') }}#member-list">Attach characters to players</a>{% endif %}
+  </section>
 
-    <section class="cf-card" aria-label="Latest rolls">
-      <h2 class="cf-title">Latest rolls</h2>
-      {% if rolls %}
-      <ul class="home-list">
-        {% for r in rolls %}
-        <li><span class="home-list-main">{{ r.character or r.who }}{% if r.label %} <small>{{ r.label }}</small>{% endif %}</span><b class="home-roll">{{ r.total }}</b></li>
-        {% endfor %}
-      </ul>
-      <a href="{{ url_for('dice_view') }}" class="home-more">Open the dice</a>
-      {% else %}
-      <p class="home-empty">Nothing rolled yet. <a href="{{ url_for('dice_view') }}">Open the dice</a>.</p>
-      {% endif %}
-    </section>
-  </div>
+  <section class="cf-card" aria-label="Battle">
+    <h2 class="cf-title">Battle</h2>
+    {% if battle.count %}
+    <p class="home-battle"><b>Round {{ battle.round }}</b> &middot; {{ battle.count }} on the field{% if battle.active %}<br>Up now: <b>{{ battle.active }}</b>{% endif %}</p>
+    <a href="{{ url_for('battle_view') }}" class="btn btn-ghost btn-sm">Open battle</a>
+    {% else %}
+    <p class="home-empty">No battle running.{% if g.is_dm %} Add characters from the Battle page.{% endif %}</p>
+    {% endif %}
+  </section>
 
+  <section class="cf-card" aria-label="Latest rolls">
+    <h2 class="cf-title">Latest rolls</h2>
+    {% if rolls %}
+    <ul class="home-list">
+      {% for r in rolls %}
+      <li><span class="home-list-main">{{ r.character or r.who }}{% if r.label %} <small>{{ r.label }}</small>{% endif %}</span><b class="home-roll">{{ r.total }}</b></li>
+      {% endfor %}
+    </ul>
+    <a href="{{ url_for('dice_view') }}" class="home-more">Open the dice</a>
+    {% else %}
+    <p class="home-empty">Nothing rolled yet. <a href="{{ url_for('dice_view') }}">Open the dice</a>.</p>
+    {% endif %}
+  </section>
 </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="{{ url_for('static', filename='js/home.js') }}"></script>
 {% endblock %}

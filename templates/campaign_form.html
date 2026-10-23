@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon %}
+{% from "_note_editor.html" import note_block %}
 {% if campaign %}{% set active_page = 'settings' %}{% endif %}
 {% block title %}{{ 'Edit' if campaign else 'New' }} Campaign — Campaign Ledger{% endblock %}
 
@@ -53,10 +54,28 @@
     </div>
 
     <div class="field">
-      <label for="description">Description</label>
-      <textarea id="description" name="description" placeholder="What this campaign is about, its setting, tone..." {{ 'disabled' if not is_owner }}>{{ campaign.description if campaign else '' }}</textarea>
+      <label id="bio-label">Bio</label>
+      {% if is_owner %}
+      <div class="note-blocks bio-editor" id="bio-blocks" aria-labelledby="bio-label">{{ note_block(bio_entries[0].t, False, 'bio', 'What this campaign is about, its setting, tone...') }}</div>
+      <input type="hidden" name="description" id="bio-hidden-input">
+      {% else %}
+      <div class="bio-readonly">{{ bio_entries[0].t | safe }}</div>
+      {% endif %}
     </div>
   </div>
+
+  {% if is_owner and campaign %}
+  <div class="form-section">
+    <p class="form-section-title">Campaign notes</p>
+    <p class="field-hint" style="margin:0 0 10px;">Shown on the campaign's Home page. Mark a note as hidden to keep it to yourself and the other DMs.</p>
+    <div class="note-blocks" id="campnotes-blocks">
+      {% for e in notes_entries %}{{ note_block(e.t, e.h, 'notes', 'Plot threads, house rules, what the party knows...') }}{% endfor %}
+    </div>
+    <button type="button" class="btn btn-ghost btn-sm btn-add-note" id="campnotes-add">{{ icon('plus') }} Add note</button>
+    <input type="hidden" name="notes" id="campnotes-hidden">
+    <template id="campnotes-template">{{ note_block('', False, 'notes', 'Plot threads, house rules, what the party knows...') }}</template>
+  </div>
+  {% endif %}
 
   <div class="form-section">
     <p class="form-section-title">Campaign Details</p>
@@ -177,6 +196,24 @@
           </form>
           {% endif %}
         </span>
+        {% if assignable %}
+        {% set mine = assignable|selectattr('player_id', 'equalto', m.id)|list %}
+        <details class="member-chars">
+          <summary>{{ icon('user') }} {% if mine %}Plays {{ mine|map(attribute='name')|join(', ') }}{% else %}Attach characters{% endif %}</summary>
+          <form method="POST" action="{{ url_for('campaign_member_characters', campaign_id=campaign.id, user_id=m.id) }}">{{ csrf_field() }}
+            <p class="field-hint" style="margin:4px 0 8px;">{{ m.username }} can edit these characters and move their tokens on the maps.</p>
+            <ul class="member-chars-list">
+              {% for c in assignable %}
+              <li><label><input type="checkbox" name="character_ids" value="{{ c.id }}" {{ 'checked' if c.player_id == m.id else '' }}>
+                <span>{{ c.name }}{% if c.is_npc %} <small>NPC</small>{% endif %}{% if c.player_id and c.player_id != m.id %} <small>played by {{ members|selectattr('id', 'equalto', c.player_id)|map(attribute='username')|first }}</small>{% endif %}</span></label></li>
+              {% else %}
+              <li class="field-hint">No characters yet.</li>
+              {% endfor %}
+            </ul>
+            <button type="submit" class="btn btn-primary btn-sm">Save</button>
+          </form>
+        </details>
+        {% endif %}
       </div>
       {% endfor %}
     </div>

@@ -154,6 +154,12 @@ Each campaign opens on a Home page (DL-144, `campaign_home`): the campaign image
 and recent activity. It reuses the Battle, dice and Activity queries, so NPC hiding and enemy redaction apply to it unchanged. A
 "next session" card is left for DL-152.
 
+The campaign bio is stored in the same format as character notes (a JSON list of sanitised bold/italic/bullet HTML boxes in
+`campaigns.description`; old plain-text bios still read fine) and the campaign notes in `campaigns.notes` (migration 0034). Long text on
+Home folds behind "Read more" (`static/js/home.js`). A character can be attached to a member (`characters.player_id`, set by the DM or an
+owner from Settings > Members): `owns_character()` then lets that member edit it, read its hidden notes and make death saves, and map
+tokens of that character are theirs to move (`_may_move_pin`). Deleting stays with the creator and the owners.
+
 ## Tests
 
 ```
