@@ -144,6 +144,7 @@ def normalize_manifest(manifest, sanitize_notes):
         characters.append({
             'name': _clean(c.get('name'), 120).strip() or 'Unnamed',
             'is_npc': 1 if _flag(c.get('is_npc')) else 0,
+            'is_ally': 1 if _flag(c.get('is_npc')) and _flag(c.get('is_ally')) else 0,
             'level': _int(c.get('level'), 1, 0, 100),
             'max_hp': _int(c.get('max_hp'), 10, 0, 100000),
             'str_score': _int(c.get('str_score'), 10, 0, 100),

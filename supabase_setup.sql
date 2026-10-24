@@ -790,4 +790,12 @@ ALTER TABLE session_rsvps ENABLE ROW LEVEL SECURITY;
 
 INSERT INTO schema_migrations (version) VALUES ('0035_next_session.sql');
 
+-- ---- 0036_npc_ally.sql ----
+
+-- NPC allies: an NPC the table treats as a party member. It stays an NPC (own tag, DM-rolled dice, initiative scope),
+-- but its stats are shown to Players and the "Hide NPCs" switch does not hide it.
+ALTER TABLE characters ADD COLUMN is_ally INTEGER NOT NULL DEFAULT 0;
+
+INSERT INTO schema_migrations (version) VALUES ('0036_npc_ally.sql');
+
 COMMIT;

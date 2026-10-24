@@ -208,3 +208,6 @@ hand with `python scripts/check_srd_contract.py`, or from the Actions tab (Run w
 ## Colour contrast
 
 Both themes pass an axe-core `color-contrast` audit (WCAG AA, 0 violations across the main pages). Convention in `static/css/style.css`: use the `-ink` tokens (`--brass-ink`, `--moss-ink`, `--blood-ink`) for text, never the raw fill colours, and `--on-brass` for text on a solid `--brass` fill.
+
+### NPC allies
+An NPC can be marked **Ally** on the character form (the switch is greyed out until NPC is on). An ally is still an NPC (NPC tag, DM-only dice, NPC initiative scope), but Players see its stats and it stays visible, in the roster, battle and on maps, when "Hide NPCs" is on. Migration `0036_npc_ally.sql`.

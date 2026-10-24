@@ -7,7 +7,7 @@
 <div class="page-header">
   <div>
     <h1 class="page-title">{{ character.name }}</h1>
-    <p class="page-sub">Lvl {{ character.level }} &middot; {{ 'NPC' if character.is_npc else 'PC' }}{% if factions %} &middot; {{ factions|map(attribute='name')|join(', ') }}{% endif %}</p>
+    <p class="page-sub">Lvl {{ character.level }} &middot; {{ ('NPC · Ally' if character.is_ally else 'NPC') if character.is_npc else 'PC' }}{% if factions %} &middot; {{ factions|map(attribute='name')|join(', ') }}{% endif %}</p>
   </div>
   <div style="display:flex; gap:10px; flex-wrap:wrap;">
     {% if can_edit %}
@@ -35,7 +35,7 @@
       <div class="dossier-name cd-name">{{ character.name }}</div>
       <div class="cd-chips">
         <span class="cd-chip">Lvl {{ character.level }}</span>
-        <span class="cd-chip cd-chip--{{ 'npc' if character.is_npc else 'pc' }}">{{ 'NPC' if character.is_npc else 'PC' }}</span>
+        <span class="cd-chip cd-chip--{{ 'npc' if character.is_npc else 'pc' }}">{{ ('NPC · Ally' if character.is_ally else 'NPC') if character.is_npc else 'PC' }}</span>
         {% for f in factions %}<span class="cd-chip cd-chip--faction"><span class="group-dot" style="background:{{ f.color }}"></span>{{ f.name }}</span>{% endfor %}
         {% if not factions %}<span class="cd-chip cd-chip--faint">Ungrouped</span>{% endif %}
       </div>

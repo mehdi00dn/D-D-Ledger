@@ -182,3 +182,23 @@ def test_cancelling_the_session_asks_first(shared_server, pw):
     page.wait_for_function("() => !document.querySelector('.session-when')")
     assert q('SELECT next_session_at FROM campaigns WHERE id = ?', cid)[0]['next_session_at'] is None
     ctx.close()
+
+
+def test_ally_switch_is_greyed_out_until_npc(shared_server, pw):
+    base = shared_server.url
+    dm = Api(base)
+    cid = dm.campaign('Ally form')
+    ctx = dm.context(pw, base)
+    page = ctx.new_page()
+    page.goto(f'{base}/campaigns/{cid}/characters/new')
+    ally = page.locator('input[name="is_ally"]')
+    assert ally.is_disabled()
+    _shot(page, 'ally-off')
+    page.locator('.cf-npc-toggle:not(.cf-ally-toggle) .toggle-switch-track').click()
+    assert ally.is_enabled()
+    page.locator('.cf-ally-toggle .toggle-switch-track').click()
+    assert ally.is_checked()
+    _shot(page, 'ally-on')
+    page.locator('.cf-npc-toggle:not(.cf-ally-toggle) .toggle-switch-track').click()      # NPC off again: ally clears and greys out
+    assert ally.is_disabled() and not ally.is_checked()
+    ctx.close()

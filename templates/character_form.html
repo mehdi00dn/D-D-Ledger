@@ -84,6 +84,11 @@
             <span class="toggle-switch-track"></span>
             <span class="toggle-switch-label">NPC <small>(not a player character)</small></span>
           </label>
+          <label class="toggle-switch cf-npc-toggle cf-ally-toggle" data-ally-toggle title="Switch on NPC first">
+            <input type="checkbox" name="is_ally" {{ 'checked' if character and character.is_ally else '' }}{{ '' if character and character.is_npc else ' disabled' }}>
+            <span class="toggle-switch-track"></span>
+            <span class="toggle-switch-label">Ally <small>(Players see its stats, and it stays visible when NPCs are hidden)</small></span>
+          </label>
         </div>
       </div>
       <div class="field">
@@ -264,6 +269,7 @@
 {% endblock %}
 
 {% block extra_scripts %}
+<script src="{{ url_for('static', filename='js/character-npc.js') }}"></script>
 <script src="{{ url_for('static', filename='js/character-proficiencies.js') }}"></script>
 <script src="{{ url_for('static', filename='js/character-levels.js') }}"></script>
 <script src="{{ url_for('static', filename='js/character-attacks.js') }}"></script>

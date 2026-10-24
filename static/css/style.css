@@ -4938,3 +4938,9 @@ input[type="range"]:disabled { opacity: 0.5; cursor: not-allowed; }
 .session-edit-actions { align-items: center; }
 .session-cancel { color: var(--blood-ink); border-color: transparent; }
 .session-cancel:hover, .session-cancel:focus-visible { border-color: var(--blood-ink); }
+
+/* NPC ally switch: greyed out until the character is an NPC */
+.cf-ally-toggle { margin-inline-start: 18px; }
+.cf-ally-toggle.is-disabled { opacity: .45; cursor: not-allowed; }
+.cf-ally-toggle.is-disabled * { cursor: not-allowed; }
+@media (max-width: 640px) { .cf-ally-toggle { margin-inline-start: 0; display: flex; } }
