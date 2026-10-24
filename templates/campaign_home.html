@@ -99,16 +99,21 @@
     {% endif %}
     {% if can_schedule %}
     <details class="session-edit"{{ '' if next_session else ' open' }}>
-      <summary>{{ 'Change the date' if next_session else 'Set the date' }}</summary>
+      <summary class="btn btn-ghost btn-sm">{{ icon('pencil') }} {{ 'Change the date' if next_session else 'Set the date' }}</summary>
       <form method="POST" action="{{ url_for('campaign_session_set') }}" data-session-form>{{ csrf_field() }}
-        <label for="session-local">Date and time <small>in your time zone</small></label>
-        <input type="datetime-local" id="session-local" required {% if next_session %}data-initial="{{ next_session.iso }}"{% endif %}>
+        <div class="field">
+          <label for="session-local">Date and time</label>
+          <input type="datetime-local" id="session-local" required {% if next_session %}data-initial="{{ next_session.iso }}"{% endif %}>
+          <p class="session-zone">In your time zone. Everyone else sees it in theirs.</p>
+        </div>
         <input type="hidden" name="starts_at" value="">
-        <label for="session-note">Note <small>optional</small></label>
-        <input type="text" id="session-note" name="note" maxlength="300" value="{{ next_session.note if next_session else '' }}" placeholder="Where, what to bring, which chapter...">
+        <div class="field">
+          <label for="session-note">Note <span class="field-optional">optional</span></label>
+          <input type="text" id="session-note" name="note" maxlength="300" value="{{ next_session.note if next_session else '' }}" placeholder="Where, what to bring, which chapter...">
+        </div>
         <div class="session-edit-actions">
-          <button type="submit" class="btn btn-primary btn-sm">Save</button>
-          {% if next_session %}<button type="submit" name="clear" value="1" class="btn btn-ghost btn-sm" formnovalidate data-session-clear>Cancel the session</button>{% endif %}
+          <button type="submit" class="btn btn-primary btn-sm">{{ icon('check') }} Save</button>
+          {% if next_session %}<button type="submit" name="clear" value="1" class="btn btn-ghost btn-sm session-cancel" formnovalidate data-session-clear data-confirm="Cancel the next session? Everyone's answers are cleared.">Cancel the session</button>{% endif %}
         </div>
       </form>
     </details>

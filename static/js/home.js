@@ -47,6 +47,11 @@
     var d = new Date(initial);
     if (!isNaN(d)) local.value = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
   }
+  var clearBtn = form.querySelector('[data-session-clear]');
+  if (clearBtn && window.confirmAction) clearBtn.addEventListener('click', function (e) {
+    e.preventDefault();
+    window.confirmAction(clearBtn.getAttribute('data-confirm')).then(function (ok) { if (ok) form.requestSubmit(clearBtn); });
+  });
   form.addEventListener('submit', function (e) {
     var clearing = e.submitter && e.submitter.hasAttribute('data-session-clear');
     if (clearing) return;

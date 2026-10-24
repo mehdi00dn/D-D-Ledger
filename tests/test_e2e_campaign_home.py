@@ -161,3 +161,24 @@ def test_session_is_set_in_local_time_shown_in_each_viewers_zone_and_answered(sh
     _shot(page, 'home-session')
     ctx.close()
     assert not errors, errors
+
+
+def test_cancelling_the_session_asks_first(shared_server, pw):
+    from datetime import datetime, timedelta
+    base = shared_server.url
+    dm = Api(base)
+    cid = dm.campaign('Cancel flow')
+    dm.post(f'/campaigns/{cid}/session', data={'starts_at': (datetime.utcnow() + timedelta(days=5)).strftime('%Y-%m-%dT%H:%M:%SZ')})
+    ctx = dm.context(pw, base)
+    page = ctx.new_page()
+    page.goto(f'{base}/campaigns/{cid}/home')
+    page.locator('.session-edit summary').click()
+    page.click('[data-session-clear]')
+    playwright.expect(page.locator('#confirm-modal')).to_be_visible()
+    page.click('#confirm-modal-no')
+    assert q('SELECT next_session_at FROM campaigns WHERE id = ?', cid)[0]['next_session_at'] is not None
+    page.click('[data-session-clear]')
+    page.click('#confirm-modal-yes'); page.wait_for_load_state()
+    page.wait_for_function("() => !document.querySelector('.session-when')")
+    assert q('SELECT next_session_at FROM campaigns WHERE id = ?', cid)[0]['next_session_at'] is None
+    ctx.close()
