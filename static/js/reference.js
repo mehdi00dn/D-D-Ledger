@@ -218,6 +218,8 @@
         const set = (n, v) => { const i = row.querySelector('[name="' + n + '"]'); if (i) i.value = v; };
         set('attack_name', a.name); set('attack_bonus', a.attack_bonus); set('attack_damage', a.damage); set('attack_type', a.damage_type);
         list.appendChild(row);
+        const dmg = list.querySelector('.atk-edit-row:last-child [name="attack_damage"]');
+        if (dmg) dmg.dispatchEvent(new Event('input', { bubbles: true }));
       });
     }
 

@@ -4947,8 +4947,8 @@ input[type="range"]:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* Scrollable sidebar: when the window is short, the menu scrolls and the footer stays put. */
 @media (min-width: 881px) and (min-height: 501px) {
-  .sidebar { --sb-pad: 18px; overflow: hidden; }
-  :root[data-sidebar="collapsed"] .sidebar { --sb-pad: 14px; }
+  .sidebar { --sb-pad: 14px; overflow: hidden; }                         /* the sidebar's real side padding (see the Sidebar v2 block) */
+  :root[data-sidebar="collapsed"] .sidebar { --sb-pad: 10px; }
   .sidebar-nav {
     flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain;
     margin-inline: calc(var(--sb-pad) * -1); padding: 0 var(--sb-pad) 12px;      /* the active marker sits in the padding, so it is not clipped */
@@ -4958,3 +4958,7 @@ input[type="range"]:disabled { opacity: 0.5; cursor: not-allowed; }
   .sidebar-nav::-webkit-scrollbar-thumb { background: var(--hairline-strong); border-radius: 3px; }
   .sidebar-foot { flex: 0 0 auto; padding-top: 10px; }
 }
+
+/* Attacks card: live error under a damage roll the server would not accept */
+.atk-edit-row input.is-invalid { border-color: var(--blood-ink); box-shadow: 0 0 0 1px var(--blood-ink); }
+.atk-error { grid-column: 1 / -1; margin: 0; font-size: 12.5px; line-height: 1.35; color: var(--blood-ink); }

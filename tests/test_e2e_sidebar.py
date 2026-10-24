@@ -117,9 +117,16 @@ def test_sidebar_menu_scrolls_on_a_short_window_and_keeps_the_footer(shared_serv
     if os.environ.get('SHOT_DIR'):
         page.screenshot(path=os.path.join(os.environ['SHOT_DIR'], 'sidebar-scrolled.png'))
     assert nav.evaluate('e => e.scrollTop') > 0
+    box = lambda sel: page.locator(sel).evaluate('e => { const r = e.getBoundingClientRect(); return [r.left, r.right]; }')
+    sb, nv = box('.sidebar'), box('.sidebar-nav')
+    assert nv[0] >= sb[0] - 0.5 and nv[1] <= sb[1] + 0.5, (sb, nv)           # the scrollbar sits inside the sidebar, not past its edge
     foot = page.locator('.sidebar-foot').bounding_box()
     assert foot and foot['y'] + foot['height'] <= 560 + 1           # footer still on screen
     assert page.locator('.sidebar').evaluate('e => e.getBoundingClientRect().height') <= 560 + 1       # the sidebar itself never outgrows the window
+    page.click('#sidebar-toggle-btn')                                          # collapsed sidebar: same rule
+    sb, nv = box('.sidebar'), box('.sidebar-nav')
+    assert nv[0] >= sb[0] - 0.5 and nv[1] <= sb[1] + 0.5, (sb, nv)
+    page.click('#sidebar-toggle-btn')
     page.set_viewport_size({'width': 1280, 'height': 900})
     assert not nav.evaluate('e => e.scrollHeight > e.clientHeight')
     ctx.close()

@@ -202,3 +202,42 @@ def test_ally_switch_is_greyed_out_until_npc(shared_server, pw):
     page.locator('.cf-npc-toggle:not(.cf-ally-toggle) .toggle-switch-track').click()      # NPC off again: ally clears and greys out
     assert ally.is_disabled() and not ally.is_checked()
     ctx.close()
+
+
+def test_invalid_damage_roll_shows_a_live_error(shared_server, pw):
+    base = shared_server.url
+    dm = Api(base)
+    cid = dm.campaign('Damage errors')
+    ctx = dm.context(pw, base)
+    page = ctx.new_page()
+    page.goto(f'{base}/campaigns/{cid}/characters/new')
+    page.fill('#name', 'Tester')
+    page.click('[data-attack-add]')
+    row = page.locator('.atk-edit-row').first
+    dmg = row.locator('[name=attack_damage]')
+    err = row.locator('.atk-error')
+    page.fill('.atk-edit-row [name=attack_name]', 'Sword')
+    dmg.fill('2d6+3')
+    assert err.count() == 0 and not dmg.evaluate('e => e.classList.contains("is-invalid")')
+    dmg.fill('1d7')
+    playwright.expect(err).to_contain_text('d7 is not a die')
+    assert dmg.get_attribute('aria-invalid') == 'true'
+    _shot(page, 'damage-error')
+    dmg.fill('1d6+1d4')
+    playwright.expect(err).to_contain_text('One kind of die')
+    dmg.fill('99d6')
+    playwright.expect(err).to_contain_text('between 1 and 30')
+    dmg.fill('sword')
+    playwright.expect(err).to_contain_text('Write it like 1d8+3')
+    page.click('.cf-bar button[type=submit]')                                     # saving is blocked while it is wrong
+    assert '/characters/new' in page.url
+    assert q('SELECT COUNT(*) AS n FROM characters WHERE campaign_id = ?', cid)[0]['n'] == 0
+    dmg.fill('1d8+3')
+    assert err.count() == 0 and dmg.get_attribute('aria-invalid') is None
+    dmg.fill('')                                                                  # empty is fine
+    assert err.count() == 0
+    dmg.fill('1d8+3')
+    with page.expect_navigation():
+        page.click('.cf-bar button[type=submit]')
+    assert q('SELECT COUNT(*) AS n FROM character_attacks')[0]['n'] >= 1
+    ctx.close()
