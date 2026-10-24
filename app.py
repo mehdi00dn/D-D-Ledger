@@ -3934,9 +3934,134 @@ def campaign_home():
     for r in db.execute('SELECT c.id, c.name, c.player_id FROM characters c WHERE c.campaign_id = ? AND c.is_temp_familiar = 0 AND c.player_id IS NOT NULL'
                         + hide_sql + ' ORDER BY lower(c.name)', [g.campaign_id] + hide_params).fetchall():
         played.setdefault(r['player_id'], []).append(r)
+    next_session = _next_session(db)
     db.close()
-    return render_template('campaign_home.html', played=played, bio_html=notes_to_html(g.campaign['description']),
+    return render_template('campaign_home.html', next_session=next_session, played=played, bio_html=notes_to_html(g.campaign['description']),
                            campaign_notes=notes_to_html(g.campaign['notes'], show_hidden=g.is_dm), members=members, party=party, counts=counts, battle=battle, events=events, rolls=rolls)
+
+
+# ---------------- SESSION SCHEDULING (DL-152) ----------------
+# One "next session" per campaign: a UTC time and a short note.  Members answer yes / maybe / no; changing the time
+# clears the answers.  The browser turns the UTC time into the viewer's own time zone (static/js/home.js).
+
+SESSION_STATUSES = ('yes', 'maybe', 'no')
+SESSION_NOTE_MAX = 300
+SESSION_STALE_AFTER = timedelta(hours=6)       # a session that started more than this long ago no longer counts as "next"
+
+
+def _parse_session_time(raw):
+    """A UTC datetime (naive) from an ISO-8601 string such as 2026-11-07T18:00:00.000Z, or None if it is not one or is
+    unreasonable (more than a day ago or more than two years ahead)."""
+    raw = (raw or '').strip()
+    if not raw or len(raw) > 40:
+        return None
+    try:
+        when = datetime.fromisoformat(raw.replace('Z', '+00:00'))
+    except ValueError:
+        return None
+    if when.tzinfo is not None:
+        when = when.astimezone(timezone.utc).replace(tzinfo=None)
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    if when < now - timedelta(days=1) or when > now + timedelta(days=730):
+        return None
+    return when.replace(microsecond=0)
+
+
+def _as_utc_datetime(value):
+    """A timestamp column as a naive UTC datetime (the database layer may hand back text)."""
+    if value is None or isinstance(value, datetime):
+        return value
+    return datetime.fromisoformat(str(value).replace(' ', 'T'))
+
+
+def _next_session(db):
+    """The upcoming session for the Home card and the calendar file, or None."""
+    c = db.execute('SELECT next_session_at, next_session_note FROM campaigns WHERE id = ?', (g.campaign_id,)).fetchone()
+    when = _as_utc_datetime(c['next_session_at']) if c else None
+    if when is None or when < datetime.now(timezone.utc).replace(tzinfo=None) - SESSION_STALE_AFTER:
+        return None
+    answers = {k: [] for k in SESSION_STATUSES}
+    for r in db.execute('''SELECT r.status, r.user_id, u.username FROM session_rsvps r JOIN users u ON u.id = r.user_id
+                           WHERE r.campaign_id = ? ORDER BY lower(u.username)''', (g.campaign_id,)).fetchall():
+        answers[r['status']].append(r['username'])
+    mine = db.execute('SELECT status FROM session_rsvps WHERE campaign_id = ? AND user_id = ?', (g.campaign_id, session['user_id'])).fetchone()
+    return {'at': when, 'iso': when.strftime('%Y-%m-%dT%H:%M:%SZ'), 'note': c['next_session_note'] or '', 'answers': answers,
+            'mine': mine['status'] if mine else None}
+
+
+@app.route('/campaigns/<int:campaign_id>/session', methods=['POST'])
+@campaign_access_required
+def campaign_session_set():
+    """The DM or an owner sets, changes or clears the next session.  A new time clears the answers and tells the members."""
+    if not (g.real_is_dm or g.campaign_role == 'owner'):
+        abort(403)
+    db = get_db()
+    note = ' '.join((request.form.get('note') or '').split())[:SESSION_NOTE_MAX]
+    if request.form.get('clear'):
+        db.execute('UPDATE campaigns SET next_session_at = NULL, next_session_note = NULL WHERE id = ?', (g.campaign_id,))
+        db.execute('DELETE FROM session_rsvps WHERE campaign_id = ?', (g.campaign_id,))
+        db.commit(); db.close()
+        return redirect(url_for('campaign_home'))
+    when = _parse_session_time(request.form.get('starts_at'))
+    if when is None:
+        db.close()
+        abort(400)
+    old = _as_utc_datetime(db.execute('SELECT next_session_at FROM campaigns WHERE id = ?', (g.campaign_id,)).fetchone()['next_session_at'])
+    db.execute('UPDATE campaigns SET next_session_at = ?, next_session_note = ? WHERE id = ?', (when, note or None, g.campaign_id))
+    if old != when:
+        db.execute('DELETE FROM session_rsvps WHERE campaign_id = ?', (g.campaign_id,))
+        text = when.strftime('%a %d %b %Y, %H:%M UTC')
+        for m in db.execute('SELECT user_id FROM campaign_members WHERE campaign_id = ? AND user_id <> ?', (g.campaign_id, session['user_id'])).fetchall():
+            notify(db, m['user_id'], 'session_scheduled', 'Next session of %s: %s' % (g.campaign['name'], text),
+                   'Open the campaign to say whether you can come.', url_for('campaign_home', campaign_id=g.campaign_id))
+        log_activity(db, g.campaign_id, 'session', 'scheduled the next session for ' + text, url_for('campaign_home', campaign_id=g.campaign_id))
+    db.commit(); db.close()
+    return redirect(url_for('campaign_home'))
+
+
+@app.route('/campaigns/<int:campaign_id>/session/rsvp', methods=['POST'])
+@campaign_access_required
+def campaign_session_rsvp():
+    """Any member answers yes / maybe / no for the scheduled session."""
+    status = request.form.get('status')
+    if status not in SESSION_STATUSES:
+        abort(400)
+    db = get_db()
+    if _next_session(db) is None:
+        db.close()
+        abort(409)                                          # nothing scheduled to answer
+    db.execute('''INSERT INTO session_rsvps (campaign_id, user_id, status) VALUES (?, ?, ?)
+                  ON CONFLICT (campaign_id, user_id) DO UPDATE SET status = EXCLUDED.status, updated_at = ''' + _UTC_NOW,
+               (g.campaign_id, session['user_id'], status))
+    db.commit(); db.close()
+    return redirect(url_for('campaign_home'))
+
+
+def _ics_escape(text):
+    """RFC 5545 text escaping: backslash, semicolon, comma and line breaks."""
+    return str(text).replace('\\', '\\\\').replace(';', '\\;').replace(',', '\\,').replace('\r', '').replace('\n', '\\n')
+
+
+@app.route('/campaigns/<int:campaign_id>/session.ics')
+@campaign_access_required
+def campaign_session_ics():
+    """The next session as a calendar file (a three-hour event; the DM's note goes in the description)."""
+    db = get_db()
+    nxt = _next_session(db)
+    db.close()
+    if nxt is None:
+        abort(409)                                          # no session scheduled
+    start = nxt['at']
+    stamp = lambda d: d.strftime('%Y%m%dT%H%M%SZ')
+    lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Campaign Ledger//Session//EN', 'CALSCALE:GREGORIAN', 'BEGIN:VEVENT',
+             'UID:session-%d-%s@campaign-ledger' % (g.campaign_id, stamp(start)),
+             'DTSTAMP:' + stamp(datetime.now(timezone.utc)), 'DTSTART:' + stamp(start), 'DTEND:' + stamp(start + timedelta(hours=3)),
+             'SUMMARY:' + _ics_escape('%s: next session' % g.campaign['name'])]
+    if nxt['note']:
+        lines.append('DESCRIPTION:' + _ics_escape(nxt['note']))
+    lines += ['END:VEVENT', 'END:VCALENDAR']
+    return Response('\r\n'.join(lines) + '\r\n', mimetype='text/calendar',
+                    headers={'Content-Disposition': 'attachment; filename="session.ics"', 'Cache-Control': 'no-store'})
 
 
 @app.route('/campaigns/<int:campaign_id>/dice')

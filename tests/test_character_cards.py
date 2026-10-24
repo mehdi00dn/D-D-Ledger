@@ -9,14 +9,14 @@ def _card(html, name):
     return html.split(name, 1)[1].split('dossier-card', 1)[0]
 
 
-def test_cards_show_class_art_live_hp_and_conditions_and_skip_untouched_scores(make_user):
+def test_cards_show_class_art_live_hp_and_conditions(make_user):
     dm, pl = make_user(), make_user()
     cid = dm.new_campaign(); dm.add_member(cid, pl)
     hero = dm.new_character(cid, name='Kael Thorne', class_key='fighter', max_hp='40')
     plain = dm.new_character(cid, name='Plain Jane')
     html = dm.get(f'/campaigns/{cid}/characters').data.decode()
     assert 'classes.svg#fighter' in html and 'avatar-initial' in html     # class art, else the initial
-    assert 'class="dossier-stats"' not in html and 'dossier-live' not in html   # all-10 scores hidden, nobody in battle
+    assert 'dossier-live' not in html                                     # nobody in battle yet
     pid = dm.add_to_battle(cid, hero)
     dm.json(f'/campaigns/{cid}/api/battle/{pid}/damage', {'amount': 30})
     dm.json(f'/campaigns/{cid}/api/battle/{pid}/conditions', {'conditions': ['prone'], 'custom_conditions': ['Hexed']})

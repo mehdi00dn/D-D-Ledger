@@ -109,8 +109,6 @@
       <span class="badge-ac" aria-hidden="true">{{ icon('shield') }}00 AC</span>
     </div>
     {% else %}
-    {% set scores = [c.str_score, c.dex_score, c.con_score, c.int_score, c.wis_score, c.cha_score] %}
-    {% if scores|unique|list != [10] %}{# six untouched 10s say nothing, so the row stays out of the way #}
     <div class="dossier-stats">
       <div class="stat-pill"><span class="val">{{ c.str_score }}</span><span class="lbl">STR</span></div>
       <div class="stat-pill"><span class="val">{{ c.dex_score }}</span><span class="lbl">DEX</span></div>
@@ -119,7 +117,6 @@
       <div class="stat-pill"><span class="val">{{ c.wis_score }}</span><span class="lbl">WIS</span></div>
       <div class="stat-pill"><span class="val">{{ c.cha_score }}</span><span class="lbl">CHA</span></div>
     </div>
-    {% endif %}
 
     <div class="dossier-hp-ac">
       <span class="badge-hp">{{ icon('heart') }}{{ c.max_hp }} HP</span>

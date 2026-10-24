@@ -160,10 +160,14 @@ Home folds behind "Read more" (`static/js/home.js`). A character can be attached
 owner from Settings > Members): `owns_character()` then lets that member edit it, read its hidden notes and make death saves, and map
 tokens of that character are theirs to move (`_may_move_pin`). Deleting stays with the creator and the owners.
 
+Session scheduling (DL-152, migration 0035): the DM or an owner sets one "next session" per campaign from Home (`campaigns.next_session_at`
+in UTC plus a short note). The browser shows it in each viewer's own time zone (`static/js/home.js`); members answer Going / Maybe /
+Can't (`session_rsvps`); a new time clears the answers and sends members a notification and an activity entry; `/session.ics` gives a
+calendar file. A session more than six hours past is treated as none. A timed reminder is not built (needs a scheduler).
+
 Visual round 3 (DL-155): a campaign without an image gets a generated cover (a hue from its id, with its initials);
 a character without a portrait shows its class art, else its initial; character cards show a live HP bar and conditions for
-anyone in the running battle (`_battle_live_status`, built on `_battle_rows`, so a Player gets no monster numbers); six untouched
-ability scores of 10 are not shown; empty states sit in a brass medallion.
+anyone in the running battle (`_battle_live_status`, built on `_battle_rows`, so a Player gets no monster numbers); empty states sit in a brass medallion.
 
 ## Tests
 

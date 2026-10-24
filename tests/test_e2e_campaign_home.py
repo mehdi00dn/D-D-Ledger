@@ -119,3 +119,45 @@ def test_bio_and_notes_are_edited_with_bold_and_italic_and_characters_attached(s
     assert 'Kael Thorne' in page.locator('.home-member-chars').inner_text()
     ctx.close()
     assert not errors, errors
+
+
+def test_session_is_set_in_local_time_shown_in_each_viewers_zone_and_answered(shared_server, pw):
+    from datetime import datetime, timedelta
+    from test_e2e_browser import SESSION_COOKIE
+    base = shared_server.url
+    dm, player = Api(base), Api(base)
+    cid = dm.campaign('Scheduling')
+    dm.add_member(cid, player)
+    day = (datetime.utcnow() + timedelta(days=30)).strftime('%Y-%m-%d')
+
+    def context(api, tz):
+        ctx = pw.new_context(viewport={'width': 1280, 'height': 900}, timezone_id=tz, locale='en-US')
+        ctx.add_cookies([{'name': SESSION_COOKIE, 'value': api.s.cookies.get(SESSION_COOKIE), 'url': base}])
+        return ctx
+    ctx = context(dm, 'Asia/Tehran')                                          # UTC+03:30
+    page = ctx.new_page()
+    errors = []
+    page.on('pageerror', lambda x: errors.append(str(x)))
+    page.goto(f'{base}/campaigns/{cid}/home')
+    page.fill('#session-local', f'{day}T20:30')
+    page.fill('#session-note', 'Chapter 3')
+    page.click('[data-session-form] button.btn-primary')
+    page.wait_for_load_state()
+    assert str(q('SELECT next_session_at FROM campaigns WHERE id = ?', cid)[0]['next_session_at']).endswith('17:00:00')    # stored in UTC
+    assert '8:30' in page.locator('.session-when').inner_text() and page.locator('.session-rel').inner_text().startswith('in ')
+    page.reload()
+    assert page.input_value('#session-local') == f'{day}T20:30'                 # the form comes back in the DM's own zone
+    ctx.close()
+
+    ctx = context(player, 'America/New_York')
+    page = ctx.new_page()
+    page.goto(f'{base}/campaigns/{cid}/home')
+    shown = page.locator('.session-when').inner_text()
+    assert '1:00' in shown or '12:00' in shown or '13:00' in shown               # 17:00 UTC is a New York afternoon
+    page.click('.rsvp-yes')
+    page.wait_for_load_state()
+    assert page.locator('.rsvp-yes.is-on').count() == 1 and 'Going' in page.locator('.session-who').inner_text()
+    assert page.locator('.session-edit').count() == 0                            # only the DM can change it
+    _shot(page, 'home-session')
+    ctx.close()
+    assert not errors, errors

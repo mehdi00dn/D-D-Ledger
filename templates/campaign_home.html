@@ -73,6 +73,49 @@
 </div>
 
 <div class="home-side">
+  {% set can_schedule = g.real_is_dm or g.campaign_role == 'owner' %}
+  {% if next_session or can_schedule %}
+  <section class="cf-card home-session" aria-label="Next session">
+    <h2 class="cf-title">Next session</h2>
+    {% if next_session %}
+    <p class="session-when"><time datetime="{{ next_session.iso }}" data-local-time>{{ next_session.at.strftime('%a %d %b %Y, %H:%M') }} UTC</time></p>
+    <p class="session-rel" data-local-relative="{{ next_session.iso }}"></p>
+    {% if next_session.note %}<p class="session-note">{{ next_session.note }}</p>{% endif %}
+    <form method="POST" action="{{ url_for('campaign_session_rsvp') }}" class="session-rsvp" aria-label="Can you come?">{{ csrf_field() }}
+      {% for key, label in (('yes', 'Going'), ('maybe', 'Maybe'), ('no', "Can't")) %}
+      <button type="submit" name="status" value="{{ key }}" class="rsvp-btn rsvp-{{ key }}{{ ' is-on' if next_session.mine == key else '' }}" aria-pressed="{{ 'true' if next_session.mine == key else 'false' }}">{{ label }}{% if next_session.answers[key] %} <b>{{ next_session.answers[key]|length }}</b>{% endif %}</button>
+      {% endfor %}
+    </form>
+    {% if next_session.answers.yes or next_session.answers.maybe or next_session.answers.no %}
+    <p class="session-who">
+      {% if next_session.answers.yes %}<span><b>Going:</b> {{ next_session.answers.yes|join(', ') }}</span>{% endif %}
+      {% if next_session.answers.maybe %}<span><b>Maybe:</b> {{ next_session.answers.maybe|join(', ') }}</span>{% endif %}
+      {% if next_session.answers.no %}<span><b>Can't:</b> {{ next_session.answers.no|join(', ') }}</span>{% endif %}
+    </p>
+    {% endif %}
+    <a class="home-more" href="{{ url_for('campaign_session_ics') }}">Add to calendar</a>
+    {% else %}
+    <p class="home-empty">No session scheduled yet.</p>
+    {% endif %}
+    {% if can_schedule %}
+    <details class="session-edit"{{ '' if next_session else ' open' }}>
+      <summary>{{ 'Change the date' if next_session else 'Set the date' }}</summary>
+      <form method="POST" action="{{ url_for('campaign_session_set') }}" data-session-form>{{ csrf_field() }}
+        <label for="session-local">Date and time <small>in your time zone</small></label>
+        <input type="datetime-local" id="session-local" required {% if next_session %}data-initial="{{ next_session.iso }}"{% endif %}>
+        <input type="hidden" name="starts_at" value="">
+        <label for="session-note">Note <small>optional</small></label>
+        <input type="text" id="session-note" name="note" maxlength="300" value="{{ next_session.note if next_session else '' }}" placeholder="Where, what to bring, which chapter...">
+        <div class="session-edit-actions">
+          <button type="submit" class="btn btn-primary btn-sm">Save</button>
+          {% if next_session %}<button type="submit" name="clear" value="1" class="btn btn-ghost btn-sm" formnovalidate data-session-clear>Cancel the session</button>{% endif %}
+        </div>
+      </form>
+    </details>
+    {% endif %}
+  </section>
+  {% endif %}
+
   <section class="cf-card home-members" aria-label="Players">
     <h2 class="cf-title">Players <span class="cf-count">{{ members|length }}</span></h2>
     <ul class="home-member-list">
