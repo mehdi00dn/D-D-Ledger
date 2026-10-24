@@ -385,8 +385,8 @@ def test_class_dropdown_hover_guide_select_clear_and_icons(pw, shared_server):
     page.keyboard.press('Escape')
     page.screenshot(path='/tmp/class-picker.png')
     page.click('.cf-bar button[type=submit]'); page.wait_for_timeout(1200)
-    page.goto(base + f'/campaigns/{cid}/characters'); page.wait_for_selector('.dossier-name .class-icon')
-    assert page.locator('.dossier-name .class-icon').get_attribute('title') == 'Bard'
+    page.goto(base + f'/campaigns/{cid}/characters'); page.wait_for_selector('.dossier-card [title=Bard]')
+    assert page.locator('.dossier-card [title=Bard]').first.get_attribute('title') == 'Bard'
     chid = next(c for c in dm.get(f'/campaigns/{cid}/api/characters').json() if c['name'] == 'Merlin')['id']
     dm.post(f'/campaigns/{cid}/api/battle/add', json={'character_id': chid})
     page.goto(base + f'/campaigns/{cid}/battle'); page.wait_for_selector('.battle-name .class-icon')

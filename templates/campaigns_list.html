@@ -16,11 +16,12 @@
 <div class="group-grid">
   {% for c in campaigns %}
   <div class="group-card">
-    <div class="group-image-block" style="{{ '' if c.avatar_path else 'background: linear-gradient(135deg, var(--brass), var(--bg-panel-inset));' }}">
+    <div class="group-image-block{{ '' if c.avatar_path else ' is-generated' }}" style="--cover-hue: {{ (c.id * 53) % 360 }}">
       {% if c.avatar_path %}
         <img src="{{ url_for('uploaded_file', filename=c.avatar_path) }}" alt="{{ c.name }} avatar">
       {% else %}
-        <div class="group-image-placeholder">{{ icon('scroll') }}</div>
+        {% set words = c.name.split() %}
+        <div class="cover-monogram" aria-hidden="true">{{ ((words[0][:1] ~ (words[1][:1] if words|length > 1 else '')) if words else '?')|upper }}</div>
       {% endif %}
     </div>
     <div class="group-body">

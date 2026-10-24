@@ -160,6 +160,11 @@ Home folds behind "Read more" (`static/js/home.js`). A character can be attached
 owner from Settings > Members): `owns_character()` then lets that member edit it, read its hidden notes and make death saves, and map
 tokens of that character are theirs to move (`_may_move_pin`). Deleting stays with the creator and the owners.
 
+Visual round 3 (DL-155): a campaign without an image gets a generated cover (a hue from its id, with its initials);
+a character without a portrait shows its class art, else its initial; character cards show a live HP bar and conditions for
+anyone in the running battle (`_battle_live_status`, built on `_battle_rows`, so a Player gets no monster numbers); six untouched
+ability scores of 10 are not shown; empty states sit in a brass medallion.
+
 ## Tests
 
 ```

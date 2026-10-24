@@ -4865,3 +4865,25 @@ input[type="range"]:disabled { opacity: 0.5; cursor: not-allowed; }
 .bio-readonly { color: var(--parchment-dim); }
 .member-chars summary svg { inline-size: 14px; block-size: 14px; flex: none; }
 .home-main > .home-hero { margin-block-end: 0; }
+
+/* DL-155: generated campaign covers, class art on blank portraits, live HP on character cards, calmer empty states */
+.group-image-block.is-generated {
+  background:
+    radial-gradient(120% 90% at 20% 0%, hsl(var(--cover-hue) 34% 32% / 0.9), transparent 60%),
+    repeating-linear-gradient(45deg, rgb(255 255 255 / 0.035) 0 2px, transparent 2px 14px),
+    linear-gradient(160deg, hsl(var(--cover-hue) 24% 19%), hsl(calc(var(--cover-hue) + 30) 22% 11%));
+}
+.cover-monogram { position: absolute; inset: 0; display: grid; place-items: center; font: 600 64px/1 var(--font-display); letter-spacing: 0.04em; color: rgb(255 255 255 / 0.82); text-shadow: 0 3px 22px rgb(0 0 0 / 0.45); }
+.avatar-frame .avatar-class { display: grid; place-items: center; inline-size: 58%; block-size: 58%; color: var(--brass-bright-ink); }
+.avatar-frame .avatar-class svg { inline-size: 100%; block-size: 100%; }
+.avatar-frame .avatar-initial { font: 600 20px/1 var(--font-display); color: var(--brass-bright-ink); }
+.dossier-live { display: grid; gap: 6px; margin: 2px 0 10px; }
+.hp-meter { block-size: 6px; border-radius: 999px; background: var(--bg-panel-inset); border: 1px solid var(--hairline); overflow: hidden; }
+.hp-meter > span { display: block; block-size: 100%; background: #5fa86a; border-radius: inherit; transition: inline-size 0.3s ease; }
+.hp-meter.is-mid > span { background: #d1a23a; }
+.hp-meter.is-low > span { background: #c4503f; }
+.hp-meter-text { font: 500 11px var(--font-mono); color: var(--parchment-dim); }
+.live-conds { display: flex; flex-wrap: wrap; gap: 4px; }
+.live-cond { padding: 1px 8px; border: 1px solid var(--hairline-strong); border-radius: 999px; font-size: 11px; color: var(--parchment-dim); }
+.empty-state > svg:first-child { box-sizing: content-box; inline-size: 34px; block-size: 34px; padding: 20px; margin-block-end: 16px; border-radius: 50%; border: 1px solid var(--hairline-strong); background: radial-gradient(circle at 50% 30%, color-mix(in srgb, var(--brass) 24%, transparent), transparent 72%); }
+@media (prefers-reduced-motion: reduce) { .hp-meter > span { transition: none; } }

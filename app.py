@@ -2370,8 +2370,9 @@ def characters_list():
     groups = db.execute('SELECT * FROM groups WHERE campaign_id = ? ORDER BY lower(name) ASC', (g.campaign_id,)).fetchall()
     by_char = _factions_by_character(db, g.campaign_id)
     characters = [dict(c, factions=by_char.get(c['id'], [])) for c in characters]
+    live = _battle_live_status(db)
     db.close()
-    return render_template('characters_list.html', characters=characters, groups=groups,
+    return render_template('characters_list.html', characters=characters, groups=groups, live=live,
                            deletable={c['id'] for c in characters if can_delete(c['created_by'])})
 
 
@@ -3047,6 +3048,22 @@ def _load_custom_conditions(stored):
         return _clean_custom_conditions(json.loads(stored or '[]'))
     except (ValueError, TypeError):
         return []
+
+
+def _battle_live_status(db):
+    """What the character cards show for anyone in the running battle: HP bar and conditions, keyed by character id.
+    Built from _battle_rows, so a Player never gets a monster's numbers (those rows come back without HP)."""
+    labels = dict(BATTLE_CONDITIONS)
+    out = {}
+    for r in _battle_rows(db, redact_enemies=not g.is_dm):
+        cid = r['character_id']
+        if r.get('is_temp_familiar') or cid in out or (r.get('is_npc') and not g.is_dm):
+            continue
+        cur, mx = r.get('current_hp'), r.get('char_max_hp')
+        pct = None if cur is None or not mx else max(0, min(100, round(100 * cur / mx)))
+        out[cid] = {'hp': cur, 'max': mx, 'pct': pct, 'dead': bool(r.get('is_dead')),
+                    'conditions': [labels[k] for k in r['conditions'] if k in labels] + list(r['custom_conditions'])}
+    return out
 
 
 def _battle_rows(db, redact_enemies=False):
