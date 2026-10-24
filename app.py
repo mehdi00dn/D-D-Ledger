@@ -3581,19 +3581,33 @@ def api_battle_initiative(pid):
     return jsonify(rows)
 
 
+INITIATIVE_SCOPES = {'all': ('everyone', None), 'pc': ('the player characters', 0), 'npc': ('the NPCs and monsters', 1)}
+
+
 @app.route('/campaigns/<int:campaign_id>/api/battle/roll-initiative', methods=['POST'])
 @campaign_access_required
 @dm_required
 def api_battle_roll_initiative():
-    """d20 + Dexterity modifier for everyone still standing.  Typing a number by hand keeps working afterwards."""
+    """d20 + Dexterity modifier for everyone still standing, or only for the player characters or only for the NPCs
+    ({"scope": "all" | "pc" | "npc"}, default all).  The others keep the numbers they have.  Typing a number by hand
+    keeps working afterwards."""
+    data = request.get_json(silent=True) or {}
+    scope = data.get('scope', 'all')
+    if scope not in INITIATIVE_SCOPES:
+        return api_error('Roll for everyone, the player characters or the NPCs.', 400)
+    who, npc_flag = INITIATIVE_SCOPES[scope]
     db = get_db()
-    for r in db.execute('''
+    sql = '''
         SELECT bp.id, c.dex_score FROM battle_participants bp JOIN characters c ON c.id = bp.character_id
-        WHERE c.campaign_id = ? AND bp.is_dead = 0
-    ''', (g.campaign_id,)).fetchall():
+        WHERE c.campaign_id = ? AND bp.is_dead = 0'''
+    params = [g.campaign_id]
+    if npc_flag is not None:
+        sql += ' AND c.is_npc = ?'
+        params.append(npc_flag)
+    for r in db.execute(sql, params).fetchall():
         total = secrets.randbelow(20) + 1 + dnd5e.modifier(r['dex_score'] if r['dex_score'] is not None else 10)
         db.execute('UPDATE battle_participants SET initiative = ? WHERE id = ?', (total, r['id']))
-    log_battle(db, 'Initiative rolled for everyone', None, 'initiative')
+    log_battle(db, 'Initiative rolled for ' + who, None, 'initiative', npc=(scope == 'npc'))
     db.commit()
     rows = _battle_rows(db)
     db.close()

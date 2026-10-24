@@ -718,14 +718,45 @@
 
   const rollInitBtn = document.getElementById('roll-initiative-btn');
   if (rollInitBtn) {
-    rollInitBtn.addEventListener('click', async () => {
-      const standing = participants.filter((p) => !p.is_dead);
+    const menu = document.getElementById('roll-menu');
+    const scopeLabel = { all: 'everyone', pc: 'the player characters', npc: 'the NPCs and monsters' };
+    const inScope = (p, scope) => !p.is_dead && (scope === 'all' || (scope === 'npc') === !!p.is_npc);
+    const refreshMenu = () => {
+      menu.querySelectorAll('[data-roll-scope]').forEach((b) => {
+        const n = participants.filter((p) => inScope(p, b.dataset.rollScope)).length;
+        b.disabled = n === 0;
+        b.querySelector('small').textContent = String(n);
+      });
+    };
+    const setOpen = (open) => { menu.classList.toggle('is-open', open); rollInitBtn.setAttribute('aria-expanded', open ? 'true' : 'false'); if (open) refreshMenu(); };
+    const rollFor = async (scope) => {
+      const standing = participants.filter((p) => inScope(p, scope));
       if (!standing.length) return;
-      if (standing.some((p) => p.initiative) && !(await window.confirmAction('Roll initiative for everyone again? The numbers already entered are replaced.'))) return;
+      if (standing.some((p) => p.initiative) && !(await window.confirmAction('Roll initiative for ' + scopeLabel[scope] + ' again? The numbers already entered are replaced.'))) return;
       rollInitBtn.disabled = true;
-      try { participants = await apiCall('/api/battle/roll-initiative', {}); render(); }
+      try { participants = await apiCall('/api/battle/roll-initiative', { scope }); render(); }
       catch (e) { if (window.LedgerDice) LedgerDice.announceError('Could not roll initiative.'); }
       rollInitBtn.disabled = false;
+    };
+    // A mouse hovers to see the choices and a click still rolls for everyone; a touch screen has no hover, so the first tap opens them.
+    const touchOnly = window.matchMedia && window.matchMedia('(hover: none)').matches;
+    rollInitBtn.addEventListener('click', () => {
+      if (touchOnly) { setOpen(!menu.classList.contains('is-open')); return; }
+      rollFor('all');
+    });
+    menu.addEventListener('pointerenter', refreshMenu);
+    menu.addEventListener('focusin', refreshMenu);
+    menu.addEventListener('click', (e) => {
+      const item = e.target.closest('[data-roll-scope]');
+      if (!item) return;
+      setOpen(false);
+      menu.querySelector('.roll-menu-list').classList.add('is-closing');          // keeps it shut under the pointer until it leaves
+      rollFor(item.dataset.rollScope);
+    });
+    menu.addEventListener('pointerleave', () => { menu.querySelector('.roll-menu-list').classList.remove('is-closing'); if (!touchOnly) setOpen(false); });
+    document.addEventListener('click', (e) => { if (touchOnly && !menu.contains(e.target)) setOpen(false); });
+    menu.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') { setOpen(false); rollInitBtn.focus(); menu.querySelector('.roll-menu-list').classList.add('is-closing'); }
     });
   }
 

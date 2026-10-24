@@ -4905,3 +4905,22 @@ input[type="range"]:disabled { opacity: 0.5; cursor: not-allowed; }
 .session-edit form { display: grid; gap: 6px; margin-block-start: 10px; }
 .session-edit label small { color: var(--parchment-faint); }
 .session-edit-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-block-start: 4px; }
+
+/* Battle: Roll Initiative opens a small menu (everyone / player characters / NPCs) on hover, focus or, on touch, tap. */
+.roll-menu { position: relative; display: inline-flex; }
+.roll-menu-list { position: absolute; inset-block-start: 100%; inset-inline-start: 0; z-index: 30; display: none; padding-block-start: 6px; min-inline-size: 210px; }
+.roll-menu:hover .roll-menu-list, .roll-menu:focus-within .roll-menu-list, .roll-menu.is-open .roll-menu-list { display: block; }
+.roll-menu-list.is-closing { display: none !important; }
+.roll-menu-panel { display: grid; padding: 4px; background: var(--bg-panel); border: 1px solid var(--hairline-strong); border-radius: var(--radius-m); box-shadow: var(--shadow-deep); }
+.roll-menu-panel button { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 12px; border: 0; border-radius: var(--radius-s); background: none; color: var(--parchment); font: 500 13.5px var(--font-body); text-align: start; cursor: pointer; }
+.roll-menu-panel button small { font: 500 11px var(--font-mono); color: var(--parchment-faint); }
+.roll-menu-panel button:hover:not(:disabled), .roll-menu-panel button:focus-visible { background: color-mix(in srgb, var(--brass) 16%, transparent); outline: none; }
+.roll-menu-panel button:disabled { opacity: 0.45; cursor: default; }
+@media (max-width: 720px) {
+  .battle-actions .roll-menu { display: flex; }
+  .battle-actions .roll-menu > .btn { inline-size: 100%; }
+  .roll-menu-list { min-inline-size: 200px; }
+}
+@media (prefers-reduced-motion: no-preference) { .roll-menu.is-open .roll-menu-panel, .roll-menu:hover .roll-menu-panel { animation: roll-menu-in .12s ease-out; } }
+@keyframes roll-menu-in { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
+.battle-actions > .roll-menu { padding: 0; gap: 0; flex-direction: row; border-radius: 0; height: auto; min-height: 0; }   /* the phone rule for "every action" must not pad the wrapper, only its button */

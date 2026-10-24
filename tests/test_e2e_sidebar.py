@@ -70,3 +70,33 @@ def test_campaign_home_page(shared_server, pw):
     _shot(page, 'home-phone')
     ctx.close()
     assert not errors, errors
+
+
+def test_roll_initiative_menu_opens_on_hover_and_rolls_only_the_chosen_side(shared_server, pw):
+    base = shared_server.url
+    dm = Api(base)
+    cid = dm.campaign('Initiative menu')
+    pc = dm.character(cid, 'Hero', dex_score=10)
+    npc = dm.character(cid, 'Ogre', dex_score=10, is_npc='on')
+    for c in (pc, npc):
+        dm.post(f'/campaigns/{cid}/api/battle/add', json={'character_id': c})
+    for p in dm.get(f'/campaigns/{cid}/api/battle').json():
+        dm.post(f'/campaigns/{cid}/api/battle/{p["id"]}/initiative', json={'value': 99})
+    ctx = dm.context(pw, base)
+    page = ctx.new_page(); page.set_viewport_size({'width': 1280, 'height': 800})
+    errors = []
+    page.on('pageerror', lambda x: errors.append(str(x)))
+    page.goto(f'{base}/campaigns/{cid}/battle')
+    playwright.expect(page.locator('.roll-menu-list')).to_be_hidden()
+    page.hover('#roll-initiative-btn')
+    playwright.expect(page.locator('.roll-menu-list')).to_be_visible()
+    assert page.locator('[data-roll-scope=pc] small').inner_text() == '1' and page.locator('[data-roll-scope=npc] small').inner_text() == '1'
+    _shot(page, 'battle-roll-menu')
+    page.click('[data-roll-scope=npc]')
+    assert 'NPCs and monsters' in page.locator('#confirm-modal-message').inner_text()   # numbers already entered: it asks first
+    page.click('#confirm-modal-yes')
+    page.wait_for_function("() => [...document.querySelectorAll('input[data-action=initiative]')].some(e => e.value !== '99')")
+    vals = sorted(int(v) for v in page.locator('input[data-action="initiative"]').evaluate_all('els => els.map(e => e.value)'))
+    assert vals.count(99) == 1 and len(vals) == 2                                   # one side rolled, the other kept its number
+    ctx.close()
+    assert not errors, errors

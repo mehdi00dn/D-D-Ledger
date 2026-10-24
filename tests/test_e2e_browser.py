@@ -1282,9 +1282,10 @@ def test_roll_initiative_button_fills_in_every_row_and_fits_the_phone_header(pw,
         dm.post(f'/campaigns/{cid}/api/battle/add', json={'character_id': dm.character(cid, n, dex_score=20)})
     ctx = _touch_context(pw, dm, base, 390, 800); page = ctx.new_page(); bad, errs = _collect(page)
     page.goto(base + f'/campaigns/{cid}/battle'); page.wait_for_load_state('load'); page.wait_for_timeout(600)
-    ys = {round(page.locator(f'.battle-actions .btn:nth-child({i})').bounding_box()['y']) for i in (1, 2, 3, 4)}
+    ys = {round(page.locator(f'.battle-actions > :nth-child({i})').bounding_box()['y']) for i in (1, 2, 3, 4)}
     assert max(ys) - min(ys) <= 2, ys                                                  # four buttons on one row
-    page.locator('#roll-initiative-btn').tap(); page.wait_for_timeout(700)
+    page.locator('#roll-initiative-btn').tap()                                         # no hover on a phone: the first tap opens the choices
+    page.locator('[data-roll-scope=all]').tap(); page.wait_for_timeout(700)
     vals = [int(v) for v in page.locator('input[data-action="initiative"]').evaluate_all('els => els.map(e => e.value)')]
     assert len(vals) == 2 and all(6 <= v <= 25 for v in vals), vals
     assert not bad and not errs, (bad, errs)

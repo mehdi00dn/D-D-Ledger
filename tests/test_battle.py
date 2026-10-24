@@ -107,3 +107,31 @@ def test_roll_initiative_rolls_d20_plus_dex_for_everyone_standing_dm_only(make_u
         rows = {r['char_name']: r['initiative'] for r in dm.json(f'/campaigns/{cid}/api/battle/roll-initiative', {}).get_json()}
         assert 5 <= rows['Quick'] <= 24 and -1 <= rows['Slow'] <= 18
         assert rows['Dead'] == 7                                     # the fallen are left alone
+
+
+def test_roll_initiative_can_be_limited_to_player_characters_or_npcs(make_user):
+    dm, pl = make_user(), make_user()
+    cid = dm.new_campaign(); dm.add_member(cid, pl)
+    hero = dm.new_character(cid, name='Hero', dex_score=10)
+    ogre = dm.new_character(cid, name='Ogre', dex_score=10, is_npc='on')
+    dm.add_to_battle(cid, hero); dm.add_to_battle(cid, ogre)
+    ids = {p['char_name']: p['id'] for p in dm.get(f'/campaigns/{cid}/api/battle').get_json()}
+    for name in ids:
+        dm.json(f'/campaigns/{cid}/api/battle/{ids[name]}/initiative', {'value': 99})
+
+    def roll(scope):
+        r = dm.json(f'/campaigns/{cid}/api/battle/roll-initiative', {'scope': scope})
+        assert r.status_code == 200
+        return {x['char_name']: x['initiative'] for x in r.get_json()}
+    rows = roll('npc')
+    assert rows['Hero'] == 99 and rows['Ogre'] != 99 and 1 <= rows['Ogre'] <= 20                    # only the ogre rolled
+    for name in ids:
+        dm.json(f'/campaigns/{cid}/api/battle/{ids[name]}/initiative', {'value': 99})
+    rows = roll('pc')
+    assert rows['Ogre'] == 99 and 1 <= rows['Hero'] <= 20 and rows['Hero'] != 99
+    rows = roll('all')
+    assert rows['Hero'] != 99 and rows['Ogre'] != 99
+    assert dm.json(f'/campaigns/{cid}/api/battle/roll-initiative', {'scope': 'everybody'}).status_code == 400
+    assert pl.json(f'/campaigns/{cid}/api/battle/roll-initiative', {'scope': 'pc'}).status_code in (302, 403)
+    texts = [l['text'] for l in dm.get(f'/campaigns/{cid}/api/battle/log').get_json()]
+    assert 'Initiative rolled for the NPCs and monsters' in texts and 'Initiative rolled for the player characters' in texts and 'Initiative rolled for everyone' in texts

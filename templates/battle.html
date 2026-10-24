@@ -12,7 +12,16 @@
   {% if g.is_dm %}
   <div class="page-actions battle-actions">
     <a href="{{ url_for('character_new', **{'from': 'battle'}) }}" class="btn btn-ghost">{{ icon('plus') }} <span>Create Character</span></a>
-    <button type="button" class="btn btn-ghost" id="roll-initiative-btn" title="Roll d20 + Dexterity for everyone in the battle">{{ icon('dices') }} <span>Roll Initiative</span></button>
+    <div class="roll-menu" id="roll-menu">
+      <button type="button" class="btn btn-ghost" id="roll-initiative-btn" aria-haspopup="menu" aria-expanded="false" aria-controls="roll-menu-list" title="Roll d20 + Dexterity. Hover for the player characters or the NPCs only.">{{ icon('dices') }} <span>Roll Initiative</span></button>
+      <div class="roll-menu-list" id="roll-menu-list" role="menu" aria-label="Roll initiative for">
+        <div class="roll-menu-panel">
+          <button type="button" role="menuitem" data-roll-scope="all">Everyone <small></small></button>
+          <button type="button" role="menuitem" data-roll-scope="pc">Player characters <small></small></button>
+          <button type="button" role="menuitem" data-roll-scope="npc">NPCs and monsters <small></small></button>
+        </div>
+      </div>
+    </div>
     <button type="button" class="btn btn-ghost" id="open-add-modal">{{ icon('user') }} <span>Add Character</span></button>
     <button type="button" class="btn btn-danger" id="clear-battle-btn">{{ icon('trash-2') }} <span>Clear Battle</span></button>
   </div>

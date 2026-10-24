@@ -165,6 +165,9 @@ in UTC plus a short note). The browser shows it in each viewer's own time zone (
 Can't (`session_rsvps`); a new time clears the answers and sends members a notification and an activity entry; `/session.ics` gives a
 calendar file. A session more than six hours past is treated as none. A timed reminder is not built (needs a scheduler).
 
+Roll Initiative (battle page) opens a small menu on hover or focus (a tap on a phone): everyone, the player characters or the NPCs and
+monsters. `POST /api/battle/roll-initiative` takes `{"scope": "all" | "pc" | "npc"}`; the others keep their numbers.
+
 Visual round 3 (DL-155): a campaign without an image gets a generated cover (a hue from its id, with its initials);
 a character without a portrait shows its class art, else its initial; character cards show a live HP bar and conditions for
 anyone in the running battle (`_battle_live_status`, built on `_battle_rows`, so a Player gets no monster numbers); empty states sit in a brass medallion.
