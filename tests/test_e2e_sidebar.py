@@ -100,3 +100,26 @@ def test_roll_initiative_menu_opens_on_hover_and_rolls_only_the_chosen_side(shar
     assert vals.count(99) == 1 and len(vals) == 2                                   # one side rolled, the other kept its number
     ctx.close()
     assert not errors, errors
+
+
+def test_sidebar_menu_scrolls_on_a_short_window_and_keeps_the_footer(shared_server, pw):
+    base = shared_server.url
+    dm = Api(base)
+    cid = dm.campaign('Short window')
+    ctx = dm.context(pw, base)
+    page = ctx.new_page()
+    page.set_viewport_size({'width': 1280, 'height': 560})
+    page.goto(f'{base}/campaigns/{cid}/home')
+    nav = page.locator('.sidebar-nav')
+    assert nav.evaluate('e => e.scrollHeight > e.clientHeight')
+    assert nav.evaluate('e => getComputedStyle(e).overflowY') == 'auto'
+    nav.evaluate('e => { e.scrollTop = e.scrollHeight }')
+    if os.environ.get('SHOT_DIR'):
+        page.screenshot(path=os.path.join(os.environ['SHOT_DIR'], 'sidebar-scrolled.png'))
+    assert nav.evaluate('e => e.scrollTop') > 0
+    foot = page.locator('.sidebar-foot').bounding_box()
+    assert foot and foot['y'] + foot['height'] <= 560 + 1           # footer still on screen
+    assert page.locator('.sidebar').evaluate('e => e.getBoundingClientRect().height') <= 560 + 1       # the sidebar itself never outgrows the window
+    page.set_viewport_size({'width': 1280, 'height': 900})
+    assert not nav.evaluate('e => e.scrollHeight > e.clientHeight')
+    ctx.close()

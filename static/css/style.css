@@ -4944,3 +4944,17 @@ input[type="range"]:disabled { opacity: 0.5; cursor: not-allowed; }
 .cf-ally-toggle.is-disabled { opacity: .45; cursor: not-allowed; }
 .cf-ally-toggle.is-disabled * { cursor: not-allowed; }
 @media (max-width: 640px) { .cf-ally-toggle { margin-inline-start: 0; display: flex; } }
+
+/* Scrollable sidebar: when the window is short, the menu scrolls and the footer stays put. */
+@media (min-width: 881px) and (min-height: 501px) {
+  .sidebar { --sb-pad: 18px; overflow: hidden; }
+  :root[data-sidebar="collapsed"] .sidebar { --sb-pad: 14px; }
+  .sidebar-nav {
+    flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain;
+    margin-inline: calc(var(--sb-pad) * -1); padding: 0 var(--sb-pad) 12px;      /* the active marker sits in the padding, so it is not clipped */
+    scrollbar-width: thin; scrollbar-color: var(--hairline-strong) transparent;
+  }
+  .sidebar-nav::-webkit-scrollbar { width: 6px; }
+  .sidebar-nav::-webkit-scrollbar-thumb { background: var(--hairline-strong); border-radius: 3px; }
+  .sidebar-foot { flex: 0 0 auto; padding-top: 10px; }
+}
