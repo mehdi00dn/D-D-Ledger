@@ -875,9 +875,14 @@ def test_new_character_can_start_from_a_monster_in_the_manual(pw):
         assert page.is_checked('input[name="is_npc"]')
         assert page.locator('#note-blocks [data-note-hidden]:checked').count() == page.locator('#note-blocks [data-note-hidden]').count() >= 1   # the stat block starts hidden from Players
         assert 'Small humanoid' in page.inner_text('#note-blocks') and 'Nimble Escape' in page.inner_text('#note-blocks')
+        rows = page.locator('[data-attacks] .atk-edit-row')                       # the monster's attack rolls land in the Attacks card
+        assert rows.count() == 3
+        assert rows.nth(0).locator('[name=attack_name]').input_value() == 'Scimitar' and rows.nth(0).locator('[name=attack_bonus]').input_value() == '4'
+        assert rows.nth(0).locator('[name=attack_damage]').input_value() == '1d6+2' and rows.nth(0).locator('[name=attack_type]').input_value() == 'slashing'
         with page.expect_navigation():
             page.click('.cf-bar button[type=submit]')
         ch = next(c['id'] for c in dm.get(f'/campaigns/{cid}/api/characters').json() if c['name'] == 'Goblin Warrior')
+        assert [a['name'] for a in dm.get(f'/campaigns/{cid}/api/characters/{ch}/detail').json()['attacks']] == ['Scimitar', 'Shortbow', 'Weird Gaze']
         page.goto(base + f'/campaigns/{cid}/characters/{ch}'); page.wait_for_load_state('networkidle')
         assert 'Stealth' in page.inner_text('body') and page.locator('.sheet-skill.is-expert .val').first.inner_text() == '+6'
         # the Reference page lists the same data

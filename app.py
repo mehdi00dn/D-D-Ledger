@@ -3425,6 +3425,7 @@ def api_battle_add_monster():
         ''', ((c['name'] if count == 1 else f"{c['name']} {i}")[:120], c['level'], hp, c['str_score'], c['dex_score'],
               c['con_score'], c['int_score'], c['wis_score'], c['cha_score'], c['armor_class'], notes,
               g.campaign_id, session['user_id'], c['speed'], skill_prof, save_prof))
+        _save_attacks(db, cur.lastrowid, c.get('attacks') or [])
         max_order += 1
         db.execute('INSERT INTO battle_participants (character_id, current_hp, initiative, is_dead, sort_order) VALUES (?, ?, 0, 0, ?)',
                    (cur.lastrowid, hp, max_order))

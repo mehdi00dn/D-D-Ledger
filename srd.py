@@ -126,6 +126,20 @@ def _abilities(data):
              ('int', 'intelligence'), ('wis', 'wisdom'), ('cha', 'charisma'))}
 
 
+def _monster_attacks(d):
+    """The stat block's attack rolls as attacks for the Attacks card: the actions that carry a to-hit bonus, each with its
+    first damage entry (the card holds one kind of die plus a flat bonus; riders such as "+1d4 with advantage" stay in the notes)."""
+    out = []
+    for act in d.get('actions') or []:
+        if not isinstance(act, dict) or not act.get('name') or not isinstance(act.get('attack_bonus'), (int, float)):
+            continue
+        dmg = next((x for x in act.get('damage') or [] if isinstance(x, dict) and x.get('damage_dice')), None)
+        kind = ((dmg or {}).get('damage_type') or {}).get('name', '') if isinstance((dmg or {}).get('damage_type'), dict) else ''
+        out.append({'name': act['name'], 'attack_bonus': int(act['attack_bonus']),
+                    'damage': (dmg or {}).get('damage_dice', ''), 'damage_type': str(kind).lower()})
+    return dnd5e.clean_attacks(out)
+
+
 def _monster_prefill(d):
     scores = _abilities(d)
     pb = d.get('proficiency_bonus') or 2
@@ -151,6 +165,7 @@ def _monster_prefill(d):
         **{f'{k}_score': v for k, v in scores.items()},
         'save_prof': saves, 'skill_prof': skills,
         'hp_roll': str(d.get('hit_points_roll') or ''),
+        'attacks': _monster_attacks(d),
     }
 
 

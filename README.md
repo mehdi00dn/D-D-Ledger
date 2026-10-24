@@ -211,3 +211,5 @@ Both themes pass an axe-core `color-contrast` audit (WCAG AA, 0 violations acros
 
 ### NPC allies
 An NPC can be marked **Ally** on the character form (the switch is greyed out until NPC is on). An ally is still an NPC (NPC tag, DM-only dice, NPC initiative scope), but Players see its stats and it stays visible, in the roster, battle and on maps, when "Hide NPCs" is on. Migration `0036_npc_ally.sql`.
+
+A monster from the manual (New character, or the Battle "Add monster" menu) also fills the Attacks card: every action with a to-hit bonus becomes an attack with its first damage roll and type. Extra riders (e.g. "+1d4 with advantage") stay in the stat-block note, and dice the card cannot hold are listed without a damage roll.
