@@ -1946,3 +1946,14 @@ def test_battle_log_is_collapsible_small_and_live(pw, shared_server):
     dpage.reload(); dpage.wait_for_selector('#battle-log:not([hidden])')
     assert dpage.locator('#battle-log-toggle').get_attribute('aria-expanded') == 'false'   # nothing is remembered: always starts closed
     assert not dbad and not derrs
+
+
+def test_character_sheet_prints_without_the_app_chrome(pw, shared_server):
+    base = shared_server.url; dm = Api(base); cid = dm.campaign('PrintUI'); chid = dm.character(cid, 'Printable')
+    ctx = dm.context(pw, base); page = ctx.new_page()
+    page.goto(base + f'/campaigns/{cid}/characters/{chid}')
+    page.wait_for_selector('[data-print]')
+    page.emulate_media(media='print')
+    assert not page.locator('.sidebar').is_visible() and not page.locator('[data-print]').is_visible()      # menus and buttons stay off the paper
+    assert page.locator('.cd-hero').is_visible()
+    assert page.evaluate("getComputedStyle(document.body).backgroundColor") == 'rgb(255, 255, 255)'

@@ -160,6 +160,10 @@ Home folds behind "Read more" (`static/js/home.js`). A character can be attached
 owner from Settings > Members): `owns_character()` then lets that member edit it, read its hidden notes and make death saves, and map
 tokens of that character are theirs to move (`_may_move_pin`). Deleting stays with the creator and the owners.
 
+Print sheet (character page, DL-157): a button that opens the browser's print window, where "Save as PDF" also works. A print stylesheet
+leaves out the menus, buttons, dice, roll controls and the sheet viewer, drops the cards onto white, and the page switches to the light theme
+for the print only. A character whose stats are hidden from the viewer has no button.
+
 Session scheduling (DL-152, migration 0035): the DM or an owner sets one "next session" per campaign from Home (`campaigns.next_session_at`
 in UTC plus a short note). The browser shows it in each viewer's own time zone (`static/js/home.js`); members answer Going / Maybe /
 Can't (`session_rsvps`); a new time clears the answers and sends members a notification and an activity entry; `/session.ics` gives a

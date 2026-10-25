@@ -201,4 +201,18 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!e.persisted) return;
     document.querySelectorAll('form[data-once] button[type=submit]').forEach(function (b) { b.disabled = false; });
   });
+
+  // Print sheet: the print window always gets the light theme (ink on paper), then the page goes back to the reader's theme.
+  var printedTheme = null;
+  document.addEventListener('click', function (e) { if (e.target.closest('[data-print]')) window.print(); });
+  window.addEventListener('beforeprint', function () {
+    var root = document.documentElement;
+    printedTheme = root.getAttribute('data-theme');
+    root.setAttribute('data-theme', 'light');
+  });
+  window.addEventListener('afterprint', function () {
+    if (printedTheme === null) return;
+    document.documentElement.setAttribute('data-theme', printedTheme);
+    printedTheme = null;
+  });
 })();

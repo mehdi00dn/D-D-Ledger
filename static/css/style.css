@@ -3900,6 +3900,20 @@ body.page-leaving .content {
 .theme-icon svg, .foot-bell svg { width: 16px; height: 16px; }
 .content { padding: 32px 40px 56px; }
 
+/* ---- Print (DL-157): a character sheet prints as plain cards on white; the menus, buttons, dice and viewer stay off the paper ---- */
+@media print {
+  @page { margin: 12mm; }
+  body > :not(.app-shell) { display: none !important; }
+  .sidebar, .mobile-dock, .page-header .btn, .page-actions, .battle-log, .sheet-viewer-panel, .banner-notice, .skip-link, .roll-bar { display: none !important; }
+  html, body { background: #fff !important; color: #000 !important; }
+  .app-shell { display: block !important; min-height: 0; }
+  .content { padding: 0 !important; max-width: none !important; animation: none !important; }
+  .detail-layout, .detail-layout.has-viewer { display: block !important; }
+  .cf-card, .cd-hero { break-inside: avoid; box-shadow: none !important; -webkit-backdrop-filter: none !important; backdrop-filter: none !important; background: #fff !important; border: 1px solid #888 !important; margin-block-end: 8px; }
+  * { animation: none !important; transition: none !important; }
+  a { color: inherit !important; text-decoration: none !important; }
+}
+
 /* ---- toolbars: compact segmented look ---- */
 .map-toolbar { padding: 6px 8px; border-radius: 12px; gap: 6px 8px; }
 .map-tool-btn, .map-tool-group .btn-icon { min-width: var(--ctl); min-height: var(--ctl); width: var(--ctl); height: var(--ctl); border-radius: var(--ctl-r); position: relative; }

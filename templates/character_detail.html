@@ -13,6 +13,7 @@
     {% if can_edit %}
     <a href="{{ url_for('character_edit', char_id=character.id) }}" class="btn btn-primary">{{ icon('pencil') }} Edit</a>
     {% endif %}
+    {% if not stats_hidden %}<button type="button" class="btn btn-ghost" data-print title="Print this sheet, or save it as a PDF from the print window">{{ icon('download') }} Print sheet</button>{% endif %}
     <a href="{{ url_for('characters_list') }}" class="btn btn-ghost">{{ icon('arrow-left') }} Back to list</a>
   </div>
 </div>
