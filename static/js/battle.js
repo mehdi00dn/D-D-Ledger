@@ -646,6 +646,16 @@
     });
   }
 
+  // ---- Long rest (DM-only) ----
+  const longRestBtn = document.getElementById('long-rest-btn');
+  if (longRestBtn) {
+    longRestBtn.addEventListener('click', async () => {
+      if (!(await window.confirmAction('Long rest: every player character goes back to full HP, with no temporary HP and no death saves?'))) return;
+      participants = await apiCall('/api/battle/long-rest', {});
+      render();
+    });
+  }
+
   // ---- Clear battle (DM-only) ----
   const clearBattleBtn = document.getElementById('clear-battle-btn');
   if (clearBattleBtn) {

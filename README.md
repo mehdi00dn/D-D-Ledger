@@ -168,6 +168,10 @@ calendar file. A session more than six hours past is treated as none. A timed re
 Roll Initiative (battle page) opens a small menu on hover or focus (a tap on a phone): everyone, the player characters or the NPCs and
 monsters. `POST /api/battle/roll-initiative` takes `{"scope": "all" | "pc" | "npc"}`; the others keep their numbers.
 
+Long Rest (battle page, DM only; DL-149): every player character goes to full HP, loses temporary HP, and has death saves cleared and
+is_dead reset; conditions, NPCs and monsters are left alone, and the battle log gets one line. `POST /api/battle/long-rest` takes an
+optional `{"id": <participant id>}` to rest one character. Short rest and hit dice are not built (the sheet has no hit dice yet).
+
 Visual round 3 (DL-155): a campaign without an image gets a generated cover (a hue from its id, with its initials);
 a character without a portrait shows its class art, else its initial; character cards show a live HP bar and conditions for
 anyone in the running battle (`_battle_live_status`, built on `_battle_rows`, so a Player gets no monster numbers); empty states sit in a brass medallion.

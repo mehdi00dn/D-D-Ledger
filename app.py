@@ -3623,6 +3623,34 @@ def api_battle_roll_initiative():
     return jsonify(rows)
 
 
+@app.route('/campaigns/<int:campaign_id>/api/battle/long-rest', methods=['POST'])
+@campaign_access_required
+@dm_required
+def api_battle_long_rest():
+    """The player characters take a long rest: full HP, no temporary HP, death saves cleared, back on their feet.  Conditions,
+    NPCs and monsters are left alone.  Optional {"id": <participant id>} rests just that one character."""
+    data = request.get_json(silent=True) or {}
+    db = get_db()
+    sql = '''UPDATE battle_participants SET current_hp = c.max_hp, temp_hp = 0, is_dead = 0,
+                death_successes = 0, death_failures = 0, is_stable = 0
+            FROM characters c
+            WHERE battle_participants.character_id = c.id AND c.campaign_id = ? AND c.is_npc = 0'''
+    params = [g.campaign_id]
+    if data.get('id') is not None:
+        sql += ' AND battle_participants.id = ?'
+        params.append(int(data['id']))
+    changed = db.execute(sql, params).rowcount
+    if changed == 0:
+        db.rollback()
+        db.close()
+        return api_error('There are no player characters in the battle to rest.', 404)
+    log_battle(db, 'The party took a long rest' if data.get('id') is None else 'A character took a long rest', None, 'heal')
+    db.commit()
+    rows = _battle_rows(db)
+    db.close()
+    return jsonify(rows)
+
+
 @app.route('/campaigns/<int:campaign_id>/api/battle/<int:pid>/ac', methods=['POST'])
 @campaign_access_required
 @dm_required
