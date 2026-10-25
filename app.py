@@ -339,6 +339,7 @@ _SCOPE_OWNER_SQL = {
     'map_id': 'SELECT campaign_id AS owner FROM maps WHERE id = ?',
     'char_id': 'SELECT campaign_id AS owner FROM characters WHERE id = ?',
     'group_id': 'SELECT campaign_id AS owner FROM groups WHERE id = ?',
+    'quest_id': 'SELECT campaign_id AS owner FROM quests WHERE id = ?',
     'pid': 'SELECT c.campaign_id AS owner FROM battle_participants bp JOIN characters c ON c.id = bp.character_id WHERE bp.id = ?',
 }
 _SCOPE_PARENT_SQL = {            # arg -> (SQL returning the parent id, name of the parent arg)
@@ -4003,8 +4004,14 @@ def campaign_home():
                         + hide_sql + ' ORDER BY lower(c.name)', [g.campaign_id] + hide_params).fetchall():
         played.setdefault(r['player_id'], []).append(r)
     next_session = _next_session(db)
+    try:
+        quests = db.execute('SELECT id, title, details, done, hidden FROM quests WHERE campaign_id = ?' + ('' if g.is_dm else ' AND hidden = FALSE')
+                            + ' ORDER BY done, id', (g.campaign_id,)).fetchall()
+    except pgerr.UndefinedTable:
+        db.rollback()
+        quests = []                                         # code deployed before migration 0038: show no quests rather than fail
     db.close()
-    return render_template('campaign_home.html', next_session=next_session, played=played, bio_html=notes_to_html(g.campaign['description']),
+    return render_template('campaign_home.html', quests=quests, next_session=next_session, played=played, bio_html=notes_to_html(g.campaign['description']),
                            campaign_notes=notes_to_html(g.campaign['notes'], show_hidden=g.is_dm), members=members, party=party, counts=counts, battle=battle, events=events, rolls=rolls)
 
 
@@ -4101,6 +4108,55 @@ def campaign_session_rsvp():
     db.execute('''INSERT INTO session_rsvps (campaign_id, user_id, status) VALUES (?, ?, ?)
                   ON CONFLICT (campaign_id, user_id) DO UPDATE SET status = EXCLUDED.status, updated_at = ''' + _UTC_NOW,
                (g.campaign_id, session['user_id'], status))
+    db.commit(); db.close()
+    return redirect(url_for('campaign_home'))
+
+
+# ---------------- QUESTS (DL-151) ----------------
+# A short list on the Home page.  The DM adds, finishes, hides and deletes; Players read the ones that are not hidden.
+QUEST_TITLE_MAX, QUEST_DETAILS_MAX, QUEST_LIMIT = 120, 600, 60
+
+
+@app.route('/campaigns/<int:campaign_id>/quests/add', methods=['POST'])
+@campaign_access_required
+@dm_required
+def quest_add():
+    title = ' '.join((request.form.get('title') or '').split())[:QUEST_TITLE_MAX]
+    if not title:
+        abort(400)
+    details = (request.form.get('details') or '').strip()[:QUEST_DETAILS_MAX]
+    db = get_db()
+    if db.execute('SELECT COUNT(*) AS n FROM quests WHERE campaign_id = ?', (g.campaign_id,)).fetchone()['n'] >= QUEST_LIMIT:
+        db.close()
+        abort(409)
+    hidden = bool(request.form.get('hidden'))
+    db.execute('INSERT INTO quests (campaign_id, title, details, hidden) VALUES (?, ?, ?, ?)', (g.campaign_id, title, details or None, hidden))
+    if not hidden:
+        log_activity(db, g.campaign_id, 'quest', 'added the quest "%s"' % title, url_for('campaign_home', campaign_id=g.campaign_id))
+    db.commit(); db.close()
+    return redirect(url_for('campaign_home'))
+
+
+@app.route('/campaigns/<int:campaign_id>/quests/<int:quest_id>', methods=['POST'])
+@campaign_access_required
+@dm_required
+def quest_change(quest_id):
+    """The form field `action`: done | reopen | hide | show | delete."""
+    action = request.form.get('action')
+    if action not in ('done', 'reopen', 'hide', 'show', 'delete'):
+        abort(400)
+    db = get_db()
+    q = db.execute('SELECT title, hidden FROM quests WHERE id = ? AND campaign_id = ?', (quest_id, g.campaign_id)).fetchone()
+    if q is None:
+        db.close()
+        abort(400)
+    if action == 'delete':
+        db.execute('DELETE FROM quests WHERE id = ? AND campaign_id = ?', (quest_id, g.campaign_id))
+    else:
+        col, val = {'done': ('done', True), 'reopen': ('done', False), 'hide': ('hidden', True), 'show': ('hidden', False)}[action]
+        db.execute('UPDATE quests SET %s = ? WHERE id = ? AND campaign_id = ?' % col, (val, quest_id, g.campaign_id))
+        if action == 'done' and not q['hidden']:
+            log_activity(db, g.campaign_id, 'quest', 'completed the quest "%s"' % q['title'], url_for('campaign_home', campaign_id=g.campaign_id))
     db.commit(); db.close()
     return redirect(url_for('campaign_home'))
 

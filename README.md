@@ -169,6 +169,10 @@ Print sheet (character page, DL-157): a button that opens the browser's print wi
 leaves out the menus, buttons, dice, roll controls and the sheet viewer, drops the cards onto white, and the page switches to the light theme
 for the print only. A character whose stats are hidden from the viewer has no button.
 
+Quests (DL-151, migration 0038): a card on the campaign Home page. The DM adds a quest (title, what the players know, optionally hidden),
+marks it done or reopens it, hides it from or shows it to Players, or deletes it; Players read the quests that are not hidden. Up to 60
+per campaign. Adding or finishing a visible quest shows up in the activity feed. Not built: objectives inside a quest, quest export.
+
 Session scheduling (DL-152, migration 0035): the DM or an owner sets one "next session" per campaign from Home (`campaigns.next_session_at`
 in UTC plus a short note). The browser shows it in each viewer's own time zone (`static/js/home.js`); members answer Going / Maybe /
 Can't (`session_rsvps`); a new time clears the answers and sends members a notification and an activity entry; `/session.ics` gives a

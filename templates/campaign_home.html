@@ -57,6 +57,50 @@
   </section>
   {% endif %}
 
+  {% if quests or g.is_dm %}
+  <section class="cf-card home-quests" aria-label="Quests">
+    <h2 class="cf-title">Quests{% if quests %} <span class="cf-count">{{ quests|rejectattr('done')|list|length }}</span>{% endif %}</h2>
+    {% if quests %}
+    <ul class="quest-list">
+      {% for q in quests %}
+      <li class="quest{{ ' is-done' if q.done else '' }}{{ ' is-hidden' if q.hidden else '' }}">
+        <div class="quest-main">
+          <p class="quest-title">{{ q.title }}{% if q.done %} <span class="quest-tag">Done</span>{% endif %}{% if q.hidden %} <span class="quest-tag quest-tag-dm">Hidden from players</span>{% endif %}</p>
+          {% if q.details %}<p class="quest-details">{{ q.details }}</p>{% endif %}
+        </div>
+        {% if g.is_dm %}
+        <div class="quest-actions">
+          <form method="POST" action="{{ url_for('quest_change', quest_id=q.id) }}">{{ csrf_field() }}<input type="hidden" name="action" value="{{ 'reopen' if q.done else 'done' }}"><button type="submit" class="btn btn-ghost btn-sm">{{ 'Reopen' if q.done else 'Mark done' }}</button></form>
+          <form method="POST" action="{{ url_for('quest_change', quest_id=q.id) }}">{{ csrf_field() }}<input type="hidden" name="action" value="{{ 'show' if q.hidden else 'hide' }}"><button type="submit" class="btn btn-ghost btn-sm">{{ 'Show to players' if q.hidden else 'Hide' }}</button></form>
+          <form method="POST" action="{{ url_for('quest_change', quest_id=q.id) }}" data-confirm="Delete this quest?">{{ csrf_field() }}<input type="hidden" name="action" value="{{ 'delete' }}"><button type="submit" class="btn btn-ghost btn-sm quest-delete" aria-label="Delete the quest {{ q.title }}" title="Delete">{{ icon('trash-2') }}</button></form>
+        </div>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="home-empty">No quests yet.</p>
+    {% endif %}
+    {% if g.is_dm %}
+    <details class="session-edit quest-add"{{ '' if quests else ' open' }}>
+      <summary class="btn btn-ghost btn-sm">{{ icon('plus') }} Add a quest</summary>
+      <form method="POST" action="{{ url_for('quest_add') }}">{{ csrf_field() }}
+        <div class="field">
+          <label for="quest-title">Quest</label>
+          <input type="text" id="quest-title" name="title" maxlength="120" required placeholder="Find the missing caravan">
+        </div>
+        <div class="field">
+          <label for="quest-details">What the players know <span class="field-optional">optional</span></label>
+          <textarea id="quest-details" name="details" rows="2" maxlength="600"></textarea>
+        </div>
+        <label class="quest-hide"><input type="checkbox" name="hidden" value="1"> Hide from players for now</label>
+        <div class="session-edit-actions"><button type="submit" class="btn btn-primary btn-sm">{{ icon('check') }} Add quest</button></div>
+      </form>
+    </details>
+    {% endif %}
+  </section>
+  {% endif %}
+
   <section class="cf-card home-activity" aria-label="Recent activity">
     <h2 class="cf-title">Recent activity</h2>
     {% if events %}
