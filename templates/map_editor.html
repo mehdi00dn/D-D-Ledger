@@ -141,6 +141,7 @@
   </div>
 
   <div class="map-tool-group map-tool-group-persistent">
+    <button type="button" class="map-tool-btn" data-tool="ruler" title="Ruler: drag to measure in squares and feet (Esc clears it)" aria-label="Ruler">{{ icon('ruler') }}</button>
     <button type="button" class="btn btn-ghost btn-sm" id="zoom-reset-btn" title="Reset zoom to 100%">Reset Zoom</button>
     <span class="map-setup-value" id="zoom-level-label">100%</span>
     <span class="hint-text" id="hold-space-hint" style="margin:0;">Hold Space to pan</span>
@@ -231,6 +232,10 @@
         <button type="button" class="grid-color-swatch" data-grid-color="white" title="White" aria-label="Grid colour white"></button>
         <button type="button" class="grid-color-swatch" data-grid-color="black" title="Black" aria-label="Grid colour black"></button>
       </div>
+      <div class="map-setup-slider-group">
+        <label class="grid-size-label" for="setup-feet-per-square">Feet per square</label>
+        <input type="number" id="setup-feet-per-square" class="map-setup-number" min="1" max="100" step="1" value="{{ map.feet_per_square or 5 }}">
+      </div>
       <label class="field-checkbox">
         <input type="checkbox" id="setup-snap-grid" {{ 'checked' if map.snap_to_grid else '' }}>
         Snap pins to grid
@@ -257,6 +262,7 @@
   </div>
 </div>
 
+<p class="ruler-readout" id="ruler-readout" role="status" aria-live="polite"></p>
 <script id="map-init-data" type="application/json">{{ map | tojson }}</script>
 {% endblock %}
 

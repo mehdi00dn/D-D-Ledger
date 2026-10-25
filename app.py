@@ -4758,7 +4758,7 @@ def api_map_state(map_id):
 def _map_state_payload(db, map_id):
     row = db.execute('''
         SELECT grid_size, grid_color, grid_visible, grid_offset_x, grid_offset_y,
-               snap_to_grid, grid_setup_done, locked_for_players, linked_to_battle,
+               snap_to_grid, grid_setup_done, locked_for_players, linked_to_battle, feet_per_square,
                fog_version, (fog_mask IS NOT NULL) AS fog_active
         FROM maps WHERE id = ? AND campaign_id = ?
     ''', (map_id, g.campaign_id)).fetchone()
@@ -4881,6 +4881,13 @@ def api_map_settings(map_id):
         fields.append('locked_for_players = ?'); values.append(1 if data['locked_for_players'] else 0)
     if 'grid_size' in data:
         fields.append('grid_size = ?'); values.append(max(25, min(100, int(data['grid_size']))))
+    if 'feet_per_square' in data:
+        try:
+            feet = int(data['feet_per_square'])
+        except (TypeError, ValueError):
+            db.close()
+            return api_error('Feet per square must be a whole number.', 400)
+        fields.append('feet_per_square = ?'); values.append(max(1, min(100, feet)))
     if 'grid_offset_x' in data:
         fields.append('grid_offset_x = ?'); values.append(int(data['grid_offset_x']))
     if 'grid_offset_y' in data:

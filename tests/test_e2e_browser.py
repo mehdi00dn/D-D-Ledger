@@ -1577,7 +1577,8 @@ def test_phone_map_toolbar_is_a_bottom_dock_that_tucks_away_sideways(pw, shared_
     assert abs(box['x'] - 12) < 2 and box['x'] + box['width'] < fab0['x'] and abs(fab0['x'] + fab0['width'] - (390 - 12)) < 2, (box, fab0)
     assert abs((box['y'] + box['height'] / 2) - (fab0['y'] + fab0['height'] / 2)) < 3, (box, fab0)
     redo = page.locator('#redo-btn').bounding_box(); zr = page.locator('#zoom-reset-btn').bounding_box()
-    assert zr['x'] - (redo['x'] + redo['width']) < 40, (redo, zr)                                      # no empty gap before Reset Zoom
+    rl = page.locator('[data-tool="ruler"]').bounding_box()                                            # the Ruler sits between Redo and Reset Zoom
+    assert rl['x'] - (redo['x'] + redo['width']) < 40 and zr['x'] - (rl['x'] + rl['width']) < 40, (redo, rl, zr)      # no empty gap before Reset Zoom
     page.locator('#map-toolbar-toggle').tap(); page.wait_for_timeout(500)
     tray = page.locator('[data-tool="eraser"]').bounding_box()
     assert tray['y'] < tb.bounding_box()['y'] + tb.bounding_box()['height'] and tb.bounding_box()['y'] + tb.bounding_box()['height'] <= nav['y'] + 1

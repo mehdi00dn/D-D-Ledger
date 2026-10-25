@@ -55,6 +55,7 @@
   let gridOffsetY = initData.grid_offset_y || 0;
   let gridColor = initData.grid_color || 'gray';
   let gridVisible = initData.grid_visible == null ? true : !!initData.grid_visible;
+  let feetPerSquare = initData.feet_per_square || 5;     // how far one square is, for the ruler
   // While the mandatory first-time setup wizard is open, the grid must not
   // appear on the real (blurred) canvas behind it — only in the wizard's
   // own preview — regardless of the persisted/default grid_visible value.
@@ -73,6 +74,7 @@
   let drawings = [];   // shape objects: {id, kind, cx, cy, w, h, rotation, color, fill, fill_opacity, data, locked}
   let pins = [];        // {id, pin_type, x, y, scale, rotation, locked, ...}
   let currentTool = 'select';
+  let ruler = null;           // {a, b, dragging}: the measuring line, in natural image pixels; each person's own, never saved or shared
   let selectedShapeId = null;      // the single selected shape, only meaningful when selectedShapeIds.size === 1
   let selectedShapeIds = new Set(); // multi-select (Ctrl/Cmd+click)
   let selectedPinId = null;
@@ -409,6 +411,44 @@
     drawGridOnto(ctx, canvas.width, canvas.height, gridSize, gridOffsetX, gridOffsetY, gridColor, gridVisible);
   }
 
+  // The ruler counts squares the 5e way (a diagonal step is one square, like a straight one) and turns them into feet.
+  function rulerReading() {
+    const dx = Math.abs(ruler.b.x - ruler.a.x), dy = Math.abs(ruler.b.y - ruler.a.y);
+    const squares = gridSize > 0 ? Math.round(Math.max(dx, dy) / gridSize) : 0;
+    return { squares, feet: squares * feetPerSquare, text: `${squares} ${squares === 1 ? 'square' : 'squares'} \u00b7 ${squares * feetPerSquare} ft` };
+  }
+
+  function drawRuler() {
+    const readout = document.getElementById('ruler-readout');
+    if (!ruler) { if (readout) readout.textContent = ''; return; }
+    const { text } = rulerReading();
+    if (readout) readout.textContent = text;
+    const a = ruler.a, b = ruler.b;
+    const unit = Math.max(1, canvas.width / 450);
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y);
+    ctx.strokeStyle = 'rgba(0,0,0,0.75)'; ctx.lineWidth = 5 * unit; ctx.stroke();
+    ctx.strokeStyle = '#f0d58a'; ctx.lineWidth = 2.5 * unit; ctx.stroke();
+    [a, b].forEach((p) => {
+      ctx.beginPath(); ctx.arc(p.x, p.y, 5 * unit, 0, Math.PI * 2);
+      ctx.fillStyle = '#f0d58a'; ctx.fill(); ctx.strokeStyle = 'rgba(0,0,0,0.75)'; ctx.lineWidth = 1.5 * unit; ctx.stroke();
+    });
+    if (Math.hypot(b.x - a.x, b.y - a.y) > 8 * unit) {
+      const size = Math.round(13 * unit);
+      ctx.font = `600 ${size}px Inter, system-ui, sans-serif`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2 - 16 * unit;
+      const w = ctx.measureText(text).width + 14 * unit, h = size + 10 * unit;
+      ctx.fillStyle = 'rgba(14,16,24,0.88)';
+      ctx.beginPath();
+      if (ctx.roundRect) ctx.roundRect(mx - w / 2, my - h / 2, w, h, 6 * unit); else ctx.rect(mx - w / 2, my - h / 2, w, h);
+      ctx.fill();
+      ctx.fillStyle = '#f6efdc'; ctx.fillText(text, mx, my + 1);
+    }
+    ctx.restore();
+  }
+
   function drawShape(d) {
     ctx.save();
     ctx.translate(d.cx, d.cy);
@@ -572,6 +612,7 @@
     drawSelectionOverlay();
     drawLockHoverIcon();
     renderAngleLabels();
+    drawRuler();
   }
 
   // ---------------------------------------------------------------------
@@ -1601,7 +1642,8 @@
       deselectPin();
       deselectShape();
       canvas.classList.toggle('tool-eraser', currentTool === 'eraser');
-      pinLayer.classList.toggle('draw-mode', SHAPE_TOOLS.includes(currentTool) || isFogTool(currentTool));
+      pinLayer.classList.toggle('draw-mode', SHAPE_TOOLS.includes(currentTool) || currentTool === 'ruler' || isFogTool(currentTool));
+      if (currentTool !== 'ruler' && ruler) { ruler = null; redraw(); }
       if (fogOptions) fogOptions.hidden = !isFogTool(currentTool);
       canvas.classList.toggle('tool-fog', isFogTool(currentTool));
       if (fog && isFogTool(currentTool)) fog.setMode(currentTool === 'fog-erase' ? 'erase' : 'paint');
@@ -1757,6 +1799,7 @@
     if (s.grid_offset_x !== gridOffsetX) { gridOffsetX = s.grid_offset_x; gridChanged = true; }
     if (s.grid_offset_y !== gridOffsetY) { gridOffsetY = s.grid_offset_y; gridChanged = true; }
     if (!!s.snap_to_grid !== snapToGrid) { snapToGrid = !!s.snap_to_grid; }
+    if (s.feet_per_square && s.feet_per_square !== feetPerSquare) { feetPerSquare = s.feet_per_square; gridChanged = true; }
     if (gridChanged) { renderPins(); redraw(); }
   }
 
@@ -1877,11 +1920,22 @@
   // ---------------------------------------------------------------------
   // Canvas interactions
   // ---------------------------------------------------------------------
+  window.addEventListener('mouseup', () => { if (ruler && ruler.dragging) ruler.dragging = false; });   // the line stays up until the next drag, Esc or another tool
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && ruler && !e.target.closest('input, textarea, select')) { ruler = null; redraw(); }
+  });
   let drawState = null;   // creating a brand-new shape, or moving the grid
   let angleDrawState = null; // {vertex} while placing an angle/cone shape (click, then click again)
   let activeDrag = null;  // manipulating an existing shape or pin
 
   canvas.addEventListener('mousedown', (e) => {
+    if (currentTool === 'ruler') {                       // measuring changes nothing, so it works on a locked map too
+      if (e.button !== 0) return;
+      const p = eventPos(e);
+      ruler = { a: p, b: p, dragging: true };
+      redraw();
+      return;
+    }
     if (readOnly()) return;
     if (isFogTool(currentTool)) { if (fog && window.IS_DM && e.button === 0) fog.begin(e); return; }
     const pos = eventPos(e);
@@ -2009,6 +2063,10 @@
   }
 
   canvas.addEventListener('mousemove', (e) => {
+    if (currentTool === 'ruler') {
+      if (ruler && ruler.dragging) { ruler.b = eventPos(e); redraw(); }
+      return;
+    }
     if (isFogTool(currentTool)) { if (fog && window.IS_DM) fog.move(e); return; }
     // Hover detection for the "click to unlock" icon (select tool only).
     if (currentTool === 'select' && !drawState && !activeDrag) {
@@ -2467,6 +2525,7 @@
   const setupTitle = document.getElementById('setup-title');
   const previewCanvas = document.getElementById('setup-preview-canvas');
   const previewCtx = previewCanvas.getContext('2d');
+  const setupFeetInput = document.getElementById('setup-feet-per-square');
   let snapToGrid = !!initData.snap_to_grid;
   let gridSettingsBefore = null; // snapshot for cancel/revert when reopened
 
@@ -2477,6 +2536,7 @@
     setupSizeSlider.disabled = !gridVisible;
     setupVisibleCheckbox.checked = gridVisible;
     setupSnapCheckbox.checked = snapToGrid;
+    if (setupFeetInput) setupFeetInput.value = feetPerSquare;
     document.querySelectorAll('.grid-color-swatch').forEach((sw) => {
       sw.classList.toggle('active', sw.dataset.gridColor === gridColor);
     });
@@ -2498,7 +2558,7 @@
   }
 
   function openGridSettings(mandatory) {
-    gridSettingsBefore = { gridSize, gridColor, gridVisible, gridOffsetX, gridOffsetY, snapToGrid };
+    gridSettingsBefore = { gridSize, gridColor, gridVisible, gridOffsetX, gridOffsetY, snapToGrid, feetPerSquare };
     setupOverlay.hidden = false;
     if (fog && fogToggle) fogToggle.checked = fog.hasFog();
     contentArea.classList.add('blurred');
@@ -2518,6 +2578,7 @@
       gridOffsetX = gridSettingsBefore.gridOffsetX;
       gridOffsetY = gridSettingsBefore.gridOffsetY;
       snapToGrid = gridSettingsBefore.snapToGrid;
+      feetPerSquare = gridSettingsBefore.feetPerSquare;
     }
     suppressMainGrid = false;
     setupOverlay.hidden = true;
@@ -2540,6 +2601,10 @@
   });
   setupSnapCheckbox.addEventListener('change', () => {
     snapToGrid = setupSnapCheckbox.checked;
+  });
+  if (setupFeetInput) setupFeetInput.addEventListener('input', () => {
+    const v = parseInt(setupFeetInput.value, 10);
+    if (v >= 1 && v <= 100) { feetPerSquare = v; redraw(); }
   });
   document.querySelectorAll('.grid-color-swatch').forEach((sw) => {
     sw.addEventListener('click', () => {
@@ -2592,6 +2657,7 @@
       body: JSON.stringify({
         grid_size: gridSize, grid_color: gridColor, grid_visible: gridVisible, grid_setup_done: true,
         grid_offset_x: Math.round(gridOffsetX), grid_offset_y: Math.round(gridOffsetY), snap_to_grid: snapToGrid,
+        feet_per_square: feetPerSquare,
       }),
     });
     closeGridSettings(false);

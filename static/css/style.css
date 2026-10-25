@@ -3772,6 +3772,7 @@ body.page-leaving .content {
   .map-toolbar #clear-drawings-btn svg { width: 17px; height: 17px; }
   .map-toolbar #zoom-reset-btn { padding: 4px 8px; font-size: 11px; min-height: 34px; }
   .map-toolbar .hint-text { display: none; }
+  .map-toolbar #zoom-level-label { display: none; }                /* the Ruler button took its room; Reset Zoom still says it all */
   .map-toolbar #fill-opacity, .map-toolbar #fog-brush-size { width: 64px; }
   .map-toolbar #map-locked-banner { flex: 0 1 auto; font-size: 11px; }
 }
@@ -4962,3 +4963,12 @@ input[type="range"]:disabled { opacity: 0.5; cursor: not-allowed; }
 /* Attacks card: live error under a damage roll the server would not accept */
 .atk-edit-row input.is-invalid { border-color: var(--blood-ink); box-shadow: 0 0 0 1px var(--blood-ink); }
 .atk-error { grid-column: 1 / -1; margin: 0; font-size: 12.5px; line-height: 1.35; color: var(--blood-ink); }
+
+/* Map ruler: the reading is also in a live region for screen readers (and tests); the number input sits in the grid settings bar */
+.ruler-readout { position: absolute; inline-size: 1px; block-size: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.map-setup-number {
+  inline-size: 4.5em; padding: 6px 8px; font: 500 13px var(--font-mono); text-align: center; color: var(--parchment);
+  background: var(--bg-panel-inset); border: 1px solid var(--hairline-strong); border-radius: var(--radius-s, 8px); color-scheme: dark;
+}
+:root[data-theme="light"] .map-setup-number { color-scheme: light; }
+.map-setup-number:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }

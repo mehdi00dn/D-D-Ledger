@@ -798,4 +798,11 @@ ALTER TABLE characters ADD COLUMN is_ally INTEGER NOT NULL DEFAULT 0;
 
 INSERT INTO schema_migrations (version) VALUES ('0036_npc_ally.sql');
 
+-- ---- 0037_map_feet_per_square.sql ----
+
+-- How far one grid square is on a map, in feet, for the distance ruler.  5 is the D&D default.
+ALTER TABLE maps ADD COLUMN feet_per_square INTEGER NOT NULL DEFAULT 5;
+
+INSERT INTO schema_migrations (version) VALUES ('0037_map_feet_per_square.sql');
+
 COMMIT;
