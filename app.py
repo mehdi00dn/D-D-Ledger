@@ -114,7 +114,7 @@ def _campaign_access_field(form):
 # Full accounts: anyone can self-register, and every route requires a
 # logged-in session except the handful that must stay reachable to get one.
 
-PUBLIC_ENDPOINTS = {'login', 'register', 'static', 'healthz', 'forgot_password', 'reset_password', 'robots_txt', 'security_txt'}
+PUBLIC_ENDPOINTS = {'login', 'register', 'static', 'healthz', 'forgot_password', 'reset_password', 'robots_txt', 'security_txt', 'csp_report'}
 
 
 # Which classification of connection failure gets which fixed, secret-free hint.
@@ -146,6 +146,20 @@ def security_txt():
     expires = (datetime.now(timezone.utc) + timedelta(days=365)).strftime('%Y-%m-%dT%H:%M:%SZ')
     body = 'Contact: %s\nExpires: %s\nPreferred-Languages: en\n' % (contact, expires)
     return Response(body, mimetype='text/plain', headers={'Cache-Control': 'public, max-age=86400'})
+
+
+@app.route('/csp-report', methods=['POST'])
+def csp_report():
+    """Browsers post here when a page breaks the Content-Security-Policy (see _csp).  One short log line each, so a blocked
+    script or style shows up in the logs; nothing is stored.  No sign-in or CSRF token: the browser sends it by itself."""
+    raw = request.get_data(cache=False)[:4096]
+    try:
+        r = (json.loads(raw) or {}).get('csp-report') or {}
+        app.logger.warning('csp violation: %s blocked %s on %s', str(r.get('violated-directive', '?'))[:60],
+                           str(r.get('blocked-uri', '?'))[:120], str(r.get('document-uri', '?'))[:120])
+    except (ValueError, AttributeError):
+        pass
+    return Response(status=204)
 
 
 @app.route('/healthz')
@@ -209,7 +223,7 @@ def csrf_protect():
     a per-session token (form field or X-CSRF-Token header), plus a same-origin check."""
     if request.method in ('GET', 'HEAD', 'OPTIONS'):
         return
-    if request.endpoint == 'logout':
+    if request.endpoint in ('logout', 'csp_report'):
         return          # signing out must always work: a stale page or an odd Origin header must never leave someone signed in
     origin = request.headers.get('Origin')
     if (origin and urlparse(origin).netloc != request.host) or request.headers.get('Sec-Fetch-Site') == 'cross-site':
@@ -2225,7 +2239,8 @@ def _csp(nonce=None):
         "default-src 'self'",
         "img-src 'self' data: blob:",
         "media-src 'self' data: blob:",
-        "style-src 'self' 'unsafe-inline'",
+        "style-src 'self'",                                                # no inline <style> blocks: there are none, so none may run
+        "style-src-attr 'unsafe-inline'",                                  # style="..." attributes are still used all over the templates
         "font-src 'self' data:",
         "script-src 'self'" + (" 'nonce-%s'" % nonce if nonce else ''),   # inline scripts run only with this page's one-time token
         "connect-src " + ' '.join(connect),
@@ -2234,6 +2249,7 @@ def _csp(nonce=None):
         "base-uri 'self'",
         "form-action 'self'",
         "frame-ancestors 'none'",
+        "report-uri /csp-report",
     ])
 
 
@@ -2294,6 +2310,7 @@ def security_headers(resp):
     h.setdefault('Referrer-Policy', 'same-origin')
     h.setdefault('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=(), usb=()')
     h.setdefault('Cross-Origin-Opener-Policy', 'same-origin')
+    h.setdefault('Cross-Origin-Resource-Policy', 'same-origin')           # other sites cannot embed our images, scripts or JSON
     if request.endpoint not in PUBLIC_ENDPOINTS:
         h.setdefault('X-Robots-Tag', 'noindex, nofollow')            # everything behind sign-in stays out of search results
     if resp.mimetype in ('text/html', 'application/json'):

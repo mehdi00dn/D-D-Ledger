@@ -164,6 +164,16 @@ def test_security_headers_on_pages_and_api(appmod, user):
         assert 'unsafe-eval' not in csp
         script_src = [d for d in csp.split('; ') if d.startswith('script-src')][0]
         assert "'unsafe-inline'" not in script_src                      # DL-123: injected scripts must not run
+        style_src = [d for d in csp.split('; ') if d.startswith('style-src ')][0]
+        assert "'unsafe-inline'" not in style_src and "style-src-attr 'unsafe-inline'" in csp      # DL-140: no injected <style> blocks; style="" attributes stay
+        assert h['Cross-Origin-Resource-Policy'] == 'same-origin' and 'report-uri /csp-report' in csp
+
+
+def test_csp_report_endpoint_takes_a_browser_report_without_sign_in_or_token(appmod):
+    c = appmod.app.test_client()
+    body = '{"csp-report": {"violated-directive": "style-src-elem", "blocked-uri": "inline", "document-uri": "https://x/y"}}'
+    assert c.post('/csp-report', data=body, content_type='application/csp-report').status_code == 204
+    assert c.post('/csp-report', data='not json', content_type='application/csp-report').status_code == 204
 
 
 def test_csp_allows_only_our_own_storage_host_for_direct_uploads(appmod):

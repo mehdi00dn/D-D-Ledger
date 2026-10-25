@@ -98,6 +98,11 @@ never limited and signing out always works. Override with `WRITE_LIMIT_USER`, `D
 `X-Robots-Tag: noindex`. `/.well-known/security.txt` (RFC 9116) is published once you set `SECURITY_CONTACT` to a
 `mailto:` or `https://` address; until then it returns 404.
 
+Security headers round 2 (DL-140): the Content-Security-Policy no longer allows inline `<style>` blocks (`style-src 'self'`; `style="..."`
+attributes stay allowed through `style-src-attr`), responses carry `Cross-Origin-Resource-Policy: same-origin`, and the policy has
+`report-uri /csp-report`: a browser that blocks something posts there and the app logs one `csp violation: ...` warning line (nothing is
+stored; the endpoint needs no sign-in). HSTS `preload` waits for the final domain (DL-134), and inline style attributes are a later step.
+
 ## Database housekeeping
 
 Foreign keys that child tables are looked up by carry covering indexes (`migrations/0028_fk_indexes.sql`, from the Supabase
