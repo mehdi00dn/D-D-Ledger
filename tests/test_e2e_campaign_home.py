@@ -172,7 +172,7 @@ def test_cancelling_the_session_asks_first(shared_server, pw):
     ctx = dm.context(pw, base)
     page = ctx.new_page()
     page.goto(f'{base}/campaigns/{cid}/home')
-    page.locator('.session-edit summary').click()
+    page.locator('.session-edit:not(.quest-add) summary').click()
     page.click('[data-session-clear]')
     playwright.expect(page.locator('#confirm-modal')).to_be_visible()
     page.click('#confirm-modal-no')
