@@ -279,4 +279,5 @@ def detail(kind, ref):
     return {'title': d['name'], 'subtitle': ' '.join(x for x in (d.get('size'), d.get('type')) if x),
             'facts': [('Challenge', _cr(d.get('challenge_rating', 0))), ('Armor Class', str(_monster_prefill(d)['armor_class'])),
                       ('Hit Points', str(d.get('hit_points', ''))), ('Speed', ', '.join(f'{k} {v}' for k, v in (d.get('speed') or {}).items()))],
-            'body': '', 'prefill': _monster_prefill(d), 'notes': _monster_notes(d)}
+            'body': '', 'prefill': _monster_prefill(d), 'notes': _monster_notes(d),
+            'cr': _cr(d.get('challenge_rating', 0)), 'xp': max(0, int(d.get('xp') or 0))}

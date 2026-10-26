@@ -74,6 +74,11 @@
       <a href="{{ url_for('battle_view') }}" class="nav-tab {{ 'active' if active_page == 'battle' else '' }}" title="Battle">
         {{ icon('swords') }}<span>Battle</span>
       </a>
+      {% if g.is_dm %}
+      <a href="{{ url_for('encounters_list') }}" data-more class="nav-tab {{ 'active' if active_page == 'encounters' else '' }}" title="Build encounters from the monster manual">
+        {{ icon('skull') }}<span>Encounters</span>
+      </a>
+      {% endif %}
       <a href="{{ url_for('maps_list') }}" class="nav-tab {{ 'active' if active_page == 'maps' else '' }}" title="Maps">
         {{ icon('map') }}<span>Maps</span>
       </a>
@@ -189,6 +194,7 @@
   <div class="more-links">
     <a href="{{ url_for('campaign_home') }}" class="more-link {{ 'active' if active_page == 'home' else '' }}">{{ icon('home') }}<span>Home</span></a>
     <a href="{{ url_for('factions_list') }}" class="more-link {{ 'active' if active_page == 'factions' else '' }}">{{ icon('faction') }}<span>Factions</span></a>
+    {% if g.is_dm %}<a href="{{ url_for('encounters_list') }}" class="more-link {{ 'active' if active_page == 'encounters' else '' }}">{{ icon('skull') }}<span>Encounters</span></a>{% endif %}
     <a href="{{ url_for('treasury_view') }}" class="more-link {{ 'active' if active_page == 'treasury' else '' }}">{{ icon('coins') }}<span>Treasury</span></a>
     <a href="{{ url_for('reference_view') }}" class="more-link {{ 'active' if active_page == 'reference' else '' }}">{{ icon('book-open') }}<span>Reference</span></a>
     {% if g.real_is_dm %}

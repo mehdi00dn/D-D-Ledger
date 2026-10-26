@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% set active_page = 'encounters' %}
+{% block title %}{{ enc.name }} — Encounters — Campaign Ledger{% endblock %}
+
+{% block content %}
+<div class="enc-builder" data-encounter
+     data-save-url="{{ url_for('encounter_save', encounter_id=enc.id) }}"
+     data-run-url="{{ url_for('encounter_run', encounter_id=enc.id) }}"
+     data-budget='{{ budget_table|tojson }}'
+     data-lines='{{ lines|tojson }}'
+     data-party='{{ party|tojson }}'
+     data-count-max="{{ count_max }}">
+  <div class="page-header">
+    <div>
+      <p class="enc-back"><a href="{{ url_for('encounters_list') }}">← All encounters</a></p>
+      <label class="sr-only" for="enc-name">Encounter name</label>
+      <input type="text" id="enc-name" class="enc-name" value="{{ enc.name }}" maxlength="80" data-enc-name>
+    </div>
+    <div class="enc-actions">
+      <button type="button" class="btn btn-ghost" data-enc-save disabled>Save</button>
+      <div class="field enc-hp"><select data-enc-hp aria-label="Hit points of the monsters"><option value="average">Average HP</option><option value="rolled">Rolled HP</option></select></div>
+      <button type="button" class="btn btn-primary" data-enc-run>{{ icon('swords') }} Run in battle</button>
+    </div>
+  </div>
+  <p class="enc-status" data-enc-status role="status" aria-live="polite"></p>
+
+  <div class="enc-grid">
+    <section class="cf-card enc-pick" aria-label="Monster manual">
+      <h2 class="cf-title">Monster manual</h2>
+      <div class="ref-search">{{ icon('search') }}<input type="search" data-enc-query placeholder="Search monsters…" aria-label="Search monsters" autocomplete="off"></div>
+      <ul class="ref-list enc-results" data-enc-results aria-live="polite"></ul>
+    </section>
+
+    <section class="cf-card enc-list-card" aria-label="This encounter">
+      <h2 class="cf-title">Monsters <span class="cf-count" data-enc-creatures>0</span></h2>
+      <ul class="enc-lines" data-enc-lines></ul>
+      <p class="home-empty" data-enc-empty>Search the manual and add monsters.</p>
+
+      <div class="enc-meter-wrap">
+        <div class="enc-summary"><span class="enc-tier" data-enc-tier>No monsters</span> <span class="enc-xp" data-enc-total>0 XP</span></div>
+        <div class="enc-meter" role="img" data-enc-meter>
+          <div class="enc-meter-fill" data-enc-fill></div>
+          <span class="enc-mark" data-enc-mark="low"></span><span class="enc-mark" data-enc-mark="moderate"></span><span class="enc-mark" data-enc-mark="high"></span>
+        </div>
+        <dl class="enc-budget" data-enc-budget>
+          <div><dt>Low</dt><dd data-enc-b="low">0</dd></div>
+          <div><dt>Moderate</dt><dd data-enc-b="moderate">0</dd></div>
+          <div><dt>High</dt><dd data-enc-b="high">0</dd></div>
+        </dl>
+      </div>
+
+      <fieldset class="enc-party"><legend>Party</legend>
+        {% if party %}
+        {% for p in party %}<label><input type="checkbox" data-enc-pc value="{{ p.id }}" checked> {{ p.name }} <span class="enc-lvl">L{{ p.level }}</span></label>{% endfor %}
+        {% else %}
+        <div class="enc-manual">
+          <div class="field"><label for="enc-n">Characters</label><input type="number" id="enc-n" min="1" max="12" value="4" data-enc-manual-n></div>
+          <div class="field"><label for="enc-l">Level</label><input type="number" id="enc-l" min="1" max="20" value="1" data-enc-manual-l></div>
+        </div>
+        {% endif %}
+      </fieldset>
+      <p class="hint-text">2024 rules: add up the monsters' XP and compare it with the party's budget. There is no group-size multiplier.</p>
+    </section>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="{{ url_for('static', filename='js/encounter-builder.js') }}"></script>
+{% endblock %}

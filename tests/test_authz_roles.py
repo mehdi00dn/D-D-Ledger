@@ -40,7 +40,7 @@ POLICY = {
     'invitation_accept': LOGIN, 'invitation_decline': LOGIN,
     'uploaded_file': LOGIN, 'upload_sign': LOGIN, 'local_direct_upload': LOGIN, 'local_download': LOGIN,
     # --- campaign management ---
-    'preview_as_player': DM, 'campaign_npc_visibility': DM, 'campaign_member_characters': DM, 'campaign_session_set': DM, 'quest_add': DM, 'quest_change': DM, 'treasury_view': MEMBER, 'treasury_add': MEMBER, 'treasury_split': MEMBER, 'treasury_delete': DM, 'campaign_session_rsvp': MEMBER, 'campaign_session_ics': MEMBER,
+    'preview_as_player': DM, 'campaign_npc_visibility': DM, 'campaign_member_characters': DM, 'campaign_session_set': DM, 'quest_add': DM, 'quest_change': DM, 'treasury_view': MEMBER, 'treasury_add': MEMBER, 'treasury_split': MEMBER, 'treasury_delete': DM, 'encounters_list': DM, 'encounter_new': DM, 'encounter_edit': DM, 'encounter_save': DM, 'encounter_delete': DM, 'encounter_run': DM, 'campaign_session_rsvp': MEMBER, 'campaign_session_ics': MEMBER,
     'campaign_edit': {'GET': MEMBER, 'POST': OWNER},
     'campaign_member_add': OWNER, 'campaign_member_uninvite': OWNER,
     'invite_link_create': OWNER, 'invite_link_revoke': OWNER, 'api_member_search': OWNER,
@@ -121,6 +121,7 @@ def snapshot(cid):
         'draw': q('SELECT d.* FROM map_drawings d JOIN maps m ON m.id = d.map_id WHERE m.campaign_id = ? ORDER BY d.id', cid),
         'pins': q('SELECT p.* FROM map_pins p JOIN maps m ON m.id = p.map_id WHERE m.campaign_id = ? ORDER BY p.id', cid),
         'treasury': q('SELECT * FROM treasury_entries WHERE campaign_id = ? ORDER BY id', cid),
+        'encounters': q('SELECT * FROM encounters WHERE campaign_id = ? ORDER BY id', cid),
         'battle': q('SELECT bp.* FROM battle_participants bp JOIN characters c ON c.id = bp.character_id WHERE c.campaign_id = ? ORDER BY bp.id', cid),
     }
 

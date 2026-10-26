@@ -31,6 +31,7 @@ from flask import Response
 import images
 import fog
 import dnd5e
+import encounters
 import srd
 import importer
 import quotas
@@ -343,6 +344,7 @@ _SCOPE_OWNER_SQL = {
     'group_id': 'SELECT campaign_id AS owner FROM groups WHERE id = ?',
     'quest_id': 'SELECT campaign_id AS owner FROM quests WHERE id = ?',
     'entry_id': 'SELECT campaign_id AS owner FROM treasury_entries WHERE id = ?',
+    'encounter_id': 'SELECT campaign_id AS owner FROM encounters WHERE id = ?',
     'pid': 'SELECT c.campaign_id AS owner FROM battle_participants bp JOIN characters c ON c.id = bp.character_id WHERE bp.id = ?',
 }
 _SCOPE_PARENT_SQL = {            # arg -> (SQL returning the parent id, name of the parent arg)
@@ -3681,6 +3683,30 @@ def _roll_monster_hp(expr, average):
     return max(1, sum(secrets.randbelow(sides) + 1 for _ in range(n)) + bonus)
 
 
+def _add_monsters_to_battle(db, entry, count, rolled):
+    """Create `count` NPCs from a 2024 stat block (srd.detail's result) and put them in the battle (the caller commits)."""
+    c = entry['prefill']
+    notes = sanitize_notes_payload(json.dumps([{'t': n, 'h': 1} for n in entry.get('notes') or []]))
+    skill_prof = json.dumps(dnd5e.clean_skill_prof(c['skill_prof']))
+    save_prof = json.dumps(dnd5e.clean_save_prof(c['save_prof']))
+    max_order = db.execute('SELECT COALESCE(MAX(sort_order), -1) AS m FROM battle_participants').fetchone()['m']
+    for i in range(1, count + 1):
+        hp = _roll_monster_hp(c.get('hp_roll'), c['max_hp']) if rolled else c['max_hp']
+        cur = db.execute('''
+            INSERT INTO characters
+            (name, is_npc, level, max_hp, str_score, dex_score, con_score, int_score, wis_score, cha_score,
+             armor_class, notes, campaign_id, created_by, speed, skill_prof, save_prof)
+            VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', ((c['name'] if count == 1 else f"{c['name']} {i}")[:120], c['level'], hp, c['str_score'], c['dex_score'],
+              c['con_score'], c['int_score'], c['wis_score'], c['cha_score'], c['armor_class'], notes,
+              g.campaign_id, session['user_id'], c['speed'], skill_prof, save_prof))
+        _save_attacks(db, cur.lastrowid, c.get('attacks') or [])
+        max_order += 1
+        db.execute('INSERT INTO battle_participants (character_id, current_hp, initiative, is_dead, sort_order) VALUES (?, ?, 0, 0, ?)',
+                   (cur.lastrowid, hp, max_order))
+    log_battle(db, f"{c['name']} joined the battle" if count == 1 else f"{count} \u00d7 {c['name']} joined the battle", None, 'joined', npc=True)
+
+
 @app.route('/campaigns/<int:campaign_id>/api/battle/add-monster', methods=['POST'])
 @campaign_access_required
 @dm_required
@@ -3702,27 +3728,8 @@ def api_battle_add_monster():
         entry = srd.detail('monsters', data.get('ref'))
     except srd.SrdError as e:
         return api_error(str(e), _srd_status(e))
-    c = entry['prefill']
-    notes = sanitize_notes_payload(json.dumps([{'t': n, 'h': 1} for n in entry.get('notes') or []]))
-    skill_prof = json.dumps(dnd5e.clean_skill_prof(c['skill_prof']))
-    save_prof = json.dumps(dnd5e.clean_save_prof(c['save_prof']))
     db = get_db()
-    max_order = db.execute('SELECT COALESCE(MAX(sort_order), -1) AS m FROM battle_participants').fetchone()['m']
-    for i in range(1, count + 1):
-        hp = _roll_monster_hp(c.get('hp_roll'), c['max_hp']) if rolled else c['max_hp']
-        cur = db.execute('''
-            INSERT INTO characters
-            (name, is_npc, level, max_hp, str_score, dex_score, con_score, int_score, wis_score, cha_score,
-             armor_class, notes, campaign_id, created_by, speed, skill_prof, save_prof)
-            VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', ((c['name'] if count == 1 else f"{c['name']} {i}")[:120], c['level'], hp, c['str_score'], c['dex_score'],
-              c['con_score'], c['int_score'], c['wis_score'], c['cha_score'], c['armor_class'], notes,
-              g.campaign_id, session['user_id'], c['speed'], skill_prof, save_prof))
-        _save_attacks(db, cur.lastrowid, c.get('attacks') or [])
-        max_order += 1
-        db.execute('INSERT INTO battle_participants (character_id, current_hp, initiative, is_dead, sort_order) VALUES (?, ?, 0, 0, ?)',
-                   (cur.lastrowid, hp, max_order))
-    log_battle(db, f"{c['name']} joined the battle" if count == 1 else f"{count} \u00d7 {c['name']} joined the battle", None, 'joined', npc=True)
+    _add_monsters_to_battle(db, entry, count, rolled)
     db.commit()
     rows = _battle_rows(db)
     db.close()
@@ -4837,6 +4844,161 @@ def dice_rolls():
         return jsonify({'rolls': [], 'latest': 0, 'unavailable': True})      # not migrated yet: an empty feed, not an error on every page
     finally:
         db.close()
+
+
+# ---------------- ENCOUNTER BUILDER (DL-147) ----------------
+# The DM picks monsters from the 2024 manual, sees the total XP against the party's budget (encounters.py) and can send
+# the whole list to the battle.  DM only: the list is a spoiler.  Name, CR and XP are copied in when saved.
+
+ENCOUNTER_LIMIT, ENCOUNTER_NAME_MAX, ENCOUNTER_LINES_MAX, ENCOUNTER_COUNT_MAX, ENCOUNTER_CREATURES_MAX = 100, 80, 30, 30, 40
+
+
+def _encounter_or_404(db, encounter_id):
+    row = db.execute('SELECT id, name, created_at, updated_at FROM encounters WHERE id = ? AND campaign_id = ?', (encounter_id, g.campaign_id)).fetchone()
+    if row is None:
+        db.close()
+        abort(404)
+    return row
+
+
+def _encounter_lines(db, encounter_id):
+    return db.execute('SELECT ref, name, cr, xp, count FROM encounter_monsters WHERE encounter_id = ? ORDER BY position, id', (encounter_id,)).fetchall()
+
+
+def _party_levels(db):
+    return db.execute('SELECT id, name, level FROM characters WHERE campaign_id = ? AND is_temp_familiar = 0 AND is_npc = 0 '
+                      'ORDER BY lower(name) ASC', (g.campaign_id,)).fetchall()
+
+
+def _encounter_summary(lines, party):
+    """What a list is worth against the whole party: {'xp', 'budget', 'tier'}."""
+    bud = encounters.budget(p['level'] for p in party)
+    xp = encounters.total_xp(lines)
+    return {'xp': xp, 'budget': bud, 'tier': encounters.difficulty(xp, bud)}
+
+
+@app.route('/campaigns/<int:campaign_id>/encounters')
+@campaign_access_required
+@dm_required
+def encounters_list():
+    db = get_db()
+    rows = db.execute('SELECT id, name, updated_at FROM encounters WHERE campaign_id = ? ORDER BY id DESC', (g.campaign_id,)).fetchall()
+    party = _party_levels(db)
+    items = []
+    for r in rows:
+        lines = _encounter_lines(db, r['id'])
+        items.append({'id': r['id'], 'name': r['name'], 'updated_at': r['updated_at'], 'creatures': sum(int(l['count']) for l in lines),
+                      'lines': lines, **_encounter_summary(lines, party)})
+    db.close()
+    return render_template('encounters.html', items=items, party=party, tier_names=encounters.TIER_NAMES)
+
+
+@app.route('/campaigns/<int:campaign_id>/encounters/new', methods=['POST'])
+@campaign_access_required
+@dm_required
+def encounter_new():
+    name = ' '.join((request.form.get('name') or '').split())[:ENCOUNTER_NAME_MAX] or 'New encounter'
+    db = get_db()
+    if db.execute('SELECT COUNT(*) AS n FROM encounters WHERE campaign_id = ?', (g.campaign_id,)).fetchone()['n'] >= ENCOUNTER_LIMIT:
+        db.close()
+        abort(409)
+    cur = db.execute('INSERT INTO encounters (campaign_id, created_by, name) VALUES (?, ?, ?)', (g.campaign_id, session.get('user_id'), name))
+    eid = cur.lastrowid
+    db.commit(); db.close()
+    return redirect(url_for('encounter_edit', encounter_id=eid))
+
+
+@app.route('/campaigns/<int:campaign_id>/encounters/<int:encounter_id>')
+@campaign_access_required
+@dm_required
+def encounter_edit(encounter_id):
+    db = get_db()
+    enc = _encounter_or_404(db, encounter_id)
+    lines = [dict(l) for l in _encounter_lines(db, encounter_id)]
+    party = [dict(p) for p in _party_levels(db)]
+    db.close()
+    return render_template('encounter_edit.html', enc=enc, lines=lines, party=party, tier_names=encounters.TIER_NAMES,
+                           budget_table=encounters.XP_BUDGET, count_max=ENCOUNTER_COUNT_MAX)
+
+
+@app.route('/campaigns/<int:campaign_id>/encounters/<int:encounter_id>/save', methods=['POST'])
+@campaign_access_required
+@dm_required
+def encounter_save(encounter_id):
+    """Body: {name, monsters: [{ref: 'monsters/goblin-warrior', count: 1-30}]}.  Replaces the list; a monster already on
+    the list keeps its saved name and XP, a new one is looked up in the manual."""
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict) or not isinstance(data.get('monsters'), list) or len(data['monsters']) > ENCOUNTER_LINES_MAX:
+        return api_error(None, 400)
+    name = ' '.join(str(data.get('name') or '').split())[:ENCOUNTER_NAME_MAX] or 'New encounter'
+    wanted = {}                                               # ref -> count, in the order first seen
+    for m in data['monsters']:
+        try:
+            ref, count = m['ref'], int(m['count'])
+        except (KeyError, TypeError, ValueError):
+            return api_error(None, 400)
+        if not isinstance(ref, str) or not ref.startswith('monsters/') or not srd.valid_index(ref[9:]) or not 1 <= count <= ENCOUNTER_COUNT_MAX:
+            return api_error(None, 400)
+        wanted[ref] = min(wanted.get(ref, 0) + count, ENCOUNTER_COUNT_MAX)
+    db = get_db()
+    _encounter_or_404(db, encounter_id)
+    known = {l['ref']: l for l in _encounter_lines(db, encounter_id)}
+    rows = []
+    for ref, count in wanted.items():
+        if ref in known:
+            k = known[ref]
+            rows.append((ref, k['name'], k['cr'], int(k['xp']), count))
+            continue
+        try:
+            entry = srd.detail('monsters', ref)
+        except srd.SrdError as e:
+            db.close()
+            return api_error(str(e), _srd_status(e))
+        rows.append((ref, entry['title'][:120], str(entry['cr']), int(entry['xp']), count))
+    db.execute('DELETE FROM encounter_monsters WHERE encounter_id = ?', (encounter_id,))
+    for pos, r in enumerate(rows):
+        db.execute('INSERT INTO encounter_monsters (encounter_id, ref, name, cr, xp, count, position) VALUES (?, ?, ?, ?, ?, ?, ?)', (encounter_id,) + r + (pos,))
+    db.execute('UPDATE encounters SET name = ?, updated_at = CURRENT_TIMESTAMP AT TIME ZONE \'UTC\' WHERE id = ? AND campaign_id = ?', (name, encounter_id, g.campaign_id))
+    db.commit(); db.close()
+    return jsonify({'ok': True, 'name': name, 'monsters': [{'ref': r[0], 'name': r[1], 'cr': r[2], 'xp': r[3], 'count': r[4]} for r in rows]})
+
+
+@app.route('/campaigns/<int:campaign_id>/encounters/<int:encounter_id>/delete', methods=['POST'])
+@campaign_access_required
+@dm_required
+def encounter_delete(encounter_id):
+    db = get_db()
+    _encounter_or_404(db, encounter_id)
+    db.execute('DELETE FROM encounters WHERE id = ? AND campaign_id = ?', (encounter_id, g.campaign_id))
+    db.commit(); db.close()
+    return redirect(url_for('encounters_list'))
+
+
+@app.route('/campaigns/<int:campaign_id>/encounters/<int:encounter_id>/run', methods=['POST'])
+@campaign_access_required
+@dm_required
+def encounter_run(encounter_id):
+    """Put every monster of the list into the battle as NPCs (hp: 'average' | 'rolled').  The list stays, so it can run again."""
+    data = request.get_json(silent=True)
+    rolled = isinstance(data, dict) and data.get('hp') == 'rolled'
+    db = get_db()
+    _encounter_or_404(db, encounter_id)
+    lines = _encounter_lines(db, encounter_id)
+    if not lines:
+        db.close()
+        return api_error('Add some monsters first.', 400)
+    if sum(int(l['count']) for l in lines) > ENCOUNTER_CREATURES_MAX:
+        db.close()
+        return api_error(f'That is more than {ENCOUNTER_CREATURES_MAX} creatures for one battle.', 400)
+    try:
+        entries = [(srd.detail('monsters', l['ref']), int(l['count'])) for l in lines]      # all fetched before anything is created
+    except srd.SrdError as e:
+        db.close()
+        return api_error(str(e), _srd_status(e))
+    for entry, count in entries:
+        _add_monsters_to_battle(db, entry, count, rolled)
+    db.commit(); db.close()
+    return jsonify({'ok': True, 'url': url_for('battle_view', campaign_id=g.campaign_id)})
 
 
 # ---------------- RULES REFERENCE (spells, monsters, items: the public 5e API, 2024 rules) ----------------

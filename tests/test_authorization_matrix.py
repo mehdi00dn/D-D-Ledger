@@ -10,7 +10,7 @@ import io, re
 import pytest
 from conftest import q, png_bytes
 
-SCOPED = {'map_id', 'char_id', 'group_id', 'pid', 'drawing_id', 'pin_id', 'sheet_id', 'quest_id', 'entry_id'}
+SCOPED = {'map_id', 'char_id', 'group_id', 'pid', 'drawing_id', 'pin_id', 'sheet_id', 'quest_id', 'entry_id', 'encounter_id'}
 
 
 def build_world(u):
@@ -27,8 +27,10 @@ def build_world(u):
     qid = q('SELECT id FROM quests WHERE campaign_id = ?', cid)[0]['id']
     u.post(f'/campaigns/{cid}/treasury/add', data={'kind': 'income', 'gp': '5', 'note': 'World coins'})
     eid = q('SELECT id FROM treasury_entries WHERE campaign_id = ?', cid)[0]['id']
+    u.post(f'/campaigns/{cid}/encounters/new', data={'name': 'World encounter'})
+    enc = q('SELECT id FROM encounters WHERE campaign_id = ?', cid)[0]['id']
     uid = q('SELECT id FROM users WHERE username = ?', u.name)[0]['id']
-    return dict(cid=cid, quest_id=qid, entry_id=eid, group_id=gid, char_id=ch, sheet_id=sheet, map_id=mid, drawing_id=did, pin_id=pin, pid=pid, user_id=uid)
+    return dict(cid=cid, quest_id=qid, entry_id=eid, encounter_id=enc, group_id=gid, char_id=ch, sheet_id=sheet, map_id=mid, drawing_id=did, pin_id=pin, pid=pid, user_id=uid)
 
 
 def snapshot(cid):
@@ -42,6 +44,7 @@ def snapshot(cid):
         'pins': q('SELECT p.* FROM map_pins p JOIN maps m ON m.id = p.map_id WHERE m.campaign_id = ? ORDER BY p.id', cid),
         'quests': q('SELECT * FROM quests WHERE campaign_id = ? ORDER BY id', cid),
         'treasury': q('SELECT * FROM treasury_entries WHERE campaign_id = ? ORDER BY id', cid),
+        'encounters': q('SELECT * FROM encounters WHERE campaign_id = ? ORDER BY id', cid),
         'battle': q('SELECT bp.* FROM battle_participants bp JOIN characters c ON c.id = bp.character_id WHERE c.campaign_id = ? ORDER BY bp.id', cid),
     }
 

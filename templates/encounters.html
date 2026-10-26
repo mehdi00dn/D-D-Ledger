@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% set active_page = 'encounters' %}
+{% block title %}Encounters — Campaign Ledger{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Encounters</h1>
+    <p class="page-sub">Plan fights from the monster manual, weigh them against the party's XP budget, then send them to the battle. Only you can see these.</p>
+  </div>
+  <form method="POST" action="{{ url_for('encounter_new') }}" class="enc-new">{{ csrf_field() }}
+    <input type="text" name="name" maxlength="80" placeholder="Goblin ambush" aria-label="Name of the new encounter">
+    <button type="submit" class="btn btn-primary">{{ icon('plus') }} New encounter</button>
+  </form>
+</div>
+
+{% if not party %}<div class="banner-notice" role="note">There are no player characters yet, so there is no budget to compare against. You can still build the list and set a party by hand in the builder.</div>{% endif %}
+
+{% if items %}
+<ul class="enc-list">
+  {% for e in items %}
+  <li class="cf-card enc-card">
+    <div class="enc-card-main">
+      <h2 class="enc-card-name"><a href="{{ url_for('encounter_edit', encounter_id=e.id) }}">{{ e.name }}</a></h2>
+      <p class="enc-card-lines">{% if e.lines %}{% for l in e.lines %}{{ l.count }} × {{ l.name }}{{ ', ' if not loop.last }}{% endfor %}{% else %}No monsters yet{% endif %}</p>
+    </div>
+    <div class="enc-card-side">
+      <span class="enc-tier enc-tier-{{ e.tier }}">{{ tier_names[e.tier] }}</span>
+      <span class="enc-xp">{{ '{:,}'.format(e.xp) }} XP{% if party %} of {{ '{:,}'.format(e.budget.high) }}{% endif %}</span>
+    </div>
+    <div class="enc-card-actions">
+      <a class="btn btn-ghost btn-sm" href="{{ url_for('encounter_edit', encounter_id=e.id) }}">Open</a>
+      <form method="POST" action="{{ url_for('encounter_delete', encounter_id=e.id) }}" data-confirm="Delete this encounter?">{{ csrf_field() }}<button type="submit" class="btn btn-ghost btn-sm quest-delete" aria-label="Delete the encounter {{ e.name }}" title="Delete">{{ icon('trash-2') }}</button></form>
+    </div>
+  </li>
+  {% endfor %}
+</ul>
+{% else %}
+<div class="empty-state">
+  <h3>No encounters yet</h3>
+  <p>Name one above and pick its monsters from the manual.</p>
+</div>
+{% endif %}
+{% endblock %}
