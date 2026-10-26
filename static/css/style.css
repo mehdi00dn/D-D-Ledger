@@ -3839,7 +3839,7 @@ body.page-leaving .content {
   background: var(--bg-panel) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23c9a24b' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2 12s3.6-7 10-7c2 0 3.7.7 5.1 1.6M22 12s-3.6 7-10 7c-2 0-3.7-.7-5.1-1.6'/%3E%3Cpath d='M9.9 9.9a3 3 0 0 0 4.2 4.2'/%3E%3Cpath d='M3 3l18 18'/%3E%3C/svg%3E") center / 11px no-repeat;
   border: 1px solid var(--hairline-strong); pointer-events: none; z-index: 2;
 }
-.pin-hide-btn.is-on, .shape-hide-btn.is-on, .new-hidden-toggle.is-on {
+.pin-hide-btn.is-on, .shape-hide-btn.is-on, .new-hidden-toggle.is-on, #shape-attach-btn.is-on {
   background: var(--brass); border-color: var(--brass); color: #21170a;
 }
 .new-hidden-toggle { transition: background 0.15s, color 0.15s, border-color 0.15s; }
@@ -5154,3 +5154,8 @@ input[type="range"]:disabled { opacity: 0.5; cursor: not-allowed; }
 .enc-manual .field { inline-size: 6.5rem; }
 @media (max-width: 860px) { .enc-grid { grid-template-columns: minmax(0, 1fr); } .enc-card-side { justify-items: start; } }
 @media (prefers-reduced-motion: reduce) { .enc-meter-fill { transition: none; } }
+
+/* Attach a shape to a token (DL-159) */
+.map-attach-hint { position: fixed; inset-block-start: 14px; inset-inline: 0; margin-inline: auto; inline-size: max-content; max-inline-size: 92vw; z-index: 1000; margin-block: 0;
+  padding: 7px 14px; border-radius: 999px; background: var(--bg-panel); border: 1px solid var(--brass); color: var(--parchment); font-size: 13px; box-shadow: var(--shadow-deep); pointer-events: none; }
+.is-attaching .map-pin { cursor: crosshair; outline: 2px dashed var(--brass-bright); outline-offset: 3px; border-radius: 50%; }

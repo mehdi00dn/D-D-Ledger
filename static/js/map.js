@@ -39,6 +39,8 @@
   const shapeRotateToggle = document.getElementById('shape-rotate-toggle');
   const shapeAngleToggle = document.getElementById('shape-angle-toggle');
   const shapeLockBtn = document.getElementById('shape-lock-btn');
+  const shapeAttachBtn = document.getElementById('shape-attach-btn');
+  const attachHint = document.getElementById('map-attach-hint');
   const shapeHideBtn = document.getElementById('shape-hide-btn');   // DM only: hide the selected shape from players
   const pinHideBtn = document.getElementById('pin-hide-btn');       // DM only: hide the selected token from players
   const newHiddenBtn = document.getElementById('new-hidden-toggle'); // DM only: everything new starts hidden
@@ -71,6 +73,7 @@
 
   let bgImage = new Image();
   let bgLoaded = false;
+  let attachMode = false;   // true while the next token click attaches the selected shapes to it (DL-159)
   let drawings = [];   // shape objects: {id, kind, cx, cy, w, h, rotation, color, fill, fill_opacity, data, locked}
   let pins = [];        // {id, pin_type, x, y, scale, rotation, locked, ...}
   let currentTool = 'select';
@@ -526,6 +529,17 @@
     });
     ctx.setLineDash([]);
 
+    // A dotted line from each selected shape to the token it follows.
+    ctx.strokeStyle = '#d4a847';
+    ctx.setLineDash([canvas.width / 400, canvas.width / 300]);
+    selectedShapeIds.forEach((id) => {
+      const d = drawings.find((s) => s.id === id);
+      const pin = d && d.attached_pin_id ? pins.find((q) => q.id === d.attached_pin_id) : null;
+      if (!pin) return;
+      ctx.beginPath(); ctx.moveTo(d.cx, d.cy); ctx.lineTo(pin.x, pin.y); ctx.stroke();
+    });
+    ctx.setLineDash([]);
+
     // Resize/rotate handles only make sense for a single selected shape.
     if (primaryCorners) {
       const { d, corners } = primaryCorners;
@@ -926,6 +940,7 @@
     const d = drawings.find((s) => s.id === selectedShapeId);
     if (!d) { shapeBubble.hidden = true; return; }
     syncHideButton(shapeHideBtn, selectedShapeIds.size > 1 ? [...selectedShapeIds].every((id) => (drawings.find((x) => x.id === id) || {}).dm_only) : d.dm_only);
+    syncAttachButton();
     applyBubbleScale();
     if (shapeBubble.classList.contains('is-docked')) { shapeBubble.hidden = false; return; }
     const wrapRect = stageWrap.getBoundingClientRect();
@@ -973,6 +988,7 @@
   }
 
   function selectShape(id) {
+    exitAttachMode();
     selectedShapeIds = new Set([id]);
     selectedShapeId = id;
     shapeHandleMode = null;
@@ -985,6 +1001,7 @@
     updateStylePanelVisibility();
   }
   function deselectShape() {
+    exitAttachMode();
     if (selectedShapeIds.size === 0) return;
     selectedShapeIds = new Set();
     selectedShapeId = null;
@@ -1131,7 +1148,7 @@
   // Persistence + undo/redo command factories
   // ---------------------------------------------------------------------
   function serializeShapeForCreate(d) {
-    return { kind: d.kind, data: d.data, cx: d.cx, cy: d.cy, w: d.w, h: d.h, rotation: d.rotation, color: d.color, fill: d.fill, fill_opacity: d.fill_opacity, locked: !!d.locked, dm_only: !!d.dm_only };
+    return { kind: d.kind, data: d.data, cx: d.cx, cy: d.cy, w: d.w, h: d.h, rotation: d.rotation, color: d.color, fill: d.fill, fill_opacity: d.fill_opacity, locked: !!d.locked, dm_only: !!d.dm_only, attached_pin_id: d.attached_pin_id || null };
   }
   async function persistShapeFields(d, fields) {
     await mapWrite(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/drawings/${d.id}/update`, {
@@ -1228,8 +1245,8 @@
   function makePinTransformCommand(p, before, after) {
     return {
       label: 'transform-pin',
-      undo: async () => { Object.assign(p, before); renderPins(); await persistPinFields(p, before); },
-      redo: async () => { Object.assign(p, after); renderPins(); await persistPinFields(p, after); },
+      undo: async () => { const ox = p.x, oy = p.y; Object.assign(p, before); shiftAttached(p.id, p.x - ox, p.y - oy); renderPins(); await persistPinFields(p, before); },
+      redo: async () => { const ox = p.x, oy = p.y; Object.assign(p, after); shiftAttached(p.id, p.x - ox, p.y - oy); renderPins(); await persistPinFields(p, after); },
     };
   }
   function makeAddPinCommand(p) {
@@ -1370,6 +1387,66 @@
     });
   }
 
+  // ---- Attach a shape to a token (DL-159): no alignment, the shape keeps its place and then follows the token ----
+  function selectedShapes() {
+    const ids = selectedShapeIds.size ? [...selectedShapeIds] : (selectedShapeId != null ? [selectedShapeId] : []);
+    return ids.map((id) => drawings.find((s) => s.id === id)).filter(Boolean);
+  }
+  function shiftAttached(pinId, dx, dy) {
+    if (!dx && !dy) return;
+    let any = false;
+    drawings.forEach((d) => { if (d.attached_pin_id === pinId) { d.cx += dx; d.cy += dy; any = true; } });
+    if (any) { redraw(); positionShapeBubble(); }
+  }
+  function syncAttachButton() {
+    if (!shapeAttachBtn) return;
+    const picked = selectedShapes();
+    const on = picked.length > 0 && picked.every((d) => d.attached_pin_id);
+    shapeAttachBtn.classList.toggle('is-on', on || attachMode);
+    shapeAttachBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    shapeAttachBtn.title = attachMode ? 'Cancel: click a token, or press Esc' : on ? 'Detach from the token' : 'Attach to a token: the shape then moves with it';
+  }
+  function exitAttachMode() {
+    if (!attachMode) return;
+    attachMode = false;
+    document.body.classList.remove('is-attaching');
+    if (attachHint) attachHint.hidden = true;
+    syncAttachButton();
+  }
+  async function setAttached(list, pinId) {
+    const before = list.map((d) => ({ d, id: d.attached_pin_id || null }));
+    for (const d of list) { d.attached_pin_id = pinId; await persistShapeFields(d, { attached_pin_id: pinId }); }
+    pushCommand({
+      label: 'attach-shape',
+      undo: async () => { for (const b of before) { b.d.attached_pin_id = b.id; await persistShapeFields(b.d, { attached_pin_id: b.id }); } redraw(); syncAttachButton(); },
+      redo: async () => { for (const b of before) { b.d.attached_pin_id = pinId; await persistShapeFields(b.d, { attached_pin_id: pinId }); } redraw(); syncAttachButton(); },
+    });
+    redraw();
+  }
+  async function attachSelectedTo(pin) {
+    const list = selectedShapes();
+    exitAttachMode();
+    if (!list.length) return;
+    try { await setAttached(list, pin.id); } catch (err) { for (const d of list) d.attached_pin_id = null; redraw(); }
+    syncAttachButton();
+  }
+  if (shapeAttachBtn) shapeAttachBtn.addEventListener('click', async () => {
+    if (readOnly()) return;
+    const list = selectedShapes();
+    if (!list.length) return;
+    if (attachMode) { exitAttachMode(); return; }
+    if (list.every((d) => d.attached_pin_id)) {                      // already attached: this click lets go
+      await setAttached(list, null);
+      syncAttachButton();
+      return;
+    }
+    attachMode = true;
+    document.body.classList.add('is-attaching');
+    if (attachHint) attachHint.hidden = false;
+    syncAttachButton();
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && attachMode) { e.preventDefault(); exitAttachMode(); } });
+
   pinLayer.addEventListener('mousedown', (e) => {
     const unlockBtn = e.target.closest('.pin-unlock-icon');
     if (unlockBtn) {
@@ -1385,6 +1462,7 @@
     if (!el) return;
     const pin = pins.find((p) => String(p.id) === el.dataset.pinId);
     if (!pin) return;
+    if (attachMode) { e.preventDefault(); e.stopPropagation(); attachSelectedTo(pin); return; }
     // A Player on a locked map can still click a pin to view it (subject
     // to the server's own NPC-detail redaction) -- just not drag/erase it.
     if (readOnly() || !canMovePin(pin)) { e.preventDefault(); selectPin(pin.id); return; }
@@ -1392,7 +1470,7 @@
     if (currentTool === 'eraser') { e.preventDefault(); deletePinObj(pin); return; }
     if (currentTool !== 'select') return;
     const pos = eventPos(e);
-    activeDrag = { type: 'move-pin', pin, el, startPos: pos, startX: pin.x, startY: pin.y, moved: false };
+    activeDrag = { type: 'move-pin', pin, el, startPos: pos, startX: pin.x, startY: pin.y, lastX: pin.x, lastY: pin.y, moved: false };
     e.preventDefault();
   });
 
@@ -1834,6 +1912,7 @@
       live = window.MapLive.create({
         mapId, fog,
         pins: () => pins, drawings: () => drawings,
+        attachedShapes: (pinId) => drawings.filter((d) => d.attached_pin_id === pinId && !d.dm_only),
         pinEl: (id) => pinLayer.querySelector(`[data-pin-id="${Number(id)}"]`),
         stylePin: (id, el, p) => {
           applyPinStyle(p, el);
@@ -2220,6 +2299,8 @@
       pin.y = snapped.y;
       applyPinStyle(pin, activeDrag.el);
       if (selectedPinId === pin.id) positionPinBubble(pin.id);
+      shiftAttached(pin.id, pin.x - activeDrag.lastX, pin.y - activeDrag.lastY);          // attached shapes travel with the token
+      activeDrag.lastX = pin.x; activeDrag.lastY = pin.y;
       return;
     }
     if (activeDrag.type === 'resize-pin') {

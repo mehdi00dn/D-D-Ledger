@@ -5672,12 +5672,29 @@ def _map_drawings_payload(db, map_id):
     # DM-only drawings never leave the server for a Player (the same redaction pattern as hidden notes).
     rows = db.execute('SELECT * FROM map_drawings WHERE map_id = ?' + ('' if g.is_dm else ' AND dm_only = 0')
                       + ' ORDER BY sort_order, id', (map_id,)).fetchall()
+    hidden_pins = set() if g.is_dm else {r['id'] for r in db.execute('SELECT id FROM map_pins WHERE map_id = ? AND dm_only = 1', (map_id,)).fetchall()}
     result = []
     for r in rows:
         d = dict(r)
         d['data'] = json.loads(d['data'])
+        if d.get('attached_pin_id') in hidden_pins:
+            d['attached_pin_id'] = None                    # a Player is never told a hidden token exists
         result.append(d)
     return result
+
+
+def _attach_target(db, map_id, raw):
+    """The token id a shape may be attached to: None (let go), or a token of THIS map the person can see.  ValueError otherwise."""
+    if raw in (None, '', False):
+        return None
+    try:
+        pin_id = int(raw)
+    except (TypeError, ValueError):
+        raise ValueError('Unknown token.')
+    row = db.execute('SELECT dm_only FROM map_pins WHERE id = ? AND map_id = ?', (pin_id, map_id)).fetchone()
+    if row is None or (row['dm_only'] and not g.is_dm):
+        raise ValueError('Unknown token.')
+    return pin_id
 
 
 @app.route('/campaigns/<int:campaign_id>/api/maps/<int:map_id>/drawings', methods=['POST'])
@@ -5700,11 +5717,16 @@ def api_map_drawings_add(map_id):
     if kind not in ('line', 'rect', 'oval', 'pen', 'angle'):
         return api_error('Unknown kind of drawing.', 400)
     db = get_db()
+    try:
+        attached = _attach_target(db, map_id, data.get('attached_pin_id'))
+    except ValueError as e:
+        db.close()
+        return api_error(str(e), 400)
     max_order = db.execute('SELECT COALESCE(MAX(sort_order), -1) AS m FROM map_drawings WHERE map_id = ?', (map_id,)).fetchone()['m']
     cur = db.execute(
-        '''INSERT INTO map_drawings (map_id, kind, data, cx, cy, w, h, rotation, color, fill, fill_opacity, sort_order, locked, dm_only)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-        (map_id, kind, json.dumps(geometry), cx, cy, w, h, rotation, color, fill, fill_opacity, max_order + 1, locked, dm_only)
+        '''INSERT INTO map_drawings (map_id, kind, data, cx, cy, w, h, rotation, color, fill, fill_opacity, sort_order, locked, dm_only, attached_pin_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+        (map_id, kind, json.dumps(geometry), cx, cy, w, h, rotation, color, fill, fill_opacity, max_order + 1, locked, dm_only, attached)
     )
     db.commit()
     db.close()
@@ -5735,6 +5757,12 @@ def api_map_drawing_update(map_id, drawing_id):
         fields.append('dm_only = ?'); values.append(1 if data['dm_only'] else 0)
     if 'data' in data:
         fields.append('data = ?'); values.append(json.dumps(data['data']))
+    if 'attached_pin_id' in data:
+        try:
+            fields.append('attached_pin_id = ?'); values.append(_attach_target(db, map_id, data['attached_pin_id']))
+        except ValueError as e:
+            db.close()
+            return api_error(str(e), 400)
     if fields:
         values.append(drawing_id)
         values.append(map_id)
@@ -6104,9 +6132,18 @@ def api_map_pin_update(map_id, pin_id):
                            (1 if data['is_npc'] else 0, char_row['character_id']))
                 db.commit()
     if fields:
+        moved = None
+        if 'x' in data or 'y' in data:
+            moved = db.execute('SELECT x, y FROM map_pins WHERE id = ? AND map_id = ?', (pin_id, map_id)).fetchone()
         values.append(pin_id)
         values.append(map_id)
         db.execute(f'UPDATE map_pins SET {", ".join(fields)} WHERE id = ? AND map_id = ?', values)
+        if moved is not None:
+            # Shapes attached to this token travel with it by the same amount (DL-159), in the same save.
+            now = db.execute('SELECT x, y FROM map_pins WHERE id = ? AND map_id = ?', (pin_id, map_id)).fetchone()
+            dx, dy = now['x'] - moved['x'], now['y'] - moved['y']
+            if dx or dy:
+                db.execute('UPDATE map_drawings SET cx = cx + ?, cy = cy + ? WHERE attached_pin_id = ? AND map_id = ?', (dx, dy, pin_id, map_id))
         db.commit()
     db.close()
     return jsonify({'ok': True})
