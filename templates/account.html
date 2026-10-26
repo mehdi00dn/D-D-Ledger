@@ -1,13 +1,13 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon %}
 {% set active_page = 'account' %}
-{% block title %}Your profile — Campaign Ledger{% endblock %}
+{% block title %}Account settings — Campaign Ledger{% endblock %}
 
 {% block content %}
 <div class="page-header">
   <div>
-    <h1 class="page-title">Your profile</h1>
-    <p class="page-sub">Signed in as <b>{{ profile.username }}</b>. What others see on your profile page is your choice, below.</p>
+    <h1 class="page-title">Account settings</h1>
+    <p class="page-sub">Signed in as <b>{{ profile.username }}</b>. These settings belong to you, not to any campaign.</p>
   </div>
   <a class="btn btn-ghost" href="{{ url_for('profile_view', username=profile.username) }}">{{ icon('user') }} View my profile</a>
 </div>
@@ -28,8 +28,18 @@
 {% if username_error %}<div class="banner-notice banner-error" role="alert" id="username-error">{{ username_error }}</div>{% endif %}
 {% if password_error %}<div class="banner-notice banner-error" role="alert" id="password-error">{{ password_error }}</div>{% endif %}
 
-<form class="form-panel account-form" method="POST" enctype="multipart/form-data" id="account-form">{{ csrf_field() }}
-  <div class="form-section">
+<div class="account-layout">
+<nav class="account-nav" aria-label="Account settings">
+  <a href="#profile" data-section-link="profile">Profile</a>
+  <a href="#privacy" data-section-link="privacy">Privacy</a>
+  <a href="#security" data-section-link="security">Sign-in and security</a>
+  <a href="#appearance" data-section-link="appearance">Appearance</a>
+  <a href="#data" data-section-link="data">Your data</a>
+</nav>
+<div class="account-sections">
+
+<form class="form-panel account-form" method="POST" enctype="multipart/form-data" id="account-form" data-section="profile privacy">{{ csrf_field() }}
+  <div class="form-section" data-section="profile">
     <p class="form-section-title">Profile</p>
 
     <div class="field" style="margin-bottom:14px;">
@@ -70,7 +80,7 @@
   </div>
 
   {% if px.ready %}
-  <div class="form-section">
+  <div class="form-section" data-section="privacy">
     <p class="form-section-title">Who can see your profile</p>
     <div class="access-options" role="radiogroup" aria-label="Profile visibility">
       {% for key, opt in profile_visibility_options.items() %}
@@ -82,7 +92,7 @@
     </div>
   </div>
 
-  <div class="form-section" id="showcase">
+  <div class="form-section" id="showcase" data-section="privacy">
     <p class="form-section-title">Characters on your profile</p>
     <input type="hidden" name="showcase_present" value="1">
     {% if px.showcase_options %}
@@ -107,13 +117,13 @@
   </div>
   {% endif %}
 
-  <div class="form-actions">
+  <div class="form-actions" data-section="profile privacy">
     <button type="submit" class="btn btn-primary">{{ icon('check') }} Save profile</button>
   </div>
 </form>
 
 {% if profile.email_ready %}
-<div class="form-panel account-form" id="email-panel">
+<div class="form-panel account-form" id="email-panel" data-section="security">
   <div class="form-section">
     <p class="form-section-title">Email</p>
     {% if profile.email %}
@@ -146,7 +156,7 @@
 </div>
 {% endif %}
 
-<form class="form-panel account-form" method="POST" action="{{ url_for('account_username') }}" id="username-form">{{ csrf_field() }}
+<form class="form-panel account-form" method="POST" action="{{ url_for('account_username') }}" id="username-form" data-section="security">{{ csrf_field() }}
   <div class="form-section">
     <p class="form-section-title">Username</p>
     <p class="hint-text" style="margin:0 0 12px;">Your username is what you log in with and what other people use to invite you. You are <b>{{ profile.username }}</b> now. Your password stays the same, and you stay signed in.</p>
@@ -168,7 +178,7 @@
   </div>
 </form>
 
-<form class="form-panel account-form" method="POST" action="{{ url_for('account_password') }}" id="password-form">{{ csrf_field() }}
+<form class="form-panel account-form" method="POST" action="{{ url_for('account_password') }}" id="password-form" data-section="security">{{ csrf_field() }}
   <div class="form-section">
     <p class="form-section-title">{{ 'Password' if px.has_password else 'Add a password' }}</p>
     {% if px.has_password %}
@@ -194,7 +204,7 @@
   </div>
 </form>
 
-<form class="form-panel account-form" method="POST" action="{{ url_for('account_logout_all') }}" id="sessions-form" data-confirm="Sign out every other browser and device? This one stays signed in.">{{ csrf_field() }}
+<form class="form-panel account-form" method="POST" action="{{ url_for('account_logout_all') }}" id="sessions-form" data-section="security" data-confirm="Sign out every other browser and device? This one stays signed in.">{{ csrf_field() }}
   <div class="form-section">
     <p class="form-section-title">Sessions</p>
     <p class="hint-text" style="margin:0 0 12px;">Lost a phone or used a shared computer? This signs you out everywhere except here. Changing your password does the same.</p>
@@ -202,7 +212,19 @@
   </div>
 </form>
 
-<form class="form-panel account-form" method="POST" action="{{ url_for('account_export') }}" id="export-form">{{ csrf_field() }}
+<div class="form-panel account-form" id="appearance-panel" data-section="appearance">
+  <div class="form-section">
+    <p class="form-section-title">Appearance</p>
+    <p class="hint-text" style="margin:0 0 12px;">Saved on this device. The moon and sun button in the menu changes it too.</p>
+    <div class="access-options" role="radiogroup" aria-label="Theme">
+      <label class="access-option"><input type="radio" name="theme_pref" value="dark"><span class="access-option-card"><b>Dark</b><span>Easy on the eyes at a dim table.</span></span></label>
+      <label class="access-option"><input type="radio" name="theme_pref" value="light"><span class="access-option-card"><b>Light</b><span>Parchment colours for bright rooms.</span></span></label>
+      <label class="access-option"><input type="radio" name="theme_pref" value="system"><span class="access-option-card"><b>Match my device</b><span>Follows your phone or computer setting.</span></span></label>
+    </div>
+  </div>
+</div>
+
+<form class="form-panel account-form" method="POST" action="{{ url_for('account_export') }}" id="export-form" data-section="data">{{ csrf_field() }}
   <div class="form-section">
     <p class="form-section-title">Your data</p>
     <p class="hint-text" style="margin:0 0 12px;">Download a copy of what Campaign Ledger holds about you: your account details, the campaigns you belong to, and the characters, factions, maps and dice rolls you made. It never includes your password.</p>
@@ -211,7 +233,7 @@
 </form>
 
 {% set owned = owned_campaigns() %}
-<form class="form-panel account-form danger-panel" method="POST" action="{{ url_for('account_delete') }}" id="delete-form" data-confirm="Delete your account for good? Campaigns you own and did not hand to someone else are deleted with it and cannot be recovered.">{{ csrf_field() }}
+<form class="form-panel account-form danger-panel" method="POST" action="{{ url_for('account_delete') }}" id="delete-form" data-section="data" data-confirm="Delete your account for good? Campaigns you own and did not hand to someone else are deleted with it and cannot be recovered.">{{ csrf_field() }}
   <div class="form-section">
     <p class="form-section-title">Delete account</p>
     <p class="hint-text" style="margin:0 0 12px;">This removes your account, profile and memberships for good. Characters, factions and maps you made in other people's campaigns stay there, without your name on them.</p>
@@ -248,5 +270,8 @@
     <button type="submit" class="btn btn-danger">{{ icon('trash-2') }} Delete my account</button>
   </div>
 </form>
+</div>
+</div>
 {% endblock %}
-{% block extra_scripts %}<script src="{{ url_for('static', filename='js/showcase.js') }}"></script>{% endblock %}
+{% block extra_scripts %}<script src="{{ url_for('static', filename='js/showcase.js') }}"></script>
+<script src="{{ url_for('static', filename='js/account.js') }}"></script>{% endblock %}

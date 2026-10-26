@@ -5052,3 +5052,20 @@ input[type="range"]:disabled { opacity: 0.5; cursor: not-allowed; }
 .showcase-option input:checked + .showcase-option-card { border-color: var(--brass); background: rgba(201, 162, 75, 0.09); }
 .showcase-option input:focus-visible + .showcase-option-card { outline: 2px solid var(--brass); outline-offset: 2px; }
 .showcase-option input:disabled + .showcase-option-card { opacity: 0.45; cursor: not-allowed; }
+
+/* ---- Account settings: section navigation (DL-39) ---- */
+.account-layout { display: grid; grid-template-columns: 210px minmax(0, 780px); gap: 32px; align-items: start; }
+.account-nav { position: sticky; inset-block-start: 24px; display: grid; gap: 4px; }
+.account-nav a { display: block; padding: 9px 12px; border-radius: var(--radius-s); border-inline-start: 2px solid transparent; color: var(--parchment-dim); font-size: 14px; font-weight: 500; text-decoration: none; transition: color 0.15s ease, background-color 0.15s ease, border-color 0.15s ease; }
+.account-nav a:hover { color: var(--parchment); background: rgba(201, 162, 75, 0.06); }
+.account-nav a.active { color: var(--parchment); background: rgba(201, 162, 75, 0.1); border-inline-start-color: var(--brass); }
+.account-nav a:focus-visible { outline: 2px solid var(--brass-bright); outline-offset: 2px; }
+.account-sections [hidden] { display: none !important; }
+.account-sections > .form-panel:first-child { margin-block-start: 0; }
+@media (max-width: 820px) {
+  .account-layout { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .account-nav { position: static; display: flex; gap: 6px; overflow-x: auto; padding-block-end: 4px; scrollbar-width: none; }
+  .account-nav::-webkit-scrollbar { display: none; }
+  .account-nav a { flex: none; border-inline-start: 0; border: 1px solid var(--hairline); border-radius: 999px; padding: 7px 14px; white-space: nowrap; }
+  .account-nav a.active { border-color: var(--brass); }
+}

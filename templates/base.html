@@ -8,6 +8,7 @@
 <script nonce="{{ csp_nonce() }}">
   (function () {
     var saved = localStorage.getItem('ledger-theme');
+    if (saved === 'system') saved = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
     if (saved === 'light' || saved === 'dark') {
       document.documentElement.setAttribute('data-theme', saved);
     }

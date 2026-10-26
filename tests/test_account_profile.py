@@ -197,6 +197,6 @@ def test_account_page_structure(user):
     """Regression: the password form once ended up inside the <title> block."""
     html = user.get('/account').get_data(as_text=True)
     title = html[html.index('<title>'):html.index('</title>')]
-    assert '<' not in title[len('<title>'):] and 'Your profile' in title
+    assert '<' not in title[len('<title>'):] and 'Account settings' in title
     for form_id in ('account-form', 'email-panel', 'password-form', 'sessions-form'):
         assert html.count(f'id="{form_id}"') == 1, form_id
