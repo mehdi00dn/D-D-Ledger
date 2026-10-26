@@ -15,6 +15,6 @@
     <button type="button" class="note-remove-btn btn-icon" data-note-remove title="Remove this note" aria-label="Remove this note">{{ icon('x') }}</button>
     {% endif %}
   </div>
-  <div class="note-editor" contenteditable="true" role="textbox" aria-multiline="true" data-placeholder="{{ placeholder }}">{{ content | safe }}</div>
+  <div class="note-editor" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Note" data-placeholder="{{ placeholder }}">{{ content | safe }}</div>
 </div>
 {% endmacro %}

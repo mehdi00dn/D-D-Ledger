@@ -144,7 +144,7 @@
 </form>
 
 {% if campaign %}
-<aside class="campaign-edit-side">
+<aside class="campaign-edit-side" aria-label="Members and access">
 {% set owner_count = members|selectattr('role', 'equalto', 'owner')|list|length %}
 {% set can_leave_freely = not is_owner or owner_count > 1 %}
 {% if g.real_is_dm or is_owner %}
@@ -175,7 +175,7 @@
         <span class="member-actions">
           {% if is_owner %}
           <form method="POST" action="{{ url_for('campaign_member_status', campaign_id=campaign.id, user_id=m.id) }}">{{ csrf_field() }}
-            <select name="status" class="status-select status-select-{{ m.status }}" title="Dungeon Master / Player" data-auto-submit>
+            <select name="status" class="status-select status-select-{{ m.status }}" title="Dungeon Master / Player" aria-label="Role of {{ m.username }}" data-auto-submit>
               <option value="dm" {{ 'selected' if m.status == 'dm' else '' }}>DM</option>
               <option value="player" {{ 'selected' if m.status == 'player' else '' }}>Player</option>
             </select>
@@ -241,7 +241,7 @@
         <input type="text" name="username" id="member-username-input" placeholder="Username to invite" required autocomplete="off">
         <ul class="member-search-results" id="member-search-results" hidden></ul>
       </div>
-      <select name="status" title="Status they get when they join">
+      <select name="status" title="Status they get when they join" aria-label="Status they get when they join">
         <option value="player">Player</option>
         <option value="dm">DM</option>
       </select>

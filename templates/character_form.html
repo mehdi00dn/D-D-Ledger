@@ -12,7 +12,7 @@
     </label>
     <button type="button" class="note-remove-btn btn-icon" data-note-remove title="Remove this note">{{ icon('x') }}</button>
   </div>
-  <div class="note-editor" contenteditable="true" data-placeholder="Backstory, quirks, tactics, secrets the DM shouldn't forget...">{{ content | safe }}</div>
+  <div class="note-editor" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Note" data-placeholder="Backstory, quirks, tactics, secrets the DM shouldn't forget...">{{ content | safe }}</div>
 </div>
 {% endmacro %}
 {% block title %}{{ 'Edit' if character else 'New' }} Character — Campaign Ledger{% endblock %}
@@ -176,7 +176,7 @@
     </section>
   </div>
 
-  <aside class="cf-side">
+  <aside class="cf-side" aria-label="Portrait, sheets and factions">
     <section class="cf-card" aria-labelledby="cf-portrait">
       <h2 class="cf-title" id="cf-portrait">Portrait</h2>
       <div class="field">

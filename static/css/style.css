@@ -645,7 +645,7 @@ body.page-leaving .content {
   color: var(--parchment-dim);
 }
 .empty-state svg { width: 32px; height: 32px; color: var(--brass-dim-ink); }
-.empty-state h3 { font-family: var(--font-display); color: var(--parchment); font-size: 19px; margin: 0 0 6px; }
+.empty-state h2, .empty-state h3 { font-family: var(--font-display); color: var(--parchment); font-size: 19px; margin: 0 0 6px; }
 .empty-state p { font-size: 13.5px; margin: 0 0 20px; }
 
 /* ==========================================================================

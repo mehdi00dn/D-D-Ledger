@@ -51,7 +51,7 @@
       {% endif %}
     </div>
     <div class="group-body">
-      <h3 class="group-name"><span class="group-dot" style="background:{{ g.color }}"></span>{{ g.name }}</h3>
+      <h2 class="group-name"><span class="group-dot" style="background:{{ g.color }}"></span>{{ g.name }}</h2>
       <p class="group-count">{{ g.member_count }} member{{ '' if g.member_count == 1 else 's' }}</p>
       <p class="group-bio">{{ g.bio | preview_lines }}</p>
       <div class="group-actions">
@@ -70,7 +70,7 @@
 {% else %}
 <div class="empty-state">
   {{ icon('faction') }}
-  <h3>No factions yet</h3>
+  <h2>No factions yet</h2>
   <p>Create a faction or party to organize your characters.</p>
   {% if is_dm %}
   <a href="{{ url_for('faction_new') }}" class="btn btn-primary">{{ icon('plus') }} New Faction</a>

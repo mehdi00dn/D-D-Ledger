@@ -25,7 +25,7 @@
       {% endif %}
     </div>
     <div class="group-body">
-      <h3 class="group-name">{{ c.name }} <span class="role-badge role-badge-{{ c.my_role }}">{{ c.my_role }}</span></h3>
+      <h2 class="group-name">{{ c.name }} <span class="role-badge role-badge-{{ c.my_role }}">{{ c.my_role }}</span></h2>
       <p class="group-count">{{ c.character_count }} character{{ '' if c.character_count == 1 else 's' }} &middot; {{ c.group_count }} group{{ '' if c.group_count == 1 else 's' }} &middot; {{ c.map_count }} map{{ '' if c.map_count == 1 else 's' }}</p>
       <p class="group-bio">{{ c.description | notes_preview }}</p>
       <div class="group-actions">
@@ -44,7 +44,7 @@
 {% else %}
 <div class="empty-state">
   {{ icon('scroll') }}
-  <h3>No campaigns yet</h3>
+  <h2>No campaigns yet</h2>
   <p>Create your first campaign to start adding characters, groups, and maps.</p>
   <a href="{{ url_for('campaign_new') }}" class="btn btn-primary">{{ icon('plus') }} New Campaign</a>
 </div>

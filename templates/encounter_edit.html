@@ -13,6 +13,7 @@
      data-count-max="{{ count_max }}">
   <div class="page-header">
     <div>
+      <h1 class="sr-only">Encounter builder</h1>
       <p class="enc-back"><a href="{{ url_for('encounters_list') }}">← All encounters</a></p>
       <label class="sr-only" for="enc-name">Encounter name</label>
       <input type="text" id="enc-name" class="enc-name" value="{{ enc.name }}" maxlength="80" data-enc-name>
