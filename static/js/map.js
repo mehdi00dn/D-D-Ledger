@@ -20,6 +20,8 @@
   const canvas = document.getElementById('map-canvas');
   const ctx = canvas.getContext('2d');
   const pinLayer = document.getElementById('map-pin-layer');
+  const rulerCanvas = document.getElementById('ruler-canvas');
+  const rctx = rulerCanvas.getContext('2d');
 
   const pinBubble = document.getElementById('pin-action-bubble');
   const pinViewBtn = document.getElementById('pin-view-btn');
@@ -113,6 +115,8 @@
   // ---------------------------------------------------------------------
   canvas.width = naturalWidth;
   canvas.height = naturalHeight;
+  rulerCanvas.width = naturalWidth;
+  rulerCanvas.height = naturalHeight;
   bgImage.onload = () => { bgLoaded = true; redraw(); };
   // The picture comes from the fog-aware route (a Player's copy has fogged areas painted out).
   const mapImageUrl = (v) => initData.image_url + (v ? '?v=' + v : '');
@@ -421,35 +425,59 @@
     return { squares, feet: squares * feetPerSquare, text: `${squares} ${squares === 1 ? 'square' : 'squares'} \u00b7 ${squares * feetPerSquare} ft` };
   }
 
+  // The ruler has a canvas of its own above the tokens, the fog and the shapes, so nothing can cover the line or its label.
+  // That canvas is as sharp as the screen (not as the map picture) and the ruler is drawn in screen pixels, so it keeps the
+  // same small size at any zoom or map size.
   function drawRuler() {
     const readout = document.getElementById('ruler-readout');
+    const rect = rulerCanvas.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    const px = Math.max(1, Math.round(rect.width * dpr)), py = Math.max(1, Math.round(rect.height * dpr));
+    if (rulerCanvas.width !== px || rulerCanvas.height !== py) { rulerCanvas.width = px; rulerCanvas.height = py; }
+    rctx.setTransform(1, 0, 0, 1, 0, 0);
+    rctx.clearRect(0, 0, rulerCanvas.width, rulerCanvas.height);
     if (!ruler) { if (readout) readout.textContent = ''; return; }
-    const { text } = rulerReading();
+    const { text, squares } = rulerReading();
     if (readout) readout.textContent = text;
+    const k = px / naturalWidth;                                   // natural map pixels -> canvas pixels
+    const unit = rect.width > 0 ? naturalWidth / rect.width : 1;   // one unit = one screen pixel, in map pixels
+    rctx.setTransform(k, 0, 0, k, 0, 0);
     const a = ruler.a, b = ruler.b;
-    const unit = Math.max(1, canvas.width / 450);
-    ctx.save();
-    ctx.lineCap = 'round';
-    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y);
-    ctx.strokeStyle = 'rgba(0,0,0,0.75)'; ctx.lineWidth = 5 * unit; ctx.stroke();
-    ctx.strokeStyle = '#f0d58a'; ctx.lineWidth = 2.5 * unit; ctx.stroke();
-    [a, b].forEach((p) => {
-      ctx.beginPath(); ctx.arc(p.x, p.y, 5 * unit, 0, Math.PI * 2);
-      ctx.fillStyle = '#f0d58a'; ctx.fill(); ctx.strokeStyle = 'rgba(0,0,0,0.75)'; ctx.lineWidth = 1.5 * unit; ctx.stroke();
-    });
-    if (Math.hypot(b.x - a.x, b.y - a.y) > 8 * unit) {
-      const size = Math.round(13 * unit);
-      ctx.font = `600 ${size}px Inter, system-ui, sans-serif`;
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2 - 16 * unit;
-      const w = ctx.measureText(text).width + 14 * unit, h = size + 10 * unit;
-      ctx.fillStyle = 'rgba(14,16,24,0.88)';
-      ctx.beginPath();
-      if (ctx.roundRect) ctx.roundRect(mx - w / 2, my - h / 2, w, h, 6 * unit); else ctx.rect(mx - w / 2, my - h / 2, w, h);
-      ctx.fill();
-      ctx.fillStyle = '#f6efdc'; ctx.fillText(text, mx, my + 1);
+    const len = Math.hypot(b.x - a.x, b.y - a.y);
+    rctx.save();
+    rctx.lineCap = 'round';
+    rctx.shadowColor = 'rgba(0,0,0,0.55)'; rctx.shadowBlur = 4 * unit;
+    rctx.beginPath(); rctx.moveTo(a.x, a.y); rctx.lineTo(b.x, b.y);
+    rctx.strokeStyle = 'rgba(14,16,24,0.7)'; rctx.lineWidth = 4 * unit; rctx.stroke();       // a dark edge keeps it readable on a pale map
+    rctx.shadowBlur = 0;
+    rctx.strokeStyle = '#f0d58a'; rctx.lineWidth = 2 * unit; rctx.stroke();
+    if (len > 0 && squares > 1 && squares <= 60) {                 // a small tick at every square
+      const nx = -(b.y - a.y) / len, ny = (b.x - a.x) / len;
+      rctx.lineWidth = 1.25 * unit;
+      for (let i = 1; i < squares; i++) {
+        const t = i / squares, tx = a.x + (b.x - a.x) * t, ty = a.y + (b.y - a.y) * t, h = 3.5 * unit;
+        rctx.beginPath(); rctx.moveTo(tx - nx * h, ty - ny * h); rctx.lineTo(tx + nx * h, ty + ny * h); rctx.stroke();
+      }
     }
-    ctx.restore();
+    [a, b].forEach((p) => {                                        // hollow end rings
+      rctx.beginPath(); rctx.arc(p.x, p.y, 4.5 * unit, 0, Math.PI * 2);
+      rctx.fillStyle = 'rgba(14,16,24,0.88)'; rctx.fill();
+      rctx.strokeStyle = '#f0d58a'; rctx.lineWidth = 2 * unit; rctx.stroke();
+    });
+    if (len > 14 * unit) {
+      const size = 12 * unit;
+      rctx.font = `600 ${size}px Inter, system-ui, sans-serif`;
+      rctx.textAlign = 'center'; rctx.textBaseline = 'middle';
+      const w = rctx.measureText(text).width + 16 * unit, h = size + 10 * unit;
+      const mx = Math.min(Math.max((a.x + b.x) / 2, w / 2 + 2 * unit), naturalWidth - w / 2 - 2 * unit);
+      const my = Math.min(Math.max((a.y + b.y) / 2 - 18 * unit, h / 2 + 2 * unit), naturalHeight - h / 2 - 2 * unit);
+      rctx.beginPath();
+      if (rctx.roundRect) rctx.roundRect(mx - w / 2, my - h / 2, w, h, h / 2); else rctx.rect(mx - w / 2, my - h / 2, w, h);
+      rctx.fillStyle = 'rgba(14,16,24,0.92)'; rctx.fill();
+      rctx.strokeStyle = 'rgba(240,213,138,0.75)'; rctx.lineWidth = 1 * unit; rctx.stroke();
+      rctx.fillStyle = '#f6efdc'; rctx.fillText(text, mx, my + 0.5 * unit);
+    }
+    rctx.restore();
   }
 
   function drawShape(d) {
@@ -2766,6 +2794,7 @@
     stageInner.style.transform = `translate(${panX}px, ${panY}px) scale(${zoomLevel})`;
     stageInner.style.setProperty('--ledger-zoom-inv', String(1 / zoomLevel));
     if (zoomLevelLabel) zoomLevelLabel.textContent = `${Math.round(zoomLevel * 100)}%`;
+    if (ruler) drawRuler();                                        // its size follows the zoom
     applyBubbleScale();
     if (selectedPinId != null) positionPinBubble(selectedPinId);
     if (selectedShapeId != null) positionShapeBubble();

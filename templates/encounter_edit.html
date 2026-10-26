@@ -15,8 +15,8 @@
     <div>
       <h1 class="sr-only">Encounter builder</h1>
       <p class="enc-back"><a href="{{ url_for('encounters_list') }}">← All encounters</a></p>
-      <label class="sr-only" for="enc-name">Encounter name</label>
-      <input type="text" id="enc-name" class="enc-name" value="{{ enc.name }}" maxlength="80" data-enc-name>
+      <label class="enc-name-label" for="enc-name">Encounter name</label>
+      <div class="enc-name-box">{{ icon('pencil') }}<input type="text" id="enc-name" class="enc-name" value="{{ enc.name }}" maxlength="80" data-enc-name></div>
     </div>
     <div class="enc-actions">
       <button type="button" class="btn btn-ghost" data-enc-save disabled>Save</button>
@@ -28,13 +28,14 @@
 
   <div class="enc-grid">
     <section class="cf-card enc-pick" aria-label="Monster manual">
-      <h2 class="cf-title">Monster manual</h2>
+      <h2 class="cf-title"><span class="step-no">1</span> Pick monsters</h2>
+      <p class="hint-text">Search the 2024 monster manual and press Add. Add the same monster again for more copies.</p>
       <div class="ref-search">{{ icon('search') }}<input type="search" data-enc-query placeholder="Search monsters…" aria-label="Search monsters" autocomplete="off"></div>
       <ul class="ref-list enc-results" data-enc-results aria-live="polite"></ul>
     </section>
 
     <section class="cf-card enc-list-card" aria-label="This encounter">
-      <h2 class="cf-title">Monsters <span class="cf-count" data-enc-creatures>0</span></h2>
+      <h2 class="cf-title"><span class="step-no">2</span> This encounter <span class="cf-count" data-enc-creatures>0</span></h2>
       <ul class="enc-lines" data-enc-lines></ul>
       <p class="home-empty" data-enc-empty>Search the manual and add monsters.</p>
 
@@ -51,7 +52,7 @@
         </dl>
       </div>
 
-      <fieldset class="enc-party"><legend>Party</legend>
+      <fieldset class="enc-party"><legend>Who is fighting? Untick anyone who is not in this fight.</legend>
         {% if party %}
         {% for p in party %}<label><input type="checkbox" data-enc-pc value="{{ p.id }}" checked> {{ p.name }} <span class="enc-lvl">L{{ p.level }}</span></label>{% endfor %}
         {% else %}
@@ -61,7 +62,7 @@
         </div>
         {% endif %}
       </fieldset>
-      <p class="hint-text">2024 rules: add up the monsters' XP and compare it with the party's budget. There is no group-size multiplier.</p>
+      <p class="hint-text">How to read the meter: add up the monsters' XP and compare it with the party's budget. <b>Low</b> is an easy fight, <b>Moderate</b> a fair one, <b>High</b> a hard one; past High it can be deadly. 2024 rules: no multiplier for the number of monsters.</p>
     </section>
   </div>
 </div>

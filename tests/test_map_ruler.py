@@ -64,6 +64,9 @@ def test_ruler_reads_squares_and_feet_and_follows_the_setting(shared_server, pw)
     if os.environ.get('SHOT_DIR'):
         page.screenshot(path=os.path.join(os.environ['SHOT_DIR'], 'ruler.png'))
     playwright.expect(readout).to_have_text('4 squares · 20 ft')
+    ruler_layer = page.locator('#ruler-canvas')                      # the line lives on a layer above the tokens and the fog
+    playwright.expect(ruler_layer).to_have_css('pointer-events', 'none')
+    assert page.evaluate("() => { const z = (id) => parseInt(getComputedStyle(document.getElementById(id)).zIndex, 10) || 0; return z('ruler-canvas') > z('map-fog-layer') && z('ruler-canvas') > z('map-pin-layer'); }") is True
     _drag(page, 3, 2)                                                # a diagonal step counts as one square (5e)
     playwright.expect(readout).to_have_text('3 squares · 15 ft')
     _drag(page, 1)

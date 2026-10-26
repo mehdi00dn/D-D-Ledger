@@ -13,12 +13,22 @@ def _setup(make_user):
 
 def _purse(cid):
     r = q('SELECT COALESCE(SUM(cp),0) cp, COALESCE(SUM(sp),0) sp, COALESCE(SUM(ep),0) ep, COALESCE(SUM(gp),0) gp, COALESCE(SUM(pp),0) pp '
-          'FROM treasury_entries WHERE campaign_id = ?', cid)[0]
+          'FROM treasury_entries WHERE campaign_id = ? AND character_id IS NULL', cid)[0]
+    return {c: int(r[c]) for c in ('cp', 'sp', 'ep', 'gp', 'pp')}
+
+
+def _char_purse(char_id):
+    r = q('SELECT COALESCE(SUM(cp),0) cp, COALESCE(SUM(sp),0) sp, COALESCE(SUM(ep),0) ep, COALESCE(SUM(gp),0) gp, COALESCE(SUM(pp),0) pp '
+          'FROM treasury_entries WHERE character_id = ?', char_id)[0]
     return {c: int(r[c]) for c in ('cp', 'sp', 'ep', 'gp', 'pp')}
 
 
 def _add(user, cid, kind, note='x', **coins):
     return user.post(f'/campaigns/{cid}/treasury/add', data={'kind': kind, 'note': note, **{k: str(v) for k, v in coins.items()}})
+
+
+def _add_for(user, cid, holder, kind, note='x', **coins):
+    return user.post(f'/campaigns/{cid}/treasury/add', data={'kind': kind, 'note': note, 'character_id': str(holder), **{k: str(v) for k, v in coins.items()}})
 
 
 def test_settle_payment_pays_named_coins_then_makes_change():
@@ -45,7 +55,7 @@ def test_formatting():
 
 def test_members_add_and_spend_and_the_purse_cannot_go_negative(make_user):
     dm, pl, cid = _setup(make_user)
-    assert 'Nothing in the purse yet' in dm.get(f'/campaigns/{cid}/treasury').data.decode()
+    assert 'Nothing here yet' in dm.get(f'/campaigns/{cid}/treasury').data.decode()
     assert _add(pl, cid, 'income', 'Dragon hoard', gp=50, sp=3).status_code == 302                          # a Player may add too
     assert _purse(cid)['gp'] == 50
     page = pl.get(f'/campaigns/{cid}/treasury').data.decode()
@@ -70,18 +80,77 @@ def test_split_evenly_between_chosen_characters(make_user):
     dm, pl, cid = _setup(make_user)
     a, b, c = (dm.new_character(cid, n) for n in ('Aria', 'Bo', 'Cy'))
     _add(dm, cid, 'income', 'Loot', gp=100)
-    r = dm.post(f'/campaigns/{cid}/treasury/split', data={'characters': [a, b, c]})                          # whole purse, three ways
+    r = dm.post(f'/campaigns/{cid}/treasury/split', data={'to': [a, b, c]})                                  # whole party purse, three ways
     assert r.status_code == 302
-    assert _purse(cid)['gp'] * 100 + _purse(cid)['sp'] * 10 + _purse(cid)['cp'] == 1                         # 1 cp left over
-    note = q('SELECT note FROM treasury_entries WHERE campaign_id = ? ORDER BY id DESC', cid)[0]['note']
-    assert 'Aria, Bo, Cy' in note and '3 pp 3 gp 3 sp 3 cp each' in note
-    assert dm.post(f'/campaigns/{cid}/treasury/split', data={'characters': [a], 'gp': '5'}).status_code == 400      # purse has 0.01 gp
+    left = _purse(cid)
+    assert left['gp'] * 100 + left['sp'] * 10 + left['cp'] == 1                                              # 1 cp left over in the party purse
+    for ch in (a, b, c):
+        assert _char_purse(ch) == {'cp': 3, 'sp': 3, 'ep': 0, 'gp': 3, 'pp': 3}                              # 3333 cp each
+    assert '3 pp 3 gp 3 sp 3 cp each' in q('SELECT note FROM treasury_entries WHERE campaign_id = ? AND character_id IS NULL ORDER BY id DESC', cid)[0]['note']
+    assert dm.post(f'/campaigns/{cid}/treasury/split', data={'to': [a], 'gp': '5'}).status_code == 400      # purse has 0.01 gp
     _add(dm, cid, 'income', 'More', gp=10)
-    assert pl.post(f'/campaigns/{cid}/treasury/split', data={'characters': [a, b], 'gp': '3'}).status_code == 302
-    assert 'Aria, Bo' in q('SELECT note FROM treasury_entries WHERE campaign_id = ? ORDER BY id DESC', cid)[0]['note']
+    assert pl.post(f'/campaigns/{cid}/treasury/split', data={'to': [a, b], 'gp': '3'}).status_code == 302   # any member may share the party purse
     assert dm.post(f'/campaigns/{cid}/treasury/split', data={'gp': '1'}).status_code == 400                 # nobody chosen
-    assert dm.post(f'/campaigns/{cid}/treasury/split', data={'characters': ['999999'], 'gp': '1'}).status_code == 400
-    assert dm.post(f'/campaigns/{cid}/treasury/split', data={'characters': [a, b, c], 'cp': '2'}).status_code == 400  # too little for three
+    assert dm.post(f'/campaigns/{cid}/treasury/split', data={'to': ['999999'], 'gp': '1'}).status_code == 400
+    assert dm.post(f'/campaigns/{cid}/treasury/split', data={'to': [a, b, c], 'cp': '2'}).status_code == 400  # too little for three
+
+
+def test_character_purses_hand_over_and_who_may_use_them(make_user):
+    dm, pl, cid = _setup(make_user)
+    mine = pl.new_character(cid, 'Pia'); other = dm.new_character(cid, 'Dax')
+    assert _add_for(pl, cid, mine, 'income', 'Found it', gp=10).status_code == 302
+    assert _char_purse(mine)['gp'] == 10 and _purse(cid)['gp'] == 0                                          # the character's coins, not the party's
+    assert _add_for(pl, cid, other, 'income', 'Not mine', gp=1).status_code == 403                           # someone else's purse
+    assert _add_for(pl, cid, mine, 'expense', 'Potion', gp=4).status_code == 302 and _char_purse(mine)['gp'] == 6
+    assert _add_for(pl, cid, mine, 'expense', 'Castle', gp=99).status_code == 400                            # cannot go below zero
+    assert _add_for(dm, cid, mine, 'income', 'DM may', gp=1).status_code == 302                              # the DM can use any purse
+    assert _add_for(dm, cid, 'abc', 'income', 'Odd', gp=1).status_code == 400
+    # hand over: Pia gives Dax 2 gp; Dax's purse gains it, hers loses it, in one tied-together share
+    assert pl.post(f'/campaigns/{cid}/treasury/split', data={'source': mine, 'to': [other], 'gp': '2'}).status_code == 302
+    assert _char_purse(other)['gp'] == 2 and _char_purse(mine)['gp'] == 5
+    assert pl.post(f'/campaigns/{cid}/treasury/split', data={'source': other, 'to': [mine], 'gp': '1'}).status_code == 403   # not hers to give
+    assert pl.post(f'/campaigns/{cid}/treasury/split', data={'source': mine, 'to': [mine], 'gp': '1'}).status_code == 400     # not to itself
+    # back into the party purse
+    assert pl.post(f'/campaigns/{cid}/treasury/split', data={'source': mine, 'to': ['party'], 'whole': '1'}).status_code == 302
+    assert _char_purse(mine)['gp'] == 0 and _purse(cid)['gp'] == 5
+
+
+def test_removing_a_share_removes_every_entry_of_it(make_user):
+    dm, pl, cid = _setup(make_user)
+    a = dm.new_character(cid, 'Aria'); b = dm.new_character(cid, 'Bo')
+    _add(dm, cid, 'income', 'Loot', gp=10)
+    dm.post(f'/campaigns/{cid}/treasury/split', data={'to': [a, b], 'gp': '10'})
+    assert len(q('SELECT id FROM treasury_entries WHERE campaign_id = ? AND batch IS NOT NULL', cid)) == 3
+    one = q('SELECT id FROM treasury_entries WHERE campaign_id = ? AND batch IS NOT NULL ORDER BY id', cid)[0]['id']
+    _add_for(dm, cid, a, 'expense', 'Spent it', gp=4)
+    assert dm.post(f'/campaigns/{cid}/treasury/{one}/delete').status_code == 409                             # Aria already spent some
+    assert len(q('SELECT id FROM treasury_entries WHERE campaign_id = ?', cid)) == 5
+    q_spend = q('SELECT id FROM treasury_entries WHERE campaign_id = ? ORDER BY id DESC', cid)[0]['id']
+    dm.post(f'/campaigns/{cid}/treasury/{q_spend}/delete')
+    assert dm.post(f'/campaigns/{cid}/treasury/{one}/delete').status_code == 302
+    assert len(q('SELECT id FROM treasury_entries WHERE campaign_id = ?', cid)) == 1 and _purse(cid)['gp'] == 10
+
+
+def test_a_deleted_character_returns_its_coins_to_the_party_purse(make_user):
+    dm, _, cid = _setup(make_user)
+    a = dm.new_character(cid, 'Aria')
+    _add_for(dm, cid, a, 'income', 'Hers', gp=7)
+    dm.post(f'/campaigns/{cid}/characters/{a}/delete')
+    assert _purse(cid)['gp'] == 7
+
+
+def test_the_purse_shows_on_the_character_profile_and_the_treasury_page(make_user):
+    dm, pl, cid = _setup(make_user)
+    a = pl.new_character(cid, 'Aria')
+    _add_for(pl, cid, a, 'income', 'Ruby sold', gp=12, sp=5)
+    page = pl.get(f'/campaigns/{cid}/characters/{a}').data.decode()
+    assert 'aria-label="Purse"' in page and '12.5 gp' in page and 'Ruby sold' in page and f'/treasury?who={a}' in page
+    treasury = dm.get(f'/campaigns/{cid}/treasury').data.decode()
+    assert 'Character purses' in treasury and 'Aria' in treasury and '12.5 gp' in treasury
+    assert 'Ruby sold' in dm.get(f'/campaigns/{cid}/treasury?who={a}').data.decode()
+    assert 'Ruby sold' not in dm.get(f'/campaigns/{cid}/treasury?who=party').data.decode()
+    npc = dm.new_character(cid, 'Goblin', is_npc='on')
+    assert 'aria-label="Purse"' not in dm.get(f'/campaigns/{cid}/characters/{npc}').data.decode()             # NPCs carry no purse
 
 
 def test_who_can_remove_an_entry_and_removal_cannot_break_the_purse(make_user):
@@ -112,4 +181,4 @@ def test_an_entry_of_another_campaign_cannot_be_touched_and_the_note_is_escaped(
 def test_entries_reach_the_activity_feed(make_user):
     dm, pl, cid = _setup(make_user)
     _add(dm, cid, 'income', 'Dragon hoard', gp=5)
-    assert 'added to the party purse: Dragon hoard' in pl.get(f'/campaigns/{cid}/activity').data.decode()
+    assert 'added to the purse: Dragon hoard' in pl.get(f'/campaigns/{cid}/activity').data.decode()

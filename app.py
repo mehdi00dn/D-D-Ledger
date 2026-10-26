@@ -2716,9 +2716,15 @@ def character_detail(char_id):
     factions = _factions_by_character(db, g.campaign_id).get(char_id, [])
     level_history = [] if stats_hidden else _level_history(db, char_id)
     attacks = [] if stats_hidden else _attacks_for(db, char_id)
+    purse = recent_coins = None
+    if not character['is_npc']:                                   # player characters carry a purse (see the Treasury page)
+        purse = _purse(db, char_id)
+        recent_coins = db.execute('SELECT cp, sp, ep, gp, pp, note FROM treasury_entries WHERE campaign_id = ? AND character_id = ? '
+                                  'ORDER BY id DESC LIMIT 4', (g.campaign_id, char_id)).fetchall()
     db.close()
     can_edit = bool(g.is_dm or owns_character(character))
     return render_template('character_detail.html', character=character, sheets=sheets, factions=factions, level_history=level_history, attacks=attacks,
+                            purse=purse, recent_coins=recent_coins,
                             notes_html=notes_to_html(character['notes'], show_hidden=can_see_hidden_notes(character)), can_edit=can_edit,
                             can_delete=can_delete(character['created_by']), stats_hidden=stats_hidden,
                             sheet=None if stats_hidden else dnd5e.derive(character))
@@ -3683,27 +3689,61 @@ def _roll_monster_hp(expr, average):
     return max(1, sum(secrets.randbelow(sides) + 1 for _ in range(n)) + bonus)
 
 
+def _monster_number(name, base):
+    """0 for the plain name, n for "Name n", None when `name` is not a copy of `base`."""
+    if name == base:
+        return 0
+    m = re.fullmatch(re.escape(base) + r' (\d{1,4})', name)
+    return int(m.group(1)) if m else None
+
+
 def _add_monsters_to_battle(db, entry, count, rolled):
-    """Create `count` NPCs from a 2024 stat block (srd.detail's result) and put them in the battle (the caller commits)."""
+    """Put `count` copies of a 2024 stat block into the battle as NPCs (the caller commits).  A character from an earlier
+    run is reused when it has exactly these stats and is not in the battle now, so running an encounter again does not
+    fill the character list with twins; a new character is made only when no such one is free (more copies than before,
+    or different stats such as another rolled hit point total)."""
     c = entry['prefill']
+    base = c['name'][:120]
     notes = sanitize_notes_payload(json.dumps([{'t': n, 'h': 1} for n in entry.get('notes') or []]))
     skill_prof = json.dumps(dnd5e.clean_skill_prof(c['skill_prof']))
     save_prof = json.dumps(dnd5e.clean_save_prof(c['save_prof']))
     max_order = db.execute('SELECT COALESCE(MAX(sort_order), -1) AS m FROM battle_participants').fetchone()['m']
+    same_name = [(r['id'], r['name']) for r in db.execute(
+        'SELECT id, name FROM characters WHERE campaign_id = ? AND is_npc = 1 AND is_temp_familiar = 0 AND (name = ? OR name LIKE ?)',
+        (g.campaign_id, base, base.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_') + ' %')).fetchall()]
+    numbers = [n for _, name in same_name if (n := _monster_number(name, base)) is not None]
+    top = max(numbers, default=0)                              # copies are numbered on from the highest number in use
+    need_number = count > 1 or bool(numbers)
+    taken = set()
     for i in range(1, count + 1):
         hp = _roll_monster_hp(c.get('hp_roll'), c['max_hp']) if rolled else c['max_hp']
-        cur = db.execute('''
-            INSERT INTO characters
-            (name, is_npc, level, max_hp, str_score, dex_score, con_score, int_score, wis_score, cha_score,
-             armor_class, notes, campaign_id, created_by, speed, skill_prof, save_prof)
-            VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', ((c['name'] if count == 1 else f"{c['name']} {i}")[:120], c['level'], hp, c['str_score'], c['dex_score'],
-              c['con_score'], c['int_score'], c['wis_score'], c['cha_score'], c['armor_class'], notes,
-              g.campaign_id, session['user_id'], c['speed'], skill_prof, save_prof))
-        _save_attacks(db, cur.lastrowid, c.get('attacks') or [])
+        free = db.execute(
+            'SELECT id, name FROM characters WHERE campaign_id = ? AND is_npc = 1 AND is_temp_familiar = 0 AND level = ? AND max_hp = ? '
+            'AND str_score = ? AND dex_score = ? AND con_score = ? AND int_score = ? AND wis_score = ? AND cha_score = ? '
+            'AND armor_class = ? AND speed = ? AND (name = ? OR name LIKE ?) '
+            'AND id NOT IN (SELECT character_id FROM battle_participants) ORDER BY id',
+            (g.campaign_id, c['level'], hp, c['str_score'], c['dex_score'], c['con_score'], c['int_score'], c['wis_score'],
+             c['cha_score'], c['armor_class'], c['speed'], base,
+             base.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_') + ' %')).fetchall()
+        reuse = next((r['id'] for r in free if r['id'] not in taken and _monster_number(r['name'], base) is not None), None)
+        if reuse is not None:
+            char_id = reuse
+        else:
+            top += 1
+            cur = db.execute('''
+                INSERT INTO characters
+                (name, is_npc, level, max_hp, str_score, dex_score, con_score, int_score, wis_score, cha_score,
+                 armor_class, notes, campaign_id, created_by, speed, skill_prof, save_prof)
+                VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', ((f'{base} {top}' if need_number else base)[:120], c['level'], hp, c['str_score'], c['dex_score'],
+                  c['con_score'], c['int_score'], c['wis_score'], c['cha_score'], c['armor_class'], notes,
+                  g.campaign_id, session['user_id'], c['speed'], skill_prof, save_prof))
+            char_id = cur.lastrowid
+            _save_attacks(db, char_id, c.get('attacks') or [])
+        taken.add(char_id)
         max_order += 1
         db.execute('INSERT INTO battle_participants (character_id, current_hp, initiative, is_dead, sort_order) VALUES (?, ?, 0, 0, ?)',
-                   (cur.lastrowid, hp, max_order))
+                   (char_id, hp, max_order))
     log_battle(db, f"{c['name']} joined the battle" if count == 1 else f"{count} \u00d7 {c['name']} joined the battle", None, 'joined', npc=True)
 
 
@@ -4509,101 +4549,170 @@ def format_gold(copper):
 app.jinja_env.globals.update(format_coins=format_coins, format_gold=format_gold, coins_value=coins_value, treasury_coins=COINS)
 
 
-def _purse(db):
-    row = db.execute('SELECT COALESCE(SUM(cp), 0) AS cp, COALESCE(SUM(sp), 0) AS sp, COALESCE(SUM(ep), 0) AS ep, '
-                     'COALESCE(SUM(gp), 0) AS gp, COALESCE(SUM(pp), 0) AS pp FROM treasury_entries WHERE campaign_id = ?',
-                     (g.campaign_id,)).fetchone()
-    return {c: int(row[c]) for c in COINS}
+def _purse_from(row):
+    return {c: int(row[c] or 0) for c in COINS}
+
+
+def _purses(db):
+    """Every purse of the campaign at once: {None: the party's, character_id: that character's}."""
+    out = {None: {c: 0 for c in COINS}}
+    for r in db.execute('SELECT character_id, COALESCE(SUM(cp), 0) AS cp, COALESCE(SUM(sp), 0) AS sp, COALESCE(SUM(ep), 0) AS ep, '
+                        'COALESCE(SUM(gp), 0) AS gp, COALESCE(SUM(pp), 0) AS pp FROM treasury_entries WHERE campaign_id = ? '
+                        'GROUP BY character_id', (g.campaign_id,)).fetchall():
+        out[r['character_id']] = _purse_from(r)
+    return out
+
+
+def _purse(db, holder=None):
+    """The coins one holder has: the party's purse (holder None) or one character's."""
+    return _purses(db).get(holder) or {c: 0 for c in COINS}
 
 
 def _treasury_party(db):
-    return db.execute('SELECT id, name FROM characters WHERE campaign_id = ? AND is_temp_familiar = 0 AND is_npc = 0 '
+    """The player characters, each with whether the signed-in member may spend from their purse (the DM, or whoever made or plays them)."""
+    rows = db.execute('SELECT id, name, created_by, player_id FROM characters WHERE campaign_id = ? AND is_temp_familiar = 0 AND is_npc = 0 '
                       'ORDER BY lower(name) ASC', (g.campaign_id,)).fetchall()
+    return [{'id': r['id'], 'name': r['name'], 'can_manage': bool(g.is_dm or owns_character(r))} for r in rows]
 
 
 def _treasury_page(db, error=None, status=200):
-    purse = _purse(db)
-    entries = db.execute('SELECT t.id, t.created_by, t.cp, t.sp, t.ep, t.gp, t.pp, t.note, t.created_at, '
+    purses = _purses(db)
+    zero = {c: 0 for c in COINS}
+    party = _treasury_party(db)
+    for p in party:
+        p['purse'] = purses.get(p['id']) or zero
+        p['total'] = coins_value(p['purse'])
+    party_purse = purses.get(None) or zero
+    who = request.args.get('who') or ''
+    where, args = '', ()
+    if who == 'party':
+        where = ' AND t.character_id IS NULL'
+    elif who.isdigit():
+        where, args = ' AND t.character_id = ?', (int(who),)
+    else:
+        who = ''
+    entries = db.execute('SELECT t.id, t.created_by, t.character_id, t.batch, t.cp, t.sp, t.ep, t.gp, t.pp, t.note, t.created_at, '
                          "COALESCE(NULLIF(u.display_name, ''), u.username) AS actor, c.name AS character_name "
                          'FROM treasury_entries t LEFT JOIN users u ON u.id = t.created_by '
                          'LEFT JOIN characters c ON c.id = t.character_id '
-                         'WHERE t.campaign_id = ? ORDER BY t.id DESC LIMIT 100', (g.campaign_id,)).fetchall()
-    party = _treasury_party(db)
+                         'WHERE t.campaign_id = ?' + where + ' ORDER BY t.id DESC LIMIT 100', (g.campaign_id,) + args).fetchall()
+    holder = request.args.get('holder') or ''
     db.close()
-    return render_template('treasury.html', purse=purse, total=coins_value(purse), entries=entries, party=party,
-                           error=error, me=session.get('user_id')), status
+    return render_template('treasury.html', purse=party_purse, total=coins_value(party_purse), entries=entries, party=party,
+                           error=error, me=session.get('user_id'), who=who, holder=holder, grand_total=coins_value(party_purse) + sum(p['total'] for p in party)), status
 
 
 @app.route('/campaigns/<int:campaign_id>/treasury')
 @campaign_access_required
 def treasury_view():
-    """The party purse: what is in it, every entry that got it there, and the forms to add, spend and split."""
+    """The party purse, every character's purse, every entry that got the coins there, and the forms to add, spend and share."""
     return _treasury_page(get_db())
 
 
-def _treasury_insert(db, deltas, note, character_id=None):
-    db.execute('INSERT INTO treasury_entries (campaign_id, created_by, character_id, cp, sp, ep, gp, pp, note) '
-               'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-               (g.campaign_id, session.get('user_id'), character_id) + tuple(deltas[c] for c in COINS) + (note,))
-    what = 'added to the party purse' if coins_value(deltas) > 0 else 'spent from the party purse'
-    log_activity(db, g.campaign_id, 'treasury', '%s: %s' % (what, note[:80]), url_for('treasury_view', campaign_id=g.campaign_id))
+def _treasury_insert(db, deltas, note, holder=None, batch=None, log=True):
+    db.execute('INSERT INTO treasury_entries (campaign_id, created_by, character_id, cp, sp, ep, gp, pp, note, batch) '
+               'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+               (g.campaign_id, session.get('user_id'), holder) + tuple(deltas[c] for c in COINS) + (note, batch))
+    if log:
+        what = 'added to the purse' if coins_value(deltas) > 0 else 'spent from the purse'
+        log_activity(db, g.campaign_id, 'treasury', '%s: %s' % (what, note[:80]), url_for('treasury_view', campaign_id=g.campaign_id))
+
+
+def _holder_from(db, raw):
+    """(ok, holder): the purse a form names - blank/'party' is the party's, a number a player character of this campaign.
+    ok is False when the character is unknown or the signed-in member may not use its purse."""
+    raw = (raw or '').strip()
+    if raw in ('', 'party'):
+        return True, None
+    if not raw.isdigit():
+        return False, None
+    for p in _treasury_party(db):
+        if p['id'] == int(raw):
+            return p['can_manage'], p['id']
+    return False, None
 
 
 @app.route('/campaigns/<int:campaign_id>/treasury/add', methods=['POST'])
 @campaign_access_required
 def treasury_add():
-    """Coins in (kind=income) or out (kind=expense).  Spending makes change by itself; it cannot take the purse below zero."""
+    """Coins in (kind=income) or out (kind=expense) of a purse (character_id: blank = the party's).  Spending makes change by
+    itself and cannot take a purse below zero.  A character's purse is for the DM and whoever made or plays that character."""
     kind = request.form.get('kind')
     coins = _coins_from_form()
     if kind not in ('income', 'expense') or coins is None or not any(coins.values()):
         abort(400)
     note = ' '.join((request.form.get('note') or '').split())[:TREASURY_NOTE_MAX] or ('Income' if kind == 'income' else 'Expense')
     db = get_db()
-    char_id = None
-    if (request.form.get('character_id') or '').isdigit():
-        row = db.execute('SELECT id FROM characters WHERE id = ? AND campaign_id = ?', (int(request.form['character_id']), g.campaign_id)).fetchone()
-        char_id = row['id'] if row else None
+    ok, holder = _holder_from(db, request.form.get('character_id'))
+    if not ok:
+        db.close()
+        abort(403 if (request.form.get('character_id') or '').strip().isdigit() else 400)
     if db.execute('SELECT COUNT(*) AS n FROM treasury_entries WHERE campaign_id = ?', (g.campaign_id,)).fetchone()['n'] >= TREASURY_LIMIT:
         db.close()
         abort(409)
     if kind == 'income':
         deltas = coins
     else:
-        deltas = settle_payment(_purse(db), coins)
+        deltas = settle_payment(_purse(db, holder), coins)
         if deltas is None:
-            return _treasury_page(db, error='The purse does not have enough for that.', status=400)
-    _treasury_insert(db, deltas, note, char_id)
+            return _treasury_page(db, error='That purse does not have enough for that.', status=400)
+    _treasury_insert(db, deltas, note, holder)
     db.commit(); db.close()
-    return redirect(url_for('treasury_view'))
+    return redirect(url_for('treasury_view', who='party' if holder is None else holder))
 
 
 @app.route('/campaigns/<int:campaign_id>/treasury/split', methods=['POST'])
 @campaign_access_required
 def treasury_split():
-    """Share coins evenly between the chosen characters: the amounts typed, or the whole purse when none are typed.  Each gets the
-    same share, worked out in copper and rounded down; what does not divide stays in the purse.  One spending entry."""
-    ids = sorted({int(x) for x in request.form.getlist('characters') if x.isdigit()})
+    """Move coins out of one purse (`source`: blank = the party's) and share them evenly between the chosen purses
+    (`to`: 'party' and/or character ids; one recipient is a plain hand-over).  The whole purse (`whole`) or the amounts
+    typed; each gets the same share, worked out in copper and rounded down, and what does not divide stays behind.
+    One entry per purse, tied together so they are removed together."""
     coins = _coins_from_form()
-    if not ids or coins is None:
+    wanted = request.form.getlist('to')
+    if coins is None or not wanted:
         abort(400)
+    whole = bool(request.form.get('whole')) or not any(coins.values())       # no amount typed: the whole purse
     db = get_db()
-    party = {r['id']: r['name'] for r in _treasury_party(db)}
-    if any(i not in party for i in ids):
+    ok, source = _holder_from(db, request.form.get('source'))
+    if not ok:
         db.close()
-        abort(400)
-    purse = _purse(db)
-    amount = coins_value(coins) if any(coins.values()) else coins_value(purse)
-    share = amount // len(ids)
+        abort(403)
+    names = {p['id']: p['name'] for p in _treasury_party(db)}
+    names[None] = 'the party purse'
+    recipients = []
+    for raw in wanted:
+        if raw == 'party':
+            h = None
+        elif raw.isdigit() and int(raw) in names:
+            h = int(raw)
+        else:
+            db.close()
+            abort(400)
+        if h == source:
+            db.close()
+            abort(400)                                                  # not to the purse it comes out of
+        if h not in recipients:
+            recipients.append(h)
+    purse = _purse(db, source)
+    amount = coins_value(purse) if whole else coins_value(coins)
+    share = amount // len(recipients)
     if share < 1:
-        return _treasury_page(db, error='That is too little to split between %d characters.' % len(ids), status=400)
-    deltas = settle_payment(purse, {'cp': share * len(ids)})
+        return _treasury_page(db, error='That is too little to share between %d.' % len(recipients), status=400)
+    deltas = settle_payment(purse, {'cp': share * len(recipients)})
     if deltas is None:
-        return _treasury_page(db, error='The purse does not have enough for that.', status=400)
+        return _treasury_page(db, error='That purse does not have enough for that.', status=400)
     each, left = {}, share
     for c in ('pp', 'gp', 'sp', 'cp'):
         each[c], left = divmod(left, COIN_VALUE[c])
-    note = 'Split evenly between %s: %s each' % (', '.join(party[i] for i in ids), format_coins(each))
-    _treasury_insert(db, deltas, note[:TREASURY_NOTE_MAX])
+    each['ep'] = 0
+    batch = secrets.token_hex(8)
+    from_name = names[source] if source is not None else 'the party purse'
+    to_names = ', '.join(names[h] for h in recipients)
+    verb = 'Handed over to' if len(recipients) == 1 else 'Shared evenly with'
+    _treasury_insert(db, deltas, ('%s %s: %s each' % (verb, to_names, format_coins(each)))[:TREASURY_NOTE_MAX], source, batch)
+    for h in recipients:
+        _treasury_insert(db, each, ('From %s: %s' % (from_name, format_coins(each)))[:TREASURY_NOTE_MAX], h, batch, log=False)
     db.commit(); db.close()
     return redirect(url_for('treasury_view'))
 
@@ -4611,19 +4720,26 @@ def treasury_split():
 @app.route('/campaigns/<int:campaign_id>/treasury/<int:entry_id>/delete', methods=['POST'])
 @campaign_access_required
 def treasury_delete(entry_id):
-    """The DM can remove any entry, a member the ones they made - unless that would leave a coin below zero."""
+    """The DM can remove any entry, a member the ones they made - unless that would leave a purse with a coin below zero.
+    A share between purses is removed as a whole (every entry of it)."""
     db = get_db()
-    e = db.execute('SELECT created_by, cp, sp, ep, gp, pp FROM treasury_entries WHERE id = ? AND campaign_id = ?', (entry_id, g.campaign_id)).fetchone()
+    e = db.execute('SELECT created_by, batch FROM treasury_entries WHERE id = ? AND campaign_id = ?', (entry_id, g.campaign_id)).fetchone()
     if e is None:
         db.close()
         abort(400)
     if not (g.is_dm or e['created_by'] == session.get('user_id')):
         db.close()
         abort(403)
-    purse = _purse(db)
-    if any(purse[c] - int(e[c]) < 0 for c in COINS):
-        return _treasury_page(db, error='That entry cannot be removed: later entries spent coins it brought in.', status=409)
-    db.execute('DELETE FROM treasury_entries WHERE id = ? AND campaign_id = ?', (entry_id, g.campaign_id))
+    if e['batch']:
+        group = db.execute('SELECT id, character_id, cp, sp, ep, gp, pp FROM treasury_entries WHERE campaign_id = ? AND batch = ?', (g.campaign_id, e['batch'])).fetchall()
+    else:
+        group = db.execute('SELECT id, character_id, cp, sp, ep, gp, pp FROM treasury_entries WHERE id = ? AND campaign_id = ?', (entry_id, g.campaign_id)).fetchall()
+    purses = _purses(db)
+    for h in {r['character_id'] for r in group}:
+        have = purses.get(h) or {c: 0 for c in COINS}
+        if any(have[c] - sum(int(r[c]) for r in group if r['character_id'] == h) < 0 for c in COINS):
+            return _treasury_page(db, error='That entry cannot be removed: later entries spent coins it brought in.', status=409)
+    db.execute('DELETE FROM treasury_entries WHERE campaign_id = ? AND id IN (%s)' % ', '.join('?' * len(group)), (g.campaign_id,) + tuple(r['id'] for r in group))
     db.commit(); db.close()
     return redirect(url_for('treasury_view'))
 
@@ -4961,6 +5077,22 @@ def encounter_save(encounter_id):
     db.execute('UPDATE encounters SET name = ?, updated_at = CURRENT_TIMESTAMP AT TIME ZONE \'UTC\' WHERE id = ? AND campaign_id = ?', (name, encounter_id, g.campaign_id))
     db.commit(); db.close()
     return jsonify({'ok': True, 'name': name, 'monsters': [{'ref': r[0], 'name': r[1], 'cr': r[2], 'xp': r[3], 'count': r[4]} for r in rows]})
+
+
+@app.route('/campaigns/<int:campaign_id>/encounters/<int:encounter_id>/rename', methods=['POST'])
+@campaign_access_required
+@dm_required
+def encounter_rename(encounter_id):
+    """Body: {name}.  Renames the encounter from the list without opening it."""
+    data = request.get_json(silent=True)
+    name = ' '.join(str((data or {}).get('name') or '').split())[:ENCOUNTER_NAME_MAX] if isinstance(data, dict) else ''
+    if not name:
+        return api_error('Give the encounter a name.', 400)
+    db = get_db()
+    _encounter_or_404(db, encounter_id)
+    db.execute('UPDATE encounters SET name = ?, updated_at = CURRENT_TIMESTAMP AT TIME ZONE \'UTC\' WHERE id = ? AND campaign_id = ?', (name, encounter_id, g.campaign_id))
+    db.commit(); db.close()
+    return jsonify({'ok': True, 'name': name})
 
 
 @app.route('/campaigns/<int:campaign_id>/encounters/<int:encounter_id>/delete', methods=['POST'])

@@ -97,6 +97,27 @@
     </div>
   </section>
 
+  {% if purse is not none %}
+  <section class="cf-card cd-purse" aria-label="Purse">
+    <h2 class="cf-title">{{ icon('coins') }} Purse <span class="cf-count">{{ format_gold(coins_value(purse)) }}</span></h2>
+    <ul class="coin-row">
+      {% for c in treasury_coins %}<li class="coin coin-{{ c }}"><b>{{ purse[c] }}</b><span>{{ c }}</span></li>{% endfor %}
+    </ul>
+    {% if recent_coins %}
+    <ul class="cd-purse-recent">
+      {% for e in recent_coins %}{% set d = {'cp': e.cp, 'sp': e.sp, 'ep': e.ep, 'gp': e.gp, 'pp': e.pp} %}
+      <li class="{{ 'is-in' if coins_value(d) > 0 else 'is-out' }}"><span>{{ e.note }}</span><b>{{ format_coins(d, signed=True) }}</b></li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+    <p class="cd-purse-links">
+      <a class="btn btn-ghost btn-sm" href="{{ url_for('treasury_view', who=character.id) }}#entries">{{ icon('history') }} History</a>
+      {% if can_edit %}<a class="btn btn-ghost btn-sm" href="{{ url_for('treasury_view', holder=character.id) }}#add-form">{{ icon('plus') }} Add or spend</a>{% endif %}
+      <a class="btn btn-ghost btn-sm" href="{{ url_for('treasury_view') }}">{{ icon('coins') }} Treasury</a>
+    </p>
+  </section>
+  {% endif %}
+
   <section class="cf-card" aria-label="Skills">
     <h2 class="cf-title">Skills <span class="cf-count">{{ sheet.skills|selectattr('level')|list|length }} trained</span></h2>
     <div class="cd-skills">

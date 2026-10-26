@@ -153,3 +153,61 @@ def test_delete_removes_the_list_and_names_are_escaped(make_user):
         assert '<script>alert(1)' not in dm.get(url).data.decode()
     assert dm.post(f'/campaigns/{cid}/encounters/{eid}/delete').status_code == 302
     assert q('SELECT id FROM encounters WHERE campaign_id = ?', cid) == [] and q('SELECT id FROM encounter_monsters WHERE encounter_id = ?', eid) == []
+
+
+def _npc_names(cid):
+    return [r['name'] for r in q('SELECT name FROM characters WHERE campaign_id = ? AND is_npc = 1 ORDER BY id', cid)]
+
+
+def test_running_again_reuses_the_characters_instead_of_making_twins(make_user):
+    dm, _, cid = _setup(make_user)
+    eid = _new(dm, cid)
+    _save(dm, cid, eid, [{'ref': 'monsters/goblin-warrior', 'count': 3}])
+    dm.json(f'/campaigns/{cid}/encounters/{eid}/run', {'hp': 'average'})
+    assert _npc_names(cid) == ['Goblin Warrior 1', 'Goblin Warrior 2', 'Goblin Warrior 3']
+    first = [r['id'] for r in q('SELECT id FROM characters WHERE campaign_id = ? AND is_npc = 1 ORDER BY id', cid)]
+    dm.json(f'/campaigns/{cid}/api/battle/clear')
+    dm.json(f'/campaigns/{cid}/encounters/{eid}/run', {'hp': 'average'})                     # the same stats again
+    assert _npc_names(cid) == ['Goblin Warrior 1', 'Goblin Warrior 2', 'Goblin Warrior 3']
+    assert sorted(r['character_id'] for r in q('SELECT bp.character_id FROM battle_participants bp JOIN characters c ON c.id = bp.character_id WHERE c.campaign_id = ?', cid)) == first
+    _save(dm, cid, eid, [{'ref': 'monsters/goblin-warrior', 'count': 5}])
+    dm.json(f'/campaigns/{cid}/api/battle/clear')
+    dm.json(f'/campaigns/{cid}/encounters/{eid}/run', {'hp': 'average'})                     # two more are needed, so two new ones
+    assert _npc_names(cid) == ['Goblin Warrior 1', 'Goblin Warrior 2', 'Goblin Warrior 3', 'Goblin Warrior 4', 'Goblin Warrior 5']
+
+
+def test_the_same_monsters_already_in_the_battle_are_not_taken_twice(make_user):
+    dm, _, cid = _setup(make_user)
+    eid = _new(dm, cid)
+    _save(dm, cid, eid, [{'ref': 'monsters/goblin-warrior', 'count': 2}])
+    dm.json(f'/campaigns/{cid}/encounters/{eid}/run', {})
+    dm.json(f'/campaigns/{cid}/encounters/{eid}/run', {})                                    # first pair is still fighting: a second pair
+    assert _npc_names(cid) == ['Goblin Warrior 1', 'Goblin Warrior 2', 'Goblin Warrior 3', 'Goblin Warrior 4']
+    assert len(q('SELECT bp.id FROM battle_participants bp JOIN characters c ON c.id = bp.character_id WHERE c.campaign_id = ?', cid)) == 4
+
+
+def test_changed_stats_make_a_new_character(make_user):
+    dm, _, cid = _setup(make_user)
+    eid = _new(dm, cid)
+    _save(dm, cid, eid, [{'ref': 'monsters/goblin-warrior', 'count': 1}])
+    dm.json(f'/campaigns/{cid}/encounters/{eid}/run', {})
+    dm.json(f'/campaigns/{cid}/api/battle/clear')
+    import database
+    db = database.get_db()
+    db.execute('UPDATE characters SET max_hp = max_hp + 5 WHERE campaign_id = ?', (cid,))      # someone edited the goblin's hit points
+    db.commit(); db.close()
+    dm.json(f'/campaigns/{cid}/encounters/{eid}/run', {})
+    assert _npc_names(cid) == ['Goblin Warrior', 'Goblin Warrior 1']
+
+
+def test_rename_from_the_list_and_run_button_on_it(make_user):
+    dm, pl, cid = _setup(make_user)
+    eid = _new(dm, cid)
+    _save(dm, cid, eid, [{'ref': 'monsters/goblin-warrior', 'count': 1}])
+    assert dm.json(f'/campaigns/{cid}/encounters/{eid}/rename', {'name': '  Cave   mouth '}).get_json()['name'] == 'Cave mouth'
+    assert q('SELECT name FROM encounters WHERE id = ?', eid)[0]['name'] == 'Cave mouth'
+    assert dm.json(f'/campaigns/{cid}/encounters/{eid}/rename', {'name': '   '}).status_code == 400
+    assert dm.json(f'/campaigns/{cid}/encounters/{eid}/rename', {'name': 'x' * 200}).get_json()['name'] == 'x' * 80
+    page = dm.get(f'/campaigns/{cid}/encounters').data.decode()
+    assert 'data-enc-run' in page and f'/encounters/{eid}/run' in page and f'/encounters/{eid}/rename' in page
+    assert pl.json(f'/campaigns/{cid}/encounters/{eid}/rename', {'name': 'Mine'}).status_code in (403, 404)
