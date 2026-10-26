@@ -5069,3 +5069,32 @@ input[type="range"]:disabled { opacity: 0.5; cursor: not-allowed; }
   .account-nav a { flex: none; border-inline-start: 0; border: 1px solid var(--hairline); border-radius: 999px; padding: 7px 14px; white-space: nowrap; }
   .account-nav a.active { border-color: var(--brass); }
 }
+
+/* Party treasury (DL-148) */
+.treasury-purse { margin-block-end: 16px; }
+.coin-row { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+.coin { display: grid; justify-items: center; gap: 2px; padding: 10px 6px; border: 1px solid var(--hairline); border-radius: 10px; }
+.coin b { font-family: var(--font-mono); font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.coin span { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--parchment-dim); }
+.coin-gp b { color: var(--brass-ink); }
+.treasury-forms { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-block-end: 16px; align-items: start; }
+.treasury-form { display: grid; gap: 12px; }
+.treasury-kind { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 14px; }
+.treasury-kind label, .treasury-who label { display: inline-flex; align-items: center; gap: 8px; }
+.coin-inputs { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+.treasury-hint { margin: -6px 0 0; font-size: 12.5px; color: var(--parchment-dim); }
+.treasury-who { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 0; padding: 0; border: 0; font-size: 14px; }
+.treasury-who legend { padding: 0; margin-block-end: 6px; font-size: 13px; color: var(--parchment-dim); }
+.treasury-list { list-style: none; margin: 0; padding: 0; display: grid; }
+.treasury-entry { display: flex; align-items: center; gap: 6px 12px; padding-block: 10px; border-block-end: 1px solid var(--hairline); }
+.treasury-entry:last-child { border-block-end: 0; }
+.treasury-entry-main { flex: 1 1 auto; min-width: 0; }
+.treasury-note { margin: 0; font-size: 14.5px; font-weight: 600; overflow-wrap: anywhere; }
+.treasury-meta { margin: 2px 0 0; font-size: 12.5px; color: var(--parchment-dim); overflow-wrap: anywhere; }
+.treasury-amount { font-family: var(--font-mono); font-size: 14px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.treasury-entry.is-in .treasury-amount { color: var(--moss-ink); }
+.treasury-entry.is-out .treasury-amount { color: var(--blood-ink); }
+@media (max-width: 760px) {
+  .treasury-forms { grid-template-columns: minmax(0, 1fr); }
+  .coin-row, .coin-inputs { gap: 6px; }
+}

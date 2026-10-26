@@ -67,6 +67,9 @@
       <a href="{{ url_for('factions_list') }}" data-more class="nav-tab {{ 'active' if active_page == 'factions' else '' }}" title="Factions">
         {{ icon('faction') }}<span>Factions</span>
       </a>
+      <a href="{{ url_for('treasury_view') }}" data-more class="nav-tab {{ 'active' if active_page == 'treasury' else '' }}" title="Party treasury">
+        {{ icon('coins') }}<span>Treasury</span>
+      </a>
       <span class="nav-group">Encounters</span>
       <a href="{{ url_for('battle_view') }}" class="nav-tab {{ 'active' if active_page == 'battle' else '' }}" title="Battle">
         {{ icon('swords') }}<span>Battle</span>
@@ -186,6 +189,7 @@
   <div class="more-links">
     <a href="{{ url_for('campaign_home') }}" class="more-link {{ 'active' if active_page == 'home' else '' }}">{{ icon('home') }}<span>Home</span></a>
     <a href="{{ url_for('factions_list') }}" class="more-link {{ 'active' if active_page == 'factions' else '' }}">{{ icon('faction') }}<span>Factions</span></a>
+    <a href="{{ url_for('treasury_view') }}" class="more-link {{ 'active' if active_page == 'treasury' else '' }}">{{ icon('coins') }}<span>Treasury</span></a>
     <a href="{{ url_for('reference_view') }}" class="more-link {{ 'active' if active_page == 'reference' else '' }}">{{ icon('book-open') }}<span>Reference</span></a>
     {% if g.real_is_dm %}
     <form method="POST" action="{{ url_for('preview_as_player') }}">{{ csrf_field() }}

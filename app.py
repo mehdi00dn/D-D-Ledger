@@ -342,6 +342,7 @@ _SCOPE_OWNER_SQL = {
     'char_id': 'SELECT campaign_id AS owner FROM characters WHERE id = ?',
     'group_id': 'SELECT campaign_id AS owner FROM groups WHERE id = ?',
     'quest_id': 'SELECT campaign_id AS owner FROM quests WHERE id = ?',
+    'entry_id': 'SELECT campaign_id AS owner FROM treasury_entries WHERE id = ?',
     'pid': 'SELECT c.campaign_id AS owner FROM battle_participants bp JOIN characters c ON c.id = bp.character_id WHERE bp.id = ?',
 }
 _SCOPE_PARENT_SQL = {            # arg -> (SQL returning the parent id, name of the parent arg)
@@ -4433,6 +4434,191 @@ def quest_change(quest_id):
             log_activity(db, g.campaign_id, 'quest', 'completed the quest "%s"' % q['title'], url_for('campaign_home', campaign_id=g.campaign_id))
     db.commit(); db.close()
     return redirect(url_for('campaign_home'))
+
+
+# ---- Party treasury (DL-148) -------------------------------------------------------------------------------------
+COINS = ('cp', 'sp', 'ep', 'gp', 'pp')
+COIN_VALUE = {'cp': 1, 'sp': 10, 'ep': 50, 'gp': 100, 'pp': 1000}            # worth in copper
+TREASURY_NOTE_MAX, TREASURY_COIN_MAX, TREASURY_LIMIT = 200, 1000000, 3000
+
+
+def _coins_from_form():
+    """The five coin amounts of a form as whole numbers >= 0 (blank = 0); None when one is not a valid amount."""
+    out = {}
+    for c in COINS:
+        raw = (request.form.get(c) or '').strip() or '0'
+        if not raw.isdigit() or int(raw) > TREASURY_COIN_MAX:
+            return None
+        out[c] = int(raw)
+    return out
+
+
+def coins_value(coins):
+    """Copper worth of a {coin: count} dict."""
+    return sum(COIN_VALUE[c] * int(coins.get(c, 0)) for c in COINS)
+
+
+def settle_payment(purse, cost):
+    """Pay `cost` (coins) out of `purse` (coins on hand).  The coins named are paid when the purse has them; what is
+    missing is made up from the smallest coins first, and any overpayment comes back as change (pp, gp, sp, cp).
+    Returns the signed change per coin, or None when the purse is worth less than the cost."""
+    paid, short = {}, 0
+    for c in COINS:
+        use = min(cost.get(c, 0), purse.get(c, 0))
+        paid[c] = use
+        short += (cost.get(c, 0) - use) * COIN_VALUE[c]
+    for c in COINS:
+        if short <= 0:
+            break
+        need = -(-short // COIN_VALUE[c])
+        take = min(purse.get(c, 0) - paid[c], need)
+        paid[c] += take
+        short -= take * COIN_VALUE[c]
+    if short > 0:
+        return None
+    change, back = -short, {c: 0 for c in COINS}
+    for c in ('pp', 'gp', 'sp', 'cp'):
+        back[c], change = divmod(change, COIN_VALUE[c])
+    return {c: back[c] - paid[c] for c in COINS}
+
+
+def format_coins(coins, signed=False):
+    """'3 gp 5 sp' - only the coins that are not zero; '0 gp' for an empty hand."""
+    parts = []
+    for c in ('pp', 'gp', 'ep', 'sp', 'cp'):
+        n = int(coins.get(c, 0))
+        if n:
+            parts.append(('%+d %s' if signed else '%d %s') % (n, c))
+    return ' '.join(parts) or '0 gp'
+
+
+def format_gold(copper):
+    """Total worth in gold: 12.5 gp, 3 gp, 0.05 gp."""
+    whole, rest = divmod(abs(int(copper)), 100)
+    text = str(whole) + (('.%02d' % rest).rstrip('0') if rest else '')
+    return ('-' if copper < 0 else '') + text + ' gp'
+
+
+app.jinja_env.globals.update(format_coins=format_coins, format_gold=format_gold, coins_value=coins_value, treasury_coins=COINS)
+
+
+def _purse(db):
+    row = db.execute('SELECT COALESCE(SUM(cp), 0) AS cp, COALESCE(SUM(sp), 0) AS sp, COALESCE(SUM(ep), 0) AS ep, '
+                     'COALESCE(SUM(gp), 0) AS gp, COALESCE(SUM(pp), 0) AS pp FROM treasury_entries WHERE campaign_id = ?',
+                     (g.campaign_id,)).fetchone()
+    return {c: int(row[c]) for c in COINS}
+
+
+def _treasury_party(db):
+    return db.execute('SELECT id, name FROM characters WHERE campaign_id = ? AND is_temp_familiar = 0 AND is_npc = 0 '
+                      'ORDER BY lower(name) ASC', (g.campaign_id,)).fetchall()
+
+
+def _treasury_page(db, error=None, status=200):
+    purse = _purse(db)
+    entries = db.execute('SELECT t.id, t.created_by, t.cp, t.sp, t.ep, t.gp, t.pp, t.note, t.created_at, '
+                         "COALESCE(NULLIF(u.display_name, ''), u.username) AS actor, c.name AS character_name "
+                         'FROM treasury_entries t LEFT JOIN users u ON u.id = t.created_by '
+                         'LEFT JOIN characters c ON c.id = t.character_id '
+                         'WHERE t.campaign_id = ? ORDER BY t.id DESC LIMIT 100', (g.campaign_id,)).fetchall()
+    party = _treasury_party(db)
+    db.close()
+    return render_template('treasury.html', purse=purse, total=coins_value(purse), entries=entries, party=party,
+                           error=error, me=session.get('user_id')), status
+
+
+@app.route('/campaigns/<int:campaign_id>/treasury')
+@campaign_access_required
+def treasury_view():
+    """The party purse: what is in it, every entry that got it there, and the forms to add, spend and split."""
+    return _treasury_page(get_db())
+
+
+def _treasury_insert(db, deltas, note, character_id=None):
+    db.execute('INSERT INTO treasury_entries (campaign_id, created_by, character_id, cp, sp, ep, gp, pp, note) '
+               'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+               (g.campaign_id, session.get('user_id'), character_id) + tuple(deltas[c] for c in COINS) + (note,))
+    what = 'added to the party purse' if coins_value(deltas) > 0 else 'spent from the party purse'
+    log_activity(db, g.campaign_id, 'treasury', '%s: %s' % (what, note[:80]), url_for('treasury_view', campaign_id=g.campaign_id))
+
+
+@app.route('/campaigns/<int:campaign_id>/treasury/add', methods=['POST'])
+@campaign_access_required
+def treasury_add():
+    """Coins in (kind=income) or out (kind=expense).  Spending makes change by itself; it cannot take the purse below zero."""
+    kind = request.form.get('kind')
+    coins = _coins_from_form()
+    if kind not in ('income', 'expense') or coins is None or not any(coins.values()):
+        abort(400)
+    note = ' '.join((request.form.get('note') or '').split())[:TREASURY_NOTE_MAX] or ('Income' if kind == 'income' else 'Expense')
+    db = get_db()
+    char_id = None
+    if (request.form.get('character_id') or '').isdigit():
+        row = db.execute('SELECT id FROM characters WHERE id = ? AND campaign_id = ?', (int(request.form['character_id']), g.campaign_id)).fetchone()
+        char_id = row['id'] if row else None
+    if db.execute('SELECT COUNT(*) AS n FROM treasury_entries WHERE campaign_id = ?', (g.campaign_id,)).fetchone()['n'] >= TREASURY_LIMIT:
+        db.close()
+        abort(409)
+    if kind == 'income':
+        deltas = coins
+    else:
+        deltas = settle_payment(_purse(db), coins)
+        if deltas is None:
+            return _treasury_page(db, error='The purse does not have enough for that.', status=400)
+    _treasury_insert(db, deltas, note, char_id)
+    db.commit(); db.close()
+    return redirect(url_for('treasury_view'))
+
+
+@app.route('/campaigns/<int:campaign_id>/treasury/split', methods=['POST'])
+@campaign_access_required
+def treasury_split():
+    """Share coins evenly between the chosen characters: the amounts typed, or the whole purse when none are typed.  Each gets the
+    same share, worked out in copper and rounded down; what does not divide stays in the purse.  One spending entry."""
+    ids = sorted({int(x) for x in request.form.getlist('characters') if x.isdigit()})
+    coins = _coins_from_form()
+    if not ids or coins is None:
+        abort(400)
+    db = get_db()
+    party = {r['id']: r['name'] for r in _treasury_party(db)}
+    if any(i not in party for i in ids):
+        db.close()
+        abort(400)
+    purse = _purse(db)
+    amount = coins_value(coins) if any(coins.values()) else coins_value(purse)
+    share = amount // len(ids)
+    if share < 1:
+        return _treasury_page(db, error='That is too little to split between %d characters.' % len(ids), status=400)
+    deltas = settle_payment(purse, {'cp': share * len(ids)})
+    if deltas is None:
+        return _treasury_page(db, error='The purse does not have enough for that.', status=400)
+    each, left = {}, share
+    for c in ('pp', 'gp', 'sp', 'cp'):
+        each[c], left = divmod(left, COIN_VALUE[c])
+    note = 'Split evenly between %s: %s each' % (', '.join(party[i] for i in ids), format_coins(each))
+    _treasury_insert(db, deltas, note[:TREASURY_NOTE_MAX])
+    db.commit(); db.close()
+    return redirect(url_for('treasury_view'))
+
+
+@app.route('/campaigns/<int:campaign_id>/treasury/<int:entry_id>/delete', methods=['POST'])
+@campaign_access_required
+def treasury_delete(entry_id):
+    """The DM can remove any entry, a member the ones they made - unless that would leave a coin below zero."""
+    db = get_db()
+    e = db.execute('SELECT created_by, cp, sp, ep, gp, pp FROM treasury_entries WHERE id = ? AND campaign_id = ?', (entry_id, g.campaign_id)).fetchone()
+    if e is None:
+        db.close()
+        abort(400)
+    if not (g.is_dm or e['created_by'] == session.get('user_id')):
+        db.close()
+        abort(403)
+    purse = _purse(db)
+    if any(purse[c] - int(e[c]) < 0 for c in COINS):
+        return _treasury_page(db, error='That entry cannot be removed: later entries spent coins it brought in.', status=409)
+    db.execute('DELETE FROM treasury_entries WHERE id = ? AND campaign_id = ?', (entry_id, g.campaign_id))
+    db.commit(); db.close()
+    return redirect(url_for('treasury_view'))
 
 
 def _ics_escape(text):
