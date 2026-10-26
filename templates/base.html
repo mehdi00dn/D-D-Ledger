@@ -161,6 +161,9 @@
     {% if request.args.get('quota_error') %}
     <div class="banner-notice banner-error" role="alert">{{ 'This campaign\'s image storage is full, so the image was not saved. Delete images you no longer need and try again.' if request.args.get('quota_error') == 'campaign' else 'Your upload storage is full, so the image was not saved. Delete images you no longer need and try again.' }}</div>
     {% endif %}
+    {% if session.user_id and active_page != 'account' %}{% set me_banner = my_profile() %}{% if me_banner and me_banner.needs_email %}
+    <div class="banner-notice" role="status">Add an email address to your account so you can recover it. <a href="{{ url_for('account') }}#email-panel">Add email</a></div>
+    {% endif %}{% endif %}
     {% block content %}{% endblock %}
   </main>
 </div>

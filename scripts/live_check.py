@@ -75,7 +75,7 @@ class Player:
 
     def register(self):
         self.get('/register')
-        r = self.form('/register', {'username': self.name, 'password': 'LiveCheck-pass-1', 'confirm': 'LiveCheck-pass-1'})
+        r = self.form('/register', {'username': self.name, 'email': self.name + '@example.com', 'password': 'LiveCheck-pass-1', 'confirm': 'LiveCheck-pass-1'})
         self.get('/campaigns')                               # the session token rotates at login
         return r
 

@@ -13,7 +13,7 @@ LEGACY_BUG = pytest.mark.xfail(BACKEND == 'sqlite', strict=True,
 def _login_on_a(a):
     s = CsrfSession(a.url)
     name = f'x{abs(hash(a.url))%10**7}{__import__("uuid").uuid4().hex[:5]}'
-    r = s.post(a.url + '/register', data={'username': name, 'password': 'secret12', 'confirm': 'secret12'}, allow_redirects=False)
+    r = s.post(a.url + '/register', data={'username': name, 'password': 'secret12', 'email': 'player@example.com', 'confirm': 'secret12'}, allow_redirects=False)
     assert r.status_code == 302
     return s
 

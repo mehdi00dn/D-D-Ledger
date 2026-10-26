@@ -170,7 +170,7 @@
     <ul class="home-member-list">
       {% for m in members %}
       <li>
-        <div class="home-member-top"><span class="home-member-name">{{ icon('user') }}<span>{{ m.username }}</span></span>
+        <div class="home-member-top"><span class="home-member-name">{{ icon('user') }}{% if m.profile_visibility != 'private' or m.id == session.user_id %}<a class="home-member-link" href="{{ url_for('profile_view', username=m.username) }}">{{ m.username }}</a>{% else %}<span>{{ m.username }}</span>{% endif %}</span>
           <span class="role-badge role-badge-{{ m.status }}">{{ 'DM' if m.status == 'dm' else 'Player' }}</span></div>
         {% if played.get(m.id) %}
         <div class="home-member-chars">{% for c in played[m.id] %}<a href="{{ url_for('character_detail', char_id=c.id) }}">{{ c.name }}</a>{% endfor %}</div>

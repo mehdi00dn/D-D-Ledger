@@ -19,7 +19,7 @@ class Api:
     def __init__(self, base):
         self.base = base; self.s = CsrfSession(base)
         self.name = f'e{uuid.uuid4().hex[:9]}'
-        r = self.s.post(base + '/register', data={'username': self.name, 'password': 'secret12', 'confirm': 'secret12'}, allow_redirects=False)
+        r = self.s.post(base + '/register', data={'username': self.name, 'password': 'secret12', 'email': 'player@example.com', 'confirm': 'secret12'}, allow_redirects=False)
         assert r.status_code == 302
     def post(self, path, **kw): return self.s.post(self.base + path, allow_redirects=False, **kw)
     def get(self, path, **kw): return self.s.get(self.base + path, **kw)

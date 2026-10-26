@@ -7,9 +7,12 @@
 <div class="page-header">
   <div>
     <h1 class="page-title">Your profile</h1>
-    <p class="page-sub">Signed in as <b>{{ profile.username }}</b>. Only you can see this page for now.</p>
+    <p class="page-sub">Signed in as <b>{{ profile.username }}</b>. What others see on your profile page is your choice, below.</p>
   </div>
+  <a class="btn btn-ghost" href="{{ url_for('profile_view', username=profile.username) }}">{{ icon('user') }} View my profile</a>
 </div>
+{% set px = profile_extra() %}
+{% if not profile.email and profile.email_ready %}<div class="banner-notice banner-error" role="alert">Add an email address below. Every account needs one, so we can reach you and you can recover the account.</div>{% endif %}
 
 {% if request.args.get('saved') %}<div class="banner-notice" role="status">Profile saved.</div>{% endif %}
 {% if request.args.get('pw') %}<div class="banner-notice" role="status">Password changed. Your other devices were signed out.</div>{% endif %}
@@ -66,6 +69,44 @@
     </div>
   </div>
 
+  {% if px.ready %}
+  <div class="form-section">
+    <p class="form-section-title">Who can see your profile</p>
+    <div class="access-options" role="radiogroup" aria-label="Profile visibility">
+      {% for key, opt in profile_visibility_options.items() %}
+      <label class="access-option">
+        <input type="radio" name="profile_visibility" value="{{ key }}" {{ 'checked' if px.visibility == key else '' }}>
+        <span class="access-option-card"><b>{{ opt[0] }}</b><span>{{ opt[1] }}</span></span>
+      </label>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="form-section" id="showcase">
+    <p class="form-section-title">Characters on your profile</p>
+    <input type="hidden" name="showcase_present" value="1">
+    {% if px.showcase_options %}
+    <p class="hint-text" style="margin:0 0 12px;">Pick up to {{ showcase_max }} of your player characters. Visitors see the name, class, level and portrait only, never the campaign or the stats.</p>
+    <ul class="showcase-picker" data-max="{{ showcase_max }}">
+      {% for c in px.showcase_options %}
+      <li>
+        <label class="showcase-option">
+          <input type="checkbox" name="showcase" value="{{ c.id }}" {{ 'checked' if c.id in px.showcase_ids else '' }}>
+          <span class="showcase-option-card">
+            {% if c.avatar_path %}<img src="{{ url_for('uploaded_file', filename=c.avatar_path) }}" alt="" loading="lazy">{% else %}<span class="showcase-option-ph">{{ icon('user') }}</span>{% endif %}
+            <span class="showcase-option-text"><b>{{ c.name }}</b><span>{{ c.class_label or 'No class' }} · level {{ c.level }}{% if c.campaign_name %} · {{ c.campaign_name }}{% endif %}</span></span>
+          </span>
+        </label>
+      </li>
+      {% endfor %}
+    </ul>
+    <p class="hint-text showcase-count" aria-live="polite"></p>
+    {% else %}
+    <p class="hint-text" style="margin:0;">You have no player characters yet. Characters you create, or that a DM attaches to you, show up here.</p>
+    {% endif %}
+  </div>
+  {% endif %}
+
   <div class="form-actions">
     <button type="submit" class="btn btn-primary">{{ icon('check') }} Save profile</button>
   </div>
@@ -81,7 +122,7 @@
       {% if profile.email_verified_at %}<span class="role-badge role-badge-owner">Confirmed</span>{% else %}<span class="role-badge role-badge-player">Not confirmed</span>{% endif %}
     </p>
     {% else %}
-    <p class="hint-text" style="margin:0 0 12px;">No email on this account yet. It is optional; it lets us confirm it is you and, soon, reset a forgotten password.</p>
+    <p class="hint-text" style="margin:0 0 12px;">No email on this account yet. Every account needs one: it lets us confirm it is you and reset a forgotten password.</p>
     {% endif %}
     {% if not profile.mail_enabled %}
     <p class="hint-text" style="margin:0 0 12px;">Email sending is not set up on this server yet, so addresses cannot be confirmed.</p>
@@ -114,10 +155,12 @@
         <label for="new_username">New username</label>
         <input type="text" id="new_username" name="username" value="{{ new_username or '' }}" required minlength="3" maxlength="32" autocomplete="off" autocapitalize="none" spellcheck="false">
       </div>
+      {% if px.has_password %}
       <div class="field">
         <label for="username_current_password">Current password</label>
         <input type="password" id="username_current_password" name="current_password" required maxlength="128" autocomplete="current-password">
       </div>
+      {% endif %}
     </div>
   </div>
   <div class="form-actions">
@@ -127,11 +170,15 @@
 
 <form class="form-panel account-form" method="POST" action="{{ url_for('account_password') }}" id="password-form">{{ csrf_field() }}
   <div class="form-section">
-    <p class="form-section-title">Password</p>
+    <p class="form-section-title">{{ 'Password' if px.has_password else 'Add a password' }}</p>
+    {% if px.has_password %}
     <div class="field" style="margin-bottom:14px;">
       <label for="current_password">Current password</label>
       <input type="password" id="current_password" name="current_password" required autocomplete="current-password">
     </div>
+    {% else %}
+    <p class="hint-text" style="margin:0 0 12px;">You signed up with Google, so there is no password yet. Add one if you also want to log in with your username.</p>
+    {% endif %}
     <div class="field" style="margin-bottom:14px;">
       <label for="new_password">New password</label>
       <input type="password" id="new_password" name="new_password" required minlength="8" maxlength="128" autocomplete="new-password">
@@ -143,7 +190,7 @@
     </div>
   </div>
   <div class="form-actions">
-    <button type="submit" class="btn btn-primary">{{ icon('lock') }} Change password</button>
+    <button type="submit" class="btn btn-primary">{{ icon('lock') }} {{ 'Change password' if px.has_password else 'Add password' }}</button>
   </div>
 </form>
 
@@ -186,10 +233,12 @@
     {% if owned and owned|selectattr('has_other_owner', 'false')|list %}
     <p class="delete-warning" role="note">Campaigns you do not hand to another member are deleted with their characters, maps and images. This cannot be undone.</p>
     {% endif %}
+    {% if px.has_password %}
     <div class="field" style="margin-bottom:14px;">
       <label for="delete_password">Current password</label>
       <input type="password" id="delete_password" name="current_password" required autocomplete="current-password">
     </div>
+    {% endif %}
     <div class="field">
       <label for="confirm_delete">Type DELETE to confirm</label>
       <input type="text" id="confirm_delete" name="confirm_delete" required autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="DELETE">
@@ -200,3 +249,4 @@
   </div>
 </form>
 {% endblock %}
+{% block extra_scripts %}<script src="{{ url_for('static', filename='js/showcase.js') }}"></script>{% endblock %}

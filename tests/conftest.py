@@ -147,15 +147,26 @@ def png_bytes(w=64, h=48, color=(120, 60, 60)):
 
 class User:
     """A logged-in test user with its own cookie jar."""
-    def __init__(self, appmod, name=None, password='secret12'):
+    def __init__(self, appmod, name=None, password='secret12', keep_email=False):
         self.app = appmod.app
         self.name = name or f'u{uuid.uuid4().hex[:10]}'
         self.password = password
         self.c = self.app.test_client()
         # every test user 'connects' from its own address, so per-IP throttles never couple tests together
         self.ip = '10.%d.%d.%d' % tuple(os.urandom(3))
-        r = self.c.post('/register', data={'username': self.name, 'password': password, 'confirm': password}, headers={'X-Test-IP': self.ip})
+        r = self.c.post('/register', data={'username': self.name, 'password': password, 'email': 'player@example.com', 'confirm': password}, headers={'X-Test-IP': self.ip})
         assert r.status_code == 302, f'register failed: {r.status_code}'
+        if not keep_email:
+            # Sign-up now requires an email.  Most tests are about something else and start from an account without one
+            # (the way accounts made before the rule look), so drop it again and forget the confirmation mail it triggered.
+            import database, mailer
+            db = database.get_db()
+            try:
+                db.execute('UPDATE users SET email = NULL, email_verified_at = NULL WHERE username = ?', (self.name,))
+                db.commit()
+            finally:
+                db.close()
+            mailer.outbox[:] = [m for m in mailer.outbox if m['to'] != 'player@example.com']
 
     def fresh_client(self):
         c = self.app.test_client()
@@ -225,7 +236,7 @@ def user(appmod): return User(appmod)
 
 @pytest.fixture
 def make_user(appmod):
-    return lambda name=None: User(appmod, name)
+    return lambda name=None, **kw: User(appmod, name, **kw)
 
 @pytest.fixture
 def camp(user):

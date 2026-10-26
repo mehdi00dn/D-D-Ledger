@@ -47,7 +47,7 @@ def test_state_changing_requests_without_a_token_are_rejected(appmod, user):
 def test_login_and_register_need_a_token_too(appmod):
     c = raw(appmod)
     assert c.post('/login', data={'username': 'x', 'password': 'y'}).status_code == 403
-    assert c.post('/register', data={'username': 'newperson', 'password': 'longenough1', 'confirm': 'longenough1'}).status_code == 403
+    assert c.post('/register', data={'username': 'newperson', 'password': 'longenough1', 'email': 'player@example.com', 'confirm': 'longenough1'}).status_code == 403
 
 
 def test_wrong_and_foreign_tokens_are_rejected(appmod, make_user):
@@ -144,7 +144,7 @@ def test_session_cookie_flags_when_secure(appmod, make_user):
     with mock.patch.dict(appmod.app.config, {'SESSION_COOKIE_SECURE': True}):
         c = raw(appmod); tok = token_of(c)
         name = 'cookieuser' + os.urandom(3).hex()
-        c.post('/register', data={'username': name, 'password': 'secret12', 'confirm': 'secret12', 'csrf_token': tok})
+        c.post('/register', data={'username': name, 'password': 'secret12', 'email': 'player@example.com', 'confirm': 'secret12', 'csrf_token': tok})
         r = c.post('/logout', data={'csrf_token': token_of(c, '/campaigns')})
         # 'remember' is checked by default on the real login page -- a real browser sends it unless unchecked.
         r = c.post('/login', data={'username': name, 'password': 'secret12', 'remember': 'on', 'csrf_token': token_of(c)})
@@ -238,13 +238,13 @@ def test_unchecking_remember_makes_a_session_only_cookie(appmod, make_user):
     ('bad\x07name', 'longenough1', 'Username must be'), ('', 'longenough1', 'required'), ('okname', '', 'required')])
 def test_registration_rules(appmod, username, password, fragment):
     c = appmod.app.test_client()
-    r = c.post('/register', data={'username': username, 'password': password, 'confirm': password})
+    r = c.post('/register', data={'username': username, 'password': password, 'email': 'player@example.com', 'confirm': password})
     assert r.status_code == 200 and fragment in r.get_data(as_text=True), fragment
 
 
 def test_persian_usernames_and_passwords_are_fine(appmod):
     c = appmod.app.test_client(); name = 'مهدی' + os.urandom(2).hex()
-    assert c.post('/register', data={'username': name, 'password': 'رمز-عبور-طولانی', 'confirm': 'رمز-عبور-طولانی'}).status_code == 302
+    assert c.post('/register', data={'username': name, 'password': 'رمز-عبور-طولانی', 'email': 'player@example.com', 'confirm': 'رمز-عبور-طولانی'}).status_code == 302
     c.post('/logout')
     assert c.post('/login', data={'username': name, 'password': 'رمز-عبور-طولانی'}).status_code == 302
     assert c.get('/campaigns').status_code == 200

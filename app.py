@@ -7,7 +7,9 @@ import zipfile
 import hashlib
 import hmac
 import secrets
-from urllib.parse import urlparse
+import base64
+import requests
+from urllib.parse import urlparse, urlencode
 from datetime import datetime, timedelta, timezone
 from functools import wraps
 from flask import (
@@ -114,7 +116,7 @@ def _campaign_access_field(form):
 # Full accounts: anyone can self-register, and every route requires a
 # logged-in session except the handful that must stay reachable to get one.
 
-PUBLIC_ENDPOINTS = {'login', 'register', 'static', 'healthz', 'forgot_password', 'reset_password', 'robots_txt', 'security_txt', 'csp_report'}
+PUBLIC_ENDPOINTS = {'login', 'register', 'static', 'healthz', 'forgot_password', 'reset_password', 'robots_txt', 'security_txt', 'csp_report', 'google_start', 'google_callback'}
 
 
 # Which classification of connection failure gets which fixed, secret-free hint.
@@ -351,7 +353,8 @@ _SCOPE_PARENT_SQL = {            # arg -> (SQL returning the parent id, name of 
 # introduces an argument that is not listed here (so a new kind of ID cannot slip through).
 # invitation_id / notification_id are not campaign-scoped: each is checked against the logged-in user in its route
 # (an invitation is only ever visible to the person invited; a notification only to its recipient).
-SCOPED_URL_ARGS = {'campaign_id', 'user_id', 'filename', 'token', 'invitation_id', 'notification_id'} | set(_SCOPE_OWNER_SQL) | set(_SCOPE_PARENT_SQL)
+# username (/u/<username>) is not campaign-scoped either: profile_view checks the owner's visibility setting against the viewer.
+SCOPED_URL_ARGS = {'campaign_id', 'user_id', 'filename', 'token', 'invitation_id', 'notification_id', 'username'} | set(_SCOPE_OWNER_SQL) | set(_SCOPE_PARENT_SQL)
 
 
 @app.before_request
@@ -424,13 +427,14 @@ def register():
         username = request.form.get('username', '').strip()
         password = request.form.get('password', '')
         confirm = request.form.get('confirm', '')
+        email = ' '.join(request.form.get('email', '').split())[:EMAIL_MAX + 1]
         ip = client_ip()
 
         db = get_db()
         wait = security.register_blocked_for(db, app.secret_key, ip)
         if wait:
             db.close()
-            return render_template('register.html', error=_wait_message(wait), username=username, next=request.form.get('next', '')), 429
+            return render_template('register.html', error=_wait_message(wait), username=username, email=email, next=request.form.get('next', '')), 429
         security.record_registration(db, app.secret_key, ip)
         db.commit()
 
@@ -439,6 +443,10 @@ def register():
             error = 'Username and password are required.'
         elif _username_error(username):
             error = _username_error(username)
+        elif not email:
+            error = 'Email address is required.'
+        elif _email_error(email):
+            error = _email_error(email)
         elif password != confirm:
             error = 'Passwords do not match.'
         elif len(password) < 8:
@@ -448,24 +456,42 @@ def register():
 
         if error is None and db.execute('SELECT id FROM users WHERE lower(username) = lower(?)', (username,)).fetchone():
             error = 'That username is already taken.'
+        if error is None and db.execute('SELECT id FROM users WHERE lower(email) = lower(?) AND email_verified_at IS NOT NULL', (email,)).fetchone():
+            error = 'An account already uses that email address. Log in instead, or continue with Google.'
         if error:
             db.close()
-            return render_template('register.html', error=error, username=username, next=request.form.get('next', ''))
+            return render_template('register.html', error=error, username=username, email=email, next=request.form.get('next', ''))
 
         try:
-            cur = db.execute('INSERT INTO users (username, password_hash) VALUES (?, ?)',
-                              (username, generate_password_hash(password)))
+            cur = db.execute('INSERT INTO users (username, password_hash, email) VALUES (?, ?, ?)',
+                              (username, generate_password_hash(password), email))
         except UniqueViolation:      # two people registering the same name at once
             db.rollback()
             db.close()
-            return render_template('register.html', error='That username is already taken.', username=username, next=request.form.get('next', ''))
+            return render_template('register.html', error='That username is already taken.', username=username, email=email, next=request.form.get('next', ''))
         user_id = cur.lastrowid
         db.commit()
+        if mailer.enabled():                                  # best effort: the account exists either way, and /account can resend
+            try:
+                _send_verification(db, {'id': user_id, 'username': username, 'display_name': None}, email)
+            except Exception:                                 # noqa: BLE001 - never lose a new account over a mail problem
+                db.rollback()
+                app.logger.warning('signup confirmation email failed', exc_info=True)
         db.close()
 
         _start_session(user_id, username)
         return redirect(_safe_next(request.form.get('next', '')) or url_for('campaigns_list'))
-    return render_template('register.html', error=None, username='', next=request.args.get('next', ''))
+    return render_template('register.html', error=None, username='', email='', next=request.args.get('next', ''))
+
+
+def _user_by_email(db, address):
+    """The one account an email address points to: the account that confirmed it, else the only account that typed it.
+    Several accounts and no single confirmed owner means nobody (the person can use their username)."""
+    rows = db.execute('SELECT * FROM users WHERE lower(email) = lower(?)', (address,)).fetchall()
+    confirmed = [r for r in rows if r['email_verified_at']]
+    if len(confirmed) == 1:
+        return confirmed[0]
+    return rows[0] if len(rows) == 1 else None
 
 
 @app.route('/login', methods=['GET', 'POST'])
@@ -483,13 +509,18 @@ def login():
             return render_template('login.html', error=_wait_message(wait), username=username, next=next_value), 429
 
         user = db.execute('SELECT * FROM users WHERE lower(username) = lower(?)', (username,)).fetchone()
+        if user is None and '@' in username:                 # the same box takes an email address
+            user = _user_by_email(db, username)
         stored_hash = (user['password_hash'] if user else None) or DUMMY_PASSWORD_HASH     # always do one hash check
         password_ok = check_password_hash(stored_hash, password)
         if user is None or not user['password_hash'] or not password_ok:
             security.record_login_failure(db, app.secret_key, username, ip)
             db.commit()
             db.close()
-            return render_template('login.html', error='Incorrect username or password.', username=username, next=next_value)
+            message = 'Incorrect username or password.'
+            if user is not None and not user['password_hash']:
+                message = 'This account signs in with Google. Use Continue with Google, or choose Forgot your password to add a password.'
+            return render_template('login.html', error=message, username=username, next=next_value)
 
         security.clear_login_failures(db, app.secret_key, username, ip)
         db.commit()
@@ -506,6 +537,132 @@ def logout():
     # while a failed check here used to leave a real user signed in with an error page.
     session.clear()
     return redirect(url_for('login'))
+
+
+# ---------------- SIGN IN WITH GOOGLE ----------------
+# Standard OAuth 2.0 authorization-code flow with PKCE, talking to Google server-to-server over TLS.  Off until
+# GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are set (the buttons are hidden).  Google proves the email address, so a
+# Google account starts with a confirmed email and no password.
+GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth'
+GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token'
+GOOGLE_USERINFO_URL = 'https://openidconnect.googleapis.com/v1/userinfo'
+GOOGLE_MESSAGES = {
+    'expired': 'The Google sign-in took too long or was interrupted. Try again.',
+    'denied': 'Google sign-in was cancelled.',
+    'failed': 'Google could not be reached. Try again in a moment.',
+    'unverified': 'Google did not share a confirmed email address, so we cannot sign you in with it.',
+    'conflict': 'That email belongs to an account linked to a different Google account.',
+    'busy': 'Too many accounts were created from this connection. Wait a bit and try again.',
+    'off': 'Google sign-in is not set up on this server yet.',
+}
+
+
+def google_enabled():
+    return bool(os.environ.get('GOOGLE_CLIENT_ID') and os.environ.get('GOOGLE_CLIENT_SECRET'))
+
+
+app.jinja_env.globals['google_enabled'] = google_enabled
+app.jinja_env.globals['google_messages'] = GOOGLE_MESSAGES
+
+
+def _google_redirect_uri():
+    uri = os.environ.get('GOOGLE_REDIRECT_URI') or url_for('google_callback', _external=True)
+    if _SECURE_COOKIES and uri.startswith('http://'):
+        uri = 'https://' + uri[len('http://'):]
+    return uri
+
+
+def _free_username(db, seed):
+    """A valid, unused username built from `seed` (an email's first part or a name)."""
+    base = re.sub(r'[^A-Za-z0-9._-]+', '', seed or '')[:24] or 'player'
+    if len(base) < 3:
+        base = (base + 'player')[:24]
+    candidate = base
+    for _ in range(12):
+        if not db.execute('SELECT 1 FROM users WHERE lower(username) = lower(?)', (candidate,)).fetchone():
+            return candidate
+        candidate = '%s%d' % (base[:20], secrets.randbelow(9000) + 1000)
+    return '%s%s' % (base[:12], secrets.token_hex(4))
+
+
+@app.route('/auth/google')
+def google_start():
+    if session.get('user_id'):
+        return redirect(url_for('campaigns_list'))
+    if not google_enabled():
+        return redirect(url_for('login', google='off'))
+    state, verifier = secrets.token_urlsafe(24), secrets.token_urlsafe(48)
+    challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b'=').decode()
+    session['g_oauth'] = {'s': state, 'v': verifier, 'n': _safe_next(request.args.get('next')) or ''}
+    params = {'client_id': os.environ['GOOGLE_CLIENT_ID'], 'redirect_uri': _google_redirect_uri(), 'response_type': 'code',
+              'scope': 'openid email profile', 'state': state, 'code_challenge': challenge, 'code_challenge_method': 'S256',
+              'prompt': 'select_account'}
+    return redirect(GOOGLE_AUTH_URL + '?' + urlencode(params))
+
+
+@app.route('/auth/google/callback')
+def google_callback():
+    pending = session.pop('g_oauth', None)
+
+    def back(code):
+        return redirect(url_for('login', google=code))
+
+    if session.get('user_id'):
+        return redirect(url_for('campaigns_list'))
+    if not google_enabled() or not pending:
+        return back('expired')
+    if request.args.get('error'):
+        return back('denied')
+    code, state = request.args.get('code', ''), request.args.get('state', '')
+    if not code or not hmac.compare_digest(state.encode(), pending['s'].encode()):
+        return back('expired')
+    try:
+        tok = requests.post(GOOGLE_TOKEN_URL, timeout=8, data={
+            'code': code, 'client_id': os.environ['GOOGLE_CLIENT_ID'], 'client_secret': os.environ['GOOGLE_CLIENT_SECRET'],
+            'redirect_uri': _google_redirect_uri(), 'grant_type': 'authorization_code', 'code_verifier': pending['v']})
+        tok.raise_for_status()
+        info = requests.get(GOOGLE_USERINFO_URL, timeout=8, headers={'Authorization': 'Bearer ' + tok.json()['access_token']})
+        info.raise_for_status()
+        info = info.json()
+    except (requests.RequestException, ValueError, KeyError):
+        app.logger.warning('google sign-in failed while talking to Google', exc_info=True)
+        return back('failed')
+    sub = str(info.get('sub') or '')
+    email = ' '.join(str(info.get('email') or '').split())
+    if not sub or not email or info.get('email_verified') is not True or _email_error(email):
+        return back('unverified')
+
+    db = get_db()
+    try:
+        user = db.execute('SELECT * FROM users WHERE google_sub = ?', (sub,)).fetchone()
+        if user is None:
+            user = db.execute('SELECT * FROM users WHERE lower(email) = lower(?) AND email_verified_at IS NOT NULL', (email,)).fetchone()
+            if user is not None:
+                if user['google_sub']:
+                    return back('conflict')
+                db.execute('UPDATE users SET google_sub = ? WHERE id = ?', (sub, user['id']))        # same confirmed email: link
+        if user is None:
+            ip = client_ip()
+            if security.register_blocked_for(db, app.secret_key, ip):
+                return back('busy')
+            security.record_registration(db, app.secret_key, ip)
+            name = ' '.join(str(info.get('name') or '').split())
+            display = name if name and not _profile_error(name, '') else None
+            username = _free_username(db, email.split('@')[0])
+            try:
+                cur = db.execute('INSERT INTO users (username, password_hash, email, email_verified_at, google_sub, display_name) '
+                                 'VALUES (?, NULL, ?, ' + _UTC_NOW + ', ?, ?)', (username, email, sub, display))
+            except UniqueViolation:
+                db.rollback()
+                return back('failed')
+            # An unconfirmed copy of this address on another account was only ever typed in; Google has now proved it.
+            db.execute('UPDATE users SET email = NULL WHERE lower(email) = lower(?) AND email_verified_at IS NULL AND id <> ?', (email, cur.lastrowid))
+            user = db.execute('SELECT * FROM users WHERE id = ?', (cur.lastrowid,)).fetchone()
+        db.commit()
+    finally:
+        db.close()
+    _start_session(user['id'], user['username'], remember=True, version=dict(user).get('session_version', 0))
+    return redirect(pending.get('n') or url_for('campaigns_list'))
 
 
 # ---------------- ACCOUNT / PROFILE ----------------
@@ -532,14 +689,14 @@ def my_profile():
     if '_profile' not in g:
         db = get_db()
         try:
-            row = db.execute('SELECT id, username, display_name, avatar_path, bio FROM users WHERE id = ?', (uid,)).fetchone()
-            g._profile = dict(row) if row else None
+            row = db.execute('SELECT id, username, display_name, avatar_path, bio, email FROM users WHERE id = ?', (uid,)).fetchone()
+            g._profile = dict(row, needs_email=not row['email']) if row else None
         except pgerr.UndefinedColumn:
             # Code deployed before migration 0022 was applied: every page renders this in the sidebar, so a missing
             # column must not take the whole site down.  Fall back to the username until the migration runs.
             db.rollback()
             app.logger.error('users.display_name is missing: apply migration 0022_user_profile.sql')
-            g._profile = {'id': uid, 'username': session.get('username'), 'display_name': None, 'avatar_path': None, 'bio': None}
+            g._profile = {'id': uid, 'username': session.get('username'), 'display_name': None, 'avatar_path': None, 'bio': None, 'needs_email': False}
     return g._profile
 
 
@@ -702,7 +859,7 @@ def account_delete():
     wait = security.login_blocked_for(db, app.secret_key, user['username'], ip)
     if wait:
         return fail(_wait_message(wait), 429)
-    if not row['password_hash'] or not check_password_hash(row['password_hash'], request.form.get('current_password', '')[:1024]):
+    if row['password_hash'] and not check_password_hash(row['password_hash'], request.form.get('current_password', '')[:1024]):
         security.record_login_failure(db, app.secret_key, user['username'], ip)
         db.commit()
         return fail('Your current password is not correct.')
@@ -794,7 +951,7 @@ def forgot_password():
     except pgerr.UndefinedColumn:
         db.rollback()
         user = None
-    if user is None or not user['password_hash']:
+    if user is None:
         db.close()
         return render_template('forgot_password.html', sent=False, email=address, error=NO_CONFIRMED_ACCOUNT), 404
     token = _reset_serializer().dumps({'u': user['id'], 'f': _password_fingerprint(user['password_hash'])})
@@ -820,7 +977,7 @@ def reset_password(token):
         return render_template('reset_password.html', invalid=True), 400
     db = get_db()
     user = db.execute('SELECT id, username, display_name, email, password_hash FROM users WHERE id = ?', (data.get('u'),)).fetchone()
-    if user is None or not user['password_hash'] or _password_fingerprint(user['password_hash']) != data.get('f'):
+    if user is None or _password_fingerprint(user['password_hash']) != data.get('f'):
         return render_template('reset_password.html', invalid=True), 400
     if request.method == 'GET':
         return render_template('reset_password.html', invalid=False, error=None)
@@ -900,9 +1057,126 @@ def account():
             db.execute('UPDATE users SET avatar_path = NULL WHERE id = ?', (user['id'],))
             delete_upload(old_avatar)
         db.execute('UPDATE users SET display_name = ?, bio = ? WHERE id = ?', (display_name or None, bio or None, user['id']))
+        visibility = request.form.get('profile_visibility', '')
+        if visibility in PROFILE_VISIBILITY:
+            try:
+                db.execute('UPDATE users SET profile_visibility = ? WHERE id = ?', (visibility, user['id']))
+            except pgerr.UndefinedColumn:
+                db.rollback()
+                return api_error('Profile visibility needs a database update that has not been applied yet (migration 0039).', 503, code='migration_pending')
+        if request.form.get('showcase_present') == '1':
+            error = _save_showcase(db, user['id'], request.form.getlist('showcase'))
+            if error:
+                db.rollback()
+                return render_template('account.html', profile=user, form={'display_name': display_name, 'bio': bio}, error=error), 400
         db.commit()
         return redirect(url_for('account', saved=1))
     return render_template('account.html', profile=user, form=user, error=None)
+
+
+# ---- public profile (DL-97 first step) ----
+# /u/<username> shows a person's avatar, name, bio and a handful of the player characters they chose to feature.  Who may
+# open it is the owner's choice (users.profile_visibility); a profile you may not open answers 404, exactly like a name
+# that does not exist, so the page cannot be used to find out who has an account.  Only name, class, level and portrait of a
+# showcased character are shown: never the campaign it belongs to, its stats or its notes.
+PROFILE_VISIBILITY = {
+    'members': ('Everyone signed in', 'Any signed-in Campaign Ledger user can open your profile.'),
+    'shared': ('People I play with', 'Only people who share a campaign with you.'),
+    'private': ('Only me', 'Nobody else can open it.'),
+}
+SHOWCASE_MAX = 6
+_SHOWCASE_ELIGIBLE = ('(c.created_by = ? OR c.player_id = ?) AND COALESCE(c.is_npc, 0) = 0 AND COALESCE(c.is_temp_familiar, 0) = 0')
+
+
+def _class_label(key):
+    for k, label, _desc in CHARACTER_CLASSES:
+        if k == key:
+            return label
+    return None
+
+
+def _can_view_profile(db, owner, viewer_id):
+    if owner['id'] == viewer_id or owner['profile_visibility'] == 'members':
+        return True
+    if owner['profile_visibility'] == 'shared':
+        return db.execute('SELECT 1 FROM campaign_members a JOIN campaign_members b ON b.campaign_id = a.campaign_id '
+                          'WHERE a.user_id = ? AND b.user_id = ? LIMIT 1', (viewer_id, owner['id'])).fetchone() is not None
+    return False
+
+
+def _showcase_characters(db, user_id):
+    rows = db.execute('SELECT c.id, c.name, c.level, c.class_key, c.avatar_path FROM profile_showcase s '
+                      'JOIN characters c ON c.id = s.character_id WHERE s.user_id = ? AND ' + _SHOWCASE_ELIGIBLE +
+                      ' ORDER BY s.position, c.name', (user_id, user_id, user_id)).fetchall()
+    return [dict(r, class_label=_class_label(r['class_key'])) for r in rows]
+
+
+def _save_showcase(db, user_id, raw_ids):
+    ids = []
+    for value in raw_ids:
+        if not str(value).isdigit():
+            return 'Pick characters from the list.'
+        if int(value) not in ids:
+            ids.append(int(value))
+    if len(ids) > SHOWCASE_MAX:
+        return 'Feature at most %d characters.' % SHOWCASE_MAX
+    if ids:
+        allowed = {r['id'] for r in db.execute('SELECT c.id FROM characters c WHERE ' + _SHOWCASE_ELIGIBLE, (user_id, user_id)).fetchall()}
+        if not set(ids) <= allowed:
+            return 'You can only feature your own player characters.'
+    db.execute('DELETE FROM profile_showcase WHERE user_id = ?', (user_id,))
+    for position, cid in enumerate(ids):
+        db.execute('INSERT INTO profile_showcase (user_id, character_id, position) VALUES (?, ?, ?)', (user_id, cid, position))
+    return None
+
+
+def profile_extra():
+    """What the account page needs beyond the basic row: visibility, password state, the showcase picker."""
+    if '_profile_extra' not in g:
+        uid = session.get('user_id')
+        extra = {'visibility': 'shared', 'has_password': True, 'showcase_ids': [], 'showcase_options': [], 'ready': False}
+        if uid:
+            db = get_db()
+            try:
+                row = db.execute('SELECT profile_visibility, password_hash FROM users WHERE id = ?', (uid,)).fetchone()
+                extra.update(visibility=row['profile_visibility'], has_password=bool(row['password_hash']), ready=True)
+                extra['showcase_ids'] = [r['character_id'] for r in db.execute(
+                    'SELECT character_id FROM profile_showcase WHERE user_id = ? ORDER BY position', (uid,)).fetchall()]
+                extra['showcase_options'] = [dict(r, class_label=_class_label(r['class_key'])) for r in db.execute(
+                    'SELECT c.id, c.name, c.level, c.class_key, c.avatar_path, ca.name AS campaign_name FROM characters c '
+                    'LEFT JOIN campaigns ca ON ca.id = c.campaign_id WHERE ' + _SHOWCASE_ELIGIBLE + ' ORDER BY ca.name, c.name',
+                    (uid, uid)).fetchall()]
+            except pgerr.UndefinedColumn:
+                db.rollback()
+                row = db.execute('SELECT password_hash FROM users WHERE id = ?', (uid,)).fetchone()
+                extra['has_password'] = bool(row['password_hash'])
+            except pgerr.UndefinedTable:
+                db.rollback()
+        g._profile_extra = extra
+    return g._profile_extra
+
+
+app.jinja_env.globals['profile_extra'] = profile_extra
+app.jinja_env.globals['profile_visibility_options'] = PROFILE_VISIBILITY
+app.jinja_env.globals['showcase_max'] = SHOWCASE_MAX
+
+
+@app.route('/u/<username>')
+def profile_view(username):
+    db = get_db()
+    try:
+        owner = db.execute('SELECT id, username, display_name, avatar_path, bio, created_at, profile_visibility FROM users '
+                           'WHERE lower(username) = lower(?)', (username,)).fetchone()
+    except pgerr.UndefinedColumn:
+        db.rollback()
+        return api_error('Profiles need a database update that has not been applied yet (migration 0039).', 503, code='migration_pending')
+    if owner is None or not _can_view_profile(db, owner, session['user_id']):
+        abort(404)
+    created = owner['created_at']
+    if isinstance(created, str):
+        created = datetime.fromisoformat(created[:10])
+    return render_template('profile_view.html', owner=owner, is_me=owner['id'] == session['user_id'],
+                           member_since=created.strftime('%B %Y'), showcase=_showcase_characters(db, owner['id']))
 
 
 @app.route('/account/username', methods=['POST'])
@@ -925,7 +1199,7 @@ def account_username():
     wait = security.login_blocked_for(db, app.secret_key, user['username'], ip)
     if wait:
         return fail(_wait_message(wait), 429)
-    if not row['password_hash'] or not check_password_hash(row['password_hash'], request.form.get('current_password', '')[:1024]):
+    if row['password_hash'] and not check_password_hash(row['password_hash'], request.form.get('current_password', '')[:1024]):
         security.record_login_failure(db, app.secret_key, user['username'], ip)
         db.commit()
         return fail('Your current password is not correct.')
@@ -975,7 +1249,7 @@ def account_password():
     wait = security.login_blocked_for(db, app.secret_key, user['username'], ip)
     if wait:
         return fail(_wait_message(wait), 429)
-    if not user['password_hash'] or not check_password_hash(user['password_hash'], current):
+    if user['password_hash'] and not check_password_hash(user['password_hash'], current):      # a Google account has none yet
         security.record_login_failure(db, app.secret_key, user['username'], ip)
         db.commit()
         return fail('Your current password is not correct.')
@@ -985,7 +1259,7 @@ def account_password():
         return fail('Password must be at least 8 characters.')
     if len(new) > 128:
         return fail('Password must be at most 128 characters.')
-    if new == current:
+    if user['password_hash'] and new == current:
         return fail('Choose a password different from the current one.')
     db.execute('UPDATE users SET password_hash = ? WHERE id = ?', (generate_password_hash(new), user['id']))
     security.clear_login_failures(db, app.secret_key, user['username'], ip)
@@ -3986,7 +4260,7 @@ def campaign_home():
     party = db.execute('''SELECT c.id, c.name, c.level, c.max_hp, c.armor_class, c.avatar_path, c.class_key
                            FROM characters c WHERE c.campaign_id = ? AND c.is_temp_familiar = 0 AND c.is_npc = 0
                            ORDER BY lower(c.name) ASC''', (g.campaign_id,)).fetchall()
-    members = db.execute('''SELECT u.id, u.username, cm.role, cm.status
+    members = db.execute('''SELECT u.id, u.username, u.profile_visibility, cm.role, cm.status
                              FROM campaign_members cm JOIN users u ON u.id = cm.user_id
                              WHERE cm.campaign_id = ?
                              ORDER BY (cm.status = 'dm') DESC, lower(u.username) ASC''', (g.campaign_id,)).fetchall()
