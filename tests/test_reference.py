@@ -159,8 +159,11 @@ def test_a_monster_goes_straight_into_the_battle_as_an_npc(make_user):
     note = q('SELECT notes, dex_score, save_prof FROM characters WHERE campaign_id = ?', cid)[0]
     assert '"h": 1' in note['notes'] and 'Nimble Escape' in note['notes'] and '<script>' not in note['notes'] and note['dex_score'] == 15
     rows = dm.json(url, {'ref': 'monsters/goblin-warrior', 'count': 3, 'hp': 'rolled'}).get_json()
-    assert [r['char_name'] for r in rows][1:] == ['Goblin Warrior 1', 'Goblin Warrior 2', 'Goblin Warrior 3']
+    assert len(rows) == 4 and all(r['char_name'].startswith('Goblin Warrior') for r in rows)
     assert all(3 <= r['char_max_hp'] <= 18 and r['current_hp'] == r['char_max_hp'] for r in rows[1:])      # 3d6, one roll per copy
+    assert all(r['char_name'] == 'Goblin Warrior' or r['char_name'] == f"Goblin Warrior ({r['char_max_hp']} HP)" for r in rows)   # a character per hit point total
+    again = dm.json(url, {'ref': 'monsters/goblin-warrior', 'count': 2}).get_json()                          # average hit points: the first goblin is used again
+    assert len(again) == 6 and len(q("SELECT id FROM characters WHERE campaign_id = ? AND name = 'Goblin Warrior'", cid)) == 1
 
 
 @new_code
@@ -199,4 +202,4 @@ def test_a_monster_added_to_the_battle_keeps_its_attacks(make_user):
     cid = dm.new_campaign()
     dm.json(f'/campaigns/{cid}/api/battle/add-monster', {'ref': 'monsters/goblin-warrior', 'count': 2})
     rows = q('SELECT c.id, a.name, a.damage FROM characters c JOIN character_attacks a ON a.character_id = c.id WHERE c.campaign_id = ? ORDER BY c.id, a.position', cid)
-    assert [r['name'] for r in rows] == ['Scimitar', 'Shortbow', 'Weird Gaze'] * 2
+    assert [r['name'] for r in rows] == ['Scimitar', 'Shortbow', 'Weird Gaze']              # two goblins share one character

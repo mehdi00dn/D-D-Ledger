@@ -73,9 +73,10 @@ def test_build_save_and_run_an_encounter(appmod, rules_api, pw):
         page.locator('[data-enc-pc]').first.uncheck()                                            # three characters: budget shrinks
         assert page.locator('[data-enc-b=high]').inner_text() == '1,200' and page.locator('[data-enc-tier]').inner_text() == 'Over High'
         assert page.locator('[data-enc-save]').is_enabled()
-        page.click('[data-enc-save]'); expect(page.locator('[data-enc-status]')).to_have_text('Saved.')
-        assert page.locator('[data-enc-save]').is_disabled()
+        page.click('[data-enc-save]'); page.wait_for_url(f'**/campaigns/{cid}/encounters')                # saving closes the builder
         eid = q('SELECT id FROM encounters WHERE campaign_id = ?', cid)[0]['id']
+        page.goto(f'{base}/campaigns/{cid}/encounters/{eid}'); page.wait_for_selector('.enc-line')
+        assert page.locator('[data-enc-save]').is_disabled()
         assert sum(r['count'] for r in q('SELECT count FROM encounter_monsters WHERE encounter_id = ?', eid)) == 14
         page.get_by_role('button', name='Remove Goblin Warrior').click()
         page.click('[data-enc-run]'); page.wait_for_url(f'**/campaigns/{cid}/battle')

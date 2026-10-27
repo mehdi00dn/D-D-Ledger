@@ -7,6 +7,7 @@
 <div class="enc-builder" data-encounter
      data-save-url="{{ url_for('encounter_save', encounter_id=enc.id) }}"
      data-run-url="{{ url_for('encounter_run', encounter_id=enc.id) }}"
+     data-list-url="{{ url_for('encounters_list') }}"
      data-budget='{{ budget_table|tojson }}'
      data-lines='{{ lines|tojson }}'
      data-party='{{ party|tojson }}'

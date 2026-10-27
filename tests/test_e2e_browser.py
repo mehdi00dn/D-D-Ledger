@@ -1266,7 +1266,7 @@ def test_monster_manual_in_the_battle_add_menu_brings_copies_into_the_fight(pw):
         page.locator('[data-monster-count]').fill('2')
         page.locator('.add-monster [data-ref-list] .ref-item', has_text='Goblin Warrior').click()
         playwright.expect(page.locator('.battle-row')).to_have_count(2)
-        playwright.expect(page.locator('.battle-name').first).to_contain_text('Goblin Warrior 1')
+        playwright.expect(page.locator('.battle-name').first).to_contain_text('Goblin Warrior #1')
         playwright.expect(page.locator('[data-monster-status]')).to_contain_text('Added 2 x Goblin Warrior')
         # ...and the Monsters tab of the Reference has the same button
         page.goto(base + f'/campaigns/{cid}/reference'); page.wait_for_load_state('load')

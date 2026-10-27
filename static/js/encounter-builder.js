@@ -148,7 +148,7 @@
     lines = data.monsters; nameIn.value = data.name; dirty = false; saveBtn.disabled = true;
     renderAll(); say('Saved.');
   }
-  saveBtn.addEventListener('click', () => save().catch((e) => say(e.message, true)));
+  saveBtn.addEventListener('click', () => save().then(() => { window.location.href = root.dataset.listUrl; }).catch((e) => say(e.message, true)));       // saving closes the builder
   runBtn.addEventListener('click', async () => {
     runBtn.disabled = true;
     try {

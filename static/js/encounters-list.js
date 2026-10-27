@@ -35,6 +35,30 @@
     if (ev.key === 'Enter') { ev.preventDefault(); ev.target.blur(); }
     if (ev.key === 'Escape') { ev.target.value = ev.target.dataset.saved; ev.target.blur(); }
   });
+  // Deleting asks whether the monsters should also leave the character list.
+  const dialog = document.querySelector('[data-enc-dialog]');
+  let pending = null;
+  function finish(remove) {
+    const form = pending; pending = null;
+    if (dialog.open) dialog.close();
+    if (!form) return;
+    form.querySelector('[name=remove_characters]').value = remove ? '1' : '0';
+    form.submit();
+  }
+  list.addEventListener('submit', (ev) => {
+    const form = ev.target.closest('[data-enc-delete]');
+    if (!form || !dialog || typeof dialog.showModal !== 'function') return;
+    ev.preventDefault();
+    pending = form;
+    dialog.querySelector('[data-enc-dialog-title]').textContent = 'Delete \u201c' + form.dataset.name + '\u201d?';
+    dialog.showModal();
+  });
+  if (dialog) {
+    dialog.querySelector('[data-enc-dialog-cancel]').addEventListener('click', () => { pending = null; dialog.close(); });
+    dialog.querySelector('[data-enc-dialog-keep]').addEventListener('click', () => finish(false));
+    dialog.querySelector('[data-enc-dialog-remove]').addEventListener('click', () => finish(true));
+    dialog.addEventListener('cancel', () => { pending = null; });
+  }
   list.addEventListener('click', async (ev) => {
     const btn = ev.target.closest('[data-enc-run]');
     if (!btn) return;

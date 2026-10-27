@@ -3,7 +3,7 @@
 {% set active_page = 'treasury' %}
 {% block title %}Treasury — Campaign Ledger{% endblock %}
 
-{% macro coins_line(p) %}{% for c in treasury_coins %}<span class="coin-chip coin-{{ c }}"><b>{{ p[c] }}</b> {{ c }}</span>{% endfor %}{% endmacro %}
+{% macro coins_line(p) %}{% for c in treasury_coins %}<span class="coin-chip coin-{{ c }}">{{ icon('coin') }}<b>{{ p[c] }}</b> {{ c }}</span>{% endfor %}{% endmacro %}
 
 {% block content %}
 <div class="page-header">
@@ -29,7 +29,7 @@
   <h2 class="cf-title">{{ icon('coins') }} Party purse <span class="cf-count">{{ format_gold(total) }}</span></h2>
   <ul class="coin-row">
     {% for c in treasury_coins %}
-    <li class="coin coin-{{ c }}"><b>{{ purse[c] }}</b><span>{{ c }}</span></li>
+    <li class="coin coin-{{ c }}">{{ icon('coin') }}<b>{{ purse[c] }}</b><span>{{ c }}</span></li>
     {% endfor %}
   </ul>
   <p class="treasury-hint">Shared coins, not owned by anyone yet.</p>
@@ -71,7 +71,7 @@
       </div>
       <div class="coin-inputs">
         {% for c in treasury_coins %}
-        <div class="field coin-field coin-{{ c }}"><label for="t-{{ c }}">{{ c|upper }}</label><input type="number" id="t-{{ c }}" name="{{ c }}" min="0" max="1000000" inputmode="numeric" placeholder="0"></div>
+        <div class="field coin-field coin-{{ c }}"><label for="t-{{ c }}">{{ icon('coin') }}{{ c|upper }}</label><input type="number" id="t-{{ c }}" name="{{ c }}" min="0" max="1000000" inputmode="numeric" placeholder="0"></div>
         {% endfor %}
       </div>
       <div class="field"><label for="t-note">What for</label><input type="text" id="t-note" name="note" maxlength="200" placeholder="Dragon hoard, a night at the inn, a bribe for the guard"></div>
@@ -88,12 +88,12 @@
       </div>
       <fieldset class="treasury-who"><legend>Give them evenly to</legend>
         <label><input type="checkbox" name="to" value="party"> The party purse</label>
-        {% for p in party %}<label><input type="checkbox" name="to" value="{{ p.id }}"> {{ p.name }}</label>{% endfor %}
+        {% for p in party %}<label><input type="checkbox" name="to" value="{{ p.id }}" checked> {{ p.name }}</label>{% endfor %}
       </fieldset>
-      <p class="treasury-hint">Type an amount, or leave it empty to share the whole purse. Pick one name to hand coins over.</p>
+      <p class="treasury-hint">Type an amount, or leave it empty to share the whole purse. Untick everyone but one name to hand coins over. If you take the coins from a character, that character is skipped.</p>
       <div class="coin-inputs">
         {% for c in treasury_coins %}
-        <div class="field coin-field coin-{{ c }}"><label for="s-{{ c }}">{{ c|upper }}</label><input type="number" id="s-{{ c }}" name="{{ c }}" min="0" max="1000000" inputmode="numeric" placeholder="0"></div>
+        <div class="field coin-field coin-{{ c }}"><label for="s-{{ c }}">{{ icon('coin') }}{{ c|upper }}</label><input type="number" id="s-{{ c }}" name="{{ c }}" min="0" max="1000000" inputmode="numeric" placeholder="0"></div>
         {% endfor %}
       </div>
       <button type="submit" class="btn btn-ghost">{{ icon('swap') }} Share</button>

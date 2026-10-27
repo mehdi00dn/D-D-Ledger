@@ -37,6 +37,7 @@
       <div class="cd-chips">
         <span class="cd-chip">Lvl {{ character.level }}</span>
         <span class="cd-chip cd-chip--{{ 'npc' if character.is_npc else 'pc' }}">{{ ('NPC · Ally' if character.is_ally else 'NPC') if character.is_npc else 'PC' }}</span>
+        {% if character.added_from %}<span class="cd-chip cd-chip--source">Added from {{ character.added_from }}</span>{% endif %}
         {% for f in factions %}<span class="cd-chip cd-chip--faction"><span class="group-dot" style="background:{{ f.color }}"></span>{{ f.name }}</span>{% endfor %}
         {% if not factions %}<span class="cd-chip cd-chip--faint">Ungrouped</span>{% endif %}
       </div>
@@ -101,7 +102,7 @@
   <section class="cf-card cd-purse" aria-label="Purse">
     <h2 class="cf-title">{{ icon('coins') }} Purse <span class="cf-count">{{ format_gold(coins_value(purse)) }}</span></h2>
     <ul class="coin-row">
-      {% for c in treasury_coins %}<li class="coin coin-{{ c }}"><b>{{ purse[c] }}</b><span>{{ c }}</span></li>{% endfor %}
+      {% for c in treasury_coins %}<li class="coin coin-{{ c }}">{{ icon('coin') }}<b>{{ purse[c] }}</b><span>{{ c }}</span></li>{% endfor %}
     </ul>
     {% if recent_coins %}
     <ul class="cd-purse-recent">

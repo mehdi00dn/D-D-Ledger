@@ -122,6 +122,7 @@
       <span class="badge-hp">{{ icon('heart') }}{{ c.max_hp }} HP</span>
       <span class="badge-ac">{{ icon('shield') }}{{ c.armor_class }} AC</span>
     </div>
+    {% if c.added_from %}<p class="added-from">{{ icon('skull') }} Added from {{ c.added_from }}</p>{% endif %}
     {% set st = live.get(c.id) %}
     {% if st %}
     <div class="dossier-live" aria-label="In the battle">

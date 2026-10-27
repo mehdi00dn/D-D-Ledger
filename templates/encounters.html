@@ -27,7 +27,7 @@
 </details>
 
 {% if not party %}<div class="banner-notice" role="note">There are no player characters yet, so there is no budget to compare against. You can still build the list and set a party by hand in the builder.</div>{% endif %}
-<p class="enc-status" data-enc-list-status role="status" aria-live="polite"></p>
+<p class="enc-status" data-enc-list-status role="status" aria-live="polite">{% if removed %}Encounter deleted. {{ removed }} creature{{ 's' if removed != 1 }} also removed from the character list.{% endif %}</p>
 
 {% if items %}
 <ul class="enc-list" data-enc-list>
@@ -51,7 +51,7 @@
         <button type="button" class="btn btn-primary btn-sm" data-enc-run data-url="{{ url_for('encounter_run', encounter_id=e.id) }}"{{ ' disabled' if not e.lines }}>{{ icon('swords') }} Run in battle</button>
       </div>
       <a class="btn btn-ghost btn-sm" href="{{ url_for('encounter_edit', encounter_id=e.id) }}">{{ icon('pencil') }} Edit</a>
-      <form method="POST" action="{{ url_for('encounter_delete', encounter_id=e.id) }}" data-confirm="Delete this encounter?">{{ csrf_field() }}<button type="submit" class="btn btn-ghost btn-sm quest-delete" aria-label="Delete the encounter {{ e.name }}" title="Delete">{{ icon('trash-2') }}</button></form>
+      <form method="POST" action="{{ url_for('encounter_delete', encounter_id=e.id) }}" data-enc-delete data-name="{{ e.name }}">{{ csrf_field() }}<input type="hidden" name="remove_characters" value="0"><button type="submit" class="btn btn-ghost btn-sm quest-delete" aria-label="Delete the encounter {{ e.name }}" title="Delete">{{ icon('trash-2') }}</button></form>
     </div>
   </li>
   {% endfor %}
@@ -62,6 +62,15 @@
   <p>Give one a name above, then pick its monsters from the manual.</p>
 </div>
 {% endif %}
+<dialog class="enc-dialog" data-enc-dialog aria-labelledby="enc-dialog-title">
+  <h2 id="enc-dialog-title" data-enc-dialog-title>Delete this encounter?</h2>
+  <p>Its monsters may also be in your character list (marked "Added from encounter"). Characters you edited, and any that are fighting right now, are never removed.</p>
+  <div class="enc-dialog-actions">
+    <button type="button" class="btn btn-ghost" data-enc-dialog-cancel>Cancel</button>
+    <button type="button" class="btn btn-ghost" data-enc-dialog-keep>Delete encounter only</button>
+    <button type="button" class="btn btn-primary" data-enc-dialog-remove>Delete and remove its creatures</button>
+  </div>
+</dialog>
 {% endblock %}
 
 {% block extra_scripts %}

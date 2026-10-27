@@ -120,7 +120,7 @@ def test_running_an_encounter_puts_every_monster_in_the_battle(make_user):
     assert r.status_code == 200 and r.get_json()['url'] == f'/campaigns/{cid}/battle'
     names = [x['name'] for x in q('SELECT c.name FROM battle_participants bp JOIN characters c ON c.id = bp.character_id '
                                   'WHERE c.campaign_id = ? ORDER BY bp.id', cid)]
-    assert names == ['Goblin Warrior 1', 'Goblin Warrior 2', 'Goblin Warrior 3', 'Bugbear Warrior']
+    assert names == ['Goblin Warrior'] * 3 + ['Bugbear Warrior']                      # three goblins, one character
     assert all(x['is_npc'] for x in q('SELECT is_npc FROM characters WHERE campaign_id = ?', cid))
     assert dm.json(f'/campaigns/{cid}/encounters/{eid}/run', {'hp': 'rolled'}).status_code == 200      # the list stays and can run again
     assert len(q('SELECT id FROM encounter_monsters WHERE encounter_id = ?', eid)) == 2
@@ -159,45 +159,72 @@ def _npc_names(cid):
     return [r['name'] for r in q('SELECT name FROM characters WHERE campaign_id = ? AND is_npc = 1 ORDER BY id', cid)]
 
 
-def test_running_again_reuses_the_characters_instead_of_making_twins(make_user):
+def _edit(cid, sql, *args):
+    import database
+    db = database.get_db()
+    db.execute(sql, args)
+    db.commit(); db.close()
+
+
+def _battle_names(dm, cid):
+    return [r['display_name'] for r in dm.get(f'/campaigns/{cid}/api/battle').get_json()]
+
+
+def test_four_goblins_are_one_character_and_it_is_reused(make_user):
     dm, _, cid = _setup(make_user)
     eid = _new(dm, cid)
-    _save(dm, cid, eid, [{'ref': 'monsters/goblin-warrior', 'count': 3}])
+    _save(dm, cid, eid, [{'ref': 'monsters/goblin-warrior', 'count': 4}])
     dm.json(f'/campaigns/{cid}/encounters/{eid}/run', {'hp': 'average'})
-    assert _npc_names(cid) == ['Goblin Warrior 1', 'Goblin Warrior 2', 'Goblin Warrior 3']
-    first = [r['id'] for r in q('SELECT id FROM characters WHERE campaign_id = ? AND is_npc = 1 ORDER BY id', cid)]
+    assert _npc_names(cid) == ['Goblin Warrior']                                              # one card in the character list
+    assert q('SELECT added_from FROM characters WHERE campaign_id = ?', cid)[0]['added_from'] == 'encounter'
+    assert _battle_names(dm, cid) == ['Goblin Warrior #1', 'Goblin Warrior #2', 'Goblin Warrior #3', 'Goblin Warrior #4']
     dm.json(f'/campaigns/{cid}/api/battle/clear')
-    dm.json(f'/campaigns/{cid}/encounters/{eid}/run', {'hp': 'average'})                     # the same stats again
-    assert _npc_names(cid) == ['Goblin Warrior 1', 'Goblin Warrior 2', 'Goblin Warrior 3']
-    assert sorted(r['character_id'] for r in q('SELECT bp.character_id FROM battle_participants bp JOIN characters c ON c.id = bp.character_id WHERE c.campaign_id = ?', cid)) == first
-    _save(dm, cid, eid, [{'ref': 'monsters/goblin-warrior', 'count': 5}])
-    dm.json(f'/campaigns/{cid}/api/battle/clear')
-    dm.json(f'/campaigns/{cid}/encounters/{eid}/run', {'hp': 'average'})                     # two more are needed, so two new ones
-    assert _npc_names(cid) == ['Goblin Warrior 1', 'Goblin Warrior 2', 'Goblin Warrior 3', 'Goblin Warrior 4', 'Goblin Warrior 5']
+    dm.json(f'/campaigns/{cid}/encounters/{eid}/run', {'hp': 'average'})                      # running it again uses the same one
+    dm.json(f'/campaigns/{cid}/encounters/{eid}/run', {'hp': 'average'})                      # even while the first group still fights
+    assert _npc_names(cid) == ['Goblin Warrior'] and len(_battle_names(dm, cid)) == 8
+    page = dm.get(f'/campaigns/{cid}/characters').data.decode()
+    assert 'Added from encounter' in page
 
 
-def test_the_same_monsters_already_in_the_battle_are_not_taken_twice(make_user):
-    dm, _, cid = _setup(make_user)
-    eid = _new(dm, cid)
-    _save(dm, cid, eid, [{'ref': 'monsters/goblin-warrior', 'count': 2}])
-    dm.json(f'/campaigns/{cid}/encounters/{eid}/run', {})
-    dm.json(f'/campaigns/{cid}/encounters/{eid}/run', {})                                    # first pair is still fighting: a second pair
-    assert _npc_names(cid) == ['Goblin Warrior 1', 'Goblin Warrior 2', 'Goblin Warrior 3', 'Goblin Warrior 4']
-    assert len(q('SELECT bp.id FROM battle_participants bp JOIN characters c ON c.id = bp.character_id WHERE c.campaign_id = ?', cid)) == 4
-
-
-def test_changed_stats_make_a_new_character(make_user):
+def test_an_edited_monster_character_is_left_alone(make_user):
     dm, _, cid = _setup(make_user)
     eid = _new(dm, cid)
     _save(dm, cid, eid, [{'ref': 'monsters/goblin-warrior', 'count': 1}])
     dm.json(f'/campaigns/{cid}/encounters/{eid}/run', {})
     dm.json(f'/campaigns/{cid}/api/battle/clear')
-    import database
-    db = database.get_db()
-    db.execute('UPDATE characters SET max_hp = max_hp + 5 WHERE campaign_id = ?', (cid,))      # someone edited the goblin's hit points
-    db.commit(); db.close()
+    first = q('SELECT id FROM characters WHERE campaign_id = ?', cid)[0]['id']
+    _edit(cid, 'UPDATE characters SET notes = ? WHERE id = ?', '["my own note about this goblin"]', first)         # the DM changed its notes
     dm.json(f'/campaigns/{cid}/encounters/{eid}/run', {})
-    assert _npc_names(cid) == ['Goblin Warrior', 'Goblin Warrior 1']
+    assert _npc_names(cid) == ['Goblin Warrior', 'Goblin Warrior']                            # the edited one is untouched, a fresh one is made
+    assert q('SELECT notes FROM characters WHERE id = ?', first)[0]['notes'] == '["my own note about this goblin"]'
+    second = max(r['id'] for r in q('SELECT id FROM characters WHERE campaign_id = ?', cid))
+    _edit(cid, 'UPDATE characters SET max_hp = max_hp + 5 WHERE id = ?', second)               # stats changed too
+    dm.json(f'/campaigns/{cid}/api/battle/clear')
+    dm.json(f'/campaigns/{cid}/encounters/{eid}/run', {})
+    assert len(_npc_names(cid)) == 3
+
+
+def test_deleting_an_encounter_can_remove_its_creatures_too(make_user):
+    dm, _, cid = _setup(make_user)
+    eid = _new(dm, cid)
+    _save(dm, cid, eid, [{'ref': 'monsters/goblin-warrior', 'count': 2}, {'ref': 'monsters/bugbear-warrior', 'count': 1}])
+    dm.json(f'/campaigns/{cid}/encounters/{eid}/run', {})
+    dm.json(f'/campaigns/{cid}/api/battle/clear')
+    assert dm.post(f'/campaigns/{cid}/encounters/{eid}/delete', data={'remove_characters': '0'}).status_code == 302
+    assert sorted(_npc_names(cid)) == ['Bugbear Warrior', 'Goblin Warrior']                   # "encounter only": the creatures stay
+    eid = _new(dm, cid, 'Again')
+    _save(dm, cid, eid, [{'ref': 'monsters/goblin-warrior', 'count': 2}, {'ref': 'monsters/bugbear-warrior', 'count': 1}], 'Again')
+    goblin = q("SELECT id FROM characters WHERE campaign_id = ? AND name = 'Goblin Warrior'", cid)[0]['id']
+    _edit(cid, 'UPDATE characters SET armor_class = armor_class + 1 WHERE id = ?', goblin)       # an edited one is never removed
+    r = dm.post(f'/campaigns/{cid}/encounters/{eid}/delete', data={'remove_characters': '1'})
+    assert r.status_code == 302 and 'removed=1' in r.headers['Location']
+    assert _npc_names(cid) == ['Goblin Warrior']
+    assert 'also removed from the character list' in dm.get(r.headers['Location']).data.decode()
+    eid = _new(dm, cid, 'Busy')
+    _save(dm, cid, eid, [{'ref': 'monsters/bugbear-warrior', 'count': 1}], 'Busy')
+    dm.json(f'/campaigns/{cid}/encounters/{eid}/run', {})                                    # fighting right now: kept
+    dm.post(f'/campaigns/{cid}/encounters/{eid}/delete', data={'remove_characters': '1'})
+    assert sorted(_npc_names(cid)) == ['Bugbear Warrior', 'Goblin Warrior']
 
 
 def test_rename_from_the_list_and_run_button_on_it(make_user):

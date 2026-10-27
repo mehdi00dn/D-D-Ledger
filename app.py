@@ -3689,58 +3689,65 @@ def _roll_monster_hp(expr, average):
     return max(1, sum(secrets.randbelow(sides) + 1 for _ in range(n)) + bonus)
 
 
-def _monster_number(name, base):
-    """0 for the plain name, n for "Name n", None when `name` is not a copy of `base`."""
-    if name == base:
-        return 0
-    m = re.fullmatch(re.escape(base) + r' (\d{1,4})', name)
-    return int(m.group(1)) if m else None
+def _monster_sig(db, char_id):
+    """A fingerprint of a monster character as it stands now: stats, notes, pictures, group, attacks.  Stored when the
+    character is made from a stat block; if it still matches later, nobody has edited the character."""
+    r = db.execute('SELECT name, level, max_hp, str_score, dex_score, con_score, int_score, wis_score, cha_score, armor_class, speed, '
+                   'notes, skill_prof, save_prof, group_id, is_ally, is_npc, avatar_path, class_key, player_id '
+                   'FROM characters WHERE id = ?', (char_id,)).fetchone()
+    if r is None:
+        return None
+    attacks = [[a['name'], a['attack_bonus'], a['damage'], a['damage_type']] for a in db.execute(
+        'SELECT name, attack_bonus, damage, damage_type FROM character_attacks WHERE character_id = ? ORDER BY position, id', (char_id,)).fetchall()]
+    sheets = db.execute('SELECT COUNT(*) AS n FROM character_sheets WHERE character_id = ?', (char_id,)).fetchone()['n']
+    groups = db.execute('SELECT COUNT(*) AS n FROM character_groups WHERE character_id = ?', (char_id,)).fetchone()['n']
+    blob = json.dumps([list(dict(r).values()), attacks, sheets, groups], sort_keys=True, default=str)
+    return hashlib.sha1(blob.encode()).hexdigest()
 
 
-def _add_monsters_to_battle(db, entry, count, rolled):
-    """Put `count` copies of a 2024 stat block into the battle as NPCs (the caller commits).  A character from an earlier
-    run is reused when it has exactly these stats and is not in the battle now, so running an encounter again does not
-    fill the character list with twins; a new character is made only when no such one is free (more copies than before,
-    or different stats such as another rolled hit point total)."""
-    c = entry['prefill']
+def _monster_untouched(db, row):
+    """True for a character made from a stat block that nobody has edited since."""
+    return bool(row['added_from'] and row['added_sig'] and _monster_sig(db, row['id']) == row['added_sig'])
+
+
+def _monster_character(db, c, hp, source, notes, skill_prof, save_prof):
+    """The one character that stands for this monster at this hit point total: an untouched one made earlier when there is
+    one, else a new one.  Returns its id."""
     base = c['name'][:120]
+    name = base if hp == c['max_hp'] else f'{base} ({hp} HP)'[:120]
+    for r in db.execute(
+            'SELECT id, added_from, added_sig FROM characters WHERE campaign_id = ? AND is_npc = 1 AND is_temp_familiar = 0 AND name = ? '
+            'AND added_from IS NOT NULL AND level = ? AND max_hp = ? AND str_score = ? AND dex_score = ? AND con_score = ? AND int_score = ? '
+            'AND wis_score = ? AND cha_score = ? AND armor_class = ? AND speed = ? ORDER BY id',
+            (g.campaign_id, name, c['level'], hp, c['str_score'], c['dex_score'], c['con_score'], c['int_score'], c['wis_score'],
+             c['cha_score'], c['armor_class'], c['speed'])).fetchall():
+        if _monster_untouched(db, r):
+            return r['id']
+    cur = db.execute('''
+        INSERT INTO characters
+        (name, is_npc, level, max_hp, str_score, dex_score, con_score, int_score, wis_score, cha_score,
+         armor_class, notes, campaign_id, created_by, speed, skill_prof, save_prof, added_from)
+        VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (name, c['level'], hp, c['str_score'], c['dex_score'], c['con_score'], c['int_score'], c['wis_score'], c['cha_score'],
+          c['armor_class'], notes, g.campaign_id, session['user_id'], c['speed'], skill_prof, save_prof, source))
+    _save_attacks(db, cur.lastrowid, c.get('attacks') or [])
+    db.execute('UPDATE characters SET added_sig = ? WHERE id = ?', (_monster_sig(db, cur.lastrowid), cur.lastrowid))
+    return cur.lastrowid
+
+
+def _add_monsters_to_battle(db, entry, count, rolled, source='encounter'):
+    """Put `count` copies of a 2024 stat block into the battle (the caller commits).  All copies share ONE character, so the
+    character list holds a single "Goblin Warrior" however many fight (the battle numbers them #1, #2...).  An earlier
+    character made from the same stat block is used again as long as nobody has edited it; an edited one is left alone and a
+    fresh one is made.  Rolled hit points that differ from the average get a character per total, named with it."""
+    c = entry['prefill']
     notes = sanitize_notes_payload(json.dumps([{'t': n, 'h': 1} for n in entry.get('notes') or []]))
     skill_prof = json.dumps(dnd5e.clean_skill_prof(c['skill_prof']))
     save_prof = json.dumps(dnd5e.clean_save_prof(c['save_prof']))
     max_order = db.execute('SELECT COALESCE(MAX(sort_order), -1) AS m FROM battle_participants').fetchone()['m']
-    same_name = [(r['id'], r['name']) for r in db.execute(
-        'SELECT id, name FROM characters WHERE campaign_id = ? AND is_npc = 1 AND is_temp_familiar = 0 AND (name = ? OR name LIKE ?)',
-        (g.campaign_id, base, base.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_') + ' %')).fetchall()]
-    numbers = [n for _, name in same_name if (n := _monster_number(name, base)) is not None]
-    top = max(numbers, default=0)                              # copies are numbered on from the highest number in use
-    need_number = count > 1 or bool(numbers)
-    taken = set()
-    for i in range(1, count + 1):
+    for _ in range(count):
         hp = _roll_monster_hp(c.get('hp_roll'), c['max_hp']) if rolled else c['max_hp']
-        free = db.execute(
-            'SELECT id, name FROM characters WHERE campaign_id = ? AND is_npc = 1 AND is_temp_familiar = 0 AND level = ? AND max_hp = ? '
-            'AND str_score = ? AND dex_score = ? AND con_score = ? AND int_score = ? AND wis_score = ? AND cha_score = ? '
-            'AND armor_class = ? AND speed = ? AND (name = ? OR name LIKE ?) '
-            'AND id NOT IN (SELECT character_id FROM battle_participants) ORDER BY id',
-            (g.campaign_id, c['level'], hp, c['str_score'], c['dex_score'], c['con_score'], c['int_score'], c['wis_score'],
-             c['cha_score'], c['armor_class'], c['speed'], base,
-             base.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_') + ' %')).fetchall()
-        reuse = next((r['id'] for r in free if r['id'] not in taken and _monster_number(r['name'], base) is not None), None)
-        if reuse is not None:
-            char_id = reuse
-        else:
-            top += 1
-            cur = db.execute('''
-                INSERT INTO characters
-                (name, is_npc, level, max_hp, str_score, dex_score, con_score, int_score, wis_score, cha_score,
-                 armor_class, notes, campaign_id, created_by, speed, skill_prof, save_prof)
-                VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', ((f'{base} {top}' if need_number else base)[:120], c['level'], hp, c['str_score'], c['dex_score'],
-                  c['con_score'], c['int_score'], c['wis_score'], c['cha_score'], c['armor_class'], notes,
-                  g.campaign_id, session['user_id'], c['speed'], skill_prof, save_prof))
-            char_id = cur.lastrowid
-            _save_attacks(db, char_id, c.get('attacks') or [])
-        taken.add(char_id)
+        char_id = _monster_character(db, c, hp, source, notes, skill_prof, save_prof)
         max_order += 1
         db.execute('INSERT INTO battle_participants (character_id, current_hp, initiative, is_dead, sort_order) VALUES (?, ?, 0, 0, ?)',
                    (char_id, hp, max_order))
@@ -3769,7 +3776,7 @@ def api_battle_add_monster():
     except srd.SrdError as e:
         return api_error(str(e), _srd_status(e))
     db = get_db()
-    _add_monsters_to_battle(db, entry, count, rolled)
+    _add_monsters_to_battle(db, entry, count, rolled, 'monster manual')
     db.commit()
     rows = _battle_rows(db)
     db.close()
@@ -4639,10 +4646,15 @@ def treasury_add():
     itself and cannot take a purse below zero.  A character's purse is for the DM and whoever made or plays that character."""
     kind = request.form.get('kind')
     coins = _coins_from_form()
-    if kind not in ('income', 'expense') or coins is None or not any(coins.values()):
-        abort(400)
-    note = ' '.join((request.form.get('note') or '').split())[:TREASURY_NOTE_MAX] or ('Income' if kind == 'income' else 'Expense')
     db = get_db()
+    if kind not in ('income', 'expense'):
+        db.close()
+        abort(400)
+    if coins is None:
+        return _treasury_page(db, error='Coin amounts must be whole numbers from 0 to %d.' % TREASURY_COIN_MAX, status=400)
+    if not any(coins.values()):
+        return _treasury_page(db, error='Type how many coins first.', status=400)
+    note = ' '.join((request.form.get('note') or '').split())[:TREASURY_NOTE_MAX] or ('Income' if kind == 'income' else 'Expense')
     ok, holder = _holder_from(db, request.form.get('character_id'))
     if not ok:
         db.close()
@@ -4670,10 +4682,10 @@ def treasury_split():
     One entry per purse, tied together so they are removed together."""
     coins = _coins_from_form()
     wanted = request.form.getlist('to')
-    if coins is None or not wanted:
-        abort(400)
-    whole = bool(request.form.get('whole')) or not any(coins.values())       # no amount typed: the whole purse
     db = get_db()
+    if coins is None:
+        return _treasury_page(db, error='Coin amounts must be whole numbers from 0 to %d.' % TREASURY_COIN_MAX, status=400)
+    whole = bool(request.form.get('whole')) or not any(coins.values())       # no amount typed: the whole purse
     ok, source = _holder_from(db, request.form.get('source'))
     if not ok:
         db.close()
@@ -4689,11 +4701,10 @@ def treasury_split():
         else:
             db.close()
             abort(400)
-        if h == source:
-            db.close()
-            abort(400)                                                  # not to the purse it comes out of
-        if h not in recipients:
+        if h != source and h not in recipients:                         # never back into the purse it comes out of
             recipients.append(h)
+    if not recipients:
+        return _treasury_page(db, error='Tick who should get the coins (not the purse they come from).', status=400)
     purse = _purse(db, source)
     amount = coins_value(purse) if whole else coins_value(coins)
     share = amount // len(recipients)
@@ -5006,7 +5017,8 @@ def encounters_list():
         items.append({'id': r['id'], 'name': r['name'], 'updated_at': r['updated_at'], 'creatures': sum(int(l['count']) for l in lines),
                       'lines': lines, **_encounter_summary(lines, party)})
     db.close()
-    return render_template('encounters.html', items=items, party=party, tier_names=encounters.TIER_NAMES)
+    removed = request.args.get('removed', type=int) or 0
+    return render_template('encounters.html', items=items, party=party, tier_names=encounters.TIER_NAMES, removed=removed)
 
 
 @app.route('/campaigns/<int:campaign_id>/encounters/new', methods=['POST'])
@@ -5099,11 +5111,26 @@ def encounter_rename(encounter_id):
 @campaign_access_required
 @dm_required
 def encounter_delete(encounter_id):
+    """Delete the list.  With remove_characters=1 the monsters it names also leave the Characters list - but only the ones
+    made from a stat block that nobody has edited since, and not while they are in the battle."""
     db = get_db()
     _encounter_or_404(db, encounter_id)
+    removed = 0
+    if request.form.get('remove_characters') == '1':
+        for line in _encounter_lines(db, encounter_id):
+            base = line['name']
+            like = base.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_') + ' (% HP)'
+            for ch in db.execute('SELECT id, name, added_from, added_sig, avatar_path FROM characters WHERE campaign_id = ? AND is_npc = 1 '
+                                 'AND is_temp_familiar = 0 AND added_from IS NOT NULL AND (name = ? OR name LIKE ?)',
+                                 (g.campaign_id, base, like)).fetchall():
+                busy = db.execute('SELECT 1 FROM battle_participants WHERE character_id = ?', (ch['id'],)).fetchone()
+                if busy or not _monster_untouched(db, ch):
+                    continue
+                db.execute('DELETE FROM characters WHERE id = ? AND campaign_id = ?', (ch['id'], g.campaign_id))
+                removed += 1
     db.execute('DELETE FROM encounters WHERE id = ? AND campaign_id = ?', (encounter_id, g.campaign_id))
     db.commit(); db.close()
-    return redirect(url_for('encounters_list'))
+    return redirect(url_for('encounters_list', removed=removed) if removed else url_for('encounters_list'))
 
 
 @app.route('/campaigns/<int:campaign_id>/encounters/<int:encounter_id>/run', methods=['POST'])

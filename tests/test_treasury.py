@@ -95,6 +95,18 @@ def test_split_evenly_between_chosen_characters(make_user):
     assert dm.post(f'/campaigns/{cid}/treasury/split', data={'to': [a, b, c], 'cp': '2'}).status_code == 400  # too little for three
 
 
+def test_a_share_without_a_recipient_explains_itself(make_user):
+    dm, _, cid = _setup(make_user)
+    a = dm.new_character(cid, 'Aria')
+    _add(dm, cid, 'income', 'Loot', gp=10)
+    r = dm.post(f'/campaigns/{cid}/treasury/split', data={'gp': '2'})
+    assert r.status_code == 400 and 'Tick who should get the coins' in r.data.decode()
+    r = dm.post(f'/campaigns/{cid}/treasury/add', data={'kind': 'income', 'note': 'x'})
+    assert r.status_code == 400 and 'Type how many coins first' in r.data.decode()
+    page = dm.get(f'/campaigns/{cid}/treasury').data.decode()
+    assert f'name="to" value="{a}" checked' in page                                           # everyone is ticked to start with
+
+
 def test_character_purses_hand_over_and_who_may_use_them(make_user):
     dm, pl, cid = _setup(make_user)
     mine = pl.new_character(cid, 'Pia'); other = dm.new_character(cid, 'Dax')
