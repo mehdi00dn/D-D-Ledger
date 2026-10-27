@@ -36,7 +36,7 @@ POLICY = {
     'healthz': PUBLIC, 'robots_txt': PUBLIC, 'security_txt': PUBLIC, 'csp_report': PUBLIC, 'register': PUBLIC, 'forgot_password': PUBLIC, 'reset_password': PUBLIC, 'login': PUBLIC, 'static': PUBLIC, 'google_start': PUBLIC, 'google_callback': PUBLIC,
     'logout': LOGIN, 'index': LOGIN, 'campaigns_list': LOGIN, 'campaign_new': LOGIN,
     'join_via_link': LOGIN, 'join_via_link_accept': LOGIN,
-    'notifications_page': LOGIN, 'account': LOGIN, 'account_password': LOGIN, 'account_username': LOGIN, 'account_logout_all': LOGIN, 'account_delete': LOGIN, 'account_export': LOGIN, 'account_email': LOGIN, 'account_email_resend': LOGIN, 'account_email_remove': LOGIN, 'verify_email': LOGIN, 'profile_view': LOGIN, 'notification_read': LOGIN, 'notifications_read_all': LOGIN,
+    'notifications_page': LOGIN, 'account': LOGIN, 'account_password': LOGIN, 'account_username': LOGIN, 'account_logout_all': LOGIN, 'account_delete': LOGIN, 'account_export': LOGIN, 'account_email': LOGIN, 'account_email_resend': LOGIN, 'account_email_remove': LOGIN, 'verify_email': LOGIN, 'profile_view': LOGIN, 'library_list': LOGIN, 'library_new': LOGIN, 'library_detail': LOGIN, 'library_edit': LOGIN, 'library_delete': LOGIN, 'library_sheet_delete': LOGIN, 'library_add_to_campaign': LOGIN, 'library_save': LOGIN, 'library_showcase': LOGIN, 'notification_read': LOGIN, 'notifications_read_all': LOGIN,
     'invitation_accept': LOGIN, 'invitation_decline': LOGIN,
     'uploaded_file': LOGIN, 'upload_sign': LOGIN, 'local_direct_upload': LOGIN, 'local_download': LOGIN,
     # --- campaign management ---

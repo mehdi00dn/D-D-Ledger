@@ -31,6 +31,24 @@
 <div class="banner-notice banner-error">That file couldn't be read as a Campaign Ledger export. Make sure you're uploading a .zip created by the Export button.</div>
 {% endif %}
 
+{% if library_options %}
+<details class="guide-card lib-picker">
+  <summary>{{ icon('archive') }} Add a character from my library <span class="cf-count">{{ library_options|length }}</span></summary>
+  <ul class="lib-pick-list">
+    {% for o in library_options %}
+    <li>
+      <span class="lib-pick-name"><b>{{ o.name }}</b><small>{{ o.class_label or 'No class' }} &middot; Lvl {{ o.level }}</small></span>
+      <form method="POST" action="{{ url_for('library_add_to_campaign', char_id=o.id) }}">{{ csrf_field() }}
+        <input type="hidden" name="campaign_id" value="{{ g.campaign_id }}"><input type="hidden" name="next" value="campaign">
+        <button type="submit" class="btn btn-ghost btn-sm" title="Put a copy of {{ o.name }} into this campaign">{{ icon('plus') }} Add</button>
+      </form>
+    </li>
+    {% endfor %}
+  </ul>
+  <p class="guide-note">A copy is added as your player character. <a href="{{ url_for('library_list') }}">Open my library</a></p>
+</details>
+{% endif %}
+
 <div class="char-tools">
 <div class="search-bar" data-collapsible-search>
   <button type="button" class="search-bar-icon" data-search-open aria-label="Search characters">{{ icon('search') }}</button>
@@ -122,7 +140,7 @@
       <span class="badge-hp">{{ icon('heart') }}{{ c.max_hp }} HP</span>
       <span class="badge-ac">{{ icon('shield') }}{{ c.armor_class }} AC</span>
     </div>
-    {% if c.added_from %}<p class="added-from">{{ icon('skull') }} Added from {{ c.added_from }}</p>{% endif %}
+    {% if c.added_from %}<p class="added-from">{{ icon('archive' if c.added_from == 'a personal library' else 'skull') }} Added from {{ c.added_from }}</p>{% endif %}
     {% set st = live.get(c.id) %}
     {% if st %}
     <div class="dossier-live" aria-label="In the battle">

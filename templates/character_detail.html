@@ -13,6 +13,16 @@
     {% if can_edit %}
     <a href="{{ url_for('character_edit', char_id=character.id) }}" class="btn btn-primary">{{ icon('pencil') }} Edit</a>
     {% endif %}
+    {% if can_archive %}
+    {% if library_link %}
+    <a href="{{ url_for('library_detail', char_id=library_link) }}" class="btn btn-ghost" title="This character is kept in your library">{{ icon('archive') }} In my library</a>
+    {% else %}
+    <form method="POST" action="{{ url_for('library_save') }}" style="display:contents;">{{ csrf_field() }}
+      <input type="hidden" name="campaign_id" value="{{ g.campaign_id }}"><input type="hidden" name="character_id" value="{{ character.id }}">
+      <button type="submit" class="btn btn-ghost" title="Keep a copy of this character in your own library, outside any campaign">{{ icon('archive') }} Save to my library</button>
+    </form>
+    {% endif %}
+    {% endif %}
     {% if not stats_hidden %}<button type="button" class="btn btn-ghost" data-print title="Print this sheet, or save it as a PDF from the print window">{{ icon('download') }} Print sheet</button>{% endif %}
     <a href="{{ url_for('characters_list') }}" class="btn btn-ghost">{{ icon('arrow-left') }} Back to list</a>
   </div>

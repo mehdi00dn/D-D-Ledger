@@ -27,6 +27,7 @@ from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 import realtime
 import observability
 from concurrent.futures import ThreadPoolExecutor
+from types import SimpleNamespace
 from flask import Response
 import images
 import fog
@@ -892,6 +893,10 @@ def account_delete():
                    link=url_for('characters_list', campaign_id=c['id']))
         else:
             files += _delete_campaign_rows(db, c['id'])
+    for r in db.execute('SELECT avatar_path AS p FROM characters WHERE owner_id = ? AND campaign_id IS NULL AND avatar_path IS NOT NULL UNION ALL '
+                        'SELECT s.image_path FROM character_sheets s JOIN characters c ON c.id = s.character_id WHERE c.owner_id = ? AND c.campaign_id IS NULL',
+                        (user['id'], user['id'])).fetchall():
+        files.append(r['p'])                       # the library goes with the account (its rows are removed with the user below)
     if user['avatar_path']:
         files.append(user['avatar_path'])
     if user['avatar_path']:
@@ -1311,6 +1316,10 @@ def account_export():
             'WHERE cm.user_id = ? ORDER BY c.id', uid),
         'characters_you_made': rows(
             'SELECT c.name AS campaign, ch.* FROM characters ch JOIN campaigns c ON c.id = ch.campaign_id WHERE ch.created_by = ? ORDER BY ch.id', uid),
+        'library_characters': rows(
+            'SELECT ch.id, ch.name, ch.level, ch.class_key, ch.max_hp, ch.armor_class, ch.speed, ch.str_score, ch.dex_score, ch.con_score, '
+            'ch.int_score, ch.wis_score, ch.cha_score, ch.notes, ch.added_from, ch.created_at FROM characters ch '
+            'WHERE ch.owner_id = ? AND ch.campaign_id IS NULL ORDER BY ch.id', uid),
         'factions_you_made': rows(
             'SELECT c.name AS campaign, g.* FROM groups g JOIN campaigns c ON c.id = g.campaign_id WHERE g.created_by = ? ORDER BY g.id', uid),
         'maps_you_made': rows(
@@ -2673,8 +2682,12 @@ def characters_list():
     by_char = _factions_by_character(db, g.campaign_id)
     characters = [dict(c, factions=by_char.get(c['id'], [])) for c in characters]
     live = _battle_live_status(db)
+    library_options = [dict(r, class_label=_class_label(r['class_key'])) for r in db.execute(
+        'SELECT lib.id, lib.name, lib.level, lib.class_key FROM characters lib WHERE lib.owner_id = ? AND lib.campaign_id IS NULL '
+        'AND NOT EXISTS (SELECT 1 FROM characters c WHERE c.campaign_id = ? AND c.library_id = lib.id) ORDER BY lower(lib.name)',
+        (session['user_id'], g.campaign_id)).fetchall()]
     db.close()
-    return render_template('characters_list.html', characters=characters, groups=groups, live=live,
+    return render_template('characters_list.html', characters=characters, groups=groups, live=live, library_options=library_options,
                            deletable={c['id'] for c in characters if can_delete(c['created_by'])})
 
 
@@ -2723,7 +2736,14 @@ def character_detail(char_id):
                                   'ORDER BY id DESC LIMIT 4', (g.campaign_id, char_id)).fetchall()
     db.close()
     can_edit = bool(g.is_dm or owns_character(character))
-    return render_template('character_detail.html', character=character, sheets=sheets, factions=factions, level_history=level_history, attacks=attacks,
+    can_archive = bool(owns_character(character) and not character['is_npc'] and not character['is_temp_familiar'])
+    library_link = None
+    if can_archive and character['library_id']:                       # only a link to the viewer's own library counts
+        db = get_db()
+        if db.execute('SELECT 1 FROM characters WHERE id = ? AND owner_id = ?', (character['library_id'], session['user_id'])).fetchone():
+            library_link = character['library_id']
+        db.close()
+    return render_template('character_detail.html', can_archive=can_archive, library_link=library_link, character=character, sheets=sheets, factions=factions, level_history=level_history, attacks=attacks,
                             purse=purse, recent_coins=recent_coins,
                             notes_html=notes_to_html(character['notes'], show_hidden=can_see_hidden_notes(character)), can_edit=can_edit,
                             can_delete=can_delete(character['created_by']), stats_hidden=stats_hidden,
@@ -2921,8 +2941,9 @@ def _level_history(db, char_id):
 
 def _save_character(db, char_id):
     form = request.form
+    library = getattr(g, 'campaign_id', None) is None       # outside a campaign this is a character in the person's own library
     name = form.get('name', '').strip() or 'Unnamed'
-    is_npc = 1 if form.get('is_npc') == 'on' else 0
+    is_npc = 1 if form.get('is_npc') == 'on' and not library else 0
     is_ally = 1 if is_npc and form.get('is_ally') == 'on' else 0      # only an NPC can be an ally
     level = max(1, min(30, int(form.get('level') or 1)))
     max_hp = int(form.get('max_hp') or 10)
@@ -2934,7 +2955,7 @@ def _save_character(db, char_id):
     cha_score = int(form.get('cha_score') or 10)
     armor_class = int(form.get('armor_class') or 10)
     notes = sanitize_notes_payload(form.get('notes', ''))
-    faction_ids = _faction_ids_from_form(db, form)
+    faction_ids = [] if library else _faction_ids_from_form(db, form)
     group_id = faction_ids[0] if faction_ids else None
     class_key = _clean_class(form.get('class_key'))
     speed = dnd5e.clean_speed(form.get('speed'))
@@ -2949,14 +2970,15 @@ def _save_character(db, char_id):
             INSERT INTO characters
             (name, is_npc, is_ally, level, max_hp, str_score, dex_score, con_score, int_score,
              wis_score, cha_score, armor_class, avatar_path, notes, group_id, class_key, campaign_id, created_by,
-             speed, skill_prof, save_prof)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             speed, skill_prof, save_prof, owner_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (name, is_npc, is_ally, level, max_hp, str_score, dex_score, con_score, int_score,
-              wis_score, cha_score, armor_class, avatar_path, notes, group_id, class_key, g.campaign_id, session['user_id'],
-              speed, skill_prof, save_prof))
+              wis_score, cha_score, armor_class, avatar_path, notes, group_id, class_key, None if library else g.campaign_id, session['user_id'],
+              speed, skill_prof, save_prof, session['user_id'] if library else None))
         char_id = cur.lastrowid
-        log_activity(db, g.campaign_id, 'character_created', 'added the %s %s' % ('ally' if is_ally else 'NPC' if is_npc else 'character', name),
-                     url_for('character_detail', campaign_id=g.campaign_id, char_id=char_id))
+        if not library:
+            log_activity(db, g.campaign_id, 'character_created', 'added the %s %s' % ('ally' if is_ally else 'NPC' if is_npc else 'character', name),
+                         url_for('character_detail', campaign_id=g.campaign_id, char_id=char_id))
     else:
         if avatar_path:
             old = db.execute('SELECT avatar_path FROM characters WHERE id = ?', (char_id,)).fetchone()
@@ -2976,7 +2998,8 @@ def _save_character(db, char_id):
         ''', (name, is_npc, is_ally, level, max_hp, str_score, dex_score, con_score, int_score,
               wis_score, cha_score, armor_class, notes, class_key, speed, skill_prof, save_prof, char_id))
 
-    _set_character_factions(db, char_id, faction_ids)
+    if not library:
+        _set_character_factions(db, char_id, faction_ids)
     _save_level_stats(db, char_id, level, max_hp, armor_class, (str_score, dex_score, con_score, int_score, wis_score, cha_score),
                       speed, skill_prof, save_prof)
     if form.get('attacks_present') == '1':            # only a form that shows the Attacks card may replace them (DL-150)
@@ -3031,6 +3054,280 @@ def sheet_delete(char_id, sheet_id):
     db.commit()
     db.close()
     return redirect(url_for('character_edit', char_id=char_id))
+
+
+# ---------------- CHARACTER LIBRARY (DL-160) ----------------
+# A person's own characters, kept outside any campaign.  They can be added to any campaign the person belongs to (a copy
+# goes in, so what happens at one table never changes the sheet kept here) and featured on the profile.  Everything here
+# is private to the owner; other people only ever see what the profile showcase shows.
+
+LIBRARY_MAX = 60
+LIBRARY_NOTES = {
+    'added': ('success', 'Added to the campaign. It is a copy: changes made there stay there.'),
+    'saved': ('success', 'Saved to your library.'),
+    'deleted': ('success', 'Removed from your library. Copies already in campaigns are untouched.'),
+    'featured': ('success', 'Now featured on your profile.'),
+    'unfeatured': ('success', 'No longer featured on your profile.'),
+    'full': ('error', 'Your library is full (%d characters). Delete one you no longer use first.' % LIBRARY_MAX),
+    'featured_full': ('error', 'You can feature at most %d characters on your profile. Unfeature one first.' % SHOWCASE_MAX),
+    'already': ('error', 'That character is already in that campaign.'),
+    'not_member': ('error', 'Pick one of your own campaigns.'),
+}
+
+
+def _library_character(db, char_id):
+    """One of the signed-in person's library characters, or a 404 (someone else's library is never revealed)."""
+    row = db.execute('SELECT * FROM characters WHERE id = ? AND owner_id = ? AND campaign_id IS NULL',
+                     (char_id, session['user_id'])).fetchone()
+    if row is None:
+        db.close()
+        abort(404)
+    return row
+
+
+def _library_count(db):
+    return db.execute('SELECT COUNT(*) AS n FROM characters WHERE owner_id = ? AND campaign_id IS NULL', (session['user_id'],)).fetchone()['n']
+
+
+def _my_campaigns(db):
+    return db.execute('SELECT c.id, c.name FROM campaigns c JOIN campaign_members m ON m.campaign_id = c.id '
+                      'WHERE m.user_id = ? ORDER BY lower(c.name)', (session['user_id'],)).fetchall()
+
+
+def _copy_image(path, subfolder, made):
+    """A second stored copy of an image (the two characters must never share a file: deleting one would break the other).
+    The new key is appended to `made` so a failed copy can clean up after itself."""
+    data = get_storage().get(UPLOADS, path) if path else None
+    if data is None:
+        return None
+    ext = path.rsplit('.', 1)[-1].lower()
+    content_type = images.EXT_TO_CONTENT_TYPE.get(ext)
+    if not content_type:
+        return None
+    key = f'{subfolder}/{uuid.uuid4().hex}.{ext}'
+    _put_upload(key, SimpleNamespace(data=data, content_type=content_type), subfolder)
+    made.append(key)
+    return key
+
+
+def _clone_character(db, src, campaign_id, owner_id, library_id, added_from):
+    """Copy a character with its sheet images, level history and attacks.  Into a campaign (campaign_id) it becomes a player
+    character played by the signed-in person; into the library (owner_id) it becomes a library character.  The caller commits."""
+    made = []
+    try:
+        avatar = _copy_image(src['avatar_path'], 'avatars', made)
+        me = session['user_id']
+        cur = db.execute(
+            'INSERT INTO characters (name, is_npc, is_ally, level, max_hp, str_score, dex_score, con_score, int_score, wis_score, cha_score, '
+            'armor_class, avatar_path, notes, class_key, speed, skill_prof, save_prof, campaign_id, created_by, player_id, owner_id, library_id, added_from) '
+            'VALUES (?, 0, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            (src['name'], src['level'], src['max_hp'], src['str_score'], src['dex_score'], src['con_score'], src['int_score'],
+             src['wis_score'], src['cha_score'], src['armor_class'], avatar, src['notes'], src['class_key'], src['speed'],
+             src['skill_prof'], src['save_prof'], campaign_id, me, me if campaign_id else None, owner_id, library_id, added_from))
+        new_id = cur.lastrowid
+        for r in db.execute('SELECT level, ' + ', '.join(LEVEL_STAT_KEYS) + ', skill_prof, save_prof FROM character_levels WHERE character_id = ?',
+                            (src['id'],)).fetchall():
+            _save_level_stats(db, new_id, r['level'], r['max_hp'], r['armor_class'],
+                              tuple(r[k] for k in ('str_score', 'dex_score', 'con_score', 'int_score', 'wis_score', 'cha_score')),
+                              r['speed'], r['skill_prof'], r['save_prof'])
+        for a in db.execute('SELECT position, name, attack_bonus, damage, damage_type FROM character_attacks WHERE character_id = ? ORDER BY position, id',
+                            (src['id'],)).fetchall():
+            db.execute('INSERT INTO character_attacks (character_id, position, name, attack_bonus, damage, damage_type) VALUES (?, ?, ?, ?, ?, ?)',
+                       (new_id, a['position'], a['name'], a['attack_bonus'], a['damage'], a['damage_type']))
+        for sh in db.execute('SELECT image_path, sort_order FROM character_sheets WHERE character_id = ? ORDER BY sort_order, id', (src['id'],)).fetchall():
+            path = _copy_image(sh['image_path'], 'sheets', made)
+            if path:
+                db.execute('INSERT INTO character_sheets (character_id, image_path, sort_order) VALUES (?, ?, ?)', (new_id, path, sh['sort_order']))
+        return new_id
+    except Exception:
+        db.rollback()
+        delete_uploads(made)
+        raise
+
+
+def _library_back(note=None, char_id=None):
+    if char_id:
+        return redirect(url_for('library_detail', char_id=char_id, note=note) if note else url_for('library_detail', char_id=char_id))
+    return redirect(url_for('library_list', note=note) if note else url_for('library_list'))
+
+
+@app.route('/library')
+def library_list():
+    db = get_db()
+    uid = session['user_id']
+    chars = db.execute('SELECT * FROM characters WHERE owner_id = ? AND campaign_id IS NULL ORDER BY lower(name)', (uid,)).fetchall()
+    campaigns = _my_campaigns(db)
+    placed = {}
+    if chars:
+        marks = ','.join('?' * len(chars))
+        for r in db.execute('SELECT ch.library_id, ch.id, ch.campaign_id, ca.name FROM characters ch JOIN campaigns ca ON ca.id = ch.campaign_id '
+                            'WHERE ch.library_id IN (' + marks + ') ORDER BY lower(ca.name)', [c['id'] for c in chars]).fetchall():
+            placed.setdefault(r['library_id'], []).append(r)
+    featured = {r['character_id'] for r in db.execute('SELECT character_id FROM profile_showcase WHERE user_id = ?', (uid,)).fetchall()}
+    db.close()
+    items = []
+    for c in chars:
+        in_campaigns = placed.get(c['id'], [])
+        taken = {p['campaign_id'] for p in in_campaigns}
+        items.append(dict(c, class_label=_class_label(c['class_key']), in_campaigns=in_campaigns, featured=c['id'] in featured,
+                          open_campaigns=[ca for ca in campaigns if ca['id'] not in taken]))
+    return render_template('library.html', items=items, campaigns=campaigns, limit=LIBRARY_MAX, showcase_limit=SHOWCASE_MAX,
+                           featured_count=len(featured & {c['id'] for c in chars}), note=LIBRARY_NOTES.get(request.args.get('note', '')))
+
+
+@app.route('/library/new', methods=['GET', 'POST'])
+def library_new():
+    db = get_db()
+    full = _library_count(db) >= LIBRARY_MAX
+    if full:
+        db.close()
+        return _library_back('full')
+    if request.method == 'POST':
+        new_id = _save_character(db, None)
+        db.close()
+        return _library_back(char_id=new_id)
+    db.close()
+    return render_template('character_form.html', library=True, character=None, sheets=[], groups=[], from_battle=False,
+                           notes_entries=[{'t': '', 'h': False}])
+
+
+@app.route('/library/<int:char_id>')
+def library_detail(char_id):
+    db = get_db()
+    character = _library_character(db, char_id)
+    sheets = db.execute('SELECT * FROM character_sheets WHERE character_id = ? ORDER BY sort_order', (char_id,)).fetchall()
+    level_history = _level_history(db, char_id)
+    attacks = _attacks_for(db, char_id)
+    placed = db.execute('SELECT ch.id, ch.campaign_id, ca.name FROM characters ch JOIN campaigns ca ON ca.id = ch.campaign_id '
+                        'WHERE ch.library_id = ? ORDER BY lower(ca.name)', (char_id,)).fetchall()
+    taken = {p['campaign_id'] for p in placed}
+    open_campaigns = [c for c in _my_campaigns(db) if c['id'] not in taken]
+    featured = db.execute('SELECT 1 FROM profile_showcase WHERE user_id = ? AND character_id = ?', (session['user_id'], char_id)).fetchone() is not None
+    db.close()
+    return render_template('library_detail.html', character=character, sheets=sheets, level_history=level_history, attacks=attacks,
+                           class_label=_class_label(character['class_key']), sheet=dnd5e.derive(character),
+                           notes_html=notes_to_html(character['notes'], show_hidden=True), placed=placed, open_campaigns=open_campaigns,
+                           featured=featured, note=LIBRARY_NOTES.get(request.args.get('note', '')))
+
+
+@app.route('/library/<int:char_id>/edit', methods=['GET', 'POST'])
+def library_edit(char_id):
+    db = get_db()
+    character = _library_character(db, char_id)
+    if request.method == 'POST':
+        _save_character(db, char_id)
+        db.close()
+        return _library_back(char_id=char_id)
+    sheets = db.execute('SELECT * FROM character_sheets WHERE character_id = ? ORDER BY sort_order', (char_id,)).fetchall()
+    level_history = _level_history(db, char_id)
+    attacks = _attacks_for(db, char_id)
+    db.close()
+    return render_template('character_form.html', library=True, character=character, sheets=sheets, groups=[], from_battle=False,
+                           notes_entries=notes_parse_entries(character['notes']) or [{'t': '', 'h': False}], can_delete_sheets=True,
+                           character_faction_ids=[], character_save_prof=dnd5e.clean_save_prof(character['save_prof']),
+                           character_skill_prof=dnd5e.clean_skill_prof(character['skill_prof']),
+                           level_history={str(r['level']): r for r in level_history}, attacks=attacks)
+
+
+@app.route('/library/<int:char_id>/delete', methods=['POST'])
+def library_delete(char_id):
+    db = get_db()
+    character = _library_character(db, char_id)
+    paths = [character['avatar_path']] + [s['image_path'] for s in
+                                           db.execute('SELECT image_path FROM character_sheets WHERE character_id = ?', (char_id,)).fetchall()]
+    db.execute('DELETE FROM characters WHERE id = ? AND owner_id = ?', (char_id, session['user_id']))
+    db.commit()
+    db.close()
+    delete_uploads(paths)
+    return _library_back('deleted')
+
+
+@app.route('/library/<int:char_id>/sheets/<int:sheet_id>/delete', methods=['POST'])
+def library_sheet_delete(char_id, sheet_id):
+    db = get_db()
+    _library_character(db, char_id)
+    sheet = db.execute('SELECT image_path FROM character_sheets WHERE id = ? AND character_id = ?', (sheet_id, char_id)).fetchone()
+    if sheet:
+        delete_upload(sheet['image_path'])
+        db.execute('DELETE FROM character_sheets WHERE id = ?', (sheet_id,))
+        db.commit()
+    db.close()
+    return redirect(url_for('library_edit', char_id=char_id))
+
+
+@app.route('/library/<int:char_id>/add-to-campaign', methods=['POST'])
+def library_add_to_campaign(char_id):
+    """Put a copy of a library character into one of the person's campaigns, as a player character played by them."""
+    db = get_db()
+    source = _library_character(db, char_id)
+    raw = request.form.get('campaign_id', '')
+    back_id = char_id if request.form.get('back') == 'detail' else None
+    member = db.execute('SELECT c.id, c.name FROM campaigns c JOIN campaign_members m ON m.campaign_id = c.id WHERE c.id = ? AND m.user_id = ?',
+                        (int(raw) if raw.isdigit() else 0, session['user_id'])).fetchone()
+    if member is None:
+        db.close()
+        return _library_back('not_member', back_id)
+    if db.execute('SELECT 1 FROM characters WHERE campaign_id = ? AND library_id = ?', (member['id'], char_id)).fetchone():
+        db.close()
+        return _library_back('already', back_id)
+    g.campaign_id = member['id']                          # the copied pictures count towards this campaign's storage too
+    new_id = _clone_character(db, source, member['id'], None, char_id, 'a personal library')
+    log_activity(db, member['id'], 'character_created', 'added the character %s' % source['name'],
+                 url_for('character_detail', campaign_id=member['id'], char_id=new_id))
+    db.commit()
+    db.close()
+    if request.form.get('next') == 'campaign':
+        return redirect(url_for('character_detail', campaign_id=member['id'], char_id=new_id))
+    return _library_back('added', back_id)
+
+
+@app.route('/library/save', methods=['POST'])
+def library_save():
+    """Keep one of the person's own campaign characters in their library (a copy; the campaign keeps its character)."""
+    db = get_db()
+    cid, chid = request.form.get('campaign_id', ''), request.form.get('character_id', '')
+    me = session['user_id']
+    row = db.execute('SELECT ch.*, ca.name AS campaign_name FROM characters ch JOIN campaigns ca ON ca.id = ch.campaign_id '
+                     'JOIN campaign_members m ON m.campaign_id = ch.campaign_id AND m.user_id = ? '
+                     'WHERE ch.id = ? AND ch.campaign_id = ? AND ch.is_npc = 0 AND ch.is_temp_familiar = 0 AND (ch.created_by = ? OR ch.player_id = ?)',
+                     (me, int(chid) if chid.isdigit() else 0, int(cid) if cid.isdigit() else 0, me, me)).fetchone()
+    if row is None:
+        db.close()
+        abort(404)
+    if row['library_id'] and db.execute('SELECT 1 FROM characters WHERE id = ? AND owner_id = ?', (row['library_id'], me)).fetchone():
+        db.close()
+        return _library_back(char_id=row['library_id'])            # already kept: just show it
+    if _library_count(db) >= LIBRARY_MAX:
+        db.close()
+        return _library_back('full')
+    g.campaign_id = None
+    new_id = _clone_character(db, row, None, me, None, row['campaign_name'])
+    db.execute('UPDATE characters SET library_id = ? WHERE id = ?', (new_id, row['id']))
+    db.commit()
+    db.close()
+    return _library_back('saved', new_id)
+
+
+@app.route('/library/<int:char_id>/showcase', methods=['POST'])
+def library_showcase(char_id):
+    """Feature a library character on the profile, or take it off again."""
+    db = get_db()
+    _library_character(db, char_id)
+    uid = session['user_id']
+    back_id = char_id if request.form.get('back') == 'detail' else None
+    if db.execute('SELECT 1 FROM profile_showcase WHERE user_id = ? AND character_id = ?', (uid, char_id)).fetchone():
+        db.execute('DELETE FROM profile_showcase WHERE user_id = ? AND character_id = ?', (uid, char_id))
+        note = 'unfeatured'
+    else:
+        count = db.execute('SELECT COUNT(*) AS n, COALESCE(MAX(position), -1) AS top FROM profile_showcase WHERE user_id = ?', (uid,)).fetchone()
+        if count['n'] >= SHOWCASE_MAX:
+            db.close()
+            return _library_back('featured_full', back_id)
+        db.execute('INSERT INTO profile_showcase (user_id, character_id, position) VALUES (?, ?, ?)', (uid, char_id, count['top'] + 1))
+        note = 'featured'
+    db.commit()
+    db.close()
+    return _library_back(note, back_id)
 
 
 # ---------------- FACTIONS ----------------

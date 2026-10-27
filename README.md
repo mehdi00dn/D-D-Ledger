@@ -258,6 +258,15 @@ One character per monster: running an encounter (or adding from the monster manu
 
 Deleting an encounter asks whether its creatures should leave the character list too: "Delete encounter only", or "Delete and remove its creatures" (only unedited ones that are not in the battle). The new-encounter and name fields have a clearer design, and both pages open with a short guide.
 
+### Character library (DL-160; migration `0045_character_library.sql`)
+
+A person's own characters, kept outside any campaign (`/library`, "Library" in the sidebar). A library character is an ordinary `characters` row with `campaign_id` NULL and `owner_id` set (a check constraint says a character has a campaign or an owner), so every campaign query ignores it. Only the owner can open, edit or delete it. The create/edit form is the campaign form with the NPC, faction and monster-manual parts left out.
+
+- **Add to a campaign** (`/library/<id>/add-to-campaign`, from the library card, the library page or the campaign's Characters page): puts a copy in, played by the person, with its own copies of the portrait and sheet images, level history and attacks. `characters.library_id` on the copy points back at the library character, so one campaign never gets the same library character twice; changes at one table never touch the library sheet or other tables. The copy shows "Added from a personal library".
+- **Save to my library** (`/library/save`, button on the details page of a player character you made or play): the reverse copy, linked both ways round; saving again opens the one already kept.
+- **Profile**: a star on the card features a library character in the profile showcase (same table and limit as before, `profile_showcase`); the account page picker lists library characters too.
+- Limit of 60 characters per library (`LIBRARY_MAX`). Deleting a library character removes its image files but keeps the campaign copies; deleting the account removes the library and its files; the account export lists it.
+
 ### Map ruler follow-up (DL-153)
 The ruler is drawn on its own canvas above tokens, shapes and fog, in screen pixels, so it stays small and sharp at any zoom or map size. It has a thin brass line with a dark edge, a tick at every square, hollow end rings and a compact reading pill.
 

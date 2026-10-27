@@ -5241,3 +5241,32 @@ input[type="range"]:disabled { opacity: 0.5; cursor: not-allowed; }
 /* Turn bar: the buttons keep their place when the round number or the name of whoever is acting changes (the name comes last) */
 .round-badge { min-inline-size: 5.5rem; text-align: center; }
 .turn-btn-main { min-inline-size: 7.5rem; justify-content: center; }
+
+/* Character library (DL-160) */
+.lib-card { display: flex; flex-direction: column; }
+.lib-card .dossier-hp-ac { margin-block-end: 0; }
+.lib-card .dossier-actions { margin-block-start: auto; }
+.lib-card .dossier-actions form { flex: none; }
+.lib-card .dossier-actions .lib-delete-form { margin-inline-start: auto; }
+.lib-placed { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; margin-block: 12px 10px; font-size: 12.5px; }
+.lib-placed-label { font: 600 10px var(--font-mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--parchment-dim); }
+.lib-none { color: var(--parchment-dim); }
+.lib-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.lib-chips a.cd-chip { text-decoration: none; }
+.lib-add { display: flex; gap: 8px; margin-block-end: 12px; }
+.lib-add select { flex: 1; min-inline-size: 0; }
+.lib-hint { margin: 0 0 12px; }
+.lib-star.is-on { color: var(--brass-bright-ink); }
+.lib-star.is-on .icon { fill: currentColor; }
+.lib-actions-card .lib-add { margin-block: 12px; }
+.lib-row-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-block-end: 10px; }
+.lib-row-actions form { display: flex; }
+.cd-chip .icon { inline-size: 12px; block-size: 12px; margin-inline-end: 4px; vertical-align: -1px; }
+.lib-pick-list { list-style: none; margin: 0; padding: 4px 14px 8px; display: grid; gap: 8px; }
+.lib-pick-list li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-block-end: 8px; border-block-end: 1px solid var(--hairline); }
+.lib-pick-list li:last-child { border-block-end: 0; }
+.lib-pick-name { display: grid; min-inline-size: 0; }
+.lib-pick-name small { color: var(--parchment-dim); }
+.lib-picker .guide-note a { color: var(--brass-ink); }
+.lib-select { flex: 1; min-inline-size: 0; margin: 0; }
+.lib-select select { inline-size: 100%; }

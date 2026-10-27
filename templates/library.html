@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon, class_icon %}
+{% set active_page = 'library' %}
+{% block title %}Character library — Campaign Ledger{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Character library</h1>
+    <p class="page-sub">{{ items|length }} of {{ limit }} characters. Yours alone, kept outside any campaign.</p>
+  </div>
+  <div class="page-actions">
+    <a href="{{ url_for('library_new') }}" class="btn btn-primary">{{ icon('plus') }} New character</a>
+  </div>
+</div>
+
+{% if note %}<div class="banner-notice banner-{{ note[0] }}" role="{{ 'alert' if note[0] == 'error' else 'status' }}">{{ note[1] }}</div>{% endif %}
+
+<details class="guide-card"{{ ' open' if not items else '' }}>
+  <summary>{{ icon('info') }} How the library works</summary>
+  <ol class="guide-steps">
+    <li>{{ icon('archive') }}<div><b>Keep your characters here.</b> Build a character once, with its portrait, sheets, attacks and notes, or save one you already play from its own page. Nobody else can see your library.</div></li>
+    <li>{{ icon('swap') }}<div><b>Add a copy to any campaign.</b> Pick one of your campaigns on a card. The campaign gets its own copy, so what happens at that table never changes the sheet kept here.</div></li>
+    <li>{{ icon('star') }}<div><b>Show it on your profile.</b> Feature up to {{ showcase_limit }} characters. People who can open your profile see the name, class, level and portrait, never the campaign.</div></li>
+  </ol>
+</details>
+
+{% if items %}
+<div class="card-grid lib-grid">
+  {% for c in items %}
+  <div class="dossier-card lib-card" data-id="{{ c.id }}">
+    <span class="dossier-tag">{{ 'On profile' if c.featured else 'Library' }}</span>
+    <div class="dossier-head">
+      <div class="avatar-frame">
+        {% if c.avatar_path %}
+          <img src="{{ url_for('uploaded_file', filename=c.avatar_path) }}" alt="{{ c.name }} avatar">
+        {% elif c.class_key and c.class_key in class_labels %}
+          <span class="avatar-class" title="{{ class_labels[c.class_key] }}" role="img" aria-label="{{ class_labels[c.class_key] }}"><svg aria-hidden="true"><use href="/static/icons/classes.svg#{{ c.class_key }}"></use></svg></span>
+        {% else %}
+          <span class="avatar-initial" aria-hidden="true">{{ (c.name or '?')[:1]|upper }}</span>
+        {% endif %}
+      </div>
+      <div class="dossier-name-block">
+        <div class="dossier-name">{{ c.name }}</div>
+        <div class="dossier-meta">{{ c.class_label or 'No class' }} &middot; Lvl {{ c.level }}</div>
+      </div>
+    </div>
+
+    <div class="dossier-stats">
+      <div class="stat-pill"><span class="val">{{ c.str_score }}</span><span class="lbl">STR</span></div>
+      <div class="stat-pill"><span class="val">{{ c.dex_score }}</span><span class="lbl">DEX</span></div>
+      <div class="stat-pill"><span class="val">{{ c.con_score }}</span><span class="lbl">CON</span></div>
+      <div class="stat-pill"><span class="val">{{ c.int_score }}</span><span class="lbl">INT</span></div>
+      <div class="stat-pill"><span class="val">{{ c.wis_score }}</span><span class="lbl">WIS</span></div>
+      <div class="stat-pill"><span class="val">{{ c.cha_score }}</span><span class="lbl">CHA</span></div>
+    </div>
+    <div class="dossier-hp-ac">
+      <span class="badge-hp">{{ icon('heart') }}{{ c.max_hp }} HP</span>
+      <span class="badge-ac">{{ icon('shield') }}{{ c.armor_class }} AC</span>
+    </div>
+    {% if c.added_from %}<p class="added-from">{{ icon('archive') }} Saved from {{ c.added_from }}</p>{% endif %}
+
+    <div class="lib-placed">
+      <span class="lib-placed-label">In campaigns</span>
+      {% if c.in_campaigns %}
+      <ul class="lib-chips">
+        {% for p in c.in_campaigns %}<li><a class="cd-chip" href="{{ url_for('character_detail', campaign_id=p.campaign_id, char_id=p.id) }}">{{ p.name }}</a></li>{% endfor %}
+      </ul>
+      {% else %}
+      <span class="lib-none">None yet</span>
+      {% endif %}
+    </div>
+
+    {% if c.open_campaigns %}
+    <form method="POST" action="{{ url_for('library_add_to_campaign', char_id=c.id) }}" class="lib-add">{{ csrf_field() }}
+      <label class="sr-only" for="lib-camp-{{ c.id }}">Campaign to add {{ c.name }} to</label>
+      <div class="field lib-select"><select name="campaign_id" id="lib-camp-{{ c.id }}">
+        {% for ca in c.open_campaigns %}<option value="{{ ca.id }}">{{ ca.name }}</option>{% endfor %}
+      </select></div>
+      <button type="submit" class="btn btn-ghost btn-sm" title="Put a copy of {{ c.name }} into this campaign">{{ icon('plus') }} Add</button>
+    </form>
+    {% elif not campaigns %}
+    <p class="hint-text lib-hint">Join or create a campaign to add this character to it.</p>
+    {% else %}
+    <p class="hint-text lib-hint">Already in all of your campaigns.</p>
+    {% endif %}
+
+    <div class="dossier-actions">
+      <a href="{{ url_for('library_detail', char_id=c.id) }}" class="btn btn-ghost btn-sm">{{ icon('eye') }} Details</a>
+      <a href="{{ url_for('library_edit', char_id=c.id) }}" class="btn-icon" title="Edit {{ c.name }}" aria-label="Edit {{ c.name }}">{{ icon('pencil') }}</a>
+      <form method="POST" action="{{ url_for('library_showcase', char_id=c.id) }}" class="lib-star-form">{{ csrf_field() }}
+        <button type="submit" class="btn-icon lib-star{{ ' is-on' if c.featured }}" aria-pressed="{{ 'true' if c.featured else 'false' }}"
+                title="{{ 'Remove from your profile' if c.featured else 'Show on your profile' }}" aria-label="{{ 'Remove ' ~ c.name ~ ' from your profile' if c.featured else 'Show ' ~ c.name ~ ' on your profile' }}">{{ icon('star') }}</button>
+      </form>
+      <form method="POST" action="{{ url_for('library_delete', char_id=c.id) }}" class="lib-delete-form" data-confirm="Delete {{ c.name }} from your library? Copies already in campaigns are kept.">{{ csrf_field() }}
+        <button type="submit" class="btn-icon" title="Delete from library" aria-label="Delete {{ c.name }} from your library">{{ icon('trash-2') }}</button>
+      </form>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="empty-state">
+  {{ icon('archive') }}
+  <h2>Your library is empty</h2>
+  <p>Build a character here, or open a character you play in a campaign and choose "Save to my library".</p>
+  <a href="{{ url_for('library_new') }}" class="btn btn-primary">{{ icon('plus') }} New character</a>
+</div>
+{% endif %}
+{% endblock %}

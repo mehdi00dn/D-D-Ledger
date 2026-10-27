@@ -104,7 +104,7 @@
           <input type="checkbox" name="showcase" value="{{ c.id }}" {{ 'checked' if c.id in px.showcase_ids else '' }}>
           <span class="showcase-option-card">
             {% if c.avatar_path %}<img src="{{ url_for('uploaded_file', filename=c.avatar_path) }}" alt="" loading="lazy">{% else %}<span class="showcase-option-ph">{{ icon('user') }}</span>{% endif %}
-            <span class="showcase-option-text"><b>{{ c.name }}</b><span>{{ c.class_label or 'No class' }} · level {{ c.level }}{% if c.campaign_name %} · {{ c.campaign_name }}{% endif %}</span></span>
+            <span class="showcase-option-text"><b>{{ c.name }}</b><span>{{ c.class_label or 'No class' }} · level {{ c.level }}{% if c.campaign_name %} · {{ c.campaign_name }}{% else %} · Library{% endif %}</span></span>
           </span>
         </label>
       </li>
