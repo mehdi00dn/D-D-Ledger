@@ -5237,3 +5237,7 @@ input[type="range"]:disabled { opacity: 0.5; cursor: not-allowed; }
 .enc-dialog h2 { margin: 0 0 8px; font-size: 18px; }
 .enc-dialog p { margin: 0 0 16px; font-size: 14px; color: var(--parchment-dim); line-height: 1.5; }
 .enc-dialog-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+
+/* Turn bar: the buttons keep their place when the round number or the name of whoever is acting changes (the name comes last) */
+.round-badge { min-inline-size: 5.5rem; text-align: center; }
+.turn-btn-main { min-inline-size: 7.5rem; justify-content: center; }

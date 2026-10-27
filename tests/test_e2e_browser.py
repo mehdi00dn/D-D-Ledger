@@ -254,6 +254,24 @@ def test_lightbox_arrows_sit_beside_the_image(pw, shared_server):
     ctx.close()
 
 
+def test_next_turn_button_stays_put_when_the_current_name_changes(pw, shared_server):
+    base = shared_server.url; dm = Api(base); cid = dm.campaign('Steady')
+    for name, init in (('Al', 18), ('Bartholomew the Very Long-Named', 9)):
+        chid = dm.character(cid, name)
+        pid = dm.post(f'/campaigns/{cid}/api/battle/add', json={'character_id': chid}).json()[-1]['id']
+        dm.post(f'/campaigns/{cid}/api/battle/{pid}/initiative', json={'value': init})
+    ctx = dm.context(pw, base); page = ctx.new_page(); page.set_viewport_size({'width': 1280, 'height': 800})
+    page.goto(base + f'/campaigns/{cid}/battle'); page.wait_for_selector('#turn-bar:not([hidden])')
+    box = lambda: page.locator('#next-turn-btn').bounding_box()
+    page.click('#next-turn-btn'); page.wait_for_selector('#turn-now:not([hidden])')
+    first = box()
+    page.click('#next-turn-btn'); page.wait_for_timeout(600)
+    assert 'Bartholomew' in page.locator('#turn-now').inner_text()
+    second = box()
+    assert abs(first['x'] - second['x']) < 0.5 and abs(first['y'] - second['y']) < 0.5     # the name sits after the buttons
+    assert page.locator('#turn-now').bounding_box()['x'] > second['x'] + second['width']
+
+
 def test_turn_tracker_highlights_the_active_turn_for_everyone(pw, shared_server):
     base = shared_server.url; dm = Api(base); player = Api(base); cid = dm.campaign('Turns')
     dm.add_member(cid, player)
