@@ -23,6 +23,7 @@
       const html = await res.text();
       live.querySelectorAll('dialog[open]').forEach((d) => d.close());
       live.innerHTML = html;
+      showAll();
       if (keepScroll) window.scrollTo(0, y);
       return true;
     } catch (err) {
@@ -38,10 +39,12 @@
     if (box) { box.textContent = text; box.hidden = false; } else { say(text); }
   }
 
-  async function send(form, button) {
-    if (button) button.disabled = true;
+  async function send(form, submitter) {
+    const body = submitter ? new FormData(form, submitter) : new FormData(form);      // the pressed button says coins in or out
+    const buttons = form.querySelectorAll('button[type=submit]');
+    buttons.forEach((b) => { b.disabled = true; });
     try {
-      const res = await fetch(form.action, { method: 'POST', body: new FormData(form), credentials: 'same-origin',
+      const res = await fetch(form.action, { method: 'POST', body, credentials: 'same-origin',
                                               headers: { 'X-Requested-With': 'fetch', 'Accept': 'application/json' } });
       let data = {};
       try { data = await res.json(); } catch (e) { /* not JSON */ }
@@ -54,7 +57,7 @@
       showError(form, 'No connection. Try again.');
       return null;
     } finally {
-      if (button) button.disabled = false;
+      buttons.forEach((b) => { b.disabled = false; });
     }
   }
 
@@ -65,7 +68,7 @@
     if (!isEntry && !isDelete) return;
     e.preventDefault();
     const box = form.querySelector('.treasury-error'); if (box) box.hidden = true;
-    const data = await send(form, form.querySelector('button[type=submit]'));
+    const data = await send(form, e.submitter);
     if (!data) { delete form.dataset.confirmed; return; }
     // A new entry goes to the top of "everyone"; a removal keeps the view you were on.
     const search = isEntry ? '' : window.location.search;
@@ -94,10 +97,23 @@
       const box = dlg.querySelector('.treasury-error'); if (box) box.hidden = true;
       if (opener.hasAttribute('data-holder')) { const sel = dlg.querySelector('[name=character_id]'); if (sel) sel.value = opener.dataset.holder; }
       if (opener.hasAttribute('data-source')) { const sel = dlg.querySelector('[name=source]'); if (sel) sel.value = opener.dataset.source; }
+      showHave(dlg);
     }
   });
 
+  // The coins a purse holds, shown above each input of the dialog that is about to use it.
+  function showHave(dialog) {
+    const sel = dialog && dialog.querySelector('select');
+    const opt = sel && sel.selectedOptions[0];
+    if (!opt) return;
+    dialog.querySelectorAll('[data-have]').forEach((el) => { el.textContent = opt.dataset[el.dataset.have] || '0'; });
+  }
+  live.addEventListener('change', (e) => { if (e.target.matches('select')) showHave(e.target.closest('dialog')); });
+  function showAll() { live.querySelectorAll('dialog').forEach(showHave); }
+
   window.addEventListener('popstate', () => { refresh(window.location.search); });
+
+  showAll();
 
   // Arriving from a character's page with ?holder=: open the entry form for that purse.
   if (/^\d+$/.test(live.dataset.holder || '')) {

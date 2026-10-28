@@ -90,23 +90,19 @@
   <form method="POST" action="{{ url_for('treasury_add') }}" class="treasury-form" data-treasury-form>{{ csrf_field() }}
     <div class="pick-head"><h2 id="t-add-title">Add or spend</h2><button type="button" class="btn-icon" data-close-dialog aria-label="Close">{{ icon('x') }}</button></div>
     <div class="treasury-dialog-body">
-      <div class="treasury-kind" role="radiogroup" aria-label="Kind of entry">
-        <label class="kind-in"><input type="radio" name="kind" value="income" checked><span>{{ icon('plus') }} Coins in</span></label>
-        <label class="kind-out"><input type="radio" name="kind" value="expense"><span>{{ icon('minus') }} Coins out</span></label>
-      </div>
       <div class="field"><label for="t-char">Whose purse</label>
-        <select id="t-char" name="character_id"><option value="">The party purse · {{ format_gold(total) }}</option>{% for p in party if p.can_manage %}<option value="{{ p.id }}"{{ ' selected' if holder == p.id|string }}>{{ p.name }} · {{ format_gold(p.total) }}</option>{% endfor %}</select>
+        <select id="t-char" name="character_id"><option value=""{% for c in treasury_coins %} data-{{ c }}="{{ purse[c] }}"{% endfor %}>The party purse · {{ format_gold(total) }}</option>{% for p in party if p.can_manage %}<option value="{{ p.id }}"{% for c in treasury_coins %} data-{{ c }}="{{ p.purse[c] }}"{% endfor %}{{ ' selected' if holder == p.id|string }}>{{ p.name }} · {{ format_gold(p.total) }}</option>{% endfor %}</select>
       </div>
       <div class="coin-inputs">
         {% for c in treasury_coins %}
-        <div class="field coin-field coin-{{ c }}"><label for="t-{{ c }}">{{ icon('coin') }}{{ c|upper }}</label><input type="number" id="t-{{ c }}" name="{{ c }}" min="0" max="1000000" inputmode="numeric" placeholder="0"></div>
+        <div class="field coin-field coin-{{ c }}"><label for="t-{{ c }}">{{ icon('coin') }}{{ c|upper }}</label><span class="coin-have">has <b data-have="{{ c }}">{{ purse[c] }}</b></span><input type="number" id="t-{{ c }}" name="{{ c }}" min="0" max="1000000" inputmode="numeric" placeholder="0"></div>
         {% endfor %}
       </div>
       <div class="field"><label for="t-note">What for</label><input type="text" id="t-note" name="note" maxlength="200" placeholder="Dragon hoard, a night at the inn, a bribe for the guard"></div>
-      <p class="treasury-hint">Coins out make change for you: paying 1 gp from a platinum piece gives 9 gp back.</p>
+      <p class="treasury-hint">Type the coins, then choose Coins in or Coins out. Coins out make change for you: paying 1 gp from a platinum piece gives 9 gp back.</p>
       <div class="banner-notice banner-error treasury-error" role="alert" hidden></div>
     </div>
-    <div class="pick-foot"><button type="button" class="btn btn-ghost" data-close-dialog>Cancel</button><button type="submit" class="btn btn-primary">{{ icon('check') }} Save entry</button></div>
+    <div class="pick-foot"><button type="button" class="btn btn-ghost" data-close-dialog>Cancel</button><button type="submit" name="kind" value="expense" class="btn btn-ghost btn-out">{{ icon('minus') }} Coins out</button><button type="submit" name="kind" value="income" class="btn btn-primary">{{ icon('plus') }} Coins in</button></div>
   </form>
 </dialog>
 
@@ -116,7 +112,7 @@
     {% if party %}
     <div class="treasury-dialog-body">
       <div class="field"><label for="s-source">Take the coins from</label>
-        <select id="s-source" name="source"><option value="">The party purse · {{ format_gold(total) }}</option>{% for p in party if p.can_manage %}<option value="{{ p.id }}">{{ p.name }} · {{ format_gold(p.total) }}</option>{% endfor %}</select>
+        <select id="s-source" name="source"><option value=""{% for c in treasury_coins %} data-{{ c }}="{{ purse[c] }}"{% endfor %}>The party purse · {{ format_gold(total) }}</option>{% for p in party if p.can_manage %}<option value="{{ p.id }}"{% for c in treasury_coins %} data-{{ c }}="{{ p.purse[c] }}"{% endfor %}>{{ p.name }} · {{ format_gold(p.total) }}</option>{% endfor %}</select>
       </div>
       <fieldset class="treasury-who"><legend>Give them evenly to</legend>
         <label><input type="checkbox" name="to" value="party"> The party purse</label>
@@ -125,7 +121,7 @@
       <p class="treasury-hint">Type an amount, or leave it empty to share the whole purse. Tick just one name to hand coins over. The purse the coins come from is skipped, and what does not divide stays behind.</p>
       <div class="coin-inputs">
         {% for c in treasury_coins %}
-        <div class="field coin-field coin-{{ c }}"><label for="s-{{ c }}">{{ icon('coin') }}{{ c|upper }}</label><input type="number" id="s-{{ c }}" name="{{ c }}" min="0" max="1000000" inputmode="numeric" placeholder="0"></div>
+        <div class="field coin-field coin-{{ c }}"><label for="s-{{ c }}">{{ icon('coin') }}{{ c|upper }}</label><span class="coin-have">has <b data-have="{{ c }}">{{ purse[c] }}</b></span><input type="number" id="s-{{ c }}" name="{{ c }}" min="0" max="1000000" inputmode="numeric" placeholder="0"></div>
         {% endfor %}
       </div>
       <div class="banner-notice banner-error treasury-error" role="alert" hidden></div>

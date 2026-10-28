@@ -11,7 +11,6 @@
   </div>
   {% if g.is_dm %}
   <div class="page-actions battle-actions">
-    <a href="{{ url_for('character_new', **{'from': 'battle'}) }}" class="btn btn-ghost">{{ icon('plus') }} <span>Create Character</span></a>
     <div class="roll-menu" id="roll-menu">
       <button type="button" class="btn btn-ghost" id="roll-initiative-btn" aria-haspopup="menu" aria-expanded="false" aria-controls="roll-menu-list" title="Roll d20 + Dexterity. Hover for the player characters or the NPCs only.">{{ icon('dices') }} <span>Roll Initiative</span></button>
       <div class="roll-menu-list" id="roll-menu-list" role="menu" aria-label="Roll initiative for">
@@ -22,6 +21,7 @@
         </div>
       </div>
     </div>
+    <button type="button" class="btn btn-ghost" id="short-rest-btn" data-open-dialog="short-rest-dialog" title="Player characters: type how many HP each one regained from Hit Dice. Nothing else changes.">{{ icon('sun') }} <span>Short Rest</span></button>
     <button type="button" class="btn btn-ghost" id="long-rest-btn" title="Player characters: full HP, no temporary HP, death saves cleared. NPCs and monsters are left as they are.">{{ icon('moon') }} <span>Long Rest</span></button>
     <button type="button" class="btn btn-ghost" id="open-add-modal">{{ icon('user') }} <span>Add Character</span></button>
     <button type="button" class="btn btn-danger" id="clear-battle-btn">{{ icon('trash-2') }} <span>Clear Battle</span></button>
@@ -136,6 +136,19 @@
 
 <script id="conditions-data" type="application/json">{{ conditions | tojson }}</script>
 <script id="characters-data" type="application/json">{{ characters | tojson }}</script>
+{% if g.is_dm %}
+<dialog class="pick-dialog treasury-dialog" id="short-rest-dialog" aria-labelledby="short-rest-title">
+  <form class="treasury-form" id="short-rest-form" method="dialog">
+    <div class="pick-head"><h2 id="short-rest-title">Short rest</h2><button type="button" class="btn-icon" data-close-dialog aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="treasury-dialog-body">
+      <p class="treasury-hint">After a short rest each player character can spend Hit Dice. Type the HP each one regained (leave blank for none). Hit Dice are not tracked here.</p>
+      <ul class="short-rest-list" id="short-rest-list"></ul>
+      <p class="home-empty" id="short-rest-empty" hidden>There are no player characters in the battle.</p>
+    </div>
+    <div class="pick-foot"><button type="button" class="btn btn-ghost" data-close-dialog>Cancel</button><button type="submit" class="btn btn-primary" id="short-rest-go">{{ icon('sun') }} Take a short rest</button></div>
+  </form>
+</dialog>
+{% endif %}
 {% endblock %}
 
 {% block extra_scripts %}

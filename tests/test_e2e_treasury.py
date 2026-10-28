@@ -32,14 +32,17 @@ def test_treasury_updates_without_reloading(pw, shared_server):
     expect(page.locator('#t-add')).to_be_visible()
     expect(page.locator('#t-char')).to_have_value(page.locator('#t-char option', has_text='Frodo').get_attribute('value'))
     if SHOTS: page.screenshot(path=SHOTS + '/dialog-%s.png' % page.viewport_size['width'])
-    page.fill('#t-pp', '15'); page.fill('#t-gp', '40'); page.fill('#t-note', 'Dragon hoard'); page.click('#t-add button[type=submit]')
+    page.fill('#t-pp', '15'); page.fill('#t-gp', '40'); page.fill('#t-note', 'Dragon hoard'); page.click('#t-add button:has-text("Coins in")')
     expect(page.locator('#treasury-status')).to_contain_text("Added 15 pp 40 gp to Frodo's purse")
     expect(page.locator('#t-add')).not_to_be_visible()
     expect(page.locator('.people-purse', has_text='Frodo').locator('.people-purse-total')).to_contain_text('190 gp')
     expect(page.locator('.treasury-entry').first).to_contain_text('Dragon hoard')     # back on page one, newest on top
     # an error stays in the dialog
     page.click('.page-actions button:has-text("Add or spend")')
-    page.check('#t-add input[value=expense]'); page.fill('#t-gp', '99999'); page.click('#t-add button[type=submit]')
+    expect(page.locator('#t-add [data-have=pp]')).to_have_text('0')               # the party purse holds no platinum
+    page.select_option('#t-char', label=page.locator('#t-char option', has_text='Frodo').inner_text())
+    expect(page.locator('#t-add [data-have=pp]')).to_have_text('15')              # Frodo's purse, shown above the input
+    page.fill('#t-gp', '99999'); page.click('#t-add button:has-text("Coins out")')
     expect(page.locator('#t-add .treasury-error')).to_contain_text('enough')
     page.click('#t-add [data-close-dialog] >> nth=1')
     # filter and remove

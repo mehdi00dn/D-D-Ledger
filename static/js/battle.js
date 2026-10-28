@@ -656,6 +656,33 @@
     });
   }
 
+  // ---- Short rest (DM-only): type the HP each player character regained ----
+  const shortRestBtn = document.getElementById('short-rest-btn');
+  const shortRestForm = document.getElementById('short-rest-form');
+  if (shortRestBtn && shortRestForm) {
+    const list = document.getElementById('short-rest-list');
+    const empty = document.getElementById('short-rest-empty');
+    const go = document.getElementById('short-rest-go');
+    shortRestBtn.addEventListener('click', () => {
+      const pcs = participants.filter((p) => !p.is_npc && !p.is_dead);
+      list.innerHTML = pcs.map((p) => `<li class="short-rest-row"><label for="sr-${p.id}" class="short-rest-name"><b>${escapeHtml(p.char_name)}</b><small>${p.current_hp} / ${p.char_max_hp} HP</small></label>` +
+        `<input type="number" id="sr-${p.id}" data-pid="${p.id}" min="0" max="${Math.max(0, p.char_max_hp - p.current_hp)}" inputmode="numeric" placeholder="0"></li>`).join('');
+      empty.hidden = pcs.length > 0;
+      go.disabled = pcs.length === 0;
+    });
+    shortRestForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const heals = {};
+      list.querySelectorAll('input[data-pid]').forEach((i) => { if (i.value) heals[i.dataset.pid] = parseInt(i.value, 10) || 0; });
+      go.disabled = true;
+      try {
+        participants = await apiCall('/api/battle/short-rest', { heals });
+        render();
+        shortRestForm.closest('dialog').close();
+      } catch (err) { /* the message was already shown */ } finally { go.disabled = false; }
+    });
+  }
+
   // ---- Clear battle (DM-only) ----
   const clearBattleBtn = document.getElementById('clear-battle-btn');
   if (clearBattleBtn) {

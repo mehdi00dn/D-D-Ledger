@@ -33,6 +33,9 @@
   const pinDeleteBtn = document.getElementById('pin-delete-btn');
   const pinOwnerBtn = document.getElementById('pin-owner-btn');
   const pinOwnerMenu = document.getElementById('pin-owner-menu');
+  const pinShapesWrap = document.getElementById('pin-shapes-wrap');
+  const pinShapesBtn = document.getElementById('pin-shapes-btn');
+  const pinShapesMenu = document.getElementById('pin-shapes-menu');
   const pinRenameBox = document.getElementById('pin-rename-box');
   const pinRenameInput = document.getElementById('pin-rename-input');
 
@@ -784,6 +787,12 @@
     } else {
       [pinResizeBtn, pinRotateBtn, pinLockBtn].forEach((b) => { b.style.display = ''; });
     }
+    if (pinShapesWrap) {
+      const n = drawings.filter((d) => d.attached_pin_id === pin.id).length;
+      pinShapesWrap.style.display = (n && canMovePin(pin) && !readOnly()) ? '' : 'none';
+      pinShapesBtn.title = n === 1 ? '1 shape is attached to this token' : `${n} shapes are attached to this token`;
+      closeShapesMenu();
+    }
     if (pinOwnerBtn) {
       pinOwnerBtn.classList.toggle('has-owner', pin.owner_user_id != null);
       pinOwnerBtn.title = pin.owner_name ? `Assigned to ${pin.owner_name}` : 'Assign to a player';
@@ -870,25 +879,27 @@
 
   // Open the owner list above the button when it fits inside the map, otherwise below it (or whichever side
   // has more room), and slide it sideways if it would poke out of the map.
-  function placeOwnerMenu() {
+  function placeMenu(btnEl, menu) {
     const stage = stageWrap.getBoundingClientRect();
-    const btn = pinOwnerBtn.getBoundingClientRect();
+    const btn = btnEl.getBoundingClientRect();
     const top = Math.max(stage.top, 0), bottom = Math.min(stage.bottom, window.innerHeight);
     const left = Math.max(stage.left, 0), right = Math.min(stage.right, window.innerWidth);
-    pinOwnerMenu.style.maxHeight = '';
-    pinOwnerMenu.style.setProperty('--shift', '0px');
-    const need = pinOwnerMenu.offsetHeight + 12;
+    menu.style.maxHeight = '';
+    menu.style.setProperty('--shift', '0px');
+    const need = menu.offsetHeight + 12;
     const roomAbove = btn.top - top, roomBelow = bottom - btn.bottom;
     const up = roomAbove >= need || (roomBelow < need && roomAbove >= roomBelow);
-    pinOwnerMenu.dataset.dir = up ? 'up' : 'down';
+    menu.dataset.dir = up ? 'up' : 'down';
     const room = (up ? roomAbove : roomBelow) - 12;
-    if (room < pinOwnerMenu.offsetHeight) pinOwnerMenu.style.maxHeight = `${Math.max(80, room)}px`;
-    const m = pinOwnerMenu.getBoundingClientRect();
+    if (room < menu.offsetHeight) menu.style.maxHeight = `${Math.max(80, room)}px`;
+    const m = menu.getBoundingClientRect();
     let shift = 0;
     if (m.left < left + 6) shift = left + 6 - m.left;
     else if (m.right > right - 6) shift = right - 6 - m.right;
-    pinOwnerMenu.style.setProperty('--shift', `${shift}px`);
+    menu.style.setProperty('--shift', `${shift}px`);
   }
+
+  function placeOwnerMenu() { placeMenu(pinOwnerBtn, pinOwnerMenu); }
 
   function closeOwnerMenu() {
     if (!pinOwnerMenu) return;
@@ -1639,6 +1650,49 @@
     });
     document.addEventListener('click', (e) => { if (!e.target.closest('#pin-owner-wrap')) closeOwnerMenu(); });
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeOwnerMenu(); });
+  }
+
+  // Shapes attached to the selected token: a shape whose centre sits behind its token cannot be clicked on the map, so this
+  // menu is where it is unlocked, locked, selected (to resize or restyle it) or let go of.
+  const SHAPE_NAMES = { rect: 'Rectangle', oval: 'Oval', circle: 'Circle', line: 'Line', angle: 'Cone', polygon: 'Polygon' };
+  function closeShapesMenu() {
+    if (!pinShapesMenu) return;
+    pinShapesMenu.hidden = true;
+    pinShapesBtn.setAttribute('aria-expanded', 'false');
+  }
+  if (pinShapesBtn) {
+    function renderShapesMenu() {
+      const list = drawings.filter((d) => d.attached_pin_id === selectedPinId);
+      pinShapesMenu.innerHTML = list.length ? list.map((d, i) =>
+        `<div class="pin-shape-row" data-shape="${d.id}"><span class="pin-shape-name">${escapeHtml(SHAPE_NAMES[d.kind] || 'Shape')} ${i + 1}${d.locked ? ' (locked)' : ''}</span>` +
+        `<button type="button" class="pin-owner-opt" data-act="lock">${d.locked ? 'Unlock' : 'Lock'}</button>` +
+        (d.locked ? '' : '<button type="button" class="pin-owner-opt" data-act="select">Select</button>') +
+        '<button type="button" class="pin-owner-opt" data-act="detach">Detach</button></div>').join('')
+        : '<span class="pin-shape-name">No shapes attached.</span>';
+    }
+    pinShapesBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (!pinShapesMenu.hidden) { closeShapesMenu(); return; }
+      renderShapesMenu();
+      pinShapesMenu.hidden = false;
+      placeMenu(pinShapesBtn, pinShapesMenu);
+      pinShapesBtn.setAttribute('aria-expanded', 'true');
+    });
+    pinShapesMenu.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const btn = e.target.closest('[data-act]');
+      const row = e.target.closest('[data-shape]');
+      if (!btn || !row) return;
+      const d = drawings.find((s) => s.id === Number(row.dataset.shape));
+      if (!d) return;
+      const pinId = selectedPinId;
+      if (btn.dataset.act === 'lock') { if (d.locked) await unlockShape(d); else await lockShape(d); redraw(); }
+      else if (btn.dataset.act === 'detach') { await setAttached([d], null); syncAttachButton(); }
+      else if (btn.dataset.act === 'select') { closeShapesMenu(); selectShape(d.id); return; }
+      if (selectedPinId === pinId) { positionPinBubble(pinId); renderShapesMenu(); pinShapesMenu.hidden = !drawings.some((s) => s.attached_pin_id === pinId); if (!pinShapesMenu.hidden) { placeMenu(pinShapesBtn, pinShapesMenu); } }
+    });
+    document.addEventListener('click', (e) => { if (!e.target.closest('#pin-shapes-wrap')) closeShapesMenu(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeShapesMenu(); });
   }
 
   if (pinPcNpcToggle) {

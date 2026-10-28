@@ -4435,6 +4435,44 @@ def api_battle_long_rest():
     return jsonify(rows)
 
 
+@app.route('/campaigns/<int:campaign_id>/api/battle/short-rest', methods=['POST'])
+@campaign_access_required
+@dm_required
+def api_battle_short_rest():
+    """A short rest for the player characters in the battle: {"heals": {"<participant id>": hp regained}}.  Each amount is
+    added to that character's HP (never past the maximum, nobody who is dead), and a character back above 0 HP has their
+    death saves cleared.  Nothing else changes: Hit Dice are not tracked, so the DM types what was regained."""
+    data = request.get_json(silent=True) or {}
+    heals = data.get('heals') if isinstance(data.get('heals'), dict) else {}
+    db = get_db()
+    rows = db.execute('SELECT bp.id, bp.current_hp, bp.is_dead, c.max_hp, c.name FROM battle_participants bp JOIN characters c ON c.id = bp.character_id '
+                      'WHERE c.campaign_id = ? AND c.is_npc = 0 AND c.is_temp_familiar = 0', (g.campaign_id,)).fetchall()
+    if not rows:
+        db.close()
+        return api_error('There are no player characters in the battle to rest.', 404)
+    gained_lines = []
+    for r in rows:
+        raw = heals.get(str(r['id']))
+        try:
+            amount = int(raw)
+        except (TypeError, ValueError):
+            continue
+        if amount <= 0 or r['is_dead']:
+            continue
+        before = r['current_hp'] or 0
+        after = min(int(r['max_hp'] or 0), before + min(amount, 100000))
+        if after <= before:
+            continue
+        db.execute('UPDATE battle_participants SET current_hp = ? WHERE id = ?', (after, r['id']))
+        _reset_death_saves(db, r['id'])
+        gained_lines.append('%s +%d' % (r['name'], after - before))
+    log_battle(db, ('The party took a short rest: ' + ', '.join(gained_lines))[:200] if gained_lines else 'The party took a short rest', None, 'heal')
+    db.commit()
+    out = _battle_rows(db)
+    db.close()
+    return jsonify(out)
+
+
 @app.route('/campaigns/<int:campaign_id>/api/battle/<int:pid>/ac', methods=['POST'])
 @campaign_access_required
 @dm_required
