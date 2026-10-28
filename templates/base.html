@@ -64,9 +64,6 @@
       <a href="{{ url_for('characters_list') }}" class="nav-tab {{ 'active' if active_page == 'characters' else '' }}" title="Characters">
         {{ icon('scroll-text') }}<span>Characters</span>
       </a>
-      <a href="{{ url_for('library_list') }}" data-more class="nav-tab {{ 'active' if active_page == 'library' else '' }}" title="Your own characters, kept outside any campaign">
-        {{ icon('archive') }}<span>My library</span>
-      </a>
       <a href="{{ url_for('factions_list') }}" data-more class="nav-tab {{ 'active' if active_page == 'factions' else '' }}" title="Factions">
         {{ icon('faction') }}<span>Factions</span>
       </a>
@@ -113,7 +110,7 @@
       </a>
       {% if session.user_id %}
       <a href="{{ url_for('library_list') }}" class="nav-tab {{ 'active' if active_page == 'library' else '' }}" title="Your characters, kept outside any campaign">
-        {{ icon('archive') }}<span>Library</span>
+        {{ icon('archive') }}<span>Your characters</span>
       </a>
       {% endif %}
       {% if session.user_id %}
@@ -201,7 +198,6 @@
   {% if g.campaign_id %}
   <div class="more-links">
     <a href="{{ url_for('campaign_home') }}" class="more-link {{ 'active' if active_page == 'home' else '' }}">{{ icon('home') }}<span>Home</span></a>
-    <a href="{{ url_for('library_list') }}" class="more-link {{ 'active' if active_page == 'library' else '' }}">{{ icon('archive') }}<span>My library</span></a>
     <a href="{{ url_for('factions_list') }}" class="more-link {{ 'active' if active_page == 'factions' else '' }}">{{ icon('faction') }}<span>Factions</span></a>
     {% if g.is_dm %}<a href="{{ url_for('encounters_list') }}" class="more-link {{ 'active' if active_page == 'encounters' else '' }}">{{ icon('skull') }}<span>Encounters</span></a>{% endif %}
     <a href="{{ url_for('treasury_view') }}" class="more-link {{ 'active' if active_page == 'treasury' else '' }}">{{ icon('coins') }}<span>Treasury</span></a>
@@ -300,6 +296,7 @@
 <script src="{{ url_for('static', filename='js/confirm.js') }}"></script>
 <script src="{{ url_for('static', filename='js/class-icons.js') }}"></script>
 <script src="{{ url_for('static', filename='js/phone-ui.js') }}"></script>
+<script src="{{ url_for('static', filename='js/menus.js') }}"></script>
 {% if g.campaign_id %}<script src="{{ url_for('static', filename='js/dice-feed.js') }}"></script>
 <script src="{{ url_for('static', filename='js/character-rolls.js') }}"></script>
 <script src="{{ url_for('static', filename='js/dice-art.js') }}"></script>

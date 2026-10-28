@@ -15,19 +15,19 @@
   <div class="note-editor" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Note" data-placeholder="Backstory, quirks, tactics, secrets the DM shouldn't forget...">{{ content | safe }}</div>
 </div>
 {% endmacro %}
-{% block title %}{{ 'Edit' if character else 'New' }} Character{{ ' — Library' if library else '' }} — Campaign Ledger{% endblock %}
+{% block title %}{{ 'Edit' if character else 'New' }} Character{{ ' — Your characters' if library else '' }} — Campaign Ledger{% endblock %}
 
 {% block content %}
+{% if library %}
+<a href="{{ url_for('library_detail', char_id=character.id) if character else url_for('library_list') }}" class="back-link">{{ icon('arrow-left') }} {{ character.name if character else 'Your characters' }}</a>
+{% else %}
+<a href="{{ url_for('battle_view') if from_battle else url_for('characters_list') }}" class="back-link">{{ icon('arrow-left') }} {{ 'Battle' if from_battle else 'Characters' }}</a>
+{% endif %}
 <div class="page-header">
   <div>
     <h1 class="page-title">{{ character.name if character else 'New Character' }}</h1>
-    {% if library %}<p class="page-sub">Kept in your library, outside any campaign. Add a copy to a campaign whenever you like.</p>{% endif %}
+    {% if library %}<p class="page-sub">Kept in Your characters, outside any campaign. Add a copy to a campaign whenever you like.</p>{% endif %}
   </div>
-  {% if library %}
-  <a href="{{ url_for('library_detail', char_id=character.id) if character else url_for('library_list') }}" class="btn btn-ghost">{{ icon('arrow-left') }} {{ 'Back to character' if character else 'Back to library' }}</a>
-  {% else %}
-  <a href="{{ url_for('battle_view') if from_battle else url_for('characters_list') }}" class="btn btn-ghost">{{ icon('arrow-left') }} {{ 'Back to battle' if from_battle else 'Back to list' }}</a>
-  {% endif %}
 </div>
 
 <form class="char-form" method="POST" enctype="multipart/form-data">{{ csrf_field() }}
@@ -270,13 +270,29 @@
   </aside>
   </div>
 
+  {% if not character and not library and not from_battle %}
+  <label class="keep-copy" for="also-keep">
+    <input type="checkbox" name="also_keep" id="also-keep" value="1">
+    <span><b>Also keep a copy in Your characters</b><small>Player characters only. Reuse this hero in other campaigns without building it again.</small></span>
+  </label>
+  {% elif library and not character and my_campaigns %}
+  <div class="keep-copy keep-copy-add">
+    <span><b>Add to a campaign as well</b><small>Makes a separate copy at that table. Optional.</small></span>
+    <div class="field lib-select"><label class="sr-only" for="add-to-campaign">Campaign</label>
+      <select name="add_to_campaign" id="add-to-campaign">
+        <option value="">Not now</option>
+        {% for ca in my_campaigns %}<option value="{{ ca.id }}"{{ ' selected' if add_to_campaign == ca.id|string else '' }}>{{ ca.name }}</option>{% endfor %}
+      </select></div>
+  </div>
+  {% endif %}
+
   <div class="cf-bar">
     {% if library %}
     <a href="{{ url_for('library_detail', char_id=character.id) if character else url_for('library_list') }}" class="btn btn-ghost">Cancel</a>
     {% else %}
     <a href="{{ url_for('battle_view') if from_battle else url_for('characters_list') }}" class="btn btn-ghost">Cancel</a>
     {% endif %}
-    <button type="submit" class="btn btn-primary">{{ icon('check') }} {{ 'Save Changes' if character else ('Save to library' if library else 'Add Character') }}</button>
+    <button type="submit" class="btn btn-primary">{{ icon('check') }} {{ 'Save Changes' if character else ('Save to Your characters' if library else 'Add Character') }}</button>
   </div>
 </form>
 {% endblock %}

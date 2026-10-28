@@ -82,7 +82,7 @@ def test_adding_to_a_campaign_makes_a_separate_copy_once(make_user):
     assert len(sheet_copy) == 1 and sheet_copy[0]['image_path'] != q('SELECT image_path FROM character_sheets WHERE character_id = ?', lib)[0]['image_path']
     assert q('SELECT name, attack_bonus FROM character_attacks WHERE character_id = ?', copy['id']) == [{'name': 'Rapier', 'attack_bonus': 6}]
     assert q('SELECT level FROM character_levels WHERE character_id = ?', copy['id']) == [{'level': 3}]
-    assert 'a personal library' in me.get(f'/campaigns/{cid}/characters/{copy["id"]}').get_data(as_text=True)
+    assert 'their own characters' in me.get(f'/campaigns/{cid}/characters/{copy["id"]}').get_data(as_text=True)
     # the same campaign cannot get it twice, another can
     again = me.post(f'/library/{lib}/add-to-campaign', data={'campaign_id': str(cid)})
     assert 'note=already' in again.headers['Location']
@@ -154,20 +154,20 @@ def test_saving_a_campaign_character_to_the_library(make_user):
     assert dm.post('/library/save', data={'campaign_id': str(cid), 'character_id': str(mine)}).status_code == 404
     assert dm.post('/library/save', data={'campaign_id': str(cid), 'character_id': str(npc)}).status_code == 404
     # the button is offered on the details page of a character you own
-    assert 'Save to my library' in dm.get(f'/campaigns/{cid}/characters/{dms}').get_data(as_text=True)
-    assert 'Save to my library' not in pl.get(f'/campaigns/{cid}/characters/{dms}').get_data(as_text=True)
-    assert 'In my library' in pl.get(f'/campaigns/{cid}/characters/{mine}').get_data(as_text=True)
+    assert 'Save to your characters' in dm.get(f'/campaigns/{cid}/characters/{dms}').get_data(as_text=True)
+    assert 'Save to your characters' not in pl.get(f'/campaigns/{cid}/characters/{dms}').get_data(as_text=True)
+    assert 'In your characters' in pl.get(f'/campaigns/{cid}/characters/{mine}').get_data(as_text=True)
 
 
 def test_the_campaign_character_list_offers_your_library(make_user):
     me = make_user()
     cid = me.new_campaign()
-    assert 'Add a character from my library' not in me.get(f'/campaigns/{cid}/characters').get_data(as_text=True)
+    assert 'From your characters' not in me.get(f'/campaigns/{cid}/characters').get_data(as_text=True)
     lib = _make(me)
     page = me.get(f'/campaigns/{cid}/characters').get_data(as_text=True)
-    assert 'Add a character from my library' in page and f'/library/{lib}/add-to-campaign' in page
+    assert 'From your characters' in page and '/library/add-many' in page and f'value="{lib}"' in page
     me.post(f'/library/{lib}/add-to-campaign', data={'campaign_id': str(cid)})
-    assert 'Add a character from my library' not in me.get(f'/campaigns/{cid}/characters').get_data(as_text=True)
+    assert 'From your characters' not in me.get(f'/campaigns/{cid}/characters').get_data(as_text=True)
 
 
 def test_the_library_has_a_size_limit(make_user, monkeypatch):
@@ -209,7 +209,7 @@ def test_a_library_character_shows_up_in_the_account_profile_picker(make_user):
     me = make_user()
     _make(me)
     page = me.get('/account').get_data(as_text=True)
-    assert 'Sylas Thorne' in page and 'Library' in page
+    assert 'Sylas Thorne' in page and 'Your characters' in page
 
 
 def test_deleting_the_account_removes_the_library_and_its_files(make_user):
@@ -245,3 +245,80 @@ def test_a_failed_copy_leaves_nothing_behind(make_user, monkeypatch):
     monkeypatch.setattr(appmod, '_save_level_stats', real)
     assert r.status_code == 500
     assert q('SELECT COUNT(*) n FROM characters')[0]['n'] == before and q('SELECT id FROM characters WHERE campaign_id = ?', cid) == []
+
+
+# ---- import / export, picking several, create and add, keep a copy (DL-160 overhaul) ----
+
+def _zip_names(resp):
+    import io, zipfile
+    return zipfile.ZipFile(io.BytesIO(resp.data)).namelist()
+
+
+def test_export_all_and_one_then_import_round_trip(make_user):
+    import io
+    me = make_user()
+    a = _make(me, name='Ada'); b = _make(me, name='Bram')
+    r = me.get('/library/export')
+    assert r.status_code == 200 and 'manifest.json' in _zip_names(r) and 'your_characters' in r.headers['Content-Disposition']
+    one = me.get(f'/library/{a}/export')
+    assert one.status_code == 200 and 'manifest.json' in _zip_names(one)
+    other = make_user()
+    assert other.get(f'/library/{a}/export').status_code == 404                     # never someone else's
+    got = other.post('/library/import', data={'import_file': (io.BytesIO(r.data), 'x.zip')}, content_type='multipart/form-data')
+    assert got.status_code == 302 and 'note=imported' in got.headers['Location'] and 'n=2' in got.headers['Location']
+    page = other.get('/library').get_data(as_text=True)
+    assert 'Ada' in page and 'Bram' in page
+
+
+def test_importing_a_campaign_export_keeps_players_and_skips_npcs(make_user):
+    import io
+    dm = make_user(); cid = dm.new_campaign()
+    dm.new_character(cid, name='Hero')
+    dm.new_character(cid, name='Villain', is_npc='on')
+    export = dm.get(f'/campaigns/{cid}/export/data')
+    r = dm.post('/library/import', data={'import_file': (io.BytesIO(export.data), 'x.zip')}, content_type='multipart/form-data')
+    assert 'n=1' in r.headers['Location'] and 'skipped=1' in r.headers['Location']
+    page = dm.get('/library').get_data(as_text=True)
+    assert 'Hero' in page and 'Villain' not in page
+
+
+def test_import_rejects_garbage(make_user):
+    import io
+    me = make_user()
+    r = me.post('/library/import', data={'import_file': (io.BytesIO(b'nope'), 'x.zip')}, content_type='multipart/form-data')
+    assert 'note=import_error' in r.headers['Location']
+
+
+def test_add_many_makes_one_copy_each(make_user):
+    me = make_user(); cid = me.new_campaign()
+    a = _make(me, name='Ada'); b = _make(me, name='Bram')
+    r = me.post('/library/add-many', data={'campaign_id': str(cid), 'char_ids': [str(a), str(b)]})
+    assert 'library_added=2' in r.headers['Location']
+    r = me.post('/library/add-many', data={'campaign_id': str(cid), 'char_ids': [str(a)]})        # already there
+    assert 'library_note=nothing' in r.headers['Location'] or 'library_added=0' in r.headers['Location']
+    page = me.get(f'/campaigns/{cid}/characters').get_data(as_text=True)
+    assert page.count('data-name="ada"') == 1 and 'From your characters' not in page          # nothing left to offer
+    assert me.post('/library/add-many', data={'campaign_id': str(cid)}).status_code == 302
+
+
+def test_create_in_your_characters_and_add_in_one_step(make_user):
+    me = make_user(); cid = me.new_campaign()
+    r = me.post('/library/new', data={'name': 'Both', 'level': '3', 'max_hp': '20', 'add_to_campaign': str(cid)})
+    assert 'note=created_added' in r.headers['Location']
+    assert 'data-name="both"' in me.get(f'/campaigns/{cid}/characters').get_data(as_text=True)
+
+
+def test_new_campaign_character_can_also_be_kept(make_user):
+    me = make_user(); cid = me.new_campaign()
+    me.post(f'/campaigns/{cid}/characters/new', data={'name': 'Keeper', 'level': '2', 'max_hp': '12', 'also_keep': '1'})
+    assert 'Keeper' in me.get('/library').get_data(as_text=True)
+    me.post(f'/campaigns/{cid}/characters/new', data={'name': 'Villain', 'level': '2', 'max_hp': '12', 'is_npc': 'on', 'also_keep': '1'})
+    assert 'Villain' not in me.get('/library').get_data(as_text=True)
+
+
+def test_the_campaign_sidebar_no_longer_links_the_library(make_user):
+    me = make_user(); cid = me.new_campaign()
+    html = me.get(f'/campaigns/{cid}/characters').get_data(as_text=True)
+    assert 'href="/library"' not in html.split('class="sidebar-nav')[1].split('</nav>')[0]
+    assert 'Open Your characters' in html
+    assert 'Your characters' in me.get('/campaigns').get_data(as_text=True)

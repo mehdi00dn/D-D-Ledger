@@ -1120,8 +1120,8 @@ def test_phone_characters_battle_and_map_pages_are_compact(pw, shared_server):
     ctx = _touch_context(pw, dm, base, 390, 844); page = ctx.new_page(); bad, errs = _collect(page)
     # characters: one row of small buttons, a search that is a button until tapped
     page.goto(base + f'/campaigns/{cid}/characters'); page.wait_for_load_state('load')
-    ys = {round(page.locator(s).first.bounding_box()['y']) for s in ('.page-actions a[href*="export"]', '.page-actions .import-label', '.page-actions .btn-primary')}
-    assert max(ys) - min(ys) <= 3, ys                                                                  # all three on one row
+    ys = {round(page.locator(s).first.bounding_box()['y']) for s in ('.page-actions details.menu summary', '.page-actions .btn-primary')}
+    assert max(ys) - min(ys) <= 3, ys                                                                  # the primary button and the more menu share one row
     assert page.locator('#character-search').is_hidden() and page.locator('.search-bar').bounding_box()['width'] <= 44
     assert page.locator('.dossier-card').first.bounding_box()['y'] < 330, page.locator('.dossier-card').first.bounding_box()
     page.locator('[data-search-open]').tap(); playwright.expect(page.locator('#character-search')).to_be_visible()
@@ -1970,7 +1970,7 @@ def test_character_sheet_prints_without_the_app_chrome(pw, shared_server):
     base = shared_server.url; dm = Api(base); cid = dm.campaign('PrintUI'); chid = dm.character(cid, 'Printable')
     ctx = dm.context(pw, base); page = ctx.new_page()
     page.goto(base + f'/campaigns/{cid}/characters/{chid}')
-    page.wait_for_selector('[data-print]')
+    page.wait_for_selector('[data-print]', state='attached')
     page.emulate_media(media='print')
     assert not page.locator('.sidebar').is_visible() and not page.locator('[data-print]').is_visible()      # menus and buttons stay off the paper
     assert page.locator('.cd-hero').is_visible()

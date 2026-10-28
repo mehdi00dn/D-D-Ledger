@@ -2683,11 +2683,14 @@ def characters_list():
     characters = [dict(c, factions=by_char.get(c['id'], [])) for c in characters]
     live = _battle_live_status(db)
     library_options = [dict(r, class_label=_class_label(r['class_key'])) for r in db.execute(
-        'SELECT lib.id, lib.name, lib.level, lib.class_key FROM characters lib WHERE lib.owner_id = ? AND lib.campaign_id IS NULL '
+        'SELECT lib.id, lib.name, lib.level, lib.class_key, lib.avatar_path FROM characters lib WHERE lib.owner_id = ? AND lib.campaign_id IS NULL '
         'AND NOT EXISTS (SELECT 1 FROM characters c WHERE c.campaign_id = ? AND c.library_id = lib.id) ORDER BY lower(lib.name)',
         (session['user_id'], g.campaign_id)).fetchall()]
     db.close()
-    return render_template('characters_list.html', characters=characters, groups=groups, live=live, library_options=library_options,
+    added = request.args.get('library_added', '')
+    library_banner = (('success', 'Added %d character%s to this campaign.' % (int(added), '' if int(added) == 1 else 's')) if added.isdigit() and len(added) < 5
+                      else LIBRARY_NOTES['nothing'] if request.args.get('library_note') == 'nothing' else None)
+    return render_template('characters_list.html', characters=characters, groups=groups, live=live, library_options=library_options, library_banner=library_banner,
                            deletable={c['id'] for c in characters if can_delete(c['created_by'])})
 
 
@@ -2697,6 +2700,13 @@ def character_new():
     db = get_db()
     if request.method == 'POST':
         new_id = _save_character(db, None)
+        if request.form.get('also_keep') == '1' and not request.form.get('is_npc') and _library_count(db) < LIBRARY_MAX:
+            row = db.execute('SELECT ch.*, ca.name AS campaign_name FROM characters ch JOIN campaigns ca ON ca.id = ch.campaign_id WHERE ch.id = ?', (new_id,)).fetchone()
+            campaign_id, g.campaign_id = g.campaign_id, None
+            lib_id = _clone_character(db, row, None, session['user_id'], None, row['campaign_name'])
+            g.campaign_id = campaign_id
+            db.execute('UPDATE characters SET library_id = ? WHERE id = ?', (lib_id, new_id))
+            db.commit()
         db.close()
         if request.form.get('from_battle') == '1':
             return redirect(url_for('battle_view', added=new_id))
@@ -3064,15 +3074,39 @@ def sheet_delete(char_id, sheet_id):
 LIBRARY_MAX = 60
 LIBRARY_NOTES = {
     'added': ('success', 'Added to the campaign. It is a copy: changes made there stay there.'),
-    'saved': ('success', 'Saved to your library.'),
-    'deleted': ('success', 'Removed from your library. Copies already in campaigns are untouched.'),
+    'created': ('success', 'Saved to your characters.'),
+    'created_added': ('success', 'Saved to your characters, and a copy was added to the campaign.'),
+    'saved': ('success', 'Saved to your characters.'),
+    'deleted': ('success', 'Removed from your characters. Copies already in campaigns are untouched.'),
     'featured': ('success', 'Now featured on your profile.'),
     'unfeatured': ('success', 'No longer featured on your profile.'),
-    'full': ('error', 'Your library is full (%d characters). Delete one you no longer use first.' % LIBRARY_MAX),
+    'full': ('error', 'You can keep %d characters here. Delete one you no longer use first.' % LIBRARY_MAX),
     'featured_full': ('error', 'You can feature at most %d characters on your profile. Unfeature one first.' % SHOWCASE_MAX),
     'already': ('error', 'That character is already in that campaign.'),
     'not_member': ('error', 'Pick one of your own campaigns.'),
+    'nothing': ('error', 'Pick at least one character.'),
+    'import_error': ('error', "That file couldn't be read as a Campaign Ledger export. Upload a .zip made by an Export button."),
+    'import_quota': ('error', 'That import would pass your image storage limit, so nothing was imported. Delete images you no longer need or import a smaller file.'),
 }
+
+
+def _library_note(args):
+    """The banner for ?note=...  Import results carry counts (digits only, so nothing typed in a URL is ever echoed back)."""
+    code = args.get('note', '')
+    if code == 'imported':
+        n = args.get('n', '0'); skipped = args.get('skipped', '0'); full = args.get('full', '0')
+        n, skipped, full = (int(v) if v.isdigit() and len(v) < 5 else 0 for v in (n, skipped, full))
+        text = 'Imported %d character%s.' % (n, '' if n == 1 else 's') if n else 'Nothing was imported.'
+        if skipped:
+            text += ' %d NPC%s skipped: only player characters are kept here.' % (skipped, '' if skipped == 1 else 's')
+        if full:
+            text += ' %d did not fit (the limit is %d).' % (full, LIBRARY_MAX)
+        return ('success' if n else 'error', text)
+    if code == 'added_many':
+        n = args.get('n', '0')
+        n = int(n) if n.isdigit() and len(n) < 5 else 0
+        return ('success', 'Added %d character%s to the campaign.' % (n, '' if n == 1 else 's'))
+    return LIBRARY_NOTES.get(code)
 
 
 def _library_character(db, char_id):
@@ -3145,10 +3179,29 @@ def _clone_character(db, src, campaign_id, owner_id, library_id, added_from):
         raise
 
 
-def _library_back(note=None, char_id=None):
+def _library_back(note=None, char_id=None, **args):
+    if note:
+        args['note'] = note
     if char_id:
-        return redirect(url_for('library_detail', char_id=char_id, note=note) if note else url_for('library_detail', char_id=char_id))
-    return redirect(url_for('library_list', note=note) if note else url_for('library_list'))
+        return redirect(url_for('library_detail', char_id=char_id, **args))
+    return redirect(url_for('library_list', **args))
+
+
+def _member_campaign(db, raw):
+    """The campaign with this id when the signed-in person belongs to it, else None."""
+    return db.execute('SELECT c.id, c.name FROM campaigns c JOIN campaign_members m ON m.campaign_id = c.id WHERE c.id = ? AND m.user_id = ?',
+                      (int(raw) if str(raw).isdigit() else 0, session['user_id'])).fetchone()
+
+
+def _add_copy(db, source, campaign):
+    """Put a copy of a library character into a campaign (the caller commits).  None when that campaign already has one."""
+    if db.execute('SELECT 1 FROM characters WHERE campaign_id = ? AND library_id = ?', (campaign['id'], source['id'])).fetchone():
+        return None
+    g.campaign_id = campaign['id']                        # the copied pictures count towards this campaign's storage too
+    new_id = _clone_character(db, source, campaign['id'], None, source['id'], 'their own characters')
+    log_activity(db, campaign['id'], 'character_created', 'added the character %s' % source['name'],
+                 url_for('character_detail', campaign_id=campaign['id'], char_id=new_id))
+    return new_id
 
 
 @app.route('/library')
@@ -3172,7 +3225,7 @@ def library_list():
         items.append(dict(c, class_label=_class_label(c['class_key']), in_campaigns=in_campaigns, featured=c['id'] in featured,
                           open_campaigns=[ca for ca in campaigns if ca['id'] not in taken]))
     return render_template('library.html', items=items, campaigns=campaigns, limit=LIBRARY_MAX, showcase_limit=SHOWCASE_MAX,
-                           featured_count=len(featured & {c['id'] for c in chars}), note=LIBRARY_NOTES.get(request.args.get('note', '')))
+                           featured_count=len(featured & {c['id'] for c in chars}), note=_library_note(request.args))
 
 
 @app.route('/library/new', methods=['GET', 'POST'])
@@ -3184,11 +3237,20 @@ def library_new():
         return _library_back('full')
     if request.method == 'POST':
         new_id = _save_character(db, None)
+        campaign = _member_campaign(db, request.form.get('add_to_campaign', ''))
+        note = 'created'
+        if campaign:                                      # made and added in one go
+            source = db.execute('SELECT * FROM characters WHERE id = ?', (new_id,)).fetchone()
+            if _add_copy(db, source, campaign):
+                db.commit()
+                note = 'created_added'
         db.close()
-        return _library_back(char_id=new_id)
+        return _library_back(note, char_id=new_id)
+    campaigns = _my_campaigns(db)
     db.close()
     return render_template('character_form.html', library=True, character=None, sheets=[], groups=[], from_battle=False,
-                           notes_entries=[{'t': '', 'h': False}])
+                           notes_entries=[{'t': '', 'h': False}], my_campaigns=campaigns,
+                           add_to_campaign=request.args.get('campaign', ''))
 
 
 @app.route('/library/<int:char_id>')
@@ -3207,7 +3269,7 @@ def library_detail(char_id):
     return render_template('library_detail.html', character=character, sheets=sheets, level_history=level_history, attacks=attacks,
                            class_label=_class_label(character['class_key']), sheet=dnd5e.derive(character),
                            notes_html=notes_to_html(character['notes'], show_hidden=True), placed=placed, open_campaigns=open_campaigns,
-                           featured=featured, note=LIBRARY_NOTES.get(request.args.get('note', '')))
+                           featured=featured, note=_library_note(request.args))
 
 
 @app.route('/library/<int:char_id>/edit', methods=['GET', 'POST'])
@@ -3260,25 +3322,42 @@ def library_add_to_campaign(char_id):
     """Put a copy of a library character into one of the person's campaigns, as a player character played by them."""
     db = get_db()
     source = _library_character(db, char_id)
-    raw = request.form.get('campaign_id', '')
     back_id = char_id if request.form.get('back') == 'detail' else None
-    member = db.execute('SELECT c.id, c.name FROM campaigns c JOIN campaign_members m ON m.campaign_id = c.id WHERE c.id = ? AND m.user_id = ?',
-                        (int(raw) if raw.isdigit() else 0, session['user_id'])).fetchone()
-    if member is None:
+    campaign = _member_campaign(db, request.form.get('campaign_id', ''))
+    if campaign is None:
         db.close()
         return _library_back('not_member', back_id)
-    if db.execute('SELECT 1 FROM characters WHERE campaign_id = ? AND library_id = ?', (member['id'], char_id)).fetchone():
+    new_id = _add_copy(db, source, campaign)
+    if new_id is None:
         db.close()
         return _library_back('already', back_id)
-    g.campaign_id = member['id']                          # the copied pictures count towards this campaign's storage too
-    new_id = _clone_character(db, source, member['id'], None, char_id, 'a personal library')
-    log_activity(db, member['id'], 'character_created', 'added the character %s' % source['name'],
-                 url_for('character_detail', campaign_id=member['id'], char_id=new_id))
     db.commit()
     db.close()
     if request.form.get('next') == 'campaign':
-        return redirect(url_for('character_detail', campaign_id=member['id'], char_id=new_id))
+        return redirect(url_for('character_detail', campaign_id=campaign['id'], char_id=new_id))
     return _library_back('added', back_id)
+
+
+@app.route('/library/add-many', methods=['POST'])
+def library_add_many():
+    """Several library characters into one campaign at once (the picker on a campaign's Characters page)."""
+    db = get_db()
+    campaign = _member_campaign(db, request.form.get('campaign_id', ''))
+    if campaign is None:
+        db.close()
+        abort(404)
+    ids = [int(v) for v in request.form.getlist('char_ids') if v.isdigit()][:LIBRARY_MAX]
+    if not ids:
+        db.close()
+        return redirect(url_for('characters_list', campaign_id=campaign['id'], library_note='nothing'))
+    added = 0
+    for source in db.execute('SELECT * FROM characters WHERE owner_id = ? AND campaign_id IS NULL AND id IN (' + ','.join('?' * len(ids)) + ') ORDER BY lower(name)',
+                             [session['user_id']] + ids).fetchall():
+        if _add_copy(db, source, campaign):
+            added += 1
+    db.commit()
+    db.close()
+    return redirect(url_for('characters_list', campaign_id=campaign['id'], library_added=added))
 
 
 @app.route('/library/save', methods=['POST'])
@@ -3306,6 +3385,67 @@ def library_save():
     db.commit()
     db.close()
     return _library_back('saved', new_id)
+
+
+def _library_manifest(db, rows):
+    """The same manifest an ordinary export uses (so a file exported here can be imported into a campaign, and back)."""
+    ids = [r['id'] for r in rows]
+    attacks, sheets = {}, {}
+    if ids:
+        marks = ','.join('?' * len(ids))
+        for a in db.execute('SELECT character_id, name, attack_bonus, damage, damage_type FROM character_attacks WHERE character_id IN (' + marks +
+                            ') ORDER BY character_id, position, id', ids).fetchall():
+            attacks.setdefault(a['character_id'], []).append({'name': a['name'], 'attack_bonus': a['attack_bonus'], 'damage': a['damage'], 'damage_type': a['damage_type']})
+        for sh in db.execute('SELECT character_id, image_path FROM character_sheets WHERE character_id IN (' + marks + ') ORDER BY character_id, sort_order, id', ids).fetchall():
+            sheets.setdefault(sh['character_id'], []).append(sh['image_path'])
+    return {
+        'version': 1, 'exported_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 'groups': [],
+        'characters': [{
+            'name': c['name'], 'is_npc': 0, 'is_ally': 0, 'level': c['level'], 'max_hp': c['max_hp'],
+            'str_score': c['str_score'], 'dex_score': c['dex_score'], 'con_score': c['con_score'],
+            'int_score': c['int_score'], 'wis_score': c['wis_score'], 'cha_score': c['cha_score'],
+            'armor_class': c['armor_class'], 'class_key': c['class_key'], 'speed': dnd5e.clean_speed(c['speed']),
+            'skill_prof': dnd5e.clean_skill_prof(c['skill_prof']), 'save_prof': dnd5e.clean_save_prof(c['save_prof']),
+            'attacks': attacks.get(c['id'], []), 'notes': c['notes'], 'group_name': None, 'group_names': [],
+            'avatar_file': c['avatar_path'], 'sheet_files': sheets.get(c['id'], []),
+        } for c in rows],
+    }
+
+
+@app.route('/library/export')
+def library_export():
+    db = get_db()
+    rows = db.execute('SELECT * FROM characters WHERE owner_id = ? AND campaign_id IS NULL ORDER BY id', (session['user_id'],)).fetchall()
+    manifest = _library_manifest(db, rows)
+    db.close()
+    return _send_manifest_zip(manifest, 'your_characters.zip')
+
+
+@app.route('/library/<int:char_id>/export')
+def library_export_one(char_id):
+    db = get_db()
+    row = _library_character(db, char_id)
+    manifest = _library_manifest(db, [row])
+    db.close()
+    return _send_manifest_zip(manifest, f'{_slugify(row["name"])}.zip')
+
+
+@app.route('/library/import', methods=['POST'])
+def library_import():
+    """Add the player characters from an export (made by this page or by a campaign's Export button) to your characters."""
+    try:
+        opened = _read_import_zip()
+    except importer.ImportRejected:
+        return _library_back('import_error')
+    if opened is None:
+        return _library_back()
+    zf, manifest = opened
+    g.campaign_id = None
+    db = get_db()
+    stats = _import_manifest(db, zf, manifest, None)
+    if stats is None:
+        return _library_back('import_quota')
+    return _library_back('imported', n=stats['added'], skipped=stats['skipped_npcs'], full=stats['skipped_full'])
 
 
 @app.route('/library/<int:char_id>/showcase', methods=['POST'])
@@ -5591,6 +5731,11 @@ def _build_export_zip(campaign_id, group_ids=None, character_ids=None, download_
         ],
     }
 
+    return _send_manifest_zip(manifest, download_name)
+
+
+def _send_manifest_zip(manifest, download_name):
+    """Pack a manifest and every image it points at into a zip and hand it to the browser (big ones via a signed link)."""
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
         zf.writestr('manifest.json', json.dumps(manifest, indent=2))
@@ -5669,23 +5814,25 @@ def faction_export(group_id):
     return _build_export_zip(g.campaign_id, group_ids=[group_id], character_ids=[], download_name=f'{_slugify(row["name"])}.zip')
 
 
-@app.route('/campaigns/<int:campaign_id>/import/data', methods=['POST'])
-@campaign_access_required
-def import_data():
-    dest = 'factions_list' if 'groups' in (request.referrer or '') else 'characters_list'
+def _read_import_zip():
+    """(zip file, cleaned manifest) from the uploaded export, or None when nothing was sent.  Raises importer.ImportRejected."""
     data, temp_key = _read_upload_source(request.files.get('import_file'), request.form.get('import_file__key'))
     try:
         if not data:
-            return redirect(request.referrer or url_for('characters_list'))
-        try:
-            zf, raw_manifest = importer.open_zip(data)
-            manifest = importer.normalize_manifest(raw_manifest, sanitize_notes_payload)
-        except importer.ImportRejected:
-            return redirect(url_for(dest, import_error=1))
+            return None
+        zf, raw_manifest = importer.open_zip(data)
+        return zf, importer.normalize_manifest(raw_manifest, sanitize_notes_payload)
     finally:
         if temp_key:
             get_storage().delete(TEMP, temp_key)
 
+
+def _import_manifest(db, zf, manifest, campaign_id):
+    """Add what an export holds.  With a campaign_id it goes into that campaign (factions included); with None it goes into the
+    signed-in person's own characters: player characters only (NPCs are skipped), up to the library limit.
+    Returns None when the images would pass a storage limit (nothing is kept), else {'added': n, 'skipped_npcs': n, 'skipped_full': n}."""
+    library = campaign_id is None
+    me = session['user_id']
     pending = []                                   # (key, Processed) uploaded just before commit
 
     def extract_image(rel_path, subfolder):
@@ -5703,28 +5850,34 @@ def import_data():
         pending.append((key, processed))
         return key
 
-    db = get_db()
+    group_name_to_id = {}
+    if not library:
+        # Groups: dedupe by name (case-insensitive) so re-importing doesn't duplicate factions
+        # -- scoped to this campaign only, so importing into campaign B never
+        # matches a same-named group that only exists in campaign A.
+        group_name_to_id = {row['name'].lower(): row['id'] for row in db.execute('SELECT id, name FROM groups WHERE campaign_id = ?', (campaign_id,))}
+        for grp in manifest['groups']:
+            key = grp['name'].lower()
+            if key in group_name_to_id:
+                continue
+            avatar_path = extract_image(grp['avatar_file'], 'avatars')
+            cur = db.execute('INSERT INTO groups (name, avatar_path, bio, color, campaign_id, created_by) VALUES (?, ?, ?, ?, ?, ?)',
+                              (grp['name'], avatar_path, grp['bio'], grp['color'], campaign_id, me))
+            group_name_to_id[key] = cur.lastrowid
 
-    # Groups: dedupe by name (case-insensitive) so re-importing doesn't duplicate factions
-    # -- scoped to this campaign only, so importing into campaign B never
-    # matches a same-named group that only exists in campaign A.
-    existing_groups = {
-        row['name'].lower(): row['id']
-        for row in db.execute('SELECT id, name FROM groups WHERE campaign_id = ?', (g.campaign_id,))
-    }
-    group_name_to_id = dict(existing_groups)
-
-    for grp in manifest['groups']:
-        key = grp['name'].lower()
-        if key in group_name_to_id:
-            continue
-        avatar_path = extract_image(grp['avatar_file'], 'avatars')
-        cur = db.execute('INSERT INTO groups (name, avatar_path, bio, color, campaign_id, created_by) VALUES (?, ?, ?, ?, ?, ?)',
-                          (grp['name'], avatar_path, grp['bio'], grp['color'], g.campaign_id, session['user_id']))
-        group_name_to_id[key] = cur.lastrowid
+    stats = {'added': 0, 'skipped_npcs': 0, 'skipped_full': 0}
+    room = max(0, LIBRARY_MAX - _library_count(db)) if library else None
 
     # Characters: always inserted as new records (never merged/overwritten)
     for c in manifest['characters']:
+        if library:
+            if c['is_npc']:
+                stats['skipped_npcs'] += 1
+                continue
+            if room <= 0:
+                stats['skipped_full'] += 1
+                continue
+            room -= 1
         wanted = c.get('group_names') or ([c['group_name']] if c.get('group_name') else [])
         import_group_ids = []
         for nm in wanted:
@@ -5737,15 +5890,16 @@ def import_data():
             INSERT INTO characters
             (name, is_npc, is_ally, level, max_hp, str_score, dex_score, con_score, int_score,
              wis_score, cha_score, armor_class, avatar_path, notes, group_id, class_key, campaign_id, created_by,
-             speed, skill_prof, save_prof)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             speed, skill_prof, save_prof, owner_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (c['name'], c['is_npc'], c['is_ally'], c['level'], c['max_hp'],
               c['str_score'], c['dex_score'], c['con_score'], c['int_score'],
               c['wis_score'], c['cha_score'], c['armor_class'],
-              avatar_path, c['notes'], group_id, _clean_class(c.get('class_key')), g.campaign_id, session['user_id'],
+              avatar_path, c['notes'], group_id, _clean_class(c.get('class_key')), campaign_id, me,
               dnd5e.clean_speed(c.get('speed')), json.dumps(dnd5e.clean_skill_prof(c.get('skill_prof'))),
-              json.dumps(dnd5e.clean_save_prof(c.get('save_prof')))))
+              json.dumps(dnd5e.clean_save_prof(c.get('save_prof'))), me if library else None))
         new_char_id = cur.lastrowid
+        stats['added'] += 1
         _save_attacks(db, new_char_id, c['attacks'])
         for pos, gid_ in enumerate(import_group_ids):
             db.execute('INSERT INTO character_groups (character_id, group_id, position) VALUES (?, ?, ?) RETURNING character_id', (new_char_id, gid_, pos))
@@ -5755,15 +5909,20 @@ def import_data():
             if sheet_path:
                 db.execute('INSERT INTO character_sheets (character_id, image_path, sort_order) VALUES (?, ?, ?)',
                            (new_char_id, sheet_path, i))
+        if library:                                 # level history starts with the imported level, like a character made by hand
+            _save_level_stats(db, new_char_id, c['level'], c['max_hp'], c['armor_class'],
+                              (c['str_score'], c['dex_score'], c['con_score'], c['int_score'], c['wis_score'], c['cha_score']),
+                              dnd5e.clean_speed(c.get('speed')), json.dumps(dnd5e.clean_skill_prof(c.get('skill_prof'))),
+                              json.dumps(dnd5e.clean_save_prof(c.get('save_prof'))))
 
     # Upload every queued image (in parallel) BEFORE committing, so a storage failure
     # rolls the whole import back instead of leaving rows that point at missing files.
     try:
-        quotas.check(db, session['user_id'], g.campaign_id, sum(len(p.data) for _, p in pending))
+        quotas.check(db, me, campaign_id, sum(len(p.data) for _, p in pending))
     except quotas.QuotaExceeded:
         db.rollback()
         db.close()
-        return redirect(url_for(dest, import_error='quota'))
+        return None
     st = get_storage()
     try:
         with ThreadPoolExecutor(6) as pool:
@@ -5777,10 +5936,26 @@ def import_data():
             pass
         raise
     for key, processed in pending:
-        quotas.record(db, key, session['user_id'], g.campaign_id, key.split('/')[0], len(processed.data))
+        quotas.record(db, key, me, campaign_id, key.split('/')[0], len(processed.data))
     db.commit()
     db.close()
+    return stats
 
+
+@app.route('/campaigns/<int:campaign_id>/import/data', methods=['POST'])
+@campaign_access_required
+def import_data():
+    dest = 'factions_list' if 'groups' in (request.referrer or '') else 'characters_list'
+    try:
+        opened = _read_import_zip()
+    except importer.ImportRejected:
+        return redirect(url_for(dest, import_error=1))
+    if opened is None:
+        return redirect(request.referrer or url_for('characters_list'))
+    zf, manifest = opened
+    db = get_db()
+    if _import_manifest(db, zf, manifest, g.campaign_id) is None:
+        return redirect(url_for(dest, import_error='quota'))
     return redirect(url_for(dest, imported=1))
 
 

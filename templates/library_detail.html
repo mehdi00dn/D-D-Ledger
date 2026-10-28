@@ -1,18 +1,32 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon, class_icon %}
 {% set active_page = 'library' %}
-{% block title %}{{ character.name }} — Library — Campaign Ledger{% endblock %}
+{% block title %}{{ character.name }} — Your characters — Campaign Ledger{% endblock %}
 
 {% block content %}
+<a href="{{ url_for('library_list') }}" class="back-link">{{ icon('arrow-left') }} Your characters</a>
 <div class="page-header">
   <div>
     <h1 class="page-title">{{ character.name }}</h1>
-    <p class="page-sub">In your library &middot; {{ class_label or 'No class' }} &middot; Lvl {{ character.level }}</p>
+    <p class="page-sub">{{ class_label or 'No class' }} &middot; Lvl {{ character.level }} &middot; kept outside any campaign</p>
   </div>
-  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+  <div class="page-actions toolbar">
     <a href="{{ url_for('library_edit', char_id=character.id) }}" class="btn btn-primary">{{ icon('pencil') }} Edit</a>
-    <button type="button" class="btn btn-ghost" data-print title="Print this sheet, or save it as a PDF from the print window">{{ icon('download') }} Print sheet</button>
-    <a href="{{ url_for('library_list') }}" class="btn btn-ghost">{{ icon('arrow-left') }} Back to library</a>
+    <details class="menu">
+      <summary class="btn-icon" aria-haspopup="menu" aria-label="More actions" title="More actions">{{ icon('more') }}</summary>
+      <div class="menu-list" role="menu">
+        <button type="button" class="menu-item" role="menuitem" data-print>{{ icon('download') }} Print sheet</button>
+        <a href="{{ url_for('library_export_one', char_id=character.id) }}" class="menu-item" role="menuitem">{{ icon('upload') }} Export this character</a>
+        <form method="POST" action="{{ url_for('library_showcase', char_id=character.id) }}">{{ csrf_field() }}
+          <input type="hidden" name="back" value="detail">
+          <button type="submit" class="menu-item" role="menuitem">{{ icon('star') }} {{ 'Remove from my profile' if featured else 'Show on my profile' }}</button>
+        </form>
+        <div class="menu-sep" role="separator"></div>
+        <form method="POST" action="{{ url_for('library_delete', char_id=character.id) }}" data-confirm="Delete {{ character.name }} from your characters? Copies already in campaigns are kept.">{{ csrf_field() }}
+          <button type="submit" class="menu-item is-danger" role="menuitem">{{ icon('trash-2') }} Delete</button>
+        </form>
+      </div>
+    </details>
   </div>
 </div>
 
@@ -34,15 +48,15 @@
       <div class="dossier-name cd-name">{{ character.name }}</div>
       <div class="cd-chips">
         <span class="cd-chip">Lvl {{ character.level }}</span>
-        <span class="cd-chip cd-chip--pc">Library</span>
+        <span class="cd-chip cd-chip--pc">Yours</span>
         {% if character.added_from %}<span class="cd-chip cd-chip--source">Saved from {{ character.added_from }}</span>{% endif %}
         {% if featured %}<span class="cd-chip cd-chip--source">{{ icon('star') }} On your profile</span>{% endif %}
       </div>
     </div>
   </section>
 
-  <section class="cf-card lib-actions-card" aria-label="Campaigns and profile">
-    <h2 class="cf-title">Campaigns &amp; profile</h2>
+  <section class="cf-card lib-actions-card" aria-label="Campaigns">
+    <h2 class="cf-title">Campaigns</h2>
     <div class="lib-placed">
       <span class="lib-placed-label">In campaigns</span>
       {% if placed %}
@@ -63,15 +77,6 @@
     {% else %}
     <p class="hint-text lib-hint">{{ 'Already in all of your campaigns.' if placed else 'Join or create a campaign to add this character to it.' }}</p>
     {% endif %}
-    <div class="lib-row-actions">
-      <form method="POST" action="{{ url_for('library_showcase', char_id=character.id) }}">{{ csrf_field() }}
-        <input type="hidden" name="back" value="detail">
-        <button type="submit" class="btn btn-ghost btn-sm" aria-pressed="{{ 'true' if featured else 'false' }}">{{ icon('star') }} {{ 'Remove from my profile' if featured else 'Show on my profile' }}</button>
-      </form>
-      <form method="POST" action="{{ url_for('library_delete', char_id=character.id) }}" data-confirm="Delete {{ character.name }} from your library? Copies already in campaigns are kept.">{{ csrf_field() }}
-        <button type="submit" class="btn btn-danger btn-sm">{{ icon('trash-2') }} Delete</button>
-      </form>
-    </div>
     <p class="hint-text lib-hint">Adding makes a separate copy, so changes at a table never alter this sheet.</p>
   </section>
 

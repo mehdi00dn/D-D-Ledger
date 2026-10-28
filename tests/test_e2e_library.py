@@ -15,7 +15,7 @@ def test_build_add_and_feature_a_library_character(pw, shared_server):
     base = shared_server.url; me = Api(base); cid = me.campaign('Ember Coast')
     ctx = me.context(pw, base); page = ctx.new_page(); bad, errs = _collect(page)
     page.goto(base + '/library')
-    expect(page.locator('.empty-state')).to_contain_text('Your library is empty')
+    expect(page.locator('.empty-state')).to_contain_text('No characters kept here yet')
     page.click('.page-actions .btn-primary')
     page.fill('#name', 'Sylas Thorne'); page.fill('#level', '5'); page.fill('#max_hp', '41')
     assert page.locator('input[name="is_npc"]').count() == 0 and page.locator('.faction-picks').count() == 0
@@ -25,11 +25,11 @@ def test_build_add_and_feature_a_library_character(pw, shared_server):
     expect(page.locator('.banner-success')).to_contain_text('Added to the campaign')
     expect(page.locator('.lib-chips')).to_contain_text('Ember Coast')
     assert page.locator('.lib-add').count() == 0                                   # already in the only campaign
-    page.click('text=Show on my profile'); page.wait_for_load_state()
+    page.click('.page-actions details.menu summary'); page.click('text=Show on my profile'); page.wait_for_load_state()
     expect(page.locator('.cd-chip', has_text='On your profile')).to_be_visible()
     page.goto(base + f'/campaigns/{cid}/characters')
     expect(page.locator('#character-grid')).to_contain_text('Sylas Thorne')
-    expect(page.locator('#character-grid')).to_contain_text('Added from a personal library')
+    expect(page.locator('#character-grid')).to_contain_text('Added from their own characters')
     page.goto(base + f'/u/{me.name}')
     expect(page.locator('body')).to_contain_text('Sylas Thorne')
     assert not bad and not errs, (bad, errs)

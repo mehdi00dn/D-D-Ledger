@@ -258,14 +258,25 @@ One character per monster: running an encounter (or adding from the monster manu
 
 Deleting an encounter asks whether its creatures should leave the character list too: "Delete encounter only", or "Delete and remove its creatures" (only unedited ones that are not in the battle). The new-encounter and name fields have a clearer design, and both pages open with a short guide.
 
-### Character library (DL-160; migration `0045_character_library.sql`)
+### Your characters (DL-160; migrations `0045_character_library.sql`, `0046_your_characters_wording.sql`)
 
-A person's own characters, kept outside any campaign (`/library`, "Library" in the sidebar). A library character is an ordinary `characters` row with `campaign_id` NULL and `owner_id` set (a check constraint says a character has a campaign or an owner), so every campaign query ignores it. Only the owner can open, edit or delete it. The create/edit form is the campaign form with the NPC, faction and monster-manual parts left out.
+A person's own characters, kept outside any campaign (`/library`, shown as "Your characters" in the navigation outside a campaign; it is deliberately not in a campaign's sidebar, because the campaign Characters page reaches it directly). A kept character is an ordinary `characters` row with `campaign_id` NULL and `owner_id` set (a check constraint says a character has a campaign or an owner), so every campaign query ignores it. Only the owner can open, edit or delete it. The create/edit form is the campaign form with the NPC, faction and monster-manual parts left out. The URLs and code keep the older word "library".
 
-- **Add to a campaign** (`/library/<id>/add-to-campaign`, from the library card, the library page or the campaign's Characters page): puts a copy in, played by the person, with its own copies of the portrait and sheet images, level history and attacks. `characters.library_id` on the copy points back at the library character, so one campaign never gets the same library character twice; changes at one table never touch the library sheet or other tables. The copy shows "Added from a personal library".
-- **Save to my library** (`/library/save`, button on the details page of a player character you made or play): the reverse copy, linked both ways round; saving again opens the one already kept.
-- **Profile**: a star on the card features a library character in the profile showcase (same table and limit as before, `profile_showcase`); the account page picker lists library characters too.
-- Limit of 60 characters per library (`LIBRARY_MAX`). Deleting a library character removes its image files but keeps the campaign copies; deleting the account removes the library and its files; the account export lists it.
+Less going back and forth between menus:
+
+- **Campaign Characters page**: the header has New character, "From your characters" (a dialog with search and checkboxes; "Add N to this campaign" posts to `/library/add-many` and adds one copy of each, skipping any already there), and a "more" menu with Export this campaign, Import from a file and Open Your characters.
+- **New campaign character**: an "Also keep a copy in Your characters" checkbox (player characters only; it links both ways like Save does).
+- **New character in Your characters**: an optional "Add to a campaign as well" select makes the character and its campaign copy in one step; opening Make a new one from the picker pre-selects that campaign.
+- **Details pages**: back link above the title, Edit as the one primary button, and a "more" menu (Print, Export this character, Show on my profile, Delete). Campaign characters get "Save to your characters" / "In your characters" beside Edit.
+- **Cards**: no HP pill or live HP meter any more. The meta line shows class, level and AC; a card for someone in the running battle shows "In battle" (or "Down") and condition chips, and a Player still gets nothing for a monster.
+
+Behaviour:
+
+- **Add to a campaign** (`/library/<id>/add-to-campaign`, from a card, the details page or the picker): puts a copy in, played by the person, with its own copies of the portrait and sheet images, level history and attacks. `characters.library_id` on the copy points back at the kept character, so one campaign never gets the same character twice; changes at one table never touch the kept sheet or other tables. The copy shows "Added from their own characters".
+- **Save to your characters** (`/library/save`, from the details page of a player character you made or play): the reverse copy, linked both ways round; saving again opens the one already kept.
+- **Export and import** (`/library/export`, `/library/<id>/export`, `/library/import`): the same zip format as a campaign export (manifest.json version 1 plus images), downloaded as `your_characters.zip`. Importing works both ways: a campaign export can be imported into Your characters and the reverse. Into Your characters only player characters are kept (NPCs and factions are skipped and counted in the banner), the limit still applies, and image storage quota is checked before anything is written.
+- **Profile**: a star (in the card's menu or on the details page) features a kept character in the profile showcase (same table and limit as before, `profile_showcase`); the account page picker lists them too.
+- Limit of 60 characters (`LIBRARY_MAX`). Deleting one removes its image files but keeps the campaign copies; deleting the account removes them and their files; the account export lists them.
 
 ### Map ruler follow-up (DL-153)
 The ruler is drawn on its own canvas above tokens, shapes and fog, in screen pixels, so it stays small and sharp at any zoom or map size. It has a thin brass line with a dark edge, a tick at every square, hollow end rings and a compact reading pill.

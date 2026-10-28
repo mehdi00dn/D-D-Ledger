@@ -9,7 +9,7 @@ def _card(html, name):
     return html.split(name, 1)[1].split('dossier-card', 1)[0]
 
 
-def test_cards_show_class_art_live_hp_and_conditions(make_user):
+def test_cards_show_class_art_battle_state_and_conditions(make_user):
     dm, pl = make_user(), make_user()
     cid = dm.new_campaign(); dm.add_member(cid, pl)
     hero = dm.new_character(cid, name='Kael Thorne', class_key='fighter', max_hp='40')
@@ -22,7 +22,8 @@ def test_cards_show_class_art_live_hp_and_conditions(make_user):
     dm.json(f'/campaigns/{cid}/api/battle/{pid}/conditions', {'conditions': ['prone'], 'custom_conditions': ['Hexed']})
     for who in (dm, pl):
         html = who.get(f'/campaigns/{cid}/characters').data.decode()
-        assert '10 / 40 HP' in html and 'is-low' in html and 'Prone' in html and 'Hexed' in html
+        assert 'In battle' in html and 'Prone' in html and 'Hexed' in html
+        assert 'hp-meter' not in html and 'badge-hp' not in html and '40 HP' not in html   # no HP bars on the cards
 
 
 def test_a_players_cards_never_carry_a_monsters_numbers(make_user):
