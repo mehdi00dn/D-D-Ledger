@@ -46,7 +46,7 @@
       </div>
       <div class="dossier-name-block">
         <div class="dossier-name">{{ c.name }}</div>
-        <div class="dossier-meta">{{ c.class_label or 'No class' }} &middot; Lvl {{ c.level }}<span class="meta-ac" title="Armor class">{{ icon('shield') }}{{ c.armor_class }} AC</span></div>
+        <div class="dossier-meta">{{ c.class_label or 'No class' }} &middot; Lvl {{ c.level }}</div>
       </div>
     </div>
 
@@ -57,6 +57,10 @@
       <div class="stat-pill"><span class="val">{{ c.int_score }}</span><span class="lbl">INT</span></div>
       <div class="stat-pill"><span class="val">{{ c.wis_score }}</span><span class="lbl">WIS</span></div>
       <div class="stat-pill"><span class="val">{{ c.cha_score }}</span><span class="lbl">CHA</span></div>
+    </div>
+    <div class="dossier-vitals" aria-label="Hit points and armor class">
+      <span class="vital vital-hp" title="Maximum hit points">{{ icon('heart') }}<b>{{ c.max_hp }}</b><small>Max HP</small></span>
+      <span class="vital vital-ac" title="Armor class">{{ icon('shield') }}<b>{{ c.armor_class }}</b><small>AC</small></span>
     </div>
     {% if c.added_from %}<p class="added-from">{{ icon('archive') }} From {{ c.added_from }}</p>{% endif %}
 

@@ -128,7 +128,7 @@
       <div class="dossier-name-block">
         <div class="dossier-name">{% if not npc_hidden and c.avatar_path %}{{ class_icon(c.class_key) }}{% endif %}{{ c.name }}</div>
         <div class="dossier-meta">
-          Lvl {{ c.level }}{% if not npc_hidden %}<span class="meta-ac" title="Armor class">{{ icon('shield') }}{{ c.armor_class }} AC</span>{% endif %}
+          Lvl {{ c.level }}
           {% for f in c.factions %}
             <span class="group-dot" style="background:{{ f.color }}"></span>{{ f.name }}{{ ',' if not loop.last }}
           {% endfor %}
@@ -143,6 +143,10 @@
       <div class="stat-pill"><span class="val" aria-hidden="true">10</span><span class="lbl">{{ lbl }}</span></div>
       {% endfor %}
     </div>
+    <div class="dossier-vitals stats-fogged" aria-label="HP and AC hidden">
+      <span class="vital vital-hp" aria-hidden="true">{{ icon('heart') }}<b>00</b><small>Max HP</small></span>
+      <span class="vital vital-ac" aria-hidden="true">{{ icon('shield') }}<b>00</b><small>AC</small></span>
+    </div>
 
     {% else %}
     <div class="dossier-stats">
@@ -152,6 +156,10 @@
       <div class="stat-pill"><span class="val">{{ c.int_score }}</span><span class="lbl">INT</span></div>
       <div class="stat-pill"><span class="val">{{ c.wis_score }}</span><span class="lbl">WIS</span></div>
       <div class="stat-pill"><span class="val">{{ c.cha_score }}</span><span class="lbl">CHA</span></div>
+    </div>
+    <div class="dossier-vitals" aria-label="Hit points and armor class">
+      <span class="vital vital-hp" title="Maximum hit points">{{ icon('heart') }}<b>{{ c.max_hp }}</b><small>Max HP</small></span>
+      <span class="vital vital-ac" title="Armor class">{{ icon('shield') }}<b>{{ c.armor_class }}</b><small>AC</small></span>
     </div>
 
     {% if c.added_from %}<p class="added-from">{{ icon('archive' if c.added_from == 'their own characters' else 'skull') }} Added from {{ c.added_from }}</p>{% endif %}

@@ -5370,3 +5370,23 @@ a.pager-link:hover { border-color: var(--brass); }
   .purse-actions .btn { flex: 1 1 auto; justify-content: center; }
   .treasury-pager .pager-link:not(.is-step):not(.is-current) { display: none; }
 }
+
+/* Character cards: max HP and AC under the abilities, and the actions kept at the bottom of every card (DL-160 follow-up) */
+.dossier-card { display: flex; flex-direction: column; }
+.dossier-card .dossier-stats { margin-bottom: 6px; }
+.dossier-vitals { display: grid; grid-template-columns: 1fr 1fr; margin-bottom: 12px; border: 1px solid var(--hairline); border-radius: var(--radius-s); overflow: hidden; }
+.dossier-vitals .vital { display: flex; align-items: baseline; justify-content: center; gap: 6px; padding: 7px 8px; }
+.dossier-vitals .vital + .vital { border-inline-start: 1px solid var(--hairline); }
+.dossier-vitals .vital svg { inline-size: 13px; block-size: 13px; align-self: center; flex: none; }
+.dossier-vitals .vital b { font-family: var(--font-mono); font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--parchment); }
+.dossier-vitals .vital small { font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--parchment-faint); }
+.dossier-vitals .vital-hp svg { color: var(--moss-ink); }
+.dossier-vitals .vital-ac svg { color: var(--brass-bright-ink); }
+.dossier-card .dossier-notes { flex: 1 1 auto; -webkit-line-clamp: 4; line-clamp: 4; }
+.dossier-card .dossier-actions { margin-block-start: auto; }
+.dossier-card .added-from, .dossier-card .dossier-live { flex: none; }
+.group-card { display: flex; flex-direction: column; }
+.group-card .group-image-block { flex: none; }
+.group-body { flex: 1 1 auto; display: flex; flex-direction: column; }
+.group-body .group-bio { flex: 1 1 auto; }
+.group-body .group-actions { margin-block-start: auto; }

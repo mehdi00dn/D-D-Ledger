@@ -23,7 +23,8 @@ def test_cards_show_class_art_battle_state_and_conditions(make_user):
     for who in (dm, pl):
         html = who.get(f'/campaigns/{cid}/characters').data.decode()
         assert 'In battle' in html and 'Prone' in html and 'Hexed' in html
-        assert 'hp-meter' not in html and 'badge-hp' not in html and '40 HP' not in html   # no HP bars on the cards
+        assert 'hp-meter' not in html and 'badge-hp' not in html and '10 / 40' not in html   # no live HP bar on the cards
+        assert 'dossier-vitals' in html and 'Max HP' in html and '>AC<' in html             # max HP and AC sit under the abilities
 
 
 def test_a_players_cards_never_carry_a_monsters_numbers(make_user):
