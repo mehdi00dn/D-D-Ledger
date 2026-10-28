@@ -5343,3 +5343,30 @@ input[type="range"]:disabled { opacity: 0.5; cursor: not-allowed; }
   .page-actions.toolbar > .btn-ghost { flex: 1 1 auto; min-inline-size: 0; justify-content: center; }
 }
 .pick-tools input[type=search] { background: var(--bg-panel-inset); color: var(--parchment); border: 1px solid var(--hairline); border-radius: 8px; padding: 9px 11px; font: inherit; font-size: 14px; }
+
+/* Treasury: one summary line, purse actions, dialogs, pager (DL-148 follow-up) */
+.treasury-summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin-block-end: 14px; }
+.treasury-summary-num { font-family: var(--font-mono); font-size: 26px; font-weight: 600; color: var(--brass-ink); font-variant-numeric: tabular-nums; }
+.treasury-summary-label { font-size: 13px; color: var(--parchment-dim); }
+.purse-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 14px; margin-block-end: 12px; }
+.purse-head .cf-title { margin: 0; }
+.purse-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.coin-none { font-size: 12.5px; color: var(--parchment-dim); }
+.people-purse-total small { font: 500 11px var(--font-body, inherit); color: var(--parchment-dim); margin-inline-end: 3px; }
+.treasury-status { margin-block-end: 12px; }
+#treasury-live[aria-busy="true"] { opacity: .7; transition: opacity .15s; }
+.treasury-dialog { inline-size: min(34rem, calc(100vw - 24px)); }
+.treasury-dialog .treasury-form { display: flex; flex-direction: column; gap: 0; inline-size: 100%; min-block-size: 0; }
+.treasury-dialog-body { display: grid; gap: 14px; padding: 6px 18px 16px; overflow-y: auto; }
+.treasury-dialog .pick-foot { justify-content: flex-end; }
+.treasury-pager { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px; margin-block-start: 14px; }
+.pager-link { min-inline-size: 34px; padding: 6px 10px; border: 1px solid var(--hairline); border-radius: 8px; text-align: center; text-decoration: none; color: var(--parchment); font-size: 13.5px; }
+a.pager-link:hover { border-color: var(--brass); }
+.pager-link.is-current { background: color-mix(in srgb, var(--brass) 18%, transparent); border-color: var(--brass); font-weight: 600; }
+.pager-link.is-off { opacity: .4; }
+.pager-gap { color: var(--parchment-dim); }
+.treasury-range { text-align: center; margin-block-start: 8px; }
+@media (max-width: 640px) {
+  .purse-actions .btn { flex: 1 1 auto; justify-content: center; }
+  .treasury-pager .pager-link:not(.is-step):not(.is-current) { display: none; }
+}

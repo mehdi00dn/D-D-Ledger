@@ -194,3 +194,64 @@ def test_entries_reach_the_activity_feed(make_user):
     dm, pl, cid = _setup(make_user)
     _add(dm, cid, 'income', 'Dragon hoard', gp=5)
     assert 'added to the purse: Dragon hoard' in pl.get(f'/campaigns/{cid}/activity').data.decode()
+
+
+# ---- pages of ten, no-reload answers, the gold total (DL-148 follow-up) ----
+
+JSON = {'X-Requested-With': 'fetch'}
+
+
+def test_entries_come_ten_to_a_page_newest_first(make_user):
+    dm, pl, cid = _setup(make_user)
+    for i in range(1, 26):
+        _add(dm, cid, 'income', note=f'Loot {i:02d}', gp=1)
+    p1 = dm.get(f'/campaigns/{cid}/treasury').get_data(as_text=True)
+    assert 'Loot 25' in p1 and 'Loot 16' in p1 and 'Loot 15' not in p1 and p1.count('class="treasury-entry ') == 10
+    assert 'Older' in p1 and 'Showing 1–10 of 25' in p1
+    p3 = dm.get(f'/campaigns/{cid}/treasury?page=3').get_data(as_text=True)
+    assert 'Loot 05' in p3 and 'Loot 01' in p3 and 'Loot 06' not in p3 and p3.count('class="treasury-entry ') == 5
+    assert dm.get(f'/campaigns/{cid}/treasury?page=99').get_data(as_text=True).count('class="treasury-entry ') == 5      # clamped
+    assert dm.get(f'/campaigns/{cid}/treasury?page=zzz').status_code == 200
+
+
+def test_the_filter_pages_only_that_purse(make_user):
+    dm, pl, cid = _setup(make_user)
+    hero = dm.new_character(cid, name='Frodo')
+    for i in range(12):
+        _add_for(dm, cid, hero, 'income', note=f'Own {i:02d}', gp=1)
+    _add(dm, cid, 'income', note='Party only', gp=1)
+    page = dm.get(f'/campaigns/{cid}/treasury?who={hero}').get_data(as_text=True)
+    assert 'Party only' not in page and 'Showing 1–10 of 12' in page
+
+
+def test_a_script_post_gets_json_and_a_plain_post_still_redirects(make_user):
+    dm, pl, cid = _setup(make_user)
+    r = dm.post(f'/campaigns/{cid}/treasury/add', data={'kind': 'income', 'note': 'x', 'gp': '5'}, headers=JSON)
+    assert r.status_code == 200 and r.get_json()['ok'] and '5 gp' in r.get_json()['message']
+    bad = dm.post(f'/campaigns/{cid}/treasury/add', data={'kind': 'income', 'note': 'x'}, headers=JSON)
+    assert bad.status_code == 400 and 'Type how many coins' in bad.get_json()['error']
+    overspend = dm.post(f'/campaigns/{cid}/treasury/add', data={'kind': 'expense', 'gp': '50'}, headers=JSON)
+    assert overspend.status_code == 400 and 'enough' in overspend.get_json()['error']
+    assert _add(dm, cid, 'income', gp=1).status_code == 302
+    eid = q('SELECT id FROM treasury_entries WHERE campaign_id = ? ORDER BY id DESC', cid)[0]['id']
+    gone = dm.post(f'/campaigns/{cid}/treasury/{eid}/delete', headers=JSON)
+    assert gone.status_code == 200 and gone.get_json()['message'] == 'Entry removed.'
+    assert dm.post(f'/campaigns/{cid}/treasury/split', data={'to': 'party'}, headers=JSON).status_code == 400
+
+
+def test_the_panels_fragment_is_just_the_purses_and_entries(make_user):
+    dm, pl, cid = _setup(make_user)
+    dm.new_character(cid, name='Frodo')
+    _add(dm, cid, 'income', note='Fragment', pp=2)
+    html = dm.get(f'/campaigns/{cid}/treasury/panels').get_data(as_text=True)
+    assert 'Fragment' in html and 'Frodo' in html and '<html' not in html and 'id="t-add"' in html
+    assert 'worth 20 gp' in html                                                  # platinum counted as gold
+
+
+def test_a_purse_total_is_everything_counted_as_gold(make_user):
+    dm, pl, cid = _setup(make_user)
+    hero = dm.new_character(cid, name='Frodo')
+    _add_for(dm, cid, hero, 'income', gp=40, pp=15)
+    page = dm.get(f'/campaigns/{cid}/treasury').get_data(as_text=True)
+    assert '190 gp' in page and 'worth' in page and 'so 40 gp and 15 pp show as 190 gp' in page
+    assert 'No coins' not in page.split('Character purses')[1].split('</li>')[0]

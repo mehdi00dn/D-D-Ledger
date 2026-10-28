@@ -3,133 +3,36 @@
 {% set active_page = 'treasury' %}
 {% block title %}Treasury — Campaign Ledger{% endblock %}
 
-{% macro coins_line(p) %}{% for c in treasury_coins %}<span class="coin-chip coin-{{ c }}">{{ icon('coin') }}<b>{{ p[c] }}</b> {{ c }}</span>{% endfor %}{% endmacro %}
-
 {% block content %}
 <div class="page-header">
   <div>
     <h1 class="page-title">Treasury</h1>
     <p class="page-sub">Where the coins are. The party has a shared purse, and every player character has a purse of their own.</p>
   </div>
+  <div class="page-actions toolbar">
+    <button type="button" class="btn btn-primary" data-open-dialog="t-add" data-holder="">{{ icon('plus') }} Add or spend</button>
+    <button type="button" class="btn btn-ghost" data-open-dialog="t-share" data-source="">{{ icon('swap') }} Share</button>
+  </div>
 </div>
 
+<div class="banner-notice banner-success treasury-status" id="treasury-status" role="status" hidden></div>
 {% if error %}<div class="banner-notice banner-error" role="alert">{{ error }}</div>{% endif %}
 
-<details class="guide-card"{{ ' open' if not entries else '' }}>
+<details class="guide-card">
   <summary>{{ icon('info') }} How the treasury works</summary>
   <ol class="guide-steps">
-    <li>{{ icon('coins') }}<div><b>Purses.</b> Coins always sit in a purse: the shared <em>party purse</em> (the loot nobody owns yet) or a <em>character's own purse</em>. Each purse is just the total of its entries below.</div></li>
-    <li>{{ icon('plus') }}<div><b>Coins in, coins out.</b> Record loot, pay, shopping or a bribe in "Add or spend". Spending makes change for you: pay 1 gp from a platinum piece and 9 gp come back.</div></li>
-    <li>{{ icon('swap') }}<div><b>Share or hand over.</b> Split loot evenly between characters, give coins to one friend, or put them back into the party purse in "Share or hand over". Whatever does not divide stays where it was.</div></li>
+    <li>{{ icon('coins') }}<div><b>Purses.</b> Coins always sit in a purse: the shared <em>party purse</em> (loot nobody owns yet) or a <em>character's own purse</em>. A purse is the total of its entries below.</div></li>
+    <li>{{ icon('plus') }}<div><b>Coins in, coins out.</b> Record loot, pay, shopping or a bribe with "Add or spend", from the page or from a purse's own button. Spending makes change for you.</div></li>
+    <li>{{ icon('swap') }}<div><b>Share or hand over.</b> Split coins evenly between purses or give them to one. Whatever does not divide stays where it was.</div></li>
   </ol>
-  <p class="guide-note"><b>Coins:</b> 1 cp copper · 1 sp silver = 10 cp · 1 ep electrum = 5 sp · 1 gp gold = 10 sp · 1 pp platinum = 10 gp. Only the DM and whoever made or plays a character can spend from that character's purse.</p>
+  <p class="guide-note"><b>Coins:</b> 1 cp copper · 1 sp silver = 10 cp · 1 ep electrum = 5 sp · 1 gp gold = 10 sp · 1 pp platinum = 10 gp. The gold figure next to a purse is everything in it counted as gold, so 40 gp and 15 pp show as 190 gp. Only the DM and whoever made or plays a character can spend from that character's purse.</p>
 </details>
 
-<section class="cf-card treasury-purse" aria-label="Party purse">
-  <h2 class="cf-title">{{ icon('coins') }} Party purse <span class="cf-count">{{ format_gold(total) }}</span></h2>
-  <ul class="coin-row">
-    {% for c in treasury_coins %}
-    <li class="coin coin-{{ c }}">{{ icon('coin') }}<b>{{ purse[c] }}</b><span>{{ c }}</span></li>
-    {% endfor %}
-  </ul>
-  <p class="treasury-hint">Shared coins, not owned by anyone yet.</p>
-</section>
-
-<section class="cf-card treasury-people" aria-label="Character purses">
-  <h2 class="cf-title">{{ icon('user') }} Character purses <span class="cf-count">{{ format_gold(grand_total) }} in all</span></h2>
-  {% if party %}
-  <ul class="people-purses">
-    {% for p in party %}
-    <li class="people-purse">
-      <div class="people-purse-main">
-        <a class="people-purse-name" href="{{ url_for('character_detail', char_id=p.id) }}">{{ p.name }}</a>
-        <span class="people-purse-coins">{{ coins_line(p.purse) }}</span>
-      </div>
-      <span class="people-purse-total">{{ format_gold(p.total) }}</span>
-      <div class="people-purse-actions">
-        {% if p.can_manage %}<a class="btn btn-ghost btn-sm" href="{{ url_for('treasury_view', holder=p.id) }}#add-form">{{ icon('plus') }} Add or spend</a>{% endif %}
-        <a class="btn btn-ghost btn-sm" href="{{ url_for('treasury_view', who=p.id) }}#entries">{{ icon('history') }} History</a>
-      </div>
-    </li>
-    {% endfor %}
-  </ul>
-  {% else %}
-  <p class="home-empty">There are no player characters yet. Add some on the Characters page and each one gets a purse here.</p>
-  {% endif %}
-</section>
-
-<div class="treasury-forms">
-  <section class="cf-card" id="add-form" aria-label="Add or spend">
-    <h2 class="cf-title">{{ icon('plus') }} Add or spend</h2>
-    <form method="POST" action="{{ url_for('treasury_add') }}" class="treasury-form">{{ csrf_field() }}
-      <div class="treasury-kind" role="radiogroup" aria-label="Kind of entry">
-        <label class="kind-in"><input type="radio" name="kind" value="income" checked><span>{{ icon('plus') }} Coins in</span></label>
-        <label class="kind-out"><input type="radio" name="kind" value="expense"><span>{{ icon('minus') }} Coins out</span></label>
-      </div>
-      <div class="field"><label for="t-char">Whose purse</label>
-        <select id="t-char" name="character_id"><option value="">The party purse</option>{% for p in party if p.can_manage %}<option value="{{ p.id }}"{{ ' selected' if holder == p.id|string }}>{{ p.name }}</option>{% endfor %}</select>
-      </div>
-      <div class="coin-inputs">
-        {% for c in treasury_coins %}
-        <div class="field coin-field coin-{{ c }}"><label for="t-{{ c }}">{{ icon('coin') }}{{ c|upper }}</label><input type="number" id="t-{{ c }}" name="{{ c }}" min="0" max="1000000" inputmode="numeric" placeholder="0"></div>
-        {% endfor %}
-      </div>
-      <div class="field"><label for="t-note">What for</label><input type="text" id="t-note" name="note" maxlength="200" placeholder="Dragon hoard, a night at the inn, a bribe for the guard"></div>
-      <button type="submit" class="btn btn-primary">{{ icon('check') }} Save entry</button>
-    </form>
-  </section>
-
-  <section class="cf-card" aria-label="Share or hand over">
-    <h2 class="cf-title">{{ icon('swap') }} Share or hand over</h2>
-    {% if party %}
-    <form method="POST" action="{{ url_for('treasury_split') }}" class="treasury-form">{{ csrf_field() }}
-      <div class="field"><label for="s-source">Take the coins from</label>
-        <select id="s-source" name="source"><option value="">The party purse</option>{% for p in party if p.can_manage %}<option value="{{ p.id }}">{{ p.name }}</option>{% endfor %}</select>
-      </div>
-      <fieldset class="treasury-who"><legend>Give them evenly to</legend>
-        <label><input type="checkbox" name="to" value="party"> The party purse</label>
-        {% for p in party %}<label><input type="checkbox" name="to" value="{{ p.id }}" checked> {{ p.name }}</label>{% endfor %}
-      </fieldset>
-      <p class="treasury-hint">Type an amount, or leave it empty to share the whole purse. Untick everyone but one name to hand coins over. If you take the coins from a character, that character is skipped.</p>
-      <div class="coin-inputs">
-        {% for c in treasury_coins %}
-        <div class="field coin-field coin-{{ c }}"><label for="s-{{ c }}">{{ icon('coin') }}{{ c|upper }}</label><input type="number" id="s-{{ c }}" name="{{ c }}" min="0" max="1000000" inputmode="numeric" placeholder="0"></div>
-        {% endfor %}
-      </div>
-      <button type="submit" class="btn btn-ghost">{{ icon('swap') }} Share</button>
-    </form>
-    {% else %}
-    <p class="home-empty">Add player characters to share coins between them.</p>
-    {% endif %}
-  </section>
+<div id="treasury-live" data-panels-url="{{ url_for('treasury_panels') }}" data-holder="{{ holder }}">
+{% include "_treasury_live.html" %}
 </div>
+{% endblock %}
 
-<section class="cf-card" id="entries" aria-label="Entries">
-  <h2 class="cf-title">{{ icon('history') }} Entries</h2>
-  <nav class="treasury-filter" aria-label="Show entries of">
-    <a class="chip{{ ' active' if not who }}" href="{{ url_for('treasury_view') }}#entries">Everyone</a>
-    <a class="chip{{ ' active' if who == 'party' }}" href="{{ url_for('treasury_view', who='party') }}#entries">Party purse</a>
-    {% for p in party %}<a class="chip{{ ' active' if who == p.id|string }}" href="{{ url_for('treasury_view', who=p.id) }}#entries">{{ p.name }}</a>{% endfor %}
-  </nav>
-  {% if entries %}
-  <ul class="treasury-list">
-    {% for e in entries %}
-    {% set d = {'cp': e.cp, 'sp': e.sp, 'ep': e.ep, 'gp': e.gp, 'pp': e.pp} %}
-    {% set positive = coins_value(d) > 0 %}
-    <li class="treasury-entry {{ 'is-in' if positive else 'is-out' }}">
-      <div class="treasury-entry-main">
-        <p class="treasury-note">{{ e.note }}</p>
-        <p class="treasury-meta"><span class="treasury-holder">{{ e.character_name or 'Party purse' }}</span> · {{ e.actor or 'A former member' }} · {{ e.created_at }} UTC</p>
-      </div>
-      <span class="treasury-amount">{{ format_coins(d, signed=True) }}</span>
-      {% if g.is_dm or e.created_by == me %}
-      <form method="POST" action="{{ url_for('treasury_delete', entry_id=e.id) }}" data-confirm="{{ 'Remove this share? It is removed from every purse it touched.' if e.batch else 'Remove this entry?' }}">{{ csrf_field() }}<button type="submit" class="btn btn-ghost btn-sm quest-delete" aria-label="Remove the entry {{ e.note }}" title="Remove">{{ icon('trash-2') }}</button></form>
-      {% endif %}
-    </li>
-    {% endfor %}
-  </ul>
-  {% else %}
-  <p class="home-empty">Nothing here yet. Use "Add or spend" above to record the first coins.</p>
-  {% endif %}
-</section>
+{% block extra_scripts %}
+<script src="{{ url_for('static', filename='js/treasury.js') }}"></script>
 {% endblock %}

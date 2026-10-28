@@ -130,7 +130,7 @@
     {% endif %}
     <p class="cd-purse-links">
       <a class="btn btn-ghost btn-sm" href="{{ url_for('treasury_view', who=character.id) }}#entries">{{ icon('history') }} History</a>
-      {% if can_edit %}<a class="btn btn-ghost btn-sm" href="{{ url_for('treasury_view', holder=character.id) }}#add-form">{{ icon('plus') }} Add or spend</a>{% endif %}
+      {% if can_edit %}<a class="btn btn-ghost btn-sm" href="{{ url_for('treasury_view', holder=character.id) }}">{{ icon('plus') }} Add or spend</a>{% endif %}
       <a class="btn btn-ghost btn-sm" href="{{ url_for('treasury_view') }}">{{ icon('coins') }} Treasury</a>
     </p>
   </section>

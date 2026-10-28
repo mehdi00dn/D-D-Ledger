@@ -5019,7 +5019,15 @@ def _treasury_party(db):
     return [{'id': r['id'], 'name': r['name'], 'can_manage': bool(g.is_dm or owns_character(r))} for r in rows]
 
 
-def _treasury_page(db, error=None, status=200):
+TREASURY_PAGE = 10                      # entries per page, newest first
+
+
+def _treasury_script():
+    """True for the page's own scripts (fetch with X-Requested-With: fetch); everything else gets the normal redirect and full page."""
+    return request.headers.get('X-Requested-With') == 'fetch'
+
+
+def _treasury_context(db):
     purses = _purses(db)
     zero = {c: 0 for c in COINS}
     party = _treasury_party(db)
@@ -5035,15 +5043,45 @@ def _treasury_page(db, error=None, status=200):
         where, args = ' AND t.character_id = ?', (int(who),)
     else:
         who = ''
+    count = db.execute('SELECT COUNT(*) AS n FROM treasury_entries t WHERE t.campaign_id = ?' + where, (g.campaign_id,) + args).fetchone()['n']
+    pages = max(1, -(-count // TREASURY_PAGE))
+    raw = request.args.get('page') or '1'
+    page = min(max(int(raw) if raw.isdigit() and len(raw) < 6 else 1, 1), pages)
     entries = db.execute('SELECT t.id, t.created_by, t.character_id, t.batch, t.cp, t.sp, t.ep, t.gp, t.pp, t.note, t.created_at, '
                          "COALESCE(NULLIF(u.display_name, ''), u.username) AS actor, c.name AS character_name "
                          'FROM treasury_entries t LEFT JOIN users u ON u.id = t.created_by '
                          'LEFT JOIN characters c ON c.id = t.character_id '
-                         'WHERE t.campaign_id = ?' + where + ' ORDER BY t.id DESC LIMIT 100', (g.campaign_id,) + args).fetchall()
-    holder = request.args.get('holder') or ''
+                         'WHERE t.campaign_id = ?' + where + ' ORDER BY t.id DESC LIMIT ? OFFSET ?',
+                         (g.campaign_id,) + args + (TREASURY_PAGE, (page - 1) * TREASURY_PAGE)).fetchall()
+    return dict(purse=party_purse, total=coins_value(party_purse), entries=entries, party=party, me=session.get('user_id'), who=who,
+                holder=request.args.get('holder') or '', page=page, pages=pages, count=count, page_size=TREASURY_PAGE,
+                grand_total=coins_value(party_purse) + sum(p['total'] for p in party))
+
+
+def _treasury_page(db, error=None, status=200):
+    if error and _treasury_script():
+        db.close()
+        return jsonify(error=error), status
+    ctx = _treasury_context(db)
     db.close()
-    return render_template('treasury.html', purse=party_purse, total=coins_value(party_purse), entries=entries, party=party,
-                           error=error, me=session.get('user_id'), who=who, holder=holder, grand_total=coins_value(party_purse) + sum(p['total'] for p in party)), status
+    return render_template('treasury.html', error=error, **ctx), status
+
+
+def _treasury_done(message, **redirect_args):
+    """The answer to a finished change: a short message for the page's own scripts, a redirect for a plain form post."""
+    if _treasury_script():
+        return jsonify(ok=True, message=message)
+    return redirect(url_for('treasury_view', **redirect_args))
+
+
+@app.route('/campaigns/<int:campaign_id>/treasury/panels')
+@campaign_access_required
+def treasury_panels():
+    """The purses and the entries list alone (HTML), so the page can refresh them after a change without reloading."""
+    db = get_db()
+    ctx = _treasury_context(db)
+    db.close()
+    return render_template('_treasury_live.html', error=None, **ctx)
 
 
 @app.route('/campaigns/<int:campaign_id>/treasury')
@@ -5106,8 +5144,11 @@ def treasury_add():
         if deltas is None:
             return _treasury_page(db, error='That purse does not have enough for that.', status=400)
     _treasury_insert(db, deltas, note, holder)
+    names = {p['id']: p['name'] for p in _treasury_party(db)}
     db.commit(); db.close()
-    return redirect(url_for('treasury_view', who='party' if holder is None else holder))
+    owner = 'the party purse' if holder is None else "%s's purse" % names.get(holder, 'the character')
+    return _treasury_done(('Added %s to %s.' if kind == 'income' else 'Spent %s from %s.') % (format_coins(coins), owner),
+                          who='party' if holder is None else holder)
 
 
 @app.route('/campaigns/<int:campaign_id>/treasury/split', methods=['POST'])
@@ -5162,7 +5203,7 @@ def treasury_split():
     for h in recipients:
         _treasury_insert(db, each, ('From %s: %s' % (from_name, format_coins(each)))[:TREASURY_NOTE_MAX], h, batch, log=False)
     db.commit(); db.close()
-    return redirect(url_for('treasury_view'))
+    return _treasury_done('%s %s: %s each.' % (verb, to_names, format_coins(each)))
 
 
 @app.route('/campaigns/<int:campaign_id>/treasury/<int:entry_id>/delete', methods=['POST'])
@@ -5189,7 +5230,7 @@ def treasury_delete(entry_id):
             return _treasury_page(db, error='That entry cannot be removed: later entries spent coins it brought in.', status=409)
     db.execute('DELETE FROM treasury_entries WHERE campaign_id = ? AND id IN (%s)' % ', '.join('?' * len(group)), (g.campaign_id,) + tuple(r['id'] for r in group))
     db.commit(); db.close()
-    return redirect(url_for('treasury_view'))
+    return _treasury_done('Entry removed.')
 
 
 def _ics_escape(text):

@@ -40,7 +40,7 @@ POLICY = {
     'invitation_accept': LOGIN, 'invitation_decline': LOGIN,
     'uploaded_file': LOGIN, 'upload_sign': LOGIN, 'local_direct_upload': LOGIN, 'local_download': LOGIN,
     # --- campaign management ---
-    'preview_as_player': DM, 'campaign_npc_visibility': DM, 'campaign_member_characters': DM, 'campaign_session_set': DM, 'quest_add': DM, 'quest_change': DM, 'treasury_view': MEMBER, 'treasury_add': MEMBER, 'treasury_split': MEMBER, 'treasury_delete': DM, 'encounters_list': DM, 'encounter_new': DM, 'encounter_edit': DM, 'encounter_save': DM, 'encounter_delete': DM, 'encounter_rename': DM, 'encounter_run': DM, 'campaign_session_rsvp': MEMBER, 'campaign_session_ics': MEMBER,
+    'preview_as_player': DM, 'campaign_npc_visibility': DM, 'campaign_member_characters': DM, 'campaign_session_set': DM, 'quest_add': DM, 'quest_change': DM, 'treasury_view': MEMBER, 'treasury_panels': MEMBER, 'treasury_add': MEMBER, 'treasury_split': MEMBER, 'treasury_delete': DM, 'encounters_list': DM, 'encounter_new': DM, 'encounter_edit': DM, 'encounter_save': DM, 'encounter_delete': DM, 'encounter_rename': DM, 'encounter_run': DM, 'campaign_session_rsvp': MEMBER, 'campaign_session_ics': MEMBER,
     'campaign_edit': {'GET': MEMBER, 'POST': OWNER},
     'campaign_member_add': OWNER, 'campaign_member_uninvite': OWNER,
     'invite_link_create': OWNER, 'invite_link_revoke': OWNER, 'api_member_search': OWNER,
