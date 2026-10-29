@@ -25,6 +25,7 @@
   // 5:3-ish aspect ratio group/campaign cards render their image at.
   const SHAPES = {
     circle: { w: 480, h: 480, displayW: 300, displayH: 300, guide: true, panelMax: 420, title: 'Position Avatar' },
+    campaign: { w: 1200, h: 720, displayW: 420, displayH: 252, guide: false, panelMax: 500, title: 'Position Campaign Image' },   // DL-164: saved at 1200 x 720
     banner: { w: 640, h: 384, displayW: 420, displayH: 252, guide: false, panelMax: 500, title: 'Position Banner Image' },
   };
   let shape = SHAPES.circle;

@@ -1,6 +1,11 @@
-"""DL-163: the Rest menu opens on hover like Roll Initiative, both show a caret, the short rest boxes use the form field look."""
+"""DL-163 / DL-164: the Rest menu opens on hover like Roll Initiative, both show a caret, the short rest boxes use the
+form field look; the campaign image preview tells its size, and the saved image is at most 1200 px."""
+import io
+import json
+import re
+
 import pytest
-from conftest import BACKEND
+from conftest import BACKEND, q, png_bytes
 from test_e2e_browser import Api, pw  # noqa: F401
 
 pytestmark = pytest.mark.skipif(BACKEND == 'sqlite', reason='browser tests need Postgres')
@@ -32,3 +37,23 @@ def test_rest_menu_hover_carets_and_short_rest_fields(shared_server, pw):
     page.wait_for_selector('#short-rest-dialog[open]', state='detached')
     ctx.close()
     assert not errors, errors
+
+
+def test_campaign_image_is_capped_at_1200_and_the_preview_says_so(shared_server, pw):
+    base = shared_server.url
+    dm = Api(base)
+    r = dm.post('/campaigns/new', data={'name': 'Wide', 'description': json.dumps([])},
+                files={'avatar': ('c.png', png_bytes(2400, 1400, (120, 60, 30)), 'image/png')})
+    cid = int(re.search(r'/campaigns/(\d+)/', r.headers['Location']).group(1))
+    from PIL import Image
+    path = q('SELECT avatar_path FROM campaigns WHERE id = ?', cid)[0]['avatar_path']
+    stored = Image.open(io.BytesIO(dm.get('/uploads/' + path).content))
+    assert max(stored.size) <= 1200
+    ctx = dm.context(pw, base)
+    page = ctx.new_page(); page.set_viewport_size({'width': 1280, 'height': 800})
+    page.goto(f'{base}/campaigns/{cid}/home')
+    page.click('.home-banner-view')
+    page.wait_for_selector('#lightbox-size', state='visible')
+    text = page.inner_text('#lightbox-size')
+    assert 'largest allowed edge 1200 px' in text and ' × ' in text
+    ctx.close()

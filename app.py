@@ -2513,7 +2513,7 @@ def store_uploads(field, subfolder):
     return out
 
 
-CAMPAIGN_BANNER_PX = 2000                      # longest edge of a campaign image: it is shown large on the home page
+CAMPAIGN_BANNER_PX = 1200                      # longest edge of a campaign image (DL-164); the cropper saves 1200 x 720
 
 
 def _campaign_banner_upload():

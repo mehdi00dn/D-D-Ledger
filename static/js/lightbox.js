@@ -57,7 +57,21 @@
     nextBtn.classList.toggle('is-off', !hasNext);
   }
 
-  function open(src, deleteUrl, images) {
+  // DL-164: a picture with a size cap (the campaign image) says how big it is and what the biggest allowed is.
+  const sizeNote = document.getElementById('lightbox-size');
+  function showSize(max) {
+    if (!sizeNote) return;
+    sizeNote.hidden = true;
+    if (!max) return;
+    const tell = () => {
+      if (!img.naturalWidth) return;
+      sizeNote.textContent = img.naturalWidth + ' \u00d7 ' + img.naturalHeight + ' px \u00b7 largest allowed edge ' + max + ' px';
+      sizeNote.hidden = false;
+    };
+    if (img.complete && img.naturalWidth) tell(); else img.addEventListener('load', tell, { once: true });
+  }
+
+  function open(src, deleteUrl, images, maxPx) {
     currentImages = Array.isArray(images) ? images : [];
     currentIndex = currentImages.findIndex(item => item.src === src);
     if (currentIndex < 0 && src) {
@@ -70,6 +84,7 @@
     updateNavigation();
     reset();
     overlay.hidden = false;
+    showSize(maxPx);
   }
 
   // A quick page turn: the new picture swings in from its spine edge (left when going forward, right when going back).
@@ -100,6 +115,7 @@
     deleteBtn.hidden = !currentDeleteUrl;
     updateNavigation();
     reset();
+    showSize(null);
     pageTurn(direction);
   }
 
@@ -154,7 +170,7 @@
           deleteUrl: el.dataset.deleteUrl || null
         }))
       : [{ src: trigger.dataset.lightboxSrc, deleteUrl: trigger.dataset.deleteUrl || null }];
-    open(trigger.dataset.lightboxSrc, trigger.dataset.deleteUrl, images);
+    open(trigger.dataset.lightboxSrc, trigger.dataset.deleteUrl, images, parseInt(trigger.dataset.lightboxMax, 10) || 0);
   });
 
   // ---- Click to zoom, drag to pan (unified via mousedown/move/up) ----

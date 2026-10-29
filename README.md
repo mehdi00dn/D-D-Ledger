@@ -307,4 +307,10 @@ Consent notice (DL-79; migration `0048_terms_accepted.sql`): the sign-up form an
 ### Rest menu and short rest dialog (DL-163)
 On the Battle page the **Rest** button is a hover dropdown like **Roll Initiative** (`#rest-menu`, same `.roll-menu` markup and styles; a click or tap opens it too, Escape closes it). Both buttons now carry a dropdown caret (hidden on the narrow phone buttons). The short rest dialog's HP boxes use the normal `.field` form look. Test: `tests/test_e2e_battle_menus.py`.
 
+### Campaign image size (DL-164)
+The campaign image is saved at most 1200 px on its longest edge (`CAMPAIGN_BANNER_PX`), and the crop step in the campaign form (`data-crop-shape="campaign"` in `static/js/cropper.js`) now outputs 1200 x 720 instead of 640 x 384. The form says "Saved at up to 1200 x 720 px", and the preview opened from the campaign home (`data-lightbox-max="1200"`) shows the real pixel size and the largest allowed edge. Images saved before this keep their size until they are uploaded again.
+
+### Google sign-in and the YouTube address
+During Google sign-in the browser may briefly show `accounts.youtube.com/accounts/SetSID`. That is Google's own step for keeping a Google login in sync across its sites; it happens on Google's side before Google sends the person back to `/auth/google/callback`, and nothing in this app asks for it or can turn it off. The app never uses YouTube data (scopes are `openid email profile`).
+
 About and Contact pages (DL-25): `/about` (what the app does, in plain words) and `/contact` (shows `PRIVACY_CONTACT` as a mailto once set, otherwise says contact details are coming) are public and share the tab row with Privacy, Terms and Cookies. Replace the wording with real business details (DL-83) before launch. Test: `tests/test_privacy_page.py`.
