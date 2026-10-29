@@ -21,8 +21,13 @@
         </div>
       </div>
     </div>
-    <button type="button" class="btn btn-ghost" id="short-rest-btn" data-open-dialog="short-rest-dialog" title="Player characters: type how many HP each one regained from Hit Dice. Nothing else changes.">{{ icon('sun') }} <span>Short Rest</span></button>
-    <button type="button" class="btn btn-ghost" id="long-rest-btn" title="Player characters: full HP, no temporary HP, death saves cleared. NPCs and monsters are left as they are.">{{ icon('moon') }} <span>Long Rest</span></button>
+    <details class="menu rest-menu">
+      <summary class="btn btn-ghost" aria-haspopup="menu" title="Short rest or long rest for the player characters">{{ icon('moon') }} <span>Rest</span> {{ icon('chevron-down') }}</summary>
+      <div class="menu-list" role="menu">
+        <button type="button" class="menu-item" role="menuitem" id="short-rest-btn" data-open-dialog="short-rest-dialog" title="Type how many HP each player character regained from Hit Dice. Nothing else changes.">{{ icon('sun') }} Short rest</button>
+        <button type="button" class="menu-item" role="menuitem" id="long-rest-btn" title="Full HP, no temporary HP, death saves cleared. NPCs and monsters are left as they are.">{{ icon('moon') }} Long rest</button>
+      </div>
+    </details>
     <button type="button" class="btn btn-ghost" id="open-add-modal">{{ icon('user') }} <span>Add Character</span></button>
     <button type="button" class="btn btn-danger" id="clear-battle-btn">{{ icon('trash-2') }} <span>Clear Battle</span></button>
   </div>

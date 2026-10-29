@@ -5409,3 +5409,26 @@ a.pager-link:hover { border-color: var(--brass); }
 .pin-shape-row { display: flex; align-items: center; gap: 2px; }
 .pin-shape-name { flex: 1 1 auto; padding: 6px 10px; font-size: 0.8rem; color: var(--parchment-dim); }
 .pin-shapes-menu .pin-owner-opt { flex: none; }
+
+/* ---- DL-160 follow-ups: the Rest dropdown, green/red coin buttons, smaller phone battle buttons, landscape battle log ---- */
+.rest-menu > summary { display: inline-flex; align-items: center; gap: 6px; }
+.rest-menu > summary > svg:last-child { inline-size: 14px; block-size: 14px; margin-inline-start: -2px; }
+.rest-menu[open] > summary > svg:last-child { transform: rotate(180deg); }
+.rest-menu .menu-list { inset-inline-end: auto; inset-inline-start: 0; z-index: 60; }
+.treasury-dialog .btn-in { background: var(--moss, #3f7d4e); border-color: var(--moss, #3f7d4e); color: #fff; }
+.treasury-dialog .btn-in:hover:not(:disabled) { background: color-mix(in srgb, var(--moss, #3f7d4e) 84%, #fff); }
+.treasury-dialog .btn-out { background: var(--blood, #a63a3a); border-color: var(--blood, #a63a3a); color: #fff; }
+.treasury-dialog .btn-out:hover:not(:disabled) { background: color-mix(in srgb, var(--blood, #a63a3a) 84%, #fff); }
+@media (max-width: 640px) {
+  .battle-actions { grid-auto-rows: 42px; gap: 5px; }
+  .battle-actions .btn, .battle-actions > * { height: 42px; min-height: 42px; padding: 3px 2px; gap: 2px; font-size: 10.5px; border-radius: 9px; }
+  .battle-actions .btn svg { width: 15px; height: 15px; }
+  .battle-actions > .rest-menu, .battle-actions > .roll-menu { height: 42px; min-height: 42px; padding: 0; }
+  .battle-actions .rest-menu > summary { flex-direction: column; gap: 2px; inline-size: 100%; box-sizing: border-box; justify-content: center; }
+  .battle-actions .rest-menu > summary > svg:last-child { display: none; }
+  .rest-menu .menu-list { inset-inline-start: auto; inset-inline-end: 0; min-inline-size: 11.5rem; }
+}
+@media (orientation: landscape) and (max-height: 500px) {
+  .battle-log { margin-inline-start: 84px; width: min(27rem, calc(100% - 84px - 72px)); }   /* clear of the two round buttons at the left (bars toggle, full screen) and the dice button at the right */
+  .battle-actions .btn { min-height: 34px; padding-block: 4px; }
+}

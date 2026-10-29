@@ -182,7 +182,7 @@ Roll Initiative (battle page) opens a small menu on hover or focus (a tap on a p
 monsters. `POST /api/battle/roll-initiative` takes `{"scope": "all" | "pc" | "npc"}`; the others keep their numbers.
 
 Long Rest (battle page, DM only; DL-149): every player character goes to full HP, loses temporary HP, and has death saves cleared and
-Short Rest (battle page, DM only): a dialog lists each living player character; the DM types how many HP each regains (capped at max HP), death saves are cleared, and one line goes in the battle log. The battle menu no longer has a Create Character button.
+Rest (battle page, DM only): one dropdown button holds Short rest and Long rest. Short rest: a dialog lists each living player character; the DM types how many HP each regains (capped at max HP), death saves are cleared, and one line goes in the battle log. The battle menu no longer has a Create Character button.
 is_dead reset; conditions, NPCs and monsters are left alone, and the battle log gets one line. `POST /api/battle/long-rest` takes an
 optional `{"id": <participant id>}` to rest one character. Short rest and hit dice are not built (the sheet has no hit dice yet).
 
@@ -296,3 +296,4 @@ A shape can be tied to a token. Select the shape, press the link button in its a
 An axe-core audit (WCAG 2.1 A and AA plus best practices) of 19 pages, in dark and light themes at desktop and phone width, found five kinds of issue and all are fixed: empty states and card titles were `h3` straight under the page `h1` (now `h2`); the menu `aside` and a second `aside` on the character and campaign settings forms shared the same landmark name (both are named now); the encounter builder had no `h1`; the note editors had no accessible name; and two selects (a member's role, the invite status) were named only by their `title`. The audit now finds nothing on those pages. `tests/test_a11y_structure.py` keeps the page outline honest (one `h1`, no skipped heading levels, named landmarks and controls). Not covered: the map editor canvas, and a manual screen-reader and keyboard walk-through, which stay open under DL-72 and DL-71.
 
 Treasury dialogs show how many of each coin the chosen purse holds, and the confirm buttons are "Coins in" and "Coins out". Character cards show two lines of notes. The home banner is blurred, with a corner button that opens it full size.
+Campaign images are stored up to 2000 px on the longest edge (other avatars stay at 512 px); images uploaded before this keep their old size until they are uploaded again. The Coins in / Coins out buttons are green and red. On a sideways phone the battle log sits to the right of the two round buttons at the bottom left.

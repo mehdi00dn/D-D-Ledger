@@ -1509,7 +1509,7 @@ def campaign_new():
     if request.method == 'POST':
         name = request.form.get('name', '').strip() or 'Untitled Campaign'
         description = sanitize_bio(request.form.get('description'))
-        avatar_path = save_upload_field('avatar', 'avatars')
+        avatar_path = _campaign_banner_upload()
         setting = _resolve_campaign_setting(request.form)
         status = _campaign_status_field(request.form)
         access_mode = _campaign_access_field(request.form)
@@ -1553,7 +1553,7 @@ def campaign_edit():
             abort(403)
         name = request.form.get('name', '').strip() or 'Untitled Campaign'
         description = sanitize_bio(request.form.get('description'))
-        avatar_path = save_upload_field('avatar', 'avatars')
+        avatar_path = _campaign_banner_upload()
         remove_avatar = request.form.get('remove_avatar') == '1'
         if avatar_path:
             old = db.execute('SELECT avatar_path FROM campaigns WHERE id = ?', (g.campaign_id,)).fetchone()
@@ -2407,6 +2407,14 @@ def store_uploads(field, subfolder):
             if temp:
                 get_storage().delete(TEMP, temp)
     return out
+
+
+CAMPAIGN_BANNER_PX = 2000                      # longest edge of a campaign image: it is shown large on the home page
+
+
+def _campaign_banner_upload():
+    stored = store_upload('avatar', 'avatars', cap_dimension=CAMPAIGN_BANNER_PX)
+    return stored.path if stored else None
 
 
 def save_upload_field(field, subfolder):
