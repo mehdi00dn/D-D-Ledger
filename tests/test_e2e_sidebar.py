@@ -87,9 +87,9 @@ def test_roll_initiative_menu_opens_on_hover_and_rolls_only_the_chosen_side(shar
     errors = []
     page.on('pageerror', lambda x: errors.append(str(x)))
     page.goto(f'{base}/campaigns/{cid}/battle')
-    playwright.expect(page.locator('.roll-menu-list')).to_be_hidden()
+    playwright.expect(page.locator('#roll-menu-list')).to_be_hidden()
     page.hover('#roll-initiative-btn')
-    playwright.expect(page.locator('.roll-menu-list')).to_be_visible()
+    playwright.expect(page.locator('#roll-menu-list')).to_be_visible()
     assert page.locator('[data-roll-scope=pc] small').inner_text() == '1' and page.locator('[data-roll-scope=npc] small').inner_text() == '1'
     _shot(page, 'battle-roll-menu')
     page.click('[data-roll-scope=npc]')

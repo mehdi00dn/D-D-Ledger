@@ -304,4 +304,7 @@ Terms and Cookies pages (DL-74, DL-77): `/terms` and `/cookies` are public, next
 
 Consent notice (DL-79; migration `0048_terms_accepted.sql`): the sign-up form and the Google button say "By creating an account / By continuing you agree to the Terms and the Privacy page", and `users.terms_accepted_at` records when an account was made (empty for accounts that existed before). It is a notice, not a tick box; if the local-law check (DL-80) asks for an explicit checkbox, add one to `register.html` and refuse the sign-up in `register()` without it.
 
+### Rest menu and short rest dialog (DL-163)
+On the Battle page the **Rest** button is a hover dropdown like **Roll Initiative** (`#rest-menu`, same `.roll-menu` markup and styles; a click or tap opens it too, Escape closes it). Both buttons now carry a dropdown caret (hidden on the narrow phone buttons). The short rest dialog's HP boxes use the normal `.field` form look. Test: `tests/test_e2e_battle_menus.py`.
+
 About and Contact pages (DL-25): `/about` (what the app does, in plain words) and `/contact` (shows `PRIVACY_CONTACT` as a mailto once set, otherwise says contact details are coming) are public and share the tab row with Privacy, Terms and Cookies. Replace the wording with real business details (DL-83) before launch. Test: `tests/test_privacy_page.py`.

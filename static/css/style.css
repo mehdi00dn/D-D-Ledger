@@ -5364,3 +5364,17 @@ a.pager-link:hover { border-color: var(--brass); }
   .battle-log { margin-inline-start: 84px; width: min(27rem, calc(100% - 84px - 72px)); }   /* clear of the two round buttons at the left (bars toggle, full screen) and the dice button at the right */
   .battle-actions .btn { min-height: 34px; padding-block: 4px; }
 }
+
+/* ---- DL-163: Rest is a hover dropdown like Roll Initiative; both show a caret; short rest boxes use the form field look ---- */
+.roll-menu > .btn > svg:last-child { inline-size: 14px; block-size: 14px; margin-inline-start: -2px; transition: transform .15s ease; }
+.roll-menu:hover > .btn > svg:last-child, .roll-menu.is-open > .btn > svg:last-child { transform: rotate(180deg); }
+.roll-menu-panel button svg { inline-size: 16px; block-size: 16px; flex: none; color: var(--parchment-dim); }
+.roll-menu-panel button > span { flex: 1 1 auto; }
+.rest-menu .roll-menu-list { min-inline-size: 170px; }
+.short-rest-field { flex: none; }
+.short-rest-field input[type="number"] { inline-size: 6rem; text-align: end; }
+.short-rest-row { padding-block: 8px; }
+@media (max-width: 640px) {
+  .battle-actions .roll-menu > .btn { flex-direction: column; justify-content: center; }
+  .battle-actions .roll-menu > .btn > svg:last-child { display: none; }
+}

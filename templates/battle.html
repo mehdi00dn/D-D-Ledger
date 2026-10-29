@@ -12,7 +12,7 @@
   {% if g.is_dm %}
   <div class="page-actions battle-actions">
     <div class="roll-menu" id="roll-menu">
-      <button type="button" class="btn btn-ghost" id="roll-initiative-btn" aria-haspopup="menu" aria-expanded="false" aria-controls="roll-menu-list" title="Roll d20 + Dexterity. Hover for the player characters or the NPCs only.">{{ icon('dices') }} <span>Roll Initiative</span></button>
+      <button type="button" class="btn btn-ghost" id="roll-initiative-btn" aria-haspopup="menu" aria-expanded="false" aria-controls="roll-menu-list" title="Roll d20 + Dexterity. Hover for the player characters or the NPCs only.">{{ icon('dices') }} <span>Roll Initiative</span> {{ icon('chevron-down') }}</button>
       <div class="roll-menu-list" id="roll-menu-list" role="menu" aria-label="Roll initiative for">
         <div class="roll-menu-panel">
           <button type="button" role="menuitem" data-roll-scope="all">Everyone <small></small></button>
@@ -21,13 +21,15 @@
         </div>
       </div>
     </div>
-    <details class="menu rest-menu">
-      <summary class="btn btn-ghost" aria-haspopup="menu" title="Short rest or long rest for the player characters">{{ icon('moon') }} <span>Rest</span> {{ icon('chevron-down') }}</summary>
-      <div class="menu-list" role="menu">
-        <button type="button" class="menu-item" role="menuitem" id="short-rest-btn" data-open-dialog="short-rest-dialog" title="Type how many HP each player character regained from Hit Dice. Nothing else changes.">{{ icon('sun') }} Short rest</button>
-        <button type="button" class="menu-item" role="menuitem" id="long-rest-btn" title="Full HP, no temporary HP, death saves cleared. NPCs and monsters are left as they are.">{{ icon('moon') }} Long rest</button>
+    <div class="roll-menu rest-menu" id="rest-menu">
+      <button type="button" class="btn btn-ghost" id="rest-menu-btn" aria-haspopup="menu" aria-expanded="false" aria-controls="rest-menu-list" title="Short rest or long rest for the player characters. Hover to choose.">{{ icon('moon') }} <span>Rest</span> {{ icon('chevron-down') }}</button>
+      <div class="roll-menu-list" id="rest-menu-list" role="menu" aria-label="Rest">
+        <div class="roll-menu-panel">
+          <button type="button" role="menuitem" id="short-rest-btn" data-open-dialog="short-rest-dialog" title="Type how many HP each player character regained from Hit Dice. Nothing else changes.">{{ icon('sun') }} <span>Short rest</span></button>
+          <button type="button" role="menuitem" id="long-rest-btn" title="Full HP, no temporary HP, death saves cleared. NPCs and monsters are left as they are.">{{ icon('moon') }} <span>Long rest</span></button>
+        </div>
       </div>
-    </details>
+    </div>
     <button type="button" class="btn btn-ghost" id="open-add-modal">{{ icon('user') }} <span>Add Character</span></button>
     <button type="button" class="btn btn-danger" id="clear-battle-btn">{{ icon('trash-2') }} <span>Clear Battle</span></button>
   </div>

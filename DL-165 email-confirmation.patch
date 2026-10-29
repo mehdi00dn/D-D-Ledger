@@ -1,0 +1,468 @@
+diff --git a/README.md b/README.md
+index 7165348..b819c75 100644
+--- a/README.md
++++ b/README.md
+@@ -313,4 +313,7 @@ The campaign image is saved at most 1200 px on its longest edge (`CAMPAIGN_BANNE
+ ### Google sign-in and the YouTube address
+ During Google sign-in the browser may briefly show `accounts.youtube.com/accounts/SetSID`. That is Google's own step for keeping a Google login in sync across its sites; it happens on Google's side before Google sends the person back to `/auth/google/callback`, and nothing in this app asks for it or can turn it off. The app never uses YouTube data (scopes are `openid email profile`).
+ 
++### Email confirmation at sign-up (DL-165; migration `0049_email_confirm_required.sql`)
++When the site can send email (`mailer.enabled()`), a new password account is sent to `/confirm-email` right after signing up ("Check your inbox", resend, "Continue without confirming", "Wrong address?"). The confirmation email goes out at once (24-hour link). Until the link is opened the account can set up its profile and use everything except **creating a campaign** and **joining a campaign** (including by invite link); those redirect to the confirm page and come back afterwards. A banner on every page says what is missing. `users.email_confirm_required` is set at sign-up only, so accounts that already existed are never locked; with no mail server nobody is locked either. Google accounts start confirmed. The link also works when opened signed out or on another device (it proves the mailbox) and then shows the login page. To change what is locked, edit `_confirm_gate()` and its three call sites (`campaign_new`, `join_via_link`, `join_via_link_accept`). Tests: `tests/test_email_gate.py`.
++
+ About and Contact pages (DL-25): `/about` (what the app does, in plain words) and `/contact` (shows `PRIVACY_CONTACT` as a mailto once set, otherwise says contact details are coming) are public and share the tab row with Privacy, Terms and Cookies. Replace the wording with real business details (DL-83) before launch. Test: `tests/test_privacy_page.py`.
+diff --git a/app.py b/app.py
+index 01c2b12..fbc94b2 100644
+--- a/app.py
++++ b/app.py
+@@ -117,7 +117,7 @@ def _campaign_access_field(form):
+ # Full accounts: anyone can self-register, and every route requires a
+ # logged-in session except the handful that must stay reachable to get one.
+ 
+-PUBLIC_ENDPOINTS = {'login', 'register', 'static', 'healthz', 'forgot_password', 'reset_password', 'robots_txt', 'security_txt', 'csp_report', 'google_start', 'google_callback', 'privacy', 'terms', 'cookies', 'about', 'contact'}
++PUBLIC_ENDPOINTS = {'login', 'register', 'static', 'healthz', 'forgot_password', 'reset_password', 'robots_txt', 'security_txt', 'csp_report', 'google_start', 'google_callback', 'privacy', 'terms', 'cookies', 'about', 'contact', 'verify_email'}
+ 
+ 
+ # Which classification of connection failure gets which fixed, secret-free hint.
+@@ -477,9 +477,16 @@ def register():
+             db.close()
+             return render_template('register.html', error=error, username=username, email=email, next=request.form.get('next', ''))
+ 
++        must_confirm = mailer.enabled()                      # with no way to send mail nobody can be asked to confirm
+         try:
+-            cur = db.execute('INSERT INTO users (username, password_hash, email, terms_accepted_at) VALUES (?, ?, ?, ' + _UTC_NOW + ')',
+-                              (username, generate_password_hash(password), email))
++            try:
++                cur = db.execute('INSERT INTO users (username, password_hash, email, terms_accepted_at, email_confirm_required) VALUES (?, ?, ?, ' + _UTC_NOW + ', ?)',
++                                  (username, generate_password_hash(password), email, must_confirm))
++            except pgerr.UndefinedColumn:                    # migration 0049 not applied yet: sign up as before
++                db.rollback()
++                must_confirm = False
++                cur = db.execute('INSERT INTO users (username, password_hash, email, terms_accepted_at) VALUES (?, ?, ?, ' + _UTC_NOW + ')',
++                                  (username, generate_password_hash(password), email))
+         except UniqueViolation:      # two people registering the same name at once
+             db.rollback()
+             db.close()
+@@ -495,7 +502,10 @@ def register():
+         db.close()
+ 
+         _start_session(user_id, username)
+-        return redirect(_after_sign_in_url(user_id, _safe_next(request.form.get('next', ''))))
++        nxt = _safe_next(request.form.get('next', ''))
++        if must_confirm:                                      # DL-165: ask for the confirmation right away
++            return redirect(url_for('confirm_email', next=nxt) if nxt else url_for('confirm_email'))
++        return redirect(_after_sign_in_url(user_id, nxt))
+     return render_template('register.html', error=None, username='', email='', next=request.args.get('next', ''))
+ 
+ 
+@@ -696,6 +706,34 @@ def _profile_error(display_name, bio):
+     return None
+ 
+ 
++def _must_confirm_email(db, user_id):
++    """DL-165: True while this account still has to confirm its email (it signed up with a password while the site could
++    send mail, and has not opened the link).  Creating or joining a campaign waits for it; everything else works."""
++    try:
++        row = db.execute('SELECT email_confirm_required, email_verified_at FROM users WHERE id = ?', (user_id,)).fetchone()
++    except pgerr.UndefinedColumn:                           # migration 0049 not applied yet
++        db.rollback()
++        return False
++    return bool(row and row['email_confirm_required'] and row['email_verified_at'] is None)
++
++
++def _email_confirm_flag(db, user_id):
++    try:
++        row = db.execute('SELECT email_confirm_required FROM users WHERE id = ?', (user_id,)).fetchone()
++    except pgerr.UndefinedColumn:
++        db.rollback()
++        return False
++    return bool(row and row['email_confirm_required'])
++
++
++def _confirm_gate():
++    """A redirect to the "confirm your email" page when the signed-in account still has to, else None."""
++    me = my_profile()
++    if me and me.get('must_confirm'):
++        return redirect(url_for('confirm_email', next=request.full_path.rstrip('?')))
++    return None
++
++
+ def my_profile():
+     """The logged-in user's profile row (cached for the request); None when logged out."""
+     uid = session.get('user_id')
+@@ -705,13 +743,13 @@ def my_profile():
+         db = get_db()
+         try:
+             row = db.execute('SELECT id, username, display_name, avatar_path, bio, email FROM users WHERE id = ?', (uid,)).fetchone()
+-            g._profile = dict(row, needs_email=not row['email']) if row else None
++            g._profile = dict(row, needs_email=not row['email'], must_confirm=_must_confirm_email(db, uid)) if row else None
+         except pgerr.UndefinedColumn:
+             # Code deployed before migration 0022 was applied: every page renders this in the sidebar, so a missing
+             # column must not take the whole site down.  Fall back to the username until the migration runs.
+             db.rollback()
+             app.logger.error('users.display_name is missing: apply migration 0022_user_profile.sql')
+-            g._profile = {'id': uid, 'username': session.get('username'), 'display_name': None, 'avatar_path': None, 'bio': None, 'needs_email': False}
++            g._profile = {'id': uid, 'username': session.get('username'), 'display_name': None, 'avatar_path': None, 'bio': None, 'needs_email': False, 'must_confirm': False}
+     return g._profile
+ 
+ 
+@@ -1033,21 +1071,63 @@ def verify_email(token):
+         return redirect(url_for('account', mail='expired'))
+     except BadSignature:
+         return redirect(url_for('account', mail='invalid'))
+-    if data.get('u') != session.get('user_id'):
++    signed_in = session.get('user_id')
++    if signed_in and data.get('u') != signed_in:
+         return redirect(url_for('account', mail='wrong_account'))
+     db = get_db()
+-    user = _account_row(db, session['user_id'])
++    user = _account_row(db, data.get('u'))                          # opened on another device (signed out): the link itself proves the mailbox
+     if user is None or not user['email_ready'] or (user['email'] or '').lower() != data.get('e'):
+         return redirect(url_for('account', mail='invalid'))        # the address was changed or removed since
++    flagged = _email_confirm_flag(db, user['id'])
++
++    def landing():
++        if not signed_in:
++            return redirect(url_for('login', confirmed=1))
++        return redirect(url_for('confirm_email', done=1) if flagged else url_for('account', mail='verified'))
++
+     if user['email_verified_at']:
+-        return redirect(url_for('account', mail='verified'))
++        return landing()
+     try:
+         db.execute('UPDATE users SET email_verified_at = ' + _UTC_NOW + ' WHERE id = ?', (user['id'],))
+         db.commit()
+     except UniqueViolation:                                        # someone else verified this address first
+         db.rollback()
+         return redirect(url_for('account', mail='taken'))
+-    return redirect(url_for('account', mail='verified'))
++    return landing()
++
++
++@app.route('/confirm-email')
++def confirm_email():
++    """DL-165: where a new password account lands after signing up: check your inbox, resend, or carry on.  Creating or
++    joining a campaign stays locked until the link is opened; everything else works."""
++    db = get_db()
++    user = _account_row(db, session['user_id'])
++    if user is None:
++        session.clear()
++        return redirect(url_for('login'))
++    nxt = _safe_next(request.args.get('next', ''))
++    confirmed = bool(user['email_verified_at'])
++    resent = request.args.get('sent') == '1'
++    error = request.args.get('error') or None
++    return render_template('confirm_email.html', user=user, confirmed=confirmed, next=nxt, resent=resent,
++                           error={'wait': 'Too many emails just now. Wait a little and try again.', 'send': 'The email could not be sent. Try again in a moment.'}.get(error),
++                           continue_url=_after_sign_in_url(user['id'], nxt))
++
++
++@app.route('/confirm-email/resend', methods=['POST'])
++def confirm_email_resend():
++    db = get_db()
++    user = _account_row(db, session['user_id'])
++    nxt = _safe_next(request.form.get('next', ''))
++    if user is None or not user['email'] or user['email_verified_at']:
++        return redirect(url_for('confirm_email', next=nxt) if nxt else url_for('confirm_email'))
++    error = _send_verification(db, user, user['email'])
++    args = {'next': nxt} if nxt else {}
++    if error:
++        args['error'] = 'wait' if error.startswith('Too many') else 'send'
++    else:
++        args['sent'] = 1
++    return redirect(url_for('confirm_email', **args))
+ 
+ 
+ def _legal_page(template):
+@@ -1610,6 +1690,9 @@ def campaigns_list():
+ 
+ @app.route('/campaigns/new', methods=['GET', 'POST'])
+ def campaign_new():
++    gate = _confirm_gate()
++    if gate:
++        return gate
+     if request.method == 'POST':
+         name = request.form.get('name', '').strip() or 'Untitled Campaign'
+         description = sanitize_bio(request.form.get('description'))
+@@ -1933,6 +2016,9 @@ def _is_member(db, campaign_id):
+ 
+ @app.route('/join/<token>')
+ def join_via_link(token):
++    gate = _confirm_gate()
++    if gate:
++        return gate
+     db = get_db()
+     link = _usable_link(db, token)
+     member = link is not None and _is_member(db, link['campaign_id'])
+@@ -1946,6 +2032,9 @@ def join_via_link(token):
+ 
+ @app.route('/join/<token>', methods=['POST'])
+ def join_via_link_accept(token):
++    gate = _confirm_gate()
++    if gate:
++        return gate
+     db = get_db()
+     link = _usable_link(db, token)
+     if link is None:
+diff --git a/migrations/0049_email_confirm_required.sql b/migrations/0049_email_confirm_required.sql
+new file mode 100644
+index 0000000..79f330a
+--- /dev/null
++++ b/migrations/0049_email_confirm_required.sql
+@@ -0,0 +1,3 @@
++-- DL-165: accounts made with a password while the site can send email must confirm their address before they can create
++-- or join a campaign.  The flag is set at sign-up only, so accounts that already existed are never locked out.
++ALTER TABLE users ADD COLUMN email_confirm_required BOOLEAN NOT NULL DEFAULT FALSE;
+diff --git a/templates/base.html b/templates/base.html
+index 7d7ae27..7b484e0 100644
+--- a/templates/base.html
++++ b/templates/base.html
+@@ -173,6 +173,8 @@
+     {% endif %}
+     {% if session.user_id and active_page != 'account' %}{% set me_banner = my_profile() %}{% if me_banner and me_banner.needs_email %}
+     <div class="banner-notice" role="status">Add an email address to your account so you can recover it. <a href="{{ url_for('account') }}#email-panel">Add email</a></div>
++    {% elif me_banner and me_banner.must_confirm and active_page != 'confirm_email' %}
++    <div class="banner-notice" role="status">Confirm your email to create or join a campaign. We sent a link to your inbox. <a href="{{ url_for('confirm_email') }}">Resend it</a></div>
+     {% endif %}{% endif %}
+     {% block content %}{% endblock %}
+   </main>
+diff --git a/templates/confirm_email.html b/templates/confirm_email.html
+new file mode 100644
+index 0000000..3524a51
+--- /dev/null
++++ b/templates/confirm_email.html
+@@ -0,0 +1,22 @@
++{% extends "auth_base.html" %}
++{% from "_icons.html" import icon %}
++{% block title %}Confirm your email — Campaign Ledger{% endblock %}
++{% block hero %}One quick step before you start a campaign.{% endblock %}
++{% block card %}
++{% if confirmed %}
++<h1 class="auth-title">Email confirmed</h1>
++<p class="auth-sub">Thanks. {{ user.email }} is confirmed, so you can create and join campaigns.</p>
++<a class="btn btn-primary auth-submit" href="{{ continue_url }}"><span class="auth-submit-label">Continue</span></a>
++{% else %}
++<h1 class="auth-title">Check your inbox</h1>
++<p class="auth-sub">We sent a confirmation link to <b>{{ user.email }}</b>. Open it to confirm your email. The link works for 24 hours.</p>
++{% if resent %}<p class="auth-note" role="status">A new link is on its way.</p>{% endif %}
++{% if error %}<p class="auth-error" role="alert">{{ error }}</p>{% endif %}
++<p class="auth-sub">Until you confirm, you can set up your profile and look around, but you cannot create or join a campaign.</p>
++<form method="POST" action="{{ url_for('confirm_email_resend') }}" class="auth-form" data-once>{{ csrf_field() }}
++  <input type="hidden" name="next" value="{{ next }}">
++  <button type="submit" class="btn btn-primary auth-submit"><span class="auth-submit-label">Send the link again</span><span class="auth-spinner" aria-hidden="true"></span></button>
++</form>
++<p class="auth-switch"><a class="auth-link" href="{{ continue_url }}">Continue without confirming</a> &middot; <a class="auth-link" href="{{ url_for('account') }}#email-panel">Wrong address?</a></p>
++{% endif %}
++{% endblock %}
+diff --git a/templates/login.html b/templates/login.html
+index d545373..8f7851b 100644
+--- a/templates/login.html
++++ b/templates/login.html
+@@ -7,6 +7,7 @@
+ <h1 class="auth-title">Welcome back</h1>
+ <p class="auth-sub">Log in to your campaigns, characters and maps.</p>
+ {% if request.args.get('reset') %}<p class="auth-note" role="status">Your password was changed. Log in with the new one.</p>{% endif %}
++{% if request.args.get('confirmed') %}<p class="auth-note" role="status">Your email is confirmed. Log in to continue.</p>{% endif %}
+ {% if request.args.get('deleted') %}<p class="auth-note" role="status">Your account was deleted.</p>{% endif %}
+ {% if request.args.get('google') %}<p class="auth-error" role="alert">{{ google_messages.get(request.args.get('google'), google_messages['failed']) }}</p>{% endif %}
+ {% if error %}<p class="auth-error" role="alert" id="auth-error">{{ error }}</p>{% endif %}
+diff --git a/tests/conftest.py b/tests/conftest.py
+index a8da636..a19e734 100644
+--- a/tests/conftest.py
++++ b/tests/conftest.py
+@@ -162,7 +162,7 @@ class User:
+             import database, mailer
+             db = database.get_db()
+             try:
+-                db.execute('UPDATE users SET email = NULL, email_verified_at = NULL WHERE username = ?', (self.name,))
++                db.execute('UPDATE users SET email = NULL, email_verified_at = NULL, email_confirm_required = FALSE WHERE username = ?', (self.name,))
+                 db.commit()
+             finally:
+                 db.close()
+diff --git a/tests/test_authz_roles.py b/tests/test_authz_roles.py
+index 2d0da28..375caad 100644
+--- a/tests/test_authz_roles.py
++++ b/tests/test_authz_roles.py
+@@ -33,10 +33,10 @@ RANK = {PUBLIC: 0, LOGIN: 1, MEMBER: 2, DM: 3, OWNER: 4}
+ 
+ POLICY = {
+     # --- outside any campaign ---
+-    'healthz': PUBLIC, 'robots_txt': PUBLIC, 'security_txt': PUBLIC, 'csp_report': PUBLIC, 'register': PUBLIC, 'forgot_password': PUBLIC, 'reset_password': PUBLIC, 'login': PUBLIC, 'static': PUBLIC, 'google_start': PUBLIC, 'privacy': PUBLIC, 'terms': PUBLIC, 'about': PUBLIC, 'contact': PUBLIC, 'cookies': PUBLIC, 'google_callback': PUBLIC,
++    'healthz': PUBLIC, 'robots_txt': PUBLIC, 'security_txt': PUBLIC, 'csp_report': PUBLIC, 'register': PUBLIC, 'forgot_password': PUBLIC, 'reset_password': PUBLIC, 'login': PUBLIC, 'static': PUBLIC, 'google_start': PUBLIC, 'privacy': PUBLIC, 'terms': PUBLIC, 'about': PUBLIC, 'contact': PUBLIC, 'verify_email': PUBLIC, 'cookies': PUBLIC, 'google_callback': PUBLIC,
+     'logout': LOGIN, 'index': LOGIN, 'campaigns_list': LOGIN, 'campaign_new': LOGIN,
+     'join_via_link': LOGIN, 'join_via_link_accept': LOGIN,
+-    'notifications_page': LOGIN, 'account': LOGIN, 'welcome': LOGIN, 'account_password': LOGIN, 'account_username': LOGIN, 'account_logout_all': LOGIN, 'account_delete': LOGIN, 'account_export': LOGIN, 'account_email': LOGIN, 'account_email_resend': LOGIN, 'account_email_remove': LOGIN, 'verify_email': LOGIN, 'profile_view': LOGIN, 'library_list': LOGIN, 'library_new': LOGIN, 'library_detail': LOGIN, 'library_edit': LOGIN, 'library_delete': LOGIN, 'library_sheet_delete': LOGIN, 'library_add_to_campaign': LOGIN, 'library_save': LOGIN, 'library_export': LOGIN, 'library_export_one': LOGIN, 'library_import': LOGIN, 'library_add_many': LOGIN, 'library_showcase': LOGIN, 'notification_read': LOGIN, 'notifications_read_all': LOGIN,
++    'notifications_page': LOGIN, 'account': LOGIN, 'welcome': LOGIN, 'account_password': LOGIN, 'account_username': LOGIN, 'account_logout_all': LOGIN, 'account_delete': LOGIN, 'account_export': LOGIN, 'account_email': LOGIN, 'account_email_resend': LOGIN, 'account_email_remove': LOGIN, 'confirm_email': LOGIN, 'confirm_email_resend': LOGIN, 'profile_view': LOGIN, 'library_list': LOGIN, 'library_new': LOGIN, 'library_detail': LOGIN, 'library_edit': LOGIN, 'library_delete': LOGIN, 'library_sheet_delete': LOGIN, 'library_add_to_campaign': LOGIN, 'library_save': LOGIN, 'library_export': LOGIN, 'library_export_one': LOGIN, 'library_import': LOGIN, 'library_add_many': LOGIN, 'library_showcase': LOGIN, 'notification_read': LOGIN, 'notifications_read_all': LOGIN,
+     'invitation_accept': LOGIN, 'invitation_decline': LOGIN,
+     'uploaded_file': LOGIN, 'upload_sign': LOGIN, 'local_direct_upload': LOGIN, 'local_download': LOGIN,
+     # --- campaign management ---
+diff --git a/tests/test_cross_instance.py b/tests/test_cross_instance.py
+index 91507c0..9406903 100644
+--- a/tests/test_cross_instance.py
++++ b/tests/test_cross_instance.py
+@@ -15,6 +15,12 @@ def _login_on_a(a):
+     name = f'x{abs(hash(a.url))%10**7}{__import__("uuid").uuid4().hex[:5]}'
+     r = s.post(a.url + '/register', data={'username': name, 'password': 'secret12', 'email': 'player@example.com', 'confirm': 'secret12'}, allow_redirects=False)
+     assert r.status_code == 302
++    import database                                                        # DL-165: start unlocked (the confirm lock is not what these tests are about)
++    db = database.get_db()
++    try:
++        db.execute('UPDATE users SET email_confirm_required = FALSE WHERE username = ?', (name,)); db.commit()
++    finally:
++        db.close()
+     return s
+ 
+ 
+diff --git a/tests/test_deploy_diagnostics.py b/tests/test_deploy_diagnostics.py
+index c0d84e0..69301be 100644
+--- a/tests/test_deploy_diagnostics.py
++++ b/tests/test_deploy_diagnostics.py
+@@ -44,7 +44,7 @@ def test_healthz_ready(appmod):
+     r = appmod.app.test_client().get('/healthz')
+     assert r.status_code == 200 and r.get_json()['ok'] is True
+     assert r.get_json()['migrations'] == ['0001_initial.sql', '0002_lock_down_data_api.sql', '0003_auth_throttle.sql',
+-                                           '0004_public_ids.sql', '0005_case_insensitive_usernames.sql', '0006_map_fog.sql', '0007_battle_turns.sql', '0008_battle_conditions.sql', '0009_character_class.sql', '0010_invitations_notifications.sql', '0011_invite_links.sql', '0012_custom_conditions.sql', '0013_map_character_pins.sql', '0014_made_by.sql', '0015_token_owner.sql', '0016_character_proficiencies.sql', '0017_character_factions.sql', '0018_dice_rolls.sql', '0019_dice_roll_character_label.sql', '0020_map_dm_only.sql', '0021_stored_files.sql', '0022_user_profile.sql', '0023_session_version.sql', '0024_user_email.sql', '0025_campaign_activity.sql', '0026_battle_log.sql', '0027_death_saves.sql', '0028_fk_indexes.sql', '0029_action_economy.sql', '0030_drop_action_economy.sql', '0031_character_levels.sql', '0032_character_attacks.sql', '0033_hide_npcs.sql', '0034_campaign_notes_and_players.sql', '0035_next_session.sql', '0036_npc_ally.sql', '0037_map_feet_per_square.sql', '0038_quests.sql', '0039_profiles_and_google.sql', '0040_treasury.sql', '0041_encounters.sql', '0042_shape_attach.sql', '0043_treasury_purses.sql', '0044_encounter_characters.sql', '0045_character_library.sql', '0046_your_characters_wording.sql', '0047_profile_setup.sql', '0048_terms_accepted.sql']
++                                           '0004_public_ids.sql', '0005_case_insensitive_usernames.sql', '0006_map_fog.sql', '0007_battle_turns.sql', '0008_battle_conditions.sql', '0009_character_class.sql', '0010_invitations_notifications.sql', '0011_invite_links.sql', '0012_custom_conditions.sql', '0013_map_character_pins.sql', '0014_made_by.sql', '0015_token_owner.sql', '0016_character_proficiencies.sql', '0017_character_factions.sql', '0018_dice_rolls.sql', '0019_dice_roll_character_label.sql', '0020_map_dm_only.sql', '0021_stored_files.sql', '0022_user_profile.sql', '0023_session_version.sql', '0024_user_email.sql', '0025_campaign_activity.sql', '0026_battle_log.sql', '0027_death_saves.sql', '0028_fk_indexes.sql', '0029_action_economy.sql', '0030_drop_action_economy.sql', '0031_character_levels.sql', '0032_character_attacks.sql', '0033_hide_npcs.sql', '0034_campaign_notes_and_players.sql', '0035_next_session.sql', '0036_npc_ally.sql', '0037_map_feet_per_square.sql', '0038_quests.sql', '0039_profiles_and_google.sql', '0040_treasury.sql', '0041_encounters.sql', '0042_shape_attach.sql', '0043_treasury_purses.sql', '0044_encounter_characters.sql', '0045_character_library.sql', '0046_your_characters_wording.sql', '0047_profile_setup.sql', '0048_terms_accepted.sql', '0049_email_confirm_required.sql']
+     assert r.headers['Cache-Control'] == 'no-store'
+ 
+ 
+diff --git a/tests/test_e2e_browser.py b/tests/test_e2e_browser.py
+index f37b0fd..3e90ded 100644
+--- a/tests/test_e2e_browser.py
++++ b/tests/test_e2e_browser.py
+@@ -21,6 +21,12 @@ class Api:
+         self.name = f'e{uuid.uuid4().hex[:9]}'
+         r = self.s.post(base + '/register', data={'username': self.name, 'password': 'secret12', 'email': 'player@example.com', 'confirm': 'secret12'}, allow_redirects=False)
+         assert r.status_code == 302
++        import database                                                    # DL-165: these helper accounts start unlocked, like accounts that predate the rule
++        db = database.get_db()
++        try:
++            db.execute('UPDATE users SET email_confirm_required = FALSE WHERE username = ?', (self.name,)); db.commit()
++        finally:
++            db.close()
+     def post(self, path, **kw): return self.s.post(self.base + path, allow_redirects=False, **kw)
+     def get(self, path, **kw): return self.s.get(self.base + path, **kw)
+     def campaign(self, name='E2E'):
+@@ -450,7 +456,7 @@ def test_invitation_flow_in_the_browser(pw, shared_server):
+     pctx = pl.context(pw, base); ppage = pctx.new_page(); pbad, perrs = _collect(ppage)
+     ppage.goto(base + '/campaigns'); ppage.wait_for_selector('.nav-badge')
+     assert ppage.inner_text('.nav-badge') == '1'
+-    assert 'Campaigns' in ppage.inner_text('.sidebar-nav') and ppage.locator('.foot-bell').count() == 0     # outside a campaign: Campaigns + Notifications in the menu
++    assert 'Campaigns' in ppage.inner_text('.sidebar-nav') and ppage.locator('.foot-bell:not(.foot-privacy)').count() == 0     # outside a campaign: Campaigns + Notifications in the menu
+     ppage.click('.nav-notifications'); ppage.wait_for_selector('.notification-card.is-unread'); ppage.wait_for_timeout(700)
+     assert 'invited you to Invites' in ppage.inner_text('.notification-card')
+     ppage.screenshot(path='/tmp/invite-player.png')
+diff --git a/tests/test_e2e_welcome.py b/tests/test_e2e_welcome.py
+index 4ea7ccd..ab0c75c 100644
+--- a/tests/test_e2e_welcome.py
++++ b/tests/test_e2e_welcome.py
+@@ -20,6 +20,9 @@ def test_sign_up_then_fill_in_the_profile(pw, shared_server):
+     page.fill('#username', 'welcome_walker'); page.fill('#email', 'walker@example.com')
+     page.fill('#password', 'correct horse 1'); page.fill('#confirm', 'correct horse 1')
+     page.click('.auth-submit')
++    page.wait_for_url('**/confirm-email**')                                   # DL-165: ask for the email confirmation first
++    expect(page.locator('h1')).to_have_text('Check your inbox')
++    page.click('text=Continue without confirming')
+     page.wait_for_url('**/welcome**')
+     expect(page.locator('h1')).to_have_text('Set up your profile')
+     shot = os.environ.get('WELCOME_SHOT')
+diff --git a/tests/test_email_gate.py b/tests/test_email_gate.py
+new file mode 100644
+index 0000000..99cd7d6
+--- /dev/null
++++ b/tests/test_email_gate.py
+@@ -0,0 +1,82 @@
++"""DL-165: a new password account must confirm its email before it can create or join a campaign."""
++import re
++import pytest
++
++import mailer
++from conftest import BACKEND, q, User
++
++pytestmark = pytest.mark.skipif(BACKEND == 'sqlite', reason='new-code tests')
++
++
++@pytest.fixture(autouse=True)
++def memory_mail(monkeypatch):
++    monkeypatch.setenv('MAIL_BACKEND', 'memory')
++    mailer.outbox.clear()
++    yield
++
++
++def new_account(appmod):
++    import database
++    db = database.get_db()                                              # an earlier test may have confirmed this address
++    try:
++        db.execute("UPDATE users SET email = NULL, email_verified_at = NULL WHERE lower(email) = 'player@example.com'")
++        db.commit()
++    finally:
++        db.close()
++    mailer.outbox.clear()
++    return User(appmod, keep_email=True)
++
++
++def link():
++    m = re.search(r'/verify-email/\S+', mailer.outbox[-1]['text'])
++    return m.group(0)
++
++
++def test_signup_lands_on_the_confirm_page_and_mails_a_link(appmod):
++    u = new_account(appmod)
++    assert q('SELECT email_confirm_required FROM users WHERE username = ?', u.name)[0]['email_confirm_required'] is True
++    assert len(mailer.outbox) == 1 and mailer.outbox[0]['to'] == 'player@example.com'
++    page = u.get('/confirm-email').get_data(as_text=True)
++    assert 'Check your inbox' in page and 'player@example.com' in page
++
++
++def test_campaigns_are_locked_until_confirmed_then_open(appmod):
++    u = new_account(appmod)
++    r = u.post('/campaigns/new', data={'name': 'Nope'})
++    assert r.status_code == 302 and r.headers['Location'].startswith('/confirm-email')
++    assert not q('SELECT 1 FROM campaigns WHERE name = ?', 'Nope')
++    assert u.get('/campaigns/new').headers['Location'].startswith('/confirm-email')
++    assert 'Confirm your email to create or join' in u.get('/campaigns').get_data(as_text=True)      # banner everywhere else
++    r = u.get(link())
++    assert r.status_code == 302 and 'confirm-email' in r.headers['Location'] and 'done=1' in r.headers['Location']
++    assert 'Email confirmed' in u.get(r.headers['Location']).get_data(as_text=True)
++    assert u.new_campaign()                                                                           # unlocked
++
++
++def test_invite_links_wait_for_confirmation_too(appmod):
++    u = new_account(appmod)
++    r = u.post('/join/anything')
++    assert r.status_code == 302 and r.headers['Location'].startswith('/confirm-email')
++
++
++def test_resend_is_available_and_the_link_works_on_another_device(appmod):
++    u = new_account(appmod)
++    r = u.post('/confirm-email/resend', data={})
++    assert r.status_code == 302 and 'sent=1' in r.headers['Location'] and len(mailer.outbox) == 2
++    other = appmod.app.test_client()                                    # signed out: the link itself proves the mailbox
++    r = other.get(link())
++    assert r.status_code == 302 and r.headers['Location'].startswith('/login') and 'confirmed=1' in r.headers['Location']
++    assert q('SELECT email_verified_at FROM users WHERE username = ?', u.name)[0]['email_verified_at'] is not None
++    assert u.new_campaign()
++
++
++def test_no_mail_server_means_no_lock(appmod, monkeypatch):
++    monkeypatch.setenv('MAIL_BACKEND', 'off')
++    u = new_account(appmod)
++    assert q('SELECT email_confirm_required FROM users WHERE username = ?', u.name)[0]['email_confirm_required'] is False
++    assert u.new_campaign()
++
++
++def test_accounts_that_existed_before_are_never_locked(user):
++    assert q('SELECT email_confirm_required FROM users WHERE username = ?', user.name)[0]['email_confirm_required'] is False
++    assert user.new_campaign()
+diff --git a/tests/test_welcome.py b/tests/test_welcome.py
+index a1e9f4e..ad9ca5a 100644
+--- a/tests/test_welcome.py
++++ b/tests/test_welcome.py
+@@ -47,6 +47,7 @@ def test_register_sends_people_to_welcome_and_keeps_next(appmod):
+     c = appmod.app.test_client()
+     r = c.post('/register', data={'username': 'goer_one', 'email': 'goer@example.com', 'password': 'correct horse 1', 'confirm': 'correct horse 1',
+                                   'next': '/campaigns/new'}, headers={'X-Test-IP': '10.9.9.9'})
+-    assert r.status_code == 302 and r.headers['Location'] == '/welcome?next=/campaigns/new'
++    assert r.status_code == 302 and r.headers['Location'] == '/confirm-email?next=/campaigns/new'        # DL-165: confirm first, then on
++    assert c.get('/confirm-email?next=/campaigns/new').get_data(as_text=True).count('/welcome?next=') == 1      # "Continue without confirming"
+     r = c.post('/welcome', data={'action': 'skip', 'next': '/campaigns/new'})
+     assert r.headers['Location'] == '/campaigns/new'

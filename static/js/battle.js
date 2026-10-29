@@ -666,7 +666,7 @@
     shortRestBtn.addEventListener('click', () => {
       const pcs = participants.filter((p) => !p.is_npc && !p.is_dead);
       list.innerHTML = pcs.map((p) => `<li class="short-rest-row"><label for="sr-${p.id}" class="short-rest-name"><b>${escapeHtml(p.char_name)}</b><small>${p.current_hp} / ${p.char_max_hp} HP</small></label>` +
-        `<input type="number" id="sr-${p.id}" data-pid="${p.id}" min="0" max="${Math.max(0, p.char_max_hp - p.current_hp)}" inputmode="numeric" placeholder="0"></li>`).join('');
+        `<div class="field short-rest-field"><input type="number" id="sr-${p.id}" data-pid="${p.id}" min="0" max="${Math.max(0, p.char_max_hp - p.current_hp)}" inputmode="numeric" placeholder="0" aria-label="HP regained by ${escapeHtml(p.char_name)}"></div></li>`).join('');
       empty.hidden = pcs.length > 0;
       go.disabled = pcs.length === 0;
     });
@@ -795,6 +795,23 @@
     menu.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') { setOpen(false); rollInitBtn.focus(); menu.querySelector('.roll-menu-list').classList.add('is-closing'); }
     });
+  }
+
+  // Rest menu: same hover dropdown as Roll Initiative; a click (or tap) opens it too.
+  const restMenu = document.getElementById('rest-menu');
+  if (restMenu) {
+    const restBtn = document.getElementById('rest-menu-btn');
+    const restList = restMenu.querySelector('.roll-menu-list');
+    const setRestOpen = (open) => { restMenu.classList.toggle('is-open', open); restBtn.setAttribute('aria-expanded', open ? 'true' : 'false'); };
+    restBtn.addEventListener('click', () => setRestOpen(!restMenu.classList.contains('is-open')));
+    restMenu.addEventListener('click', (e) => {
+      if (!e.target.closest('[role=menuitem]')) return;
+      setRestOpen(false);
+      restList.classList.add('is-closing');                                       // stays shut under the pointer until it leaves
+    });
+    restMenu.addEventListener('pointerleave', () => { restList.classList.remove('is-closing'); setRestOpen(false); });
+    document.addEventListener('click', (e) => { if (!restMenu.contains(e.target)) setRestOpen(false); });
+    restMenu.addEventListener('keydown', (e) => { if (e.key === 'Escape') { setRestOpen(false); restBtn.focus(); restList.classList.add('is-closing'); } });
   }
 
   const openAddModalBtn = document.getElementById('open-add-modal');

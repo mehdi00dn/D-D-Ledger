@@ -1,0 +1,187 @@
+diff --git a/README.md b/README.md
+index e54b8a9..7165348 100644
+--- a/README.md
++++ b/README.md
+@@ -307,4 +307,10 @@ Consent notice (DL-79; migration `0048_terms_accepted.sql`): the sign-up form an
+ ### Rest menu and short rest dialog (DL-163)
+ On the Battle page the **Rest** button is a hover dropdown like **Roll Initiative** (`#rest-menu`, same `.roll-menu` markup and styles; a click or tap opens it too, Escape closes it). Both buttons now carry a dropdown caret (hidden on the narrow phone buttons). The short rest dialog's HP boxes use the normal `.field` form look. Test: `tests/test_e2e_battle_menus.py`.
+ 
++### Campaign image size (DL-164)
++The campaign image is saved at most 1200 px on its longest edge (`CAMPAIGN_BANNER_PX`), and the crop step in the campaign form (`data-crop-shape="campaign"` in `static/js/cropper.js`) now outputs 1200 x 720 instead of 640 x 384. The form says "Saved at up to 1200 x 720 px", and the preview opened from the campaign home (`data-lightbox-max="1200"`) shows the real pixel size and the largest allowed edge. Images saved before this keep their size until they are uploaded again.
++
++### Google sign-in and the YouTube address
++During Google sign-in the browser may briefly show `accounts.youtube.com/accounts/SetSID`. That is Google's own step for keeping a Google login in sync across its sites; it happens on Google's side before Google sends the person back to `/auth/google/callback`, and nothing in this app asks for it or can turn it off. The app never uses YouTube data (scopes are `openid email profile`).
++
+ About and Contact pages (DL-25): `/about` (what the app does, in plain words) and `/contact` (shows `PRIVACY_CONTACT` as a mailto once set, otherwise says contact details are coming) are public and share the tab row with Privacy, Terms and Cookies. Replace the wording with real business details (DL-83) before launch. Test: `tests/test_privacy_page.py`.
+diff --git a/app.py b/app.py
+index cc83674..01c2b12 100644
+--- a/app.py
++++ b/app.py
+@@ -2513,7 +2513,7 @@ def store_uploads(field, subfolder):
+     return out
+ 
+ 
+-CAMPAIGN_BANNER_PX = 2000                      # longest edge of a campaign image: it is shown large on the home page
++CAMPAIGN_BANNER_PX = 1200                      # longest edge of a campaign image (DL-164); the cropper saves 1200 x 720
+ 
+ 
+ def _campaign_banner_upload():
+diff --git a/static/css/style.css b/static/css/style.css
+index 6f116ce..166f723 100644
+--- a/static/css/style.css
++++ b/static/css/style.css
+@@ -5378,3 +5378,8 @@ a.pager-link:hover { border-color: var(--brass); }
+   .battle-actions .roll-menu > .btn { flex-direction: column; justify-content: center; }
+   .battle-actions .roll-menu > .btn > svg:last-child { display: none; }
+ }
++
++/* ---- DL-164: image size notes ---- */
++.lightbox-size { margin: 12px 0 0; font: 500 12px var(--font-mono); color: var(--parchment-dim); text-align: center; }
++.lightbox-size[hidden] { display: none; }
++.file-drop-note { display: block; margin-block-start: 2px; font-size: 11.5px; color: var(--parchment-dim); }
+diff --git a/static/js/cropper.js b/static/js/cropper.js
+index 62605ab..d38a041 100644
+--- a/static/js/cropper.js
++++ b/static/js/cropper.js
+@@ -25,6 +25,7 @@
+   // 5:3-ish aspect ratio group/campaign cards render their image at.
+   const SHAPES = {
+     circle: { w: 480, h: 480, displayW: 300, displayH: 300, guide: true, panelMax: 420, title: 'Position Avatar' },
++    campaign: { w: 1200, h: 720, displayW: 420, displayH: 252, guide: false, panelMax: 500, title: 'Position Campaign Image' },   // DL-164: saved at 1200 x 720
+     banner: { w: 640, h: 384, displayW: 420, displayH: 252, guide: false, panelMax: 500, title: 'Position Banner Image' },
+   };
+   let shape = SHAPES.circle;
+diff --git a/static/js/lightbox.js b/static/js/lightbox.js
+index 5dc708c..7e07746 100644
+--- a/static/js/lightbox.js
++++ b/static/js/lightbox.js
+@@ -57,7 +57,21 @@
+     nextBtn.classList.toggle('is-off', !hasNext);
+   }
+ 
+-  function open(src, deleteUrl, images) {
++  // DL-164: a picture with a size cap (the campaign image) says how big it is and what the biggest allowed is.
++  const sizeNote = document.getElementById('lightbox-size');
++  function showSize(max) {
++    if (!sizeNote) return;
++    sizeNote.hidden = true;
++    if (!max) return;
++    const tell = () => {
++      if (!img.naturalWidth) return;
++      sizeNote.textContent = img.naturalWidth + ' \u00d7 ' + img.naturalHeight + ' px \u00b7 largest allowed edge ' + max + ' px';
++      sizeNote.hidden = false;
++    };
++    if (img.complete && img.naturalWidth) tell(); else img.addEventListener('load', tell, { once: true });
++  }
++
++  function open(src, deleteUrl, images, maxPx) {
+     currentImages = Array.isArray(images) ? images : [];
+     currentIndex = currentImages.findIndex(item => item.src === src);
+     if (currentIndex < 0 && src) {
+@@ -70,6 +84,7 @@
+     updateNavigation();
+     reset();
+     overlay.hidden = false;
++    showSize(maxPx);
+   }
+ 
+   // A quick page turn: the new picture swings in from its spine edge (left when going forward, right when going back).
+@@ -100,6 +115,7 @@
+     deleteBtn.hidden = !currentDeleteUrl;
+     updateNavigation();
+     reset();
++    showSize(null);
+     pageTurn(direction);
+   }
+ 
+@@ -154,7 +170,7 @@
+           deleteUrl: el.dataset.deleteUrl || null
+         }))
+       : [{ src: trigger.dataset.lightboxSrc, deleteUrl: trigger.dataset.deleteUrl || null }];
+-    open(trigger.dataset.lightboxSrc, trigger.dataset.deleteUrl, images);
++    open(trigger.dataset.lightboxSrc, trigger.dataset.deleteUrl, images, parseInt(trigger.dataset.lightboxMax, 10) || 0);
+   });
+ 
+   // ---- Click to zoom, drag to pan (unified via mousedown/move/up) ----
+diff --git a/templates/base.html b/templates/base.html
+index d8e6a83..7d7ae27 100644
+--- a/templates/base.html
++++ b/templates/base.html
+@@ -234,6 +234,7 @@
+     </div>
+     <button type="button" class="btn-icon lightbox-nav lightbox-next" id="lightbox-next-btn" title="Next image">{{ icon('chevron-right') }}</button>
+   </div>
++  <p class="lightbox-size" id="lightbox-size" hidden></p>
+   <p class="lightbox-hint">Click or scroll to zoom &middot; hold and drag to pan</p>
+ </div>
+ 
+diff --git a/templates/campaign_form.html b/templates/campaign_form.html
+index c71f055..0c2dab9 100644
+--- a/templates/campaign_form.html
++++ b/templates/campaign_form.html
+@@ -45,8 +45,9 @@
+         <div class="file-drop">
+           {{ icon('upload') }}
+           <div>Click or drop an image</div>
++          <small class="file-drop-note">Saved at up to 1200 &times; 720 px.</small>
+           <span class="file-name"></span>
+-          <input type="file" name="avatar" aria-label="Choose an image" accept="image/*" data-avatar-input="#campaign-avatar-preview" data-remove-btn="#campaign-avatar-remove-btn" data-remove-input="#campaign-remove-avatar-input" data-crop-shape="banner">
++          <input type="file" name="avatar" aria-label="Choose an image" accept="image/*" data-avatar-input="#campaign-avatar-preview" data-remove-btn="#campaign-avatar-remove-btn" data-remove-input="#campaign-remove-avatar-input" data-crop-shape="campaign">
+         </div>
+         {% endif %}
+       </div>
+diff --git a/templates/campaign_home.html b/templates/campaign_home.html
+index e41ea81..491b5ad 100644
+--- a/templates/campaign_home.html
++++ b/templates/campaign_home.html
+@@ -14,7 +14,7 @@
+   <header class="home-hero{{ ' has-banner' if g.campaign.avatar_path else '' }}">
+     {% if g.campaign.avatar_path %}
+     <div class="home-banner"><img src="{{ url_for('uploaded_file', filename=g.campaign.avatar_path) }}" alt=""></div>
+-    <button type="button" class="btn-icon home-banner-view" data-lightbox-src="{{ url_for('uploaded_file', filename=g.campaign.avatar_path) }}" title="View the campaign image" aria-label="View the campaign image full size">{{ icon('maximize') }}</button>
++    <button type="button" class="btn-icon home-banner-view" data-lightbox-src="{{ url_for('uploaded_file', filename=g.campaign.avatar_path) }}" data-lightbox-max="1200" title="View the campaign image" aria-label="View the campaign image full size">{{ icon('maximize') }}</button>
+     {% endif %}
+     <div class="home-hero-text">
+       <h1 class="home-name">{{ g.campaign.name }}</h1>
+diff --git a/tests/test_e2e_battle_menus.py b/tests/test_e2e_battle_menus.py
+index c455e42..e188650 100644
+--- a/tests/test_e2e_battle_menus.py
++++ b/tests/test_e2e_battle_menus.py
+@@ -1,6 +1,11 @@
+-"""DL-163: the Rest menu opens on hover like Roll Initiative, both show a caret, the short rest boxes use the form field look."""
++"""DL-163 / DL-164: the Rest menu opens on hover like Roll Initiative, both show a caret, the short rest boxes use the
++form field look; the campaign image preview tells its size, and the saved image is at most 1200 px."""
++import io
++import json
++import re
++
+ import pytest
+-from conftest import BACKEND
++from conftest import BACKEND, q, png_bytes
+ from test_e2e_browser import Api, pw  # noqa: F401
+ 
+ pytestmark = pytest.mark.skipif(BACKEND == 'sqlite', reason='browser tests need Postgres')
+@@ -32,3 +37,23 @@ def test_rest_menu_hover_carets_and_short_rest_fields(shared_server, pw):
+     page.wait_for_selector('#short-rest-dialog[open]', state='detached')
+     ctx.close()
+     assert not errors, errors
++
++
++def test_campaign_image_is_capped_at_1200_and_the_preview_says_so(shared_server, pw):
++    base = shared_server.url
++    dm = Api(base)
++    r = dm.post('/campaigns/new', data={'name': 'Wide', 'description': json.dumps([])},
++                files={'avatar': ('c.png', png_bytes(2400, 1400, (120, 60, 30)), 'image/png')})
++    cid = int(re.search(r'/campaigns/(\d+)/', r.headers['Location']).group(1))
++    from PIL import Image
++    path = q('SELECT avatar_path FROM campaigns WHERE id = ?', cid)[0]['avatar_path']
++    stored = Image.open(io.BytesIO(dm.get('/uploads/' + path).content))
++    assert max(stored.size) <= 1200
++    ctx = dm.context(pw, base)
++    page = ctx.new_page(); page.set_viewport_size({'width': 1280, 'height': 800})
++    page.goto(f'{base}/campaigns/{cid}/home')
++    page.click('.home-banner-view')
++    page.wait_for_selector('#lightbox-size', state='visible')
++    text = page.inner_text('#lightbox-size')
++    assert 'largest allowed edge 1200 px' in text and ' × ' in text
++    ctx.close()
