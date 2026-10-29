@@ -204,9 +204,15 @@ def test_login_never_redirects_off_site(appmod, make_user, nxt):
 
 
 def test_login_still_honours_safe_next_paths(appmod, make_user):
-    u = make_user(); u.post('/logout')
+    u = make_user(); u.post('/welcome', data={'action': 'skip'}); u.post('/logout')
     r = u.post('/login', data={'username': u.name, 'password': u.password, 'next': '/campaigns?x=1'})
     assert r.headers['Location'] == '/campaigns?x=1'
+
+
+def test_login_of_an_account_without_a_finished_profile_goes_through_welcome_and_keeps_next(appmod, make_user):
+    u = make_user(); u.post('/logout')
+    r = u.post('/login', data={'username': u.name, 'password': u.password, 'next': '/campaigns?x=1'})
+    assert r.headers['Location'] == '/welcome?next=/campaigns?x%3D1'
 
 
 # ------------------------------------------------------------------ sessions / passwords

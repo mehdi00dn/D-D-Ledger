@@ -425,6 +425,19 @@ def _username_error(username):
     return None
 
 
+def _after_sign_in_url(user_id, nxt):
+    """Where a person goes once signed in: the page they asked for, or the campaigns list.  An account that has not yet
+    saved or skipped its profile page goes through /welcome first (the page hands them on to the same place)."""
+    db = get_db()
+    try:
+        row = db.execute('SELECT profile_setup_at FROM users WHERE id = ?', (user_id,)).fetchone()
+        if row is not None and row['profile_setup_at'] is None:
+            return url_for('welcome', next=nxt) if nxt else url_for('welcome')
+    except pgerr.UndefinedColumn:                       # migration 0047 not applied yet: carry on as before
+        db.rollback()
+    return nxt or url_for('campaigns_list')
+
+
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
@@ -484,7 +497,7 @@ def register():
         db.close()
 
         _start_session(user_id, username)
-        return redirect(_safe_next(request.form.get('next', '')) or url_for('campaigns_list'))
+        return redirect(_after_sign_in_url(user_id, _safe_next(request.form.get('next', ''))))
     return render_template('register.html', error=None, username='', email='', next=request.args.get('next', ''))
 
 
@@ -531,7 +544,7 @@ def login():
         db.close()
         _start_session(user['id'], user['username'], remember=bool(request.form.get('remember')),
                        version=dict(user).get('session_version', 0))
-        return redirect(_safe_next(next_value or request.args.get('next')) or url_for('campaigns_list'))
+        return redirect(_after_sign_in_url(user['id'], _safe_next(next_value or request.args.get('next'))))
     return render_template('login.html', error=None, username='', next=request.args.get('next', ''))
 
 
@@ -666,7 +679,7 @@ def google_callback():
     finally:
         db.close()
     _start_session(user['id'], user['username'], remember=True, version=dict(user).get('session_version', 0))
-    return redirect(pending.get('n') or url_for('campaigns_list'))
+    return redirect(_after_sign_in_url(user['id'], _safe_next(pending.get('n'))))
 
 
 # ---------------- ACCOUNT / PROFILE ----------------
@@ -1037,6 +1050,63 @@ def verify_email(token):
         db.rollback()
         return redirect(url_for('account', mail='taken'))
     return redirect(url_for('account', mail='verified'))
+
+
+@app.route('/welcome', methods=['GET', 'POST'])
+def welcome():
+    """DL-161: the one-time "Set up your profile" page every new account (password or Google) lands on.  Saving or skipping
+    marks it done, so it is never shown again; everything on it can be changed later in Account settings."""
+    db = get_db()
+    nxt = _safe_next(request.values.get('next', '')) or url_for('campaigns_list')
+    try:
+        user = db.execute('SELECT id, username, display_name, avatar_path, bio, email, google_sub, password_hash, profile_visibility, profile_setup_at '
+                          'FROM users WHERE id = ?', (session['user_id'],)).fetchone()
+    except pgerr.UndefinedColumn:
+        db.rollback()
+        return redirect(nxt)
+    if user is None:
+        session.clear()
+        return redirect(url_for('login'))
+    if user['profile_setup_at'] is not None:
+        return redirect(nxt)
+    user = dict(user)
+    form = {'username': user['username'], 'display_name': user['display_name'] or '', 'bio': user['bio'] or '', 'profile_visibility': user['profile_visibility']}
+
+    def page(error=None, status=200):
+        return render_template('welcome.html', profile=user, form=form, error=error, next=nxt, from_google=bool(user['google_sub'] and not user['password_hash'])), status
+
+    if request.method == 'POST':
+        if request.form.get('action') == 'skip':
+            db.execute('UPDATE users SET profile_setup_at = ' + _UTC_NOW + ' WHERE id = ?', (user['id'],))
+            db.commit()
+            return redirect(nxt)
+        form['username'] = request.form.get('username', '').strip()
+        form['display_name'] = ' '.join(request.form.get('display_name', '').split())
+        form['bio'] = request.form.get('bio', '').replace('\r\n', '\n').strip()
+        visibility = request.form.get('profile_visibility', '')
+        if visibility in PROFILE_VISIBILITY:
+            form['profile_visibility'] = visibility
+        error = _username_error(form['username']) or _profile_error(form['display_name'], form['bio'])
+        if not error and form['username'].lower() != user['username'].lower() and db.execute(
+                'SELECT 1 FROM users WHERE lower(username) = lower(?) AND id <> ?', (form['username'], user['id'])).fetchone():
+            error = 'That username is already taken.'
+        if error:
+            return page(error, 400)
+        new_avatar = save_upload_field('avatar', 'avatars')
+        if new_avatar:
+            delete_upload(user['avatar_path'])
+        try:
+            db.execute('UPDATE users SET username = ?, display_name = ?, bio = ?, profile_visibility = ?, avatar_path = COALESCE(?, avatar_path), '
+                       'profile_setup_at = ' + _UTC_NOW + ' WHERE id = ?',
+                       (form['username'], form['display_name'] or None, form['bio'] or None, form['profile_visibility'], new_avatar, user['id']))
+        except UniqueViolation:                              # someone took the name a moment ago
+            db.rollback()
+            return page('That username is already taken.', 400)
+        db.commit()
+        session['username'] = form['username']
+        g.pop('_profile', None)
+        return redirect(nxt)
+    return page()
 
 
 @app.route('/account', methods=['GET', 'POST'])

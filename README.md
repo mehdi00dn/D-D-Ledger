@@ -297,3 +297,6 @@ An axe-core audit (WCAG 2.1 A and AA plus best practices) of 19 pages, in dark a
 
 Treasury dialogs show how many of each coin the chosen purse holds, and the confirm buttons are "Coins in" and "Coins out". Character cards show two lines of notes. The home banner is blurred, with a corner button that opens it full size.
 Campaign images are stored up to 2000 px on the longest edge (other avatars stay at 512 px); images uploaded before this keep their old size until they are uploaded again. The Coins in / Coins out buttons are green and red. On a sideways phone the battle log sits to the right of the two round buttons at the bottom left.
+
+### Profile setup after sign-up (DL-161; migration `0047_profile_setup.sql`)
+Every new account, whether made with a password or with Google, is sent once to `/welcome`, "Set up your profile": photo, username (Google sign-ups start with an automatic one), display name, bio and who can see the profile. "Save and continue" or "Skip for now" both end it for good (`users.profile_setup_at`); the page the person was heading to is kept. Accounts that existed before the migration count as done. An account that never finished it also passes through the page once at its next sign-in. Everything on it stays editable in Account settings. Tests: `tests/test_welcome.py`, `tests/test_e2e_welcome.py`.

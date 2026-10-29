@@ -145,3 +145,12 @@
   .auth-main { padding: 20px 16px; align-items: flex-start; }
   .auth-main .auth-card { padding: 28px 22px; }
 }
+
+/* DL-161: the one-time profile page */
+.auth-optional { font-weight: 400; color: var(--parchment-faint, #8b8a96); }
+.welcome-form .access-options { display: grid; gap: 8px; }
+.welcome-form textarea { inline-size: 100%; resize: vertical; }
+.auth-skip { inline-size: 100%; margin-block-start: 8px; }
+.welcome-form .access-option, .welcome-form .access-option * { text-transform: none; letter-spacing: normal; }
+.welcome-form .access-option-card b { font: 600 14px var(--font-body); color: var(--parchment); }
+.welcome-form .access-option-card span { font: 400 12.5px var(--font-body); color: var(--parchment-dim); }
