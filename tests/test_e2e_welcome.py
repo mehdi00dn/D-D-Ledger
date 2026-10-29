@@ -20,6 +20,9 @@ def test_sign_up_then_fill_in_the_profile(pw, shared_server):
     page.fill('#username', 'welcome_walker'); page.fill('#email', 'walker@example.com')
     page.fill('#password', 'correct horse 1'); page.fill('#confirm', 'correct horse 1')
     page.click('.auth-submit')
+    page.wait_for_url('**/confirm-email**')                                   # DL-165: ask for the email confirmation first
+    expect(page.locator('h1')).to_have_text('Check your inbox')
+    page.click('text=Continue without confirming')
     page.wait_for_url('**/welcome**')
     expect(page.locator('h1')).to_have_text('Set up your profile')
     shot = os.environ.get('WELCOME_SHOT')

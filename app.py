@@ -117,7 +117,7 @@ def _campaign_access_field(form):
 # Full accounts: anyone can self-register, and every route requires a
 # logged-in session except the handful that must stay reachable to get one.
 
-PUBLIC_ENDPOINTS = {'login', 'register', 'static', 'healthz', 'forgot_password', 'reset_password', 'robots_txt', 'security_txt', 'csp_report', 'google_start', 'google_callback', 'privacy', 'terms', 'cookies', 'about', 'contact'}
+PUBLIC_ENDPOINTS = {'login', 'register', 'static', 'healthz', 'forgot_password', 'reset_password', 'robots_txt', 'security_txt', 'csp_report', 'google_start', 'google_callback', 'privacy', 'terms', 'cookies', 'about', 'contact', 'verify_email'}
 
 
 # Which classification of connection failure gets which fixed, secret-free hint.
@@ -477,9 +477,16 @@ def register():
             db.close()
             return render_template('register.html', error=error, username=username, email=email, next=request.form.get('next', ''))
 
+        must_confirm = mailer.enabled()                      # with no way to send mail nobody can be asked to confirm
         try:
-            cur = db.execute('INSERT INTO users (username, password_hash, email, terms_accepted_at) VALUES (?, ?, ?, ' + _UTC_NOW + ')',
-                              (username, generate_password_hash(password), email))
+            try:
+                cur = db.execute('INSERT INTO users (username, password_hash, email, terms_accepted_at, email_confirm_required) VALUES (?, ?, ?, ' + _UTC_NOW + ', ?)',
+                                  (username, generate_password_hash(password), email, must_confirm))
+            except pgerr.UndefinedColumn:                    # migration 0049 not applied yet: sign up as before
+                db.rollback()
+                must_confirm = False
+                cur = db.execute('INSERT INTO users (username, password_hash, email, terms_accepted_at) VALUES (?, ?, ?, ' + _UTC_NOW + ')',
+                                  (username, generate_password_hash(password), email))
         except UniqueViolation:      # two people registering the same name at once
             db.rollback()
             db.close()
@@ -495,7 +502,10 @@ def register():
         db.close()
 
         _start_session(user_id, username)
-        return redirect(_after_sign_in_url(user_id, _safe_next(request.form.get('next', ''))))
+        nxt = _safe_next(request.form.get('next', ''))
+        if must_confirm:                                      # DL-165: ask for the confirmation right away
+            return redirect(url_for('confirm_email', next=nxt) if nxt else url_for('confirm_email'))
+        return redirect(_after_sign_in_url(user_id, nxt))
     return render_template('register.html', error=None, username='', email='', next=request.args.get('next', ''))
 
 
@@ -696,6 +706,34 @@ def _profile_error(display_name, bio):
     return None
 
 
+def _must_confirm_email(db, user_id):
+    """DL-165: True while this account still has to confirm its email (it signed up with a password while the site could
+    send mail, and has not opened the link).  Creating or joining a campaign waits for it; everything else works."""
+    try:
+        row = db.execute('SELECT email_confirm_required, email_verified_at FROM users WHERE id = ?', (user_id,)).fetchone()
+    except pgerr.UndefinedColumn:                           # migration 0049 not applied yet
+        db.rollback()
+        return False
+    return bool(row and row['email_confirm_required'] and row['email_verified_at'] is None)
+
+
+def _email_confirm_flag(db, user_id):
+    try:
+        row = db.execute('SELECT email_confirm_required FROM users WHERE id = ?', (user_id,)).fetchone()
+    except pgerr.UndefinedColumn:
+        db.rollback()
+        return False
+    return bool(row and row['email_confirm_required'])
+
+
+def _confirm_gate():
+    """A redirect to the "confirm your email" page when the signed-in account still has to, else None."""
+    me = my_profile()
+    if me and me.get('must_confirm'):
+        return redirect(url_for('confirm_email', next=request.full_path.rstrip('?')))
+    return None
+
+
 def my_profile():
     """The logged-in user's profile row (cached for the request); None when logged out."""
     uid = session.get('user_id')
@@ -705,13 +743,13 @@ def my_profile():
         db = get_db()
         try:
             row = db.execute('SELECT id, username, display_name, avatar_path, bio, email FROM users WHERE id = ?', (uid,)).fetchone()
-            g._profile = dict(row, needs_email=not row['email']) if row else None
+            g._profile = dict(row, needs_email=not row['email'], must_confirm=_must_confirm_email(db, uid)) if row else None
         except pgerr.UndefinedColumn:
             # Code deployed before migration 0022 was applied: every page renders this in the sidebar, so a missing
             # column must not take the whole site down.  Fall back to the username until the migration runs.
             db.rollback()
             app.logger.error('users.display_name is missing: apply migration 0022_user_profile.sql')
-            g._profile = {'id': uid, 'username': session.get('username'), 'display_name': None, 'avatar_path': None, 'bio': None, 'needs_email': False}
+            g._profile = {'id': uid, 'username': session.get('username'), 'display_name': None, 'avatar_path': None, 'bio': None, 'needs_email': False, 'must_confirm': False}
     return g._profile
 
 
@@ -1033,21 +1071,63 @@ def verify_email(token):
         return redirect(url_for('account', mail='expired'))
     except BadSignature:
         return redirect(url_for('account', mail='invalid'))
-    if data.get('u') != session.get('user_id'):
+    signed_in = session.get('user_id')
+    if signed_in and data.get('u') != signed_in:
         return redirect(url_for('account', mail='wrong_account'))
     db = get_db()
-    user = _account_row(db, session['user_id'])
+    user = _account_row(db, data.get('u'))                          # opened on another device (signed out): the link itself proves the mailbox
     if user is None or not user['email_ready'] or (user['email'] or '').lower() != data.get('e'):
         return redirect(url_for('account', mail='invalid'))        # the address was changed or removed since
+    flagged = _email_confirm_flag(db, user['id'])
+
+    def landing():
+        if not signed_in:
+            return redirect(url_for('login', confirmed=1))
+        return redirect(url_for('confirm_email', done=1) if flagged else url_for('account', mail='verified'))
+
     if user['email_verified_at']:
-        return redirect(url_for('account', mail='verified'))
+        return landing()
     try:
         db.execute('UPDATE users SET email_verified_at = ' + _UTC_NOW + ' WHERE id = ?', (user['id'],))
         db.commit()
     except UniqueViolation:                                        # someone else verified this address first
         db.rollback()
         return redirect(url_for('account', mail='taken'))
-    return redirect(url_for('account', mail='verified'))
+    return landing()
+
+
+@app.route('/confirm-email')
+def confirm_email():
+    """DL-165: where a new password account lands after signing up: check your inbox, resend, or carry on.  Creating or
+    joining a campaign stays locked until the link is opened; everything else works."""
+    db = get_db()
+    user = _account_row(db, session['user_id'])
+    if user is None:
+        session.clear()
+        return redirect(url_for('login'))
+    nxt = _safe_next(request.args.get('next', ''))
+    confirmed = bool(user['email_verified_at'])
+    resent = request.args.get('sent') == '1'
+    error = request.args.get('error') or None
+    return render_template('confirm_email.html', user=user, confirmed=confirmed, next=nxt, resent=resent,
+                           error={'wait': 'Too many emails just now. Wait a little and try again.', 'send': 'The email could not be sent. Try again in a moment.'}.get(error),
+                           continue_url=_after_sign_in_url(user['id'], nxt))
+
+
+@app.route('/confirm-email/resend', methods=['POST'])
+def confirm_email_resend():
+    db = get_db()
+    user = _account_row(db, session['user_id'])
+    nxt = _safe_next(request.form.get('next', ''))
+    if user is None or not user['email'] or user['email_verified_at']:
+        return redirect(url_for('confirm_email', next=nxt) if nxt else url_for('confirm_email'))
+    error = _send_verification(db, user, user['email'])
+    args = {'next': nxt} if nxt else {}
+    if error:
+        args['error'] = 'wait' if error.startswith('Too many') else 'send'
+    else:
+        args['sent'] = 1
+    return redirect(url_for('confirm_email', **args))
 
 
 def _legal_page(template):
@@ -1610,6 +1690,9 @@ def campaigns_list():
 
 @app.route('/campaigns/new', methods=['GET', 'POST'])
 def campaign_new():
+    gate = _confirm_gate()
+    if gate:
+        return gate
     if request.method == 'POST':
         name = request.form.get('name', '').strip() or 'Untitled Campaign'
         description = sanitize_bio(request.form.get('description'))
@@ -1933,6 +2016,9 @@ def _is_member(db, campaign_id):
 
 @app.route('/join/<token>')
 def join_via_link(token):
+    gate = _confirm_gate()
+    if gate:
+        return gate
     db = get_db()
     link = _usable_link(db, token)
     member = link is not None and _is_member(db, link['campaign_id'])
@@ -1946,6 +2032,9 @@ def join_via_link(token):
 
 @app.route('/join/<token>', methods=['POST'])
 def join_via_link_accept(token):
+    gate = _confirm_gate()
+    if gate:
+        return gate
     db = get_db()
     link = _usable_link(db, token)
     if link is None:

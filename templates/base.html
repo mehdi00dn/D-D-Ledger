@@ -173,6 +173,8 @@
     {% endif %}
     {% if session.user_id and active_page != 'account' %}{% set me_banner = my_profile() %}{% if me_banner and me_banner.needs_email %}
     <div class="banner-notice" role="status">Add an email address to your account so you can recover it. <a href="{{ url_for('account') }}#email-panel">Add email</a></div>
+    {% elif me_banner and me_banner.must_confirm and active_page != 'confirm_email' %}
+    <div class="banner-notice" role="status">Confirm your email to create or join a campaign. We sent a link to your inbox. <a href="{{ url_for('confirm_email') }}">Resend it</a></div>
     {% endif %}{% endif %}
     {% block content %}{% endblock %}
   </main>

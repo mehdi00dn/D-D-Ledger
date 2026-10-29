@@ -21,6 +21,12 @@ class Api:
         self.name = f'e{uuid.uuid4().hex[:9]}'
         r = self.s.post(base + '/register', data={'username': self.name, 'password': 'secret12', 'email': 'player@example.com', 'confirm': 'secret12'}, allow_redirects=False)
         assert r.status_code == 302
+        import database                                                    # DL-165: these helper accounts start unlocked, like accounts that predate the rule
+        db = database.get_db()
+        try:
+            db.execute('UPDATE users SET email_confirm_required = FALSE WHERE username = ?', (self.name,)); db.commit()
+        finally:
+            db.close()
     def post(self, path, **kw): return self.s.post(self.base + path, allow_redirects=False, **kw)
     def get(self, path, **kw): return self.s.get(self.base + path, **kw)
     def campaign(self, name='E2E'):
@@ -450,7 +456,7 @@ def test_invitation_flow_in_the_browser(pw, shared_server):
     pctx = pl.context(pw, base); ppage = pctx.new_page(); pbad, perrs = _collect(ppage)
     ppage.goto(base + '/campaigns'); ppage.wait_for_selector('.nav-badge')
     assert ppage.inner_text('.nav-badge') == '1'
-    assert 'Campaigns' in ppage.inner_text('.sidebar-nav') and ppage.locator('.foot-bell').count() == 0     # outside a campaign: Campaigns + Notifications in the menu
+    assert 'Campaigns' in ppage.inner_text('.sidebar-nav') and ppage.locator('.foot-bell:not(.foot-privacy)').count() == 0     # outside a campaign: Campaigns + Notifications in the menu
     ppage.click('.nav-notifications'); ppage.wait_for_selector('.notification-card.is-unread'); ppage.wait_for_timeout(700)
     assert 'invited you to Invites' in ppage.inner_text('.notification-card')
     ppage.screenshot(path='/tmp/invite-player.png')

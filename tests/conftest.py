@@ -162,7 +162,7 @@ class User:
             import database, mailer
             db = database.get_db()
             try:
-                db.execute('UPDATE users SET email = NULL, email_verified_at = NULL WHERE username = ?', (self.name,))
+                db.execute('UPDATE users SET email = NULL, email_verified_at = NULL, email_confirm_required = FALSE WHERE username = ?', (self.name,))
                 db.commit()
             finally:
                 db.close()

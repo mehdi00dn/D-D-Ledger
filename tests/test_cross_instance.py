@@ -15,6 +15,12 @@ def _login_on_a(a):
     name = f'x{abs(hash(a.url))%10**7}{__import__("uuid").uuid4().hex[:5]}'
     r = s.post(a.url + '/register', data={'username': name, 'password': 'secret12', 'email': 'player@example.com', 'confirm': 'secret12'}, allow_redirects=False)
     assert r.status_code == 302
+    import database                                                        # DL-165: start unlocked (the confirm lock is not what these tests are about)
+    db = database.get_db()
+    try:
+        db.execute('UPDATE users SET email_confirm_required = FALSE WHERE username = ?', (name,)); db.commit()
+    finally:
+        db.close()
     return s
 
 

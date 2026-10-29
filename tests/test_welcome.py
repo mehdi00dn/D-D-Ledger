@@ -47,6 +47,7 @@ def test_register_sends_people_to_welcome_and_keeps_next(appmod):
     c = appmod.app.test_client()
     r = c.post('/register', data={'username': 'goer_one', 'email': 'goer@example.com', 'password': 'correct horse 1', 'confirm': 'correct horse 1',
                                   'next': '/campaigns/new'}, headers={'X-Test-IP': '10.9.9.9'})
-    assert r.status_code == 302 and r.headers['Location'] == '/welcome?next=/campaigns/new'
+    assert r.status_code == 302 and r.headers['Location'] == '/confirm-email?next=/campaigns/new'        # DL-165: confirm first, then on
+    assert c.get('/confirm-email?next=/campaigns/new').get_data(as_text=True).count('/welcome?next=') == 1      # "Continue without confirming"
     r = c.post('/welcome', data={'action': 'skip', 'next': '/campaigns/new'})
     assert r.headers['Location'] == '/campaigns/new'
