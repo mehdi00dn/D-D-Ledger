@@ -227,7 +227,7 @@
 <form class="form-panel account-form" method="POST" action="{{ url_for('account_export') }}" id="export-form" data-section="data">{{ csrf_field() }}
   <div class="form-section">
     <p class="form-section-title">Your data</p>
-    <p class="hint-text" style="margin:0 0 12px;">Download a copy of what Campaign Ledger holds about you: your account details, the campaigns you belong to, and the characters, factions, maps and dice rolls you made. It never includes your password.</p>
+    <p class="hint-text" style="margin:0 0 12px;">Download a copy of what Campaign Ledger holds about you: your account details, the campaigns you belong to, and the characters, factions, maps and dice rolls you made. It never includes your password. Read what we keep and why in the <a href="{{ url_for('privacy') }}">privacy page</a>.</p>
     <button type="submit" class="btn btn-ghost">{{ icon('download') }} Download my data</button>
   </div>
 </form>

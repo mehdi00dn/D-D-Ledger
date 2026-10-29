@@ -118,7 +118,7 @@ def _campaign_access_field(form):
 # Full accounts: anyone can self-register, and every route requires a
 # logged-in session except the handful that must stay reachable to get one.
 
-PUBLIC_ENDPOINTS = {'login', 'register', 'static', 'healthz', 'forgot_password', 'reset_password', 'robots_txt', 'security_txt', 'csp_report', 'google_start', 'google_callback', 'privacy'}
+PUBLIC_ENDPOINTS = {'login', 'register', 'static', 'healthz', 'forgot_password', 'reset_password', 'robots_txt', 'security_txt', 'csp_report', 'google_start', 'google_callback', 'privacy', 'terms', 'cookies'}
 
 
 # Which classification of connection failure gets which fixed, secret-free hint.
@@ -1052,12 +1052,28 @@ def verify_email(token):
     return redirect(url_for('account', mail='verified'))
 
 
+def _legal_page(template):
+    """The public legal pages (privacy, terms, cookies).  The contact line appears once PRIVACY_CONTACT (an email address) is set."""
+    contact = os.environ.get('PRIVACY_CONTACT', '').strip()
+    return render_template(template, contact=contact if '@' in contact and ' ' not in contact and len(contact) < 255 else '')
+
+
 @app.route('/privacy')
 def privacy():
-    """DL-69: the privacy policy, public.  It restates docs/DATA_WE_COLLECT.md in plain words; the contact line appears once
-    PRIVACY_CONTACT (an email address) is set."""
-    contact = os.environ.get('PRIVACY_CONTACT', '').strip()
-    return render_template('privacy.html', contact=contact if '@' in contact and ' ' not in contact and len(contact) < 255 else '')
+    """DL-69: the privacy policy, public.  It restates docs/DATA_WE_COLLECT.md in plain words."""
+    return _legal_page('privacy.html')
+
+
+@app.route('/terms')
+def terms():
+    """DL-74: the terms of use, public."""
+    return _legal_page('terms.html')
+
+
+@app.route('/cookies')
+def cookies():
+    """DL-77: the cookies page, public."""
+    return _legal_page('cookies.html')
 
 
 @app.route('/welcome', methods=['GET', 'POST'])

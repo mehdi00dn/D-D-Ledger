@@ -1,0 +1,42 @@
+{% extends "auth_base.html" %}
+{% block title %}Terms — Campaign Ledger{% endblock %}
+{% block hero %}Play fair, keep it friendly.{% endblock %}
+{% block card %}
+<article class="legal">
+{% include "_legal_nav.html" %}
+<h1 class="auth-title">Terms of use</h1>
+<p class="auth-sub">The short rules for using Campaign Ledger. By making an account or using the site you agree to them.</p>
+
+<h2>What this is</h2>
+<p>Campaign Ledger is a tool for running and playing tabletop role-playing campaigns: characters, battles, maps, notes and dice. It is free while it is being tested, and it may change, pause or stop. We will try to give notice before anything you would miss goes away.</p>
+
+<h2>Your account</h2>
+<ul>
+  <li>Give a working email address and keep your password to yourself. You are responsible for what happens under your account.</li>
+  <li>One person, one account. Do not use someone else's.</li>
+  <li>You can delete your account at any time in Account settings.</li>
+</ul>
+
+<h2>Your content</h2>
+<p>What you write, draw and upload stays yours. You let us store it and show it to the people you share a campaign with, so the site can work. Only upload things you have the right to use.</p>
+
+<h2>Please do not</h2>
+<ul>
+  <li>Upload anything illegal, hateful, or that targets or harasses another person.</li>
+  <li>Try to break in, overload the site, or reach other people's campaigns without being invited.</li>
+  <li>Use the site to send spam or to collect other people's data.</li>
+</ul>
+<p>We may remove content or close an account that breaks these rules.</p>
+
+<h2>No promises about uptime or data</h2>
+<p>The site is provided as it is, without guarantees. We take care of your data and keep backups, but you can download your own copy in Account settings and should do so for anything you cannot lose. To the extent the law allows, we are not liable for losses from using the site.</p>
+
+<h2>Changes</h2>
+<p>If these terms change in a way that matters, we will say so on the site before it takes effect. Using the site afterwards means you accept the new terms.</p>
+
+<p>How we handle your data is explained on the <a href="{{ url_for('privacy') }}">privacy page</a>.</p>
+{% if contact %}<h2>Questions</h2>
+<p>Write to <a href="mailto:{{ contact }}">{{ contact }}</a>.</p>{% endif %}
+<p class="auth-switch"><a href="{{ url_for('login') }}">Back to log in</a></p>
+</article>
+{% endblock %}

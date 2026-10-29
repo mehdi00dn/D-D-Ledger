@@ -25,5 +25,5 @@
   <button type="submit" class="btn btn-primary auth-submit"><span class="auth-submit-label">Log in</span><span class="auth-spinner" aria-hidden="true"></span></button>
 </form>
 <p class="auth-switch">New here? <a href="{{ url_for('register', next=next) if next else url_for('register') }}">Create an account</a></p>
-<p class="auth-legal"><a href="{{ url_for('privacy') }}">Privacy</a></p>
+<p class="auth-legal"><a href="{{ url_for('privacy') }}">Privacy</a> · <a href="{{ url_for('terms') }}">Terms</a> · <a href="{{ url_for('cookies') }}">Cookies</a></p>
 {% endblock %}
