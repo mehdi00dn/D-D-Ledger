@@ -118,7 +118,7 @@ def _campaign_access_field(form):
 # Full accounts: anyone can self-register, and every route requires a
 # logged-in session except the handful that must stay reachable to get one.
 
-PUBLIC_ENDPOINTS = {'login', 'register', 'static', 'healthz', 'forgot_password', 'reset_password', 'robots_txt', 'security_txt', 'csp_report', 'google_start', 'google_callback'}
+PUBLIC_ENDPOINTS = {'login', 'register', 'static', 'healthz', 'forgot_password', 'reset_password', 'robots_txt', 'security_txt', 'csp_report', 'google_start', 'google_callback', 'privacy'}
 
 
 # Which classification of connection failure gets which fixed, secret-free hint.
@@ -1050,6 +1050,14 @@ def verify_email(token):
         db.rollback()
         return redirect(url_for('account', mail='taken'))
     return redirect(url_for('account', mail='verified'))
+
+
+@app.route('/privacy')
+def privacy():
+    """DL-69: the privacy policy, public.  It restates docs/DATA_WE_COLLECT.md in plain words; the contact line appears once
+    PRIVACY_CONTACT (an email address) is set."""
+    contact = os.environ.get('PRIVACY_CONTACT', '').strip()
+    return render_template('privacy.html', contact=contact if '@' in contact and ' ' not in contact and len(contact) < 255 else '')
 
 
 @app.route('/welcome', methods=['GET', 'POST'])

@@ -154,3 +154,12 @@
 .welcome-form .access-option, .welcome-form .access-option * { text-transform: none; letter-spacing: normal; }
 .welcome-form .access-option-card b { font: 600 14px var(--font-body); color: var(--parchment); }
 .welcome-form .access-option-card span { font: 400 12.5px var(--font-body); color: var(--parchment-dim); }
+
+/* DL-69: the privacy page */
+.auth-legal { margin: 12px 0 0; text-align: center; font-size: 12.5px; }
+.auth-legal a { color: var(--parchment-dim); }
+.legal h2 { font: 600 15px var(--font-body); margin: 20px 0 6px; color: var(--parchment); text-transform: none; letter-spacing: normal; }
+.legal p, .legal li { font-size: 14px; line-height: 1.6; color: var(--parchment-dim); max-inline-size: 62ch; }
+.legal ul { padding-inline-start: 20px; margin: 6px 0; }
+.legal b { color: var(--parchment); font-weight: 600; }
+.legal a { color: var(--brass); }

@@ -304,3 +304,5 @@ Every new account, whether made with a password or with Google, is sent once to 
 Uptime check (DL-139): `.github/workflows/uptime.yml` runs `scripts/check_uptime.py` every 15 minutes against the repository variable `SITE_URL`; it needs HTTP 200 and `ok: true` from `/healthz` (retried twice) and otherwise fails the run, which GitHub emails. Skipped while `SITE_URL` is unset. Test: `tests/test_check_uptime.py`.
 
 Data inventory (DL-84): `docs/DATA_WE_COLLECT.md` lists every piece of personal data the app keeps, why, who can see it, what is deliberately not collected, and what is sent to other services. `tests/test_data_inventory.py` fails if a `users` column is added without being listed there.
+
+Privacy page (DL-69): `/privacy` is public and linked under the log-in and sign-up forms. It restates `docs/DATA_WE_COLLECT.md` in plain words. Set `PRIVACY_CONTACT` (an email address) in the environment to show a "Questions" line. It is a draft written from what the code does, not legal advice; have it reviewed before launch (DL-80). Test: `tests/test_privacy_page.py`.
