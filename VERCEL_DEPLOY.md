@@ -112,7 +112,7 @@ to Production** (instant rollback). Nothing in the database changes.
   Deploy in batches rather than once per small change.
 * **Logs and errors.** Runtime logs (Vercel -> Logs) are JSON lines with a `request_id`; the same id is in the
   `X-Request-ID` response header and in the reference shown on an error page, so search the logs for it to find the
-  stack trace. `/healthz` is the uptime-check URL. Optional Sentry: set `SENTRY_DSN` and add `sentry-sdk` to
+  stack trace. `/healthz` is the uptime-check URL: the `Uptime` GitHub Action pings it every 15 minutes (set the repository variable `SITE_URL`, e.g. `https://your-app.vercel.app`; a failed run emails the repo's watchers; `python scripts/check_uptime.py <url>` does the same by hand). Optional Sentry: set `SENTRY_DSN` and add `sentry-sdk` to
   `requirements.in`, recompile the lock file, redeploy.
 * **Upload quotas.** Defaults are 150 MB of stored images per user and 300 MB per campaign (Supabase Free holds 1 GB
   in total, so size them against your plan). Override with `LEDGER_QUOTA_USER_MB` / `LEDGER_QUOTA_CAMPAIGN_MB` in

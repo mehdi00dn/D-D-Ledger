@@ -1,0 +1,27 @@
+name: Uptime
+
+# Pings /healthz of the live site every 15 minutes.  When it is down (database, schema or storage not ready) the run
+# fails and GitHub emails whoever watches the repository.  Set the repository variable SITE_URL (Settings -> Secrets and
+# variables -> Actions -> Variables) to the site's address, for example https://your-app.vercel.app.  Without it the job is skipped.
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ping:
+    if: ${{ vars.SITE_URL != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Check /healthz
+        run: python scripts/check_uptime.py "$SITE_URL"
+        env:
+          SITE_URL: ${{ vars.SITE_URL }}

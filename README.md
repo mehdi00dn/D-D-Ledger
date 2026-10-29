@@ -300,3 +300,5 @@ Campaign images are stored up to 2000 px on the longest edge (other avatars stay
 
 ### Profile setup after sign-up (DL-161; migration `0047_profile_setup.sql`)
 Every new account, whether made with a password or with Google, is sent once to `/welcome`, "Set up your profile": photo, username (Google sign-ups start with an automatic one), display name, bio and who can see the profile. "Save and continue" or "Skip for now" both end it for good (`users.profile_setup_at`); the page the person was heading to is kept. Accounts that existed before the migration count as done. An account that never finished it also passes through the page once at its next sign-in. Everything on it stays editable in Account settings. Tests: `tests/test_welcome.py`, `tests/test_e2e_welcome.py`.
+
+Uptime check (DL-139): `.github/workflows/uptime.yml` runs `scripts/check_uptime.py` every 15 minutes against the repository variable `SITE_URL`; it needs HTTP 200 and `ok: true` from `/healthz` (retried twice) and otherwise fails the run, which GitHub emails. Skipped while `SITE_URL` is unset. Test: `tests/test_check_uptime.py`.

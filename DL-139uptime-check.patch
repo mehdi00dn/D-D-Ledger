@@ -1,0 +1,176 @@
+diff --git a/.github/workflows/uptime.yml b/.github/workflows/uptime.yml
+new file mode 100644
+index 0000000..63205da
+--- /dev/null
++++ b/.github/workflows/uptime.yml
+@@ -0,0 +1,27 @@
++name: Uptime
++
++# Pings /healthz of the live site every 15 minutes.  When it is down (database, schema or storage not ready) the run
++# fails and GitHub emails whoever watches the repository.  Set the repository variable SITE_URL (Settings -> Secrets and
++# variables -> Actions -> Variables) to the site's address, for example https://your-app.vercel.app.  Without it the job is skipped.
++on:
++  schedule:
++    - cron: '*/15 * * * *'
++  workflow_dispatch:
++
++permissions:
++  contents: read
++
++jobs:
++  ping:
++    if: ${{ vars.SITE_URL != '' }}
++    runs-on: ubuntu-latest
++    timeout-minutes: 5
++    steps:
++      - uses: actions/checkout@v4
++      - uses: actions/setup-python@v5
++        with:
++          python-version: '3.12'
++      - name: Check /healthz
++        run: python scripts/check_uptime.py "$SITE_URL"
++        env:
++          SITE_URL: ${{ vars.SITE_URL }}
+diff --git a/README.md b/README.md
+index 890b889..c4b4b92 100644
+--- a/README.md
++++ b/README.md
+@@ -300,3 +300,5 @@ Campaign images are stored up to 2000 px on the longest edge (other avatars stay
+ 
+ ### Profile setup after sign-up (DL-161; migration `0047_profile_setup.sql`)
+ Every new account, whether made with a password or with Google, is sent once to `/welcome`, "Set up your profile": photo, username (Google sign-ups start with an automatic one), display name, bio and who can see the profile. "Save and continue" or "Skip for now" both end it for good (`users.profile_setup_at`); the page the person was heading to is kept. Accounts that existed before the migration count as done. An account that never finished it also passes through the page once at its next sign-in. Everything on it stays editable in Account settings. Tests: `tests/test_welcome.py`, `tests/test_e2e_welcome.py`.
++
++Uptime check (DL-139): `.github/workflows/uptime.yml` runs `scripts/check_uptime.py` every 15 minutes against the repository variable `SITE_URL`; it needs HTTP 200 and `ok: true` from `/healthz` (retried twice) and otherwise fails the run, which GitHub emails. Skipped while `SITE_URL` is unset. Test: `tests/test_check_uptime.py`.
+diff --git a/VERCEL_DEPLOY.md b/VERCEL_DEPLOY.md
+index 9a70bfd..e273648 100644
+--- a/VERCEL_DEPLOY.md
++++ b/VERCEL_DEPLOY.md
+@@ -112,7 +112,7 @@ to Production** (instant rollback). Nothing in the database changes.
+   Deploy in batches rather than once per small change.
+ * **Logs and errors.** Runtime logs (Vercel -> Logs) are JSON lines with a `request_id`; the same id is in the
+   `X-Request-ID` response header and in the reference shown on an error page, so search the logs for it to find the
+-  stack trace. `/healthz` is the uptime-check URL. Optional Sentry: set `SENTRY_DSN` and add `sentry-sdk` to
++  stack trace. `/healthz` is the uptime-check URL: the `Uptime` GitHub Action pings it every 15 minutes (set the repository variable `SITE_URL`, e.g. `https://your-app.vercel.app`; a failed run emails the repo's watchers; `python scripts/check_uptime.py <url>` does the same by hand). Optional Sentry: set `SENTRY_DSN` and add `sentry-sdk` to
+   `requirements.in`, recompile the lock file, redeploy.
+ * **Upload quotas.** Defaults are 150 MB of stored images per user and 300 MB per campaign (Supabase Free holds 1 GB
+   in total, so size them against your plan). Override with `LEDGER_QUOTA_USER_MB` / `LEDGER_QUOTA_CAMPAIGN_MB` in
+diff --git a/scripts/check_uptime.py b/scripts/check_uptime.py
+new file mode 100644
+index 0000000..f6d1c6f
+--- /dev/null
++++ b/scripts/check_uptime.py
+@@ -0,0 +1,54 @@
++"""Uptime check for the live site: GET <base>/healthz and exit 1 unless it answers 200 with {"ok": true}.
++
++Used by .github/workflows/uptime.yml (a failed run emails the repository's watchers).  A single failed try is retried
++twice, 20 seconds apart, so one slow cold start does not raise an alarm.  Only the status and the fixed hint that
++/healthz returns are printed; nothing secret is ever in them.
++
++    python scripts/check_uptime.py https://your-app.vercel.app
++"""
++import json
++import sys
++import time
++import urllib.error
++import urllib.request
++
++TRIES = 3
++PAUSE = 20          # seconds between tries
++TIMEOUT = 25        # seconds per try
++
++
++def check(base, tries=TRIES, pause=PAUSE, timeout=TIMEOUT):
++    """(True, message) when healthy, else (False, why) after every try failed."""
++    url = base.rstrip('/') + '/healthz'
++    why = 'no try was made'
++    for attempt in range(1, tries + 1):
++        try:
++            with urllib.request.urlopen(urllib.request.Request(url, headers={'User-Agent': 'ledger-uptime-check'}), timeout=timeout) as resp:
++                body = json.loads(resp.read(65536) or b'{}')
++                if resp.status == 200 and body.get('ok') is True:
++                    return True, 'healthy (try %d)' % attempt
++                why = 'HTTP %s, ok=%s' % (resp.status, body.get('ok'))
++        except urllib.error.HTTPError as exc:
++            try:
++                hint = json.loads(exc.read(65536) or b'{}').get('hint', '')
++            except ValueError:
++                hint = ''
++            why = 'HTTP %s %s' % (exc.code, hint)
++        except (urllib.error.URLError, TimeoutError, ValueError, OSError) as exc:
++            why = '%s: %s' % (type(exc).__name__, exc)
++        if attempt < tries:
++            time.sleep(pause)
++    return False, why.strip()
++
++
++def main(argv):
++    if len(argv) != 2 or not argv[1].startswith(('http://', 'https://')):
++        print('usage: check_uptime.py https://your-app.vercel.app', file=sys.stderr)
++        return 2
++    ok, message = check(argv[1])
++    print(('OK: ' if ok else 'DOWN: ') + message)
++    return 0 if ok else 1
++
++
++if __name__ == '__main__':
++    sys.exit(main(sys.argv))
+diff --git a/tests/test_check_uptime.py b/tests/test_check_uptime.py
+new file mode 100644
+index 0000000..c8c99a0
+--- /dev/null
++++ b/tests/test_check_uptime.py
+@@ -0,0 +1,54 @@
++"""DL-139: the uptime script says healthy only for HTTP 200 with ok=true, and retries before it says down."""
++import http.server
++import json
++import sys
++import threading
++from pathlib import Path
++
++sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'scripts'))
++import check_uptime  # noqa: E402
++
++
++def _serve(responses):
++    calls = []
++
++    class H(http.server.BaseHTTPRequestHandler):
++        def do_GET(self):
++            code, body = responses[min(len(calls), len(responses) - 1)]
++            calls.append(self.path)
++            self.send_response(code); self.send_header('Content-Type', 'application/json'); self.end_headers()
++            self.wfile.write(json.dumps(body).encode())
++
++        def log_message(self, *a):
++            pass
++
++    srv = http.server.HTTPServer(('127.0.0.1', 0), H)
++    threading.Thread(target=srv.serve_forever, daemon=True).start()
++    return srv, 'http://127.0.0.1:%d' % srv.server_port, calls
++
++
++def test_healthy_site_passes_on_the_first_try():
++    srv, base, calls = _serve([(200, {'ok': True})])
++    assert check_uptime.check(base, tries=3, pause=0)[0] is True and calls == ['/healthz']
++    srv.shutdown()
++
++
++def test_a_blip_is_retried_and_a_real_outage_fails_with_the_hint():
++    srv, base, calls = _serve([(503, {'ok': False, 'hint': 'storage down'}), (200, {'ok': True})])
++    assert check_uptime.check(base, tries=3, pause=0)[0] is True and len(calls) == 2
++    srv.shutdown()
++    srv, base, calls = _serve([(503, {'ok': False, 'hint': 'storage down'})])
++    ok, why = check_uptime.check(base, tries=3, pause=0)
++    assert ok is False and 'storage down' in why and len(calls) == 3
++    srv.shutdown()
++
++
++def test_200_without_ok_true_is_down_and_a_dead_host_is_down():
++    srv, base, _ = _serve([(200, {'ok': False})])
++    assert check_uptime.check(base, tries=1, pause=0)[0] is False
++    srv.shutdown()
++    assert check_uptime.check('http://127.0.0.1:1', tries=1, pause=0, timeout=2)[0] is False
++
++
++def test_main_needs_an_address():
++    assert check_uptime.main(['x']) == 2
