@@ -12,6 +12,7 @@ This is the working inventory behind "only collect what is necessary" (DL-84). I
 | `display_name`, `bio`, `avatar_path` | Optional profile details the person chooses to add. | Follows `profile_visibility`. |
 | `profile_visibility` | Who may open the public profile: everyone signed in, people they play with, or only them. | The owner. |
 | `profile_setup_at` | Remembers that the one-time profile page was saved or skipped. | Nobody. |
+| `terms_accepted_at` | When the account was made, which counts as agreeing to the Terms and Privacy page shown beside the sign-up and Google buttons. | Nobody. |
 | `session_version` | Lets "sign out everywhere" end other devices' sessions. | Nobody. |
 | `created_at` | When the account was made. | Nobody. |
 

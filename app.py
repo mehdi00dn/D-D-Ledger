@@ -480,7 +480,7 @@ def register():
             return render_template('register.html', error=error, username=username, email=email, next=request.form.get('next', ''))
 
         try:
-            cur = db.execute('INSERT INTO users (username, password_hash, email) VALUES (?, ?, ?)',
+            cur = db.execute('INSERT INTO users (username, password_hash, email, terms_accepted_at) VALUES (?, ?, ?, ' + _UTC_NOW + ')',
                               (username, generate_password_hash(password), email))
         except UniqueViolation:      # two people registering the same name at once
             db.rollback()
@@ -667,8 +667,8 @@ def google_callback():
             display = name if name and not _profile_error(name, '') else None
             username = _free_username(db, email.split('@')[0])
             try:
-                cur = db.execute('INSERT INTO users (username, password_hash, email, email_verified_at, google_sub, display_name) '
-                                 'VALUES (?, NULL, ?, ' + _UTC_NOW + ', ?, ?)', (username, email, sub, display))
+                cur = db.execute('INSERT INTO users (username, password_hash, email, email_verified_at, google_sub, display_name, terms_accepted_at) '
+                                 'VALUES (?, NULL, ?, ' + _UTC_NOW + ', ?, ?, ' + _UTC_NOW + ')', (username, email, sub, display))
             except UniqueViolation:
                 db.rollback()
                 return back('failed')

@@ -32,3 +32,14 @@ def test_terms_and_cookies_pages_are_public_and_cross_linked(appmod):
         assert r.status_code == 200 and needle in text
         assert 'href="/terms"' in text and 'href="/cookies"' in text and 'href="/privacy"' in text
     assert 'href="/terms"' in c.get('/register').get_data(as_text=True)
+
+
+def test_signing_up_records_the_agreement_and_the_forms_show_the_notice(appmod):
+    from conftest import q
+    c = appmod.app.test_client()
+    text = c.get('/register').get_data(as_text=True)
+    assert 'By creating an account you agree to' in text
+    r = c.post('/register', data={'username': 'agreer_one', 'email': 'agree@example.com', 'password': 'correct horse 1', 'confirm': 'correct horse 1'},
+               headers={'X-Test-IP': '10.8.8.8'})
+    assert r.status_code == 302
+    assert q('SELECT terms_accepted_at FROM users WHERE username = ?', 'agreer_one')[0]['terms_accepted_at'] is not None

@@ -168,3 +168,6 @@
 .legal-nav a:hover { color: var(--parchment); }
 .legal-nav a[aria-current="page"] { color: var(--brass); border-color: var(--hairline-strong, var(--brass)); }
 .legal code { font-size: 12.5px; }
+
+.auth-consent { margin: 10px 0; font-size: 12.5px; line-height: 1.5; color: var(--parchment-dim); text-align: center; }
+.auth-consent a { color: var(--brass); }
