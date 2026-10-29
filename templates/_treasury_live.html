@@ -1,0 +1,134 @@
+{% from "_icons.html" import icon %}
+{% macro coins_line(p) %}{% for c in treasury_coins if p[c] %}<span class="coin-chip coin-{{ c }}">{{ icon('coin') }}<b>{{ p[c] }}</b> {{ c }}</span>{% else %}<span class="coin-none">No coins</span>{% endfor %}{% endmacro %}
+{% macro page_link(n, label=None, cls='') %}<a class="pager-link {{ cls }}{{ ' is-current' if n == page }}" href="{{ url_for('treasury_view', who=who or None, page=n if n > 1 else None) }}#entries" data-treasury-nav{{ ' aria-current="page"'|safe if n == page }}>{{ label or n }}</a>{% endmacro %}
+
+<div class="treasury-summary" aria-label="Total">
+  <span class="treasury-summary-num">{{ format_gold(grand_total) }}</span>
+  <span class="treasury-summary-label">in all, counting every coin as gold (1 pp = 10 gp, 1 sp = 0.1 gp)</span>
+</div>
+
+<section class="cf-card treasury-purse" aria-label="Party purse">
+  <div class="purse-head">
+    <h2 class="cf-title">{{ icon('coins') }} Party purse <span class="cf-count" title="All coins in this purse counted as gold">worth {{ format_gold(total) }}</span></h2>
+    <div class="purse-actions">
+      <button type="button" class="btn btn-primary btn-sm" data-open-dialog="t-add" data-holder="">{{ icon('plus') }} Add or spend</button>
+      <button type="button" class="btn btn-ghost btn-sm" data-open-dialog="t-share" data-source="">{{ icon('swap') }} Share</button>
+      <a class="btn btn-ghost btn-sm" href="{{ url_for('treasury_view', who='party') }}#entries" data-treasury-nav>{{ icon('history') }} History</a>
+    </div>
+  </div>
+  <ul class="coin-row">
+    {% for c in treasury_coins %}
+    <li class="coin coin-{{ c }}">{{ icon('coin') }}<b>{{ purse[c] }}</b><span>{{ c }}</span></li>
+    {% endfor %}
+  </ul>
+</section>
+
+<section class="cf-card treasury-people" aria-label="Character purses">
+  <h2 class="cf-title">{{ icon('user') }} Character purses <span class="cf-count">worth {{ format_gold(grand_total - total) }}</span></h2>
+  {% if party %}
+  <ul class="people-purses">
+    {% for p in party %}
+    <li class="people-purse">
+      <div class="people-purse-main">
+        <a class="people-purse-name" href="{{ url_for('character_detail', char_id=p.id) }}">{{ p.name }}</a>
+        <span class="people-purse-coins">{{ coins_line(p.purse) }}</span>
+      </div>
+      <span class="people-purse-total" title="All coins in this purse counted as gold"><small>worth</small> {{ format_gold(p.total) }}</span>
+      <div class="people-purse-actions">
+        {% if p.can_manage %}<button type="button" class="btn btn-ghost btn-sm" data-open-dialog="t-add" data-holder="{{ p.id }}">{{ icon('plus') }} Add or spend</button>{% endif %}
+        <a class="btn-icon" href="{{ url_for('treasury_view', who=p.id) }}#entries" data-treasury-nav title="History of {{ p.name }}'s purse" aria-label="History of {{ p.name }}'s purse">{{ icon('history') }}</a>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="home-empty">There are no player characters yet. Add some on the Characters page and each one gets a purse here.</p>
+  {% endif %}
+</section>
+
+<section class="cf-card" id="entries" aria-label="Entries">
+  <h2 class="cf-title">{{ icon('history') }} Entries <span class="cf-count">{{ count }}</span></h2>
+  <nav class="treasury-filter" aria-label="Show entries of">
+    <a class="chip{{ ' active' if not who }}" href="{{ url_for('treasury_view') }}#entries" data-treasury-nav>Everyone</a>
+    <a class="chip{{ ' active' if who == 'party' }}" href="{{ url_for('treasury_view', who='party') }}#entries" data-treasury-nav>Party purse</a>
+    {% for p in party %}<a class="chip{{ ' active' if who == p.id|string }}" href="{{ url_for('treasury_view', who=p.id) }}#entries" data-treasury-nav>{{ p.name }}</a>{% endfor %}
+  </nav>
+  {% if entries %}
+  <ul class="treasury-list">
+    {% for e in entries %}
+    {% set d = {'cp': e.cp, 'sp': e.sp, 'ep': e.ep, 'gp': e.gp, 'pp': e.pp} %}
+    {% set positive = coins_value(d) > 0 %}
+    <li class="treasury-entry {{ 'is-in' if positive else 'is-out' }}">
+      <div class="treasury-entry-main">
+        <p class="treasury-note">{{ e.note }}</p>
+        <p class="treasury-meta"><span class="treasury-holder">{{ e.character_name or 'Party purse' }}</span> · {{ e.actor or 'A former member' }} · {{ e.created_at }} UTC</p>
+      </div>
+      <span class="treasury-amount">{{ format_coins(d, signed=True) }}</span>
+      {% if g.is_dm or e.created_by == me %}
+      <form method="POST" action="{{ url_for('treasury_delete', entry_id=e.id) }}" data-treasury-delete data-confirm="{{ 'Remove this share? It is removed from every purse it touched.' if e.batch else 'Remove this entry?' }}">{{ csrf_field() }}<button type="submit" class="btn btn-ghost btn-sm quest-delete" aria-label="Remove the entry {{ e.note }}" title="Remove">{{ icon('trash-2') }}</button></form>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% if pages > 1 %}
+  <nav class="treasury-pager" aria-label="Entry pages">
+    {% if page > 1 %}{{ page_link(page - 1, 'Newer', 'is-step') }}{% else %}<span class="pager-link is-step is-off">Newer</span>{% endif %}
+    {% set lo = [1, page - 2]|max %}{% set hi = [pages, page + 2]|min %}
+    {% if lo > 1 %}{{ page_link(1) }}{% if lo > 2 %}<span class="pager-gap">…</span>{% endif %}{% endif %}
+    {% for n in range(lo, hi + 1) %}{{ page_link(n) }}{% endfor %}
+    {% if hi < pages %}{% if hi < pages - 1 %}<span class="pager-gap">…</span>{% endif %}{{ page_link(pages) }}{% endif %}
+    {% if page < pages %}{{ page_link(page + 1, 'Older', 'is-step') }}{% else %}<span class="pager-link is-step is-off">Older</span>{% endif %}
+  </nav>
+  <p class="treasury-hint treasury-range">Showing {{ (page - 1) * page_size + 1 }}–{{ (page - 1) * page_size + entries|length }} of {{ count }}, newest first.</p>
+  {% endif %}
+  {% else %}
+  <p class="home-empty">Nothing here yet. Use "Add or spend" to record the first coins.</p>
+  {% endif %}
+</section>
+
+<dialog class="pick-dialog treasury-dialog" id="t-add" aria-labelledby="t-add-title">
+  <form method="POST" action="{{ url_for('treasury_add') }}" class="treasury-form" data-treasury-form>{{ csrf_field() }}
+    <div class="pick-head"><h2 id="t-add-title">Add or spend</h2><button type="button" class="btn-icon" data-close-dialog aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="treasury-dialog-body">
+      <div class="field"><label for="t-char">Whose purse</label>
+        <select id="t-char" name="character_id"><option value=""{% for c in treasury_coins %} data-{{ c }}="{{ purse[c] }}"{% endfor %}>The party purse · {{ format_gold(total) }}</option>{% for p in party if p.can_manage %}<option value="{{ p.id }}"{% for c in treasury_coins %} data-{{ c }}="{{ p.purse[c] }}"{% endfor %}{{ ' selected' if holder == p.id|string }}>{{ p.name }} · {{ format_gold(p.total) }}</option>{% endfor %}</select>
+      </div>
+      <div class="coin-inputs">
+        {% for c in treasury_coins %}
+        <div class="field coin-field coin-{{ c }}"><label for="t-{{ c }}">{{ icon('coin') }}{{ c|upper }}</label><span class="coin-have">has <b data-have="{{ c }}">{{ purse[c] }}</b></span><input type="number" id="t-{{ c }}" name="{{ c }}" min="0" max="1000000" inputmode="numeric" placeholder="0"></div>
+        {% endfor %}
+      </div>
+      <div class="field"><label for="t-note">What for</label><input type="text" id="t-note" name="note" maxlength="200" placeholder="Dragon hoard, a night at the inn, a bribe for the guard"></div>
+      <p class="treasury-hint">Type the coins, then choose Coins in or Coins out. Coins out make change for you: paying 1 gp from a platinum piece gives 9 gp back.</p>
+      <div class="banner-notice banner-error treasury-error" role="alert" hidden></div>
+    </div>
+    <div class="pick-foot"><button type="button" class="btn btn-ghost" data-close-dialog>Cancel</button><button type="submit" name="kind" value="expense" class="btn btn-out">{{ icon('minus') }} Coins out</button><button type="submit" name="kind" value="income" class="btn btn-in">{{ icon('plus') }} Coins in</button></div>
+  </form>
+</dialog>
+
+<dialog class="pick-dialog treasury-dialog" id="t-share" aria-labelledby="t-share-title">
+  <form method="POST" action="{{ url_for('treasury_split') }}" class="treasury-form" data-treasury-form>{{ csrf_field() }}
+    <div class="pick-head"><h2 id="t-share-title">Share or hand over</h2><button type="button" class="btn-icon" data-close-dialog aria-label="Close">{{ icon('x') }}</button></div>
+    {% if party %}
+    <div class="treasury-dialog-body">
+      <div class="field"><label for="s-source">Take the coins from</label>
+        <select id="s-source" name="source"><option value=""{% for c in treasury_coins %} data-{{ c }}="{{ purse[c] }}"{% endfor %}>The party purse · {{ format_gold(total) }}</option>{% for p in party if p.can_manage %}<option value="{{ p.id }}"{% for c in treasury_coins %} data-{{ c }}="{{ p.purse[c] }}"{% endfor %}>{{ p.name }} · {{ format_gold(p.total) }}</option>{% endfor %}</select>
+      </div>
+      <fieldset class="treasury-who"><legend>Give them evenly to</legend>
+        <label><input type="checkbox" name="to" value="party"> The party purse</label>
+        {% for p in party %}<label><input type="checkbox" name="to" value="{{ p.id }}" checked> {{ p.name }}</label>{% endfor %}
+      </fieldset>
+      <p class="treasury-hint">Type an amount, or leave it empty to share the whole purse. Tick just one name to hand coins over. The purse the coins come from is skipped, and what does not divide stays behind.</p>
+      <div class="coin-inputs">
+        {% for c in treasury_coins %}
+        <div class="field coin-field coin-{{ c }}"><label for="s-{{ c }}">{{ icon('coin') }}{{ c|upper }}</label><span class="coin-have">has <b data-have="{{ c }}">{{ purse[c] }}</b></span><input type="number" id="s-{{ c }}" name="{{ c }}" min="0" max="1000000" inputmode="numeric" placeholder="0"></div>
+        {% endfor %}
+      </div>
+      <div class="banner-notice banner-error treasury-error" role="alert" hidden></div>
+    </div>
+    <div class="pick-foot"><button type="button" class="btn btn-ghost" data-close-dialog>Cancel</button><button type="submit" class="btn btn-primary">{{ icon('swap') }} Share</button></div>
+    {% else %}
+    <div class="treasury-dialog-body"><p class="home-empty">Add player characters to share coins between them.</p></div>
+    {% endif %}
+  </form>
+</dialog>

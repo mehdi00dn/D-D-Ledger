@@ -144,6 +144,7 @@ def normalize_manifest(manifest, sanitize_notes):
         characters.append({
             'name': _clean(c.get('name'), 120).strip() or 'Unnamed',
             'is_npc': 1 if _flag(c.get('is_npc')) else 0,
+            'is_ally': 1 if _flag(c.get('is_npc')) and _flag(c.get('is_ally')) else 0,
             'level': _int(c.get('level'), 1, 0, 100),
             'max_hp': _int(c.get('max_hp'), 10, 0, 100000),
             'str_score': _int(c.get('str_score'), 10, 0, 100),
@@ -156,6 +157,7 @@ def normalize_manifest(manifest, sanitize_notes):
             'speed': dnd5e.clean_speed(c.get('speed')),
             'skill_prof': dnd5e.clean_skill_prof(c.get('skill_prof')),
             'save_prof': dnd5e.clean_save_prof(c.get('save_prof')),
+            'attacks': dnd5e.clean_attacks(c.get('attacks') if isinstance(c.get('attacks'), list) else []),
             'class_key': _clean(c.get('class_key'), 40).strip().lower() or None,   # checked against the known classes on import
             'notes': sanitize_notes(_clean(c.get('notes'), 200000)),
             'group_name': _clean(c.get('group_name'), 120).strip() or None,

@@ -77,11 +77,9 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // ---- Character notes: multi-box rich text editor (bold/italic/bullet list) ----
-  const noteBlocks = document.getElementById('note-blocks');
+  // The same editor serves a character's notes, the campaign bio (one box) and the campaign notes.
+  function initNotesEditor(noteBlocks, addNoteBtn, notesHiddenInput, noteTemplate) {
   if (noteBlocks) {
-    const addNoteBtn = document.getElementById('add-note-btn');
-    const notesHiddenInput = document.getElementById('notes-hidden-input');
-    const noteTemplate = document.getElementById('note-block-template');
     const form = noteBlocks.closest('form');
 
     // Use <div> per line on Enter (not the default <p> in some browsers) so line
@@ -180,4 +178,41 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     }
   }
+  }
+  const byId = (id) => document.getElementById(id);
+  initNotesEditor(byId('note-blocks'), byId('add-note-btn'), byId('notes-hidden-input'), byId('note-block-template'));
+  initNotesEditor(byId('bio-blocks'), null, byId('bio-hidden-input'), null);
+  initNotesEditor(byId('campnotes-blocks'), byId('campnotes-add'), byId('campnotes-hidden'), byId('campnotes-template'));
 });
+
+
+// Sign-in style forms: a second tap while the first submit is still travelling would post the page's old token again
+// (the first submit rotates it), so the button is disabled as soon as the form is sent.  It comes back if the browser
+// restores the page from its back/forward cache.
+(function () {
+  document.addEventListener('submit', function (e) {
+    var form = e.target;
+    if (!(form instanceof HTMLFormElement) || !form.hasAttribute('data-once') || e.defaultPrevented) return;
+    setTimeout(function () {
+      form.querySelectorAll('button[type=submit], input[type=submit]').forEach(function (b) { b.disabled = true; });
+    }, 0);
+  });
+  window.addEventListener('pageshow', function (e) {
+    if (!e.persisted) return;
+    document.querySelectorAll('form[data-once] button[type=submit]').forEach(function (b) { b.disabled = false; });
+  });
+
+  // Print sheet: the print window always gets the light theme (ink on paper), then the page goes back to the reader's theme.
+  var printedTheme = null;
+  document.addEventListener('click', function (e) { if (e.target.closest('[data-print]')) window.print(); });
+  window.addEventListener('beforeprint', function () {
+    var root = document.documentElement;
+    printedTheme = root.getAttribute('data-theme');
+    root.setAttribute('data-theme', 'light');
+  });
+  window.addEventListener('afterprint', function () {
+    if (printedTheme === null) return;
+    document.documentElement.setAttribute('data-theme', printedTheme);
+    printedTheme = null;
+  });
+})();

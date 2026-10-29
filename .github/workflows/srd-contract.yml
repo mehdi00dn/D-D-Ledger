@@ -1,0 +1,24 @@
+name: 5e API contract
+
+# The reference tests fake the 5e API, so they cannot notice if dnd5eapi.co changes a field.
+# This job fetches one spell, monster, equipment item and magic item for real and checks them.
+on:
+  schedule:
+    - cron: '17 3 * * *'      # nightly, 03:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install requests
+      - name: Check the live API
+        run: python scripts/check_srd_contract.py

@@ -1,28 +1,33 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon, class_icon %}
-{% set active_page = 'characters' %}
+{% set active_page = 'library' if library else 'characters' %}
 {% macro note_block(content='', hidden=False) %}
 <div class="note-block" data-note-block>
   <div class="note-toolbar">
     <button type="button" class="note-tool-btn" data-cmd="bold" title="Bold">{{ icon('bold') }}</button>
     <button type="button" class="note-tool-btn" data-cmd="italic" title="Italic">{{ icon('italic') }}</button>
     <button type="button" class="note-tool-btn" data-cmd="insertUnorderedList" title="Bullet list">{{ icon('list') }}</button>
-    <label class="note-hidden-toggle" title="Players will not see this note; only the DM and this character's creator can.">
+    <label class="note-hidden-toggle" title="Players will not see this note once the character is in a campaign; only the DM and this character's creator can.">
       <input type="checkbox" data-note-hidden{{ ' checked' if hidden else '' }}> {{ icon('lock') }} Hidden from players
     </label>
     <button type="button" class="note-remove-btn btn-icon" data-note-remove title="Remove this note">{{ icon('x') }}</button>
   </div>
-  <div class="note-editor" contenteditable="true" data-placeholder="Backstory, quirks, tactics, secrets the DM shouldn't forget...">{{ content | safe }}</div>
+  <div class="note-editor" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Note" data-placeholder="Backstory, quirks, tactics, secrets the DM shouldn't forget...">{{ content | safe }}</div>
 </div>
 {% endmacro %}
-{% block title %}{{ 'Edit' if character else 'New' }} Character — Campaign Ledger{% endblock %}
+{% block title %}{{ 'Edit' if character else 'New' }} Character{{ ' — Your characters' if library else '' }} — Campaign Ledger{% endblock %}
 
 {% block content %}
+{% if library %}
+<a href="{{ url_for('library_detail', char_id=character.id) if character else url_for('library_list') }}" class="back-link">{{ icon('arrow-left') }} {{ character.name if character else 'Your characters' }}</a>
+{% else %}
+<a href="{{ url_for('battle_view') if from_battle else url_for('characters_list') }}" class="back-link">{{ icon('arrow-left') }} {{ 'Battle' if from_battle else 'Characters' }}</a>
+{% endif %}
 <div class="page-header">
   <div>
     <h1 class="page-title">{{ character.name if character else 'New Character' }}</h1>
+    {% if library %}<p class="page-sub">Kept in Your characters, outside any campaign. Add a copy to a campaign whenever you like.</p>{% endif %}
   </div>
-  <a href="{{ url_for('battle_view') if from_battle else url_for('characters_list') }}" class="btn btn-ghost">{{ icon('arrow-left') }} {{ 'Back to battle' if from_battle else 'Back to list' }}</a>
 </div>
 
 <form class="char-form" method="POST" enctype="multipart/form-data">{{ csrf_field() }}
@@ -30,7 +35,7 @@
   {% set prof_saves = character_save_prof or [] %}
   {% set prof_skills = character_skill_prof or {} %}
 
-  {% if not character %}
+  {% if not character and not library %}
   <section class="cf-card cd-picker" data-monster-picker data-base="{{ url_for('reference_view')|replace('/reference', '') }}/api/reference/" aria-labelledby="cf-monster">
     <h2 class="cf-title" id="cf-monster">Start from a monster</h2>
     <div class="ref-search">{{ icon('search') }}<input type="search" data-ref-query placeholder="Search the monster manual (e.g. goblin, owlbear, young red dragon)…" aria-label="Search the monster manual" autocomplete="off"></div>
@@ -51,9 +56,10 @@
         </div>
         <div class="field cf-level">
           <label for="level">Level</label>
-          <input type="number" id="level" name="level" min="1" max="30" value="{{ character.level if character else 1 }}">
+          <input type="number" id="level" name="level" min="1" max="30" value="{{ character.level if character else 1 }}"{% if level_history %} data-level-stats='{{ level_history|tojson }}'{% endif %} aria-describedby="level-hint">
         </div>
       </div>
+      <p class="cf-hint cf-level-hint" id="level-hint" role="status" hidden></p>
       <div class="cf-identity-row cf-identity-row--2">
         <div class="field">
       <label id="class-label">Class <span class="field-optional">optional</span></label>
@@ -76,6 +82,7 @@
       </div>
 
         </div>
+        {% if not library %}
         <div class="field">
           <label>Type</label>
           <label class="toggle-switch cf-npc-toggle">
@@ -83,8 +90,15 @@
             <span class="toggle-switch-track"></span>
             <span class="toggle-switch-label">NPC <small>(not a player character)</small></span>
           </label>
+          <label class="toggle-switch cf-npc-toggle cf-ally-toggle" data-ally-toggle title="Switch on NPC first">
+            <input type="checkbox" name="is_ally" {{ 'checked' if character and character.is_ally else '' }}{{ '' if character and character.is_npc else ' disabled' }}>
+            <span class="toggle-switch-track"></span>
+            <span class="toggle-switch-label">Ally <small>(Players see its stats, and it stays visible when NPCs are hidden)</small></span>
+          </label>
         </div>
+        {% endif %}
       </div>
+      {% if not library %}
       <div class="field">
         <label>Factions <span class="field-optional">pick any number</span></label>
         {% if groups %}
@@ -97,6 +111,7 @@
         <p class="hint-text" style="margin:0;">No factions yet.</p>
         {% endif %}
       </div>
+      {% endif %}
     </section>
 
     <section class="cf-card" aria-labelledby="cf-vitals">
@@ -170,7 +185,7 @@
     </section>
   </div>
 
-  <aside class="cf-side">
+  <aside class="cf-side" aria-label="Portrait, sheets and factions">
     <section class="cf-card" aria-labelledby="cf-portrait">
       <h2 class="cf-title" id="cf-portrait">Portrait</h2>
       <div class="field">
@@ -199,6 +214,32 @@
       </div>
     </section>
 
+    <section class="cf-card" aria-labelledby="cf-attacks">
+      <h2 class="cf-title" id="cf-attacks">Attacks <span class="cf-count">to-hit and damage</span></h2>
+      <input type="hidden" name="attacks_present" value="1">
+      <div class="atk-edit" data-attacks>
+        {% for a in (attacks or []) %}
+        <div class="atk-edit-row field">
+          <input type="text" name="attack_name" value="{{ a.name }}" maxlength="40" placeholder="Longsword" aria-label="Attack name">
+          <input type="number" name="attack_bonus" value="{{ a.attack_bonus }}" min="-20" max="99" aria-label="To-hit bonus">
+          <input type="text" name="attack_damage" value="{{ a.damage }}" maxlength="12" placeholder="1d8+3" aria-label="Damage dice">
+          <input type="text" name="attack_type" value="{{ a.damage_type }}" maxlength="16" placeholder="slashing" aria-label="Damage type">
+          <button type="button" class="btn-icon" data-attack-remove title="Remove attack" aria-label="Remove attack">{{ icon('x') }}</button>
+        </div>
+        {% endfor %}
+      </div>
+      <button type="button" class="btn btn-ghost" data-attack-add>{{ icon('plus') }} Add attack</button>
+      <template data-attack-template>
+        <div class="atk-edit-row field">
+          <input type="text" name="attack_name" maxlength="40" placeholder="Longsword" aria-label="Attack name">
+          <input type="number" name="attack_bonus" value="0" min="-20" max="99" aria-label="To-hit bonus">
+          <input type="text" name="attack_damage" maxlength="12" placeholder="1d8+3" aria-label="Damage dice">
+          <input type="text" name="attack_type" maxlength="16" placeholder="slashing" aria-label="Damage type">
+          <button type="button" class="btn-icon" data-attack-remove title="Remove attack" aria-label="Remove attack">{{ icon('x') }}</button>
+        </div>
+      </template>
+    </section>
+
     <section class="cf-card" aria-labelledby="cf-sheets">
       <h2 class="cf-title" id="cf-sheets">Character Sheets <span class="cf-count">multiple images</span></h2>
       <div class="field">
@@ -208,10 +249,10 @@
           <div class="sheet-thumb">
             <img src="{{ url_for('uploaded_file', filename=s.image_path) }}" alt="Sheet {{ loop.index }}"
                  data-lightbox-src="{{ url_for('uploaded_file', filename=s.image_path) }}"
-                 {% if can_delete_sheets %}data-delete-url="{{ url_for('sheet_delete', char_id=character.id, sheet_id=s.id) }}"{% endif %}>
+                 {% if can_delete_sheets %}data-delete-url="{{ url_for('library_sheet_delete' if library else 'sheet_delete', char_id=character.id, sheet_id=s.id) }}"{% endif %}>
             {% if can_delete_sheets %}
             <button type="button" class="btn-icon" title="Remove"
-                    data-sheet-delete-url="{{ url_for('sheet_delete', char_id=character.id, sheet_id=s.id) }}"
+                    data-sheet-delete-url="{{ url_for('library_sheet_delete' if library else 'sheet_delete', char_id=character.id, sheet_id=s.id) }}"
                     data-confirm-msg="Remove this sheet image?">{{ icon('x') }}</button>
             {% endif %}
           </div>
@@ -229,14 +270,37 @@
   </aside>
   </div>
 
+  {% if not character and not library and not from_battle %}
+  <label class="keep-copy" for="also-keep">
+    <input type="checkbox" name="also_keep" id="also-keep" value="1">
+    <span><b>Also keep a copy in Your characters</b><small>Player characters only. Reuse this hero in other campaigns without building it again.</small></span>
+  </label>
+  {% elif library and not character and my_campaigns %}
+  <div class="keep-copy keep-copy-add">
+    <span><b>Add to a campaign as well</b><small>Makes a separate copy at that table. Optional.</small></span>
+    <div class="field lib-select"><label class="sr-only" for="add-to-campaign">Campaign</label>
+      <select name="add_to_campaign" id="add-to-campaign">
+        <option value="">Not now</option>
+        {% for ca in my_campaigns %}<option value="{{ ca.id }}"{{ ' selected' if add_to_campaign == ca.id|string else '' }}>{{ ca.name }}</option>{% endfor %}
+      </select></div>
+  </div>
+  {% endif %}
+
   <div class="cf-bar">
+    {% if library %}
+    <a href="{{ url_for('library_detail', char_id=character.id) if character else url_for('library_list') }}" class="btn btn-ghost">Cancel</a>
+    {% else %}
     <a href="{{ url_for('battle_view') if from_battle else url_for('characters_list') }}" class="btn btn-ghost">Cancel</a>
-    <button type="submit" class="btn btn-primary">{{ icon('check') }} {{ 'Save Changes' if character else 'Add Character' }}</button>
+    {% endif %}
+    <button type="submit" class="btn btn-primary">{{ icon('check') }} {{ 'Save Changes' if character else ('Save to Your characters' if library else 'Add Character') }}</button>
   </div>
 </form>
 {% endblock %}
 
 {% block extra_scripts %}
+<script src="{{ url_for('static', filename='js/character-npc.js') }}"></script>
 <script src="{{ url_for('static', filename='js/character-proficiencies.js') }}"></script>
-{% if not character %}<script src="{{ url_for('static', filename='js/reference.js') }}"></script>{% endif %}
+<script src="{{ url_for('static', filename='js/character-levels.js') }}"></script>
+<script src="{{ url_for('static', filename='js/character-attacks.js') }}"></script>
+{% if not character and not library %}<script src="{{ url_for('static', filename='js/reference.js') }}"></script>{% endif %}
 {% endblock %}

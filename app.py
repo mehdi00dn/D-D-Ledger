@@ -7,27 +7,34 @@ import zipfile
 import hashlib
 import hmac
 import secrets
-from urllib.parse import urlparse
-from datetime import datetime, timedelta
+import base64
+import requests
+from urllib.parse import urlparse, urlencode
+from datetime import datetime, timedelta, timezone
 from functools import wraps
 from flask import (
     Flask, render_template, request, redirect, url_for,
     jsonify, flash, send_file, g, abort, session
 )
 from werkzeug.security import generate_password_hash, check_password_hash, safe_join
+from werkzeug.exceptions import HTTPException
 import nh3
 import psycopg.errors as pgerr
 from markupsafe import Markup
 import security
+import mailer
+from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 import realtime
 import observability
 from concurrent.futures import ThreadPoolExecutor
+from types import SimpleNamespace
 from flask import Response
 import images
 import fog
 import dnd5e
 import srd
 import importer
+import quotas
 from storage import get_storage, StorageError, UPLOADS, TEMP
 from database import get_db, init_db, init_app as init_database_app, UniqueViolation
 
@@ -110,7 +117,7 @@ def _campaign_access_field(form):
 # Full accounts: anyone can self-register, and every route requires a
 # logged-in session except the handful that must stay reachable to get one.
 
-PUBLIC_ENDPOINTS = {'login', 'register', 'static', 'healthz'}
+PUBLIC_ENDPOINTS = {'login', 'register', 'static', 'healthz', 'forgot_password', 'reset_password', 'robots_txt', 'security_txt', 'csp_report', 'google_start', 'google_callback', 'privacy', 'terms', 'cookies', 'about', 'contact', 'verify_email'}
 
 
 # Which classification of connection failure gets which fixed, secret-free hint.
@@ -124,6 +131,38 @@ _CONNECT_HINTS = (
     ('timeout', 'The database did not answer in time (wrong host/port, or the Supabase project is paused).'),
     ('connection refused', 'Nothing is listening at that host/port (use the pooler on port 6543).'),
 )
+
+
+@app.route('/robots.txt')
+def robots_txt():
+    """Search engines may read the sign-in pages and nothing else: campaigns, accounts and uploads are private."""
+    body = 'User-agent: *\nAllow: /login\nAllow: /register\nDisallow: /campaigns\nDisallow: /account\nDisallow: /notifications\nDisallow: /uploads\n'
+    return Response(body, mimetype='text/plain', headers={'Cache-Control': 'public, max-age=86400'})
+
+
+@app.route('/.well-known/security.txt')
+def security_txt():
+    """RFC 9116: where to report a vulnerability.  Published only once SECURITY_CONTACT (a mailto: or https: URL) is set."""
+    contact = os.environ.get('SECURITY_CONTACT', '').strip()
+    if not contact.startswith(('mailto:', 'https://')):
+        abort(404)
+    expires = (datetime.now(timezone.utc) + timedelta(days=365)).strftime('%Y-%m-%dT%H:%M:%SZ')
+    body = 'Contact: %s\nExpires: %s\nPreferred-Languages: en\n' % (contact, expires)
+    return Response(body, mimetype='text/plain', headers={'Cache-Control': 'public, max-age=86400'})
+
+
+@app.route('/csp-report', methods=['POST'])
+def csp_report():
+    """Browsers post here when a page breaks the Content-Security-Policy (see _csp).  One short log line each, so a blocked
+    script or style shows up in the logs; nothing is stored.  No sign-in or CSRF token: the browser sends it by itself."""
+    raw = request.get_data(cache=False)[:4096]
+    try:
+        r = (json.loads(raw) or {}).get('csp-report') or {}
+        app.logger.warning('csp violation: %s blocked %s on %s', str(r.get('violated-directive', '?'))[:60],
+                           str(r.get('blocked-uri', '?'))[:120], str(r.get('document-uri', '?'))[:120])
+    except (ValueError, AttributeError):
+        pass
+    return Response(status=204)
 
 
 @app.route('/healthz')
@@ -176,18 +215,27 @@ app.jinja_env.globals['csrf_token'] = _csrf_token
 app.jinja_env.globals['csrf_field'] = lambda: Markup('<input type="hidden" name="csrf_token" value="%s">' % _csrf_token())
 
 
+# Sign-in style forms: a second submit with the old token arrives after the first one already signed the person in
+# (double tap, slow first request, autofill).  That is not an error, they are signed in -- send them on.
+_AUTH_FORM_ENDPOINTS = {'login', 'register', 'forgot_password', 'reset_password'}
+
+
 @app.before_request
 def csrf_protect():
     """Every state-changing request must prove it came from one of our own pages:
     a per-session token (form field or X-CSRF-Token header), plus a same-origin check."""
     if request.method in ('GET', 'HEAD', 'OPTIONS'):
         return
+    if request.endpoint in ('logout', 'csp_report'):
+        return          # signing out must always work: a stale page or an odd Origin header must never leave someone signed in
     origin = request.headers.get('Origin')
     if (origin and urlparse(origin).netloc != request.host) or request.headers.get('Sec-Fetch-Site') == 'cross-site':
         return _reject_request('Cross-site requests are not allowed.', 403)
     sent = request.headers.get('X-CSRF-Token') or request.form.get('csrf_token', '')
     expected = session.get('csrf_token', '')
     if not expected or not sent or not hmac.compare_digest(str(sent), expected):
+        if request.endpoint in _AUTH_FORM_ENDPOINTS and session.get('user_id'):
+            return redirect(url_for('campaigns_list'))      # the page was submitted again after signing in succeeded: nothing to do
         return _reject_request('Your session expired or the form was not valid. Reload the page and try again.', 403)
 
 
@@ -195,18 +243,95 @@ def _wants_json():
     return request.is_json or '/api/' in request.path or request.path.startswith('/uploads/sign')
 
 
+# One error shape for every AJAX/JSON route:  {"error": "<sentence safe to show>", "code": "<stable slug>", "request_id": "..."}
+# (plus optional extra keys).  The frontend shows `error`, and can branch on `code` or the HTTP status.
+API_ERROR_CODES = {400: 'bad_request', 401: 'unauthenticated', 403: 'forbidden', 404: 'not_found', 405: 'method_not_allowed',
+                   409: 'conflict', 413: 'too_large', 415: 'unsupported_type', 422: 'unprocessable', 429: 'rate_limited',
+                   500: 'server_error', 503: 'unavailable'}
+API_ERROR_MESSAGES = {400: 'That request was not valid.', 401: 'Your session ended. Reload the page to sign in again.',
+                      403: 'You do not have permission to do that.', 404: 'That could not be found.',
+                      405: 'That action is not allowed here.', 409: 'That conflicts with the current state. Reload and try again.',
+                      413: 'That is too large to send.', 415: 'That type of file is not supported.',
+                      429: 'Too many requests. Wait a moment and try again.', 500: 'Something went wrong on our side.',
+                      503: 'This is temporarily unavailable. Try again in a moment.'}
+
+
+def api_error(message, status, code=None, **extra):
+    """The standard JSON error response: `return api_error('Unknown pin type.', 400)`."""
+    body = {'error': message or API_ERROR_MESSAGES.get(status, 'The request failed.'),
+            'code': code or API_ERROR_CODES.get(status, 'error')}
+    rid = g.get('request_id')
+    if rid:
+        body['request_id'] = rid
+    body.update(extra)
+    resp = jsonify(body)
+    resp.status_code = status
+    return resp
+
+
 def _reject_request(message, status):
     if _wants_json():
-        return jsonify({'error': message}), status
+        return api_error(message, status)
     return Response(message, status=status, mimetype='text/plain')
+
+
+@app.errorhandler(HTTPException)
+def http_error(exc):
+    """abort(403), a 404 on an unknown id, a wrong method, an oversized body ... on an AJAX route answers in the standard
+    JSON shape instead of an HTML page the frontend cannot read.  Normal pages keep Flask's HTML error pages."""
+    if not _wants_json() or exc.code is None or exc.code < 400:
+        return exc
+    resp = api_error(API_ERROR_MESSAGES.get(exc.code), exc.code)
+    for name, value in exc.get_headers():                      # keep Allow on a 405, Retry-After on a 429, ...
+        if name.lower() not in ('content-type', 'content-length'):
+            resp.headers[name] = value
+    return resp
 
 
 @app.before_request
 def require_login():
     if request.endpoint is None or request.endpoint in PUBLIC_ENDPOINTS:
         return
+    if session.get('user_id') and not _session_is_current():
+        session.clear()
     if not session.get('user_id'):
+        if _wants_json():
+            return api_error(None, 401, login_url=url_for('login'))
         return redirect(url_for('login', next=request.path))
+
+
+@app.before_request
+def limit_writes():
+    """A signed-in account can only change things so fast (security.WINDOWS['write-user']): enough for a busy fight,
+    not enough for a script to flood a campaign.  Reads are never limited; signing out always works."""
+    if request.method in ('GET', 'HEAD', 'OPTIONS') or request.endpoint in (None, 'logout') or not session.get('user_id'):
+        return
+    db = get_db()
+    try:
+        wait = security.hit(db, app.secret_key, 'write-user', session['user_id'])
+        db.commit()
+    except pgerr.UndefinedTable:
+        db.rollback()
+        return
+    finally:
+        db.close()
+    if wait:
+        resp = api_error('You are doing that too fast. Wait a moment and try again.', 429) if _wants_json() \
+            else Response('You are doing that too fast. Wait a moment and try again.', status=429, mimetype='text/plain')
+        resp.headers['Retry-After'] = str(wait)
+        return resp
+
+
+def _session_is_current():
+    """False when the account is gone or its session_version moved on (password change / log out everywhere)."""
+    db = get_db()
+    try:
+        row = db.execute('SELECT session_version FROM users WHERE id = ?', (session['user_id'],)).fetchone()
+    except pgerr.UndefinedColumn:
+        db.rollback()                       # code deployed before migration 0023: skip the check rather than fail every page
+        app.logger.error('users.session_version is missing: apply migration 0023_session_version.sql')
+        return True
+    return row is not None and int(row['session_version']) == int(session.get('sv', 0))
 
 
 # Every ID in a URL must belong to the campaign in that URL (and children to their parent).
@@ -217,6 +342,8 @@ _SCOPE_OWNER_SQL = {
     'map_id': 'SELECT campaign_id AS owner FROM maps WHERE id = ?',
     'char_id': 'SELECT campaign_id AS owner FROM characters WHERE id = ?',
     'group_id': 'SELECT campaign_id AS owner FROM groups WHERE id = ?',
+    'quest_id': 'SELECT campaign_id AS owner FROM quests WHERE id = ?',
+    'entry_id': 'SELECT campaign_id AS owner FROM treasury_entries WHERE id = ?',
     'pid': 'SELECT c.campaign_id AS owner FROM battle_participants bp JOIN characters c ON c.id = bp.character_id WHERE bp.id = ?',
 }
 _SCOPE_PARENT_SQL = {            # arg -> (SQL returning the parent id, name of the parent arg)
@@ -228,7 +355,8 @@ _SCOPE_PARENT_SQL = {            # arg -> (SQL returning the parent id, name of 
 # introduces an argument that is not listed here (so a new kind of ID cannot slip through).
 # invitation_id / notification_id are not campaign-scoped: each is checked against the logged-in user in its route
 # (an invitation is only ever visible to the person invited; a notification only to its recipient).
-SCOPED_URL_ARGS = {'campaign_id', 'user_id', 'filename', 'token', 'invitation_id', 'notification_id'} | set(_SCOPE_OWNER_SQL) | set(_SCOPE_PARENT_SQL)
+# username (/u/<username>) is not campaign-scoped either: profile_view checks the owner's visibility setting against the viewer.
+SCOPED_URL_ARGS = {'campaign_id', 'user_id', 'filename', 'token', 'invitation_id', 'notification_id', 'username'} | set(_SCOPE_OWNER_SQL) | set(_SCOPE_PARENT_SQL)
 
 
 @app.before_request
@@ -275,13 +403,14 @@ def _safe_next(path):
     return path
 
 
-def _start_session(user_id, username, remember=True):
+def _start_session(user_id, username, remember=True, version=0):
     """Fresh session on login: drops anything an earlier visitor of this browser left behind.
     remember=True issues a persistent cookie (PERMANENT_SESSION_LIFETIME); False makes it a
     plain session cookie that the browser drops when it's closed."""
     session.clear()
     session['user_id'] = user_id
     session['username'] = username
+    session['sv'] = int(version or 0)
     session['csrf_token'] = secrets.token_urlsafe(32)
     session.permanent = remember
 
@@ -294,19 +423,33 @@ def _username_error(username):
     return None
 
 
+def _after_sign_in_url(user_id, nxt):
+    """Where a person goes once signed in: the page they asked for, or the campaigns list.  An account that has not yet
+    saved or skipped its profile page goes through /welcome first (the page hands them on to the same place)."""
+    db = get_db()
+    try:
+        row = db.execute('SELECT profile_setup_at FROM users WHERE id = ?', (user_id,)).fetchone()
+        if row is not None and row['profile_setup_at'] is None:
+            return url_for('welcome', next=nxt) if nxt else url_for('welcome')
+    except pgerr.UndefinedColumn:                       # migration 0047 not applied yet: carry on as before
+        db.rollback()
+    return nxt or url_for('campaigns_list')
+
+
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
         username = request.form.get('username', '').strip()
         password = request.form.get('password', '')
         confirm = request.form.get('confirm', '')
+        email = ' '.join(request.form.get('email', '').split())[:EMAIL_MAX + 1]
         ip = client_ip()
 
         db = get_db()
         wait = security.register_blocked_for(db, app.secret_key, ip)
         if wait:
             db.close()
-            return render_template('register.html', error=_wait_message(wait), username=username, next=request.form.get('next', '')), 429
+            return render_template('register.html', error=_wait_message(wait), username=username, email=email, next=request.form.get('next', '')), 429
         security.record_registration(db, app.secret_key, ip)
         db.commit()
 
@@ -315,6 +458,10 @@ def register():
             error = 'Username and password are required.'
         elif _username_error(username):
             error = _username_error(username)
+        elif not email:
+            error = 'Email address is required.'
+        elif _email_error(email):
+            error = _email_error(email)
         elif password != confirm:
             error = 'Passwords do not match.'
         elif len(password) < 8:
@@ -324,24 +471,52 @@ def register():
 
         if error is None and db.execute('SELECT id FROM users WHERE lower(username) = lower(?)', (username,)).fetchone():
             error = 'That username is already taken.'
+        if error is None and db.execute('SELECT id FROM users WHERE lower(email) = lower(?) AND email_verified_at IS NOT NULL', (email,)).fetchone():
+            error = 'An account already uses that email address. Log in instead, or continue with Google.'
         if error:
             db.close()
-            return render_template('register.html', error=error, username=username, next=request.form.get('next', ''))
+            return render_template('register.html', error=error, username=username, email=email, next=request.form.get('next', ''))
 
+        must_confirm = mailer.enabled()                      # with no way to send mail nobody can be asked to confirm
         try:
-            cur = db.execute('INSERT INTO users (username, password_hash) VALUES (?, ?)',
-                              (username, generate_password_hash(password)))
+            try:
+                cur = db.execute('INSERT INTO users (username, password_hash, email, terms_accepted_at, email_confirm_required) VALUES (?, ?, ?, ' + _UTC_NOW + ', ?)',
+                                  (username, generate_password_hash(password), email, must_confirm))
+            except pgerr.UndefinedColumn:                    # migration 0049 not applied yet: sign up as before
+                db.rollback()
+                must_confirm = False
+                cur = db.execute('INSERT INTO users (username, password_hash, email, terms_accepted_at) VALUES (?, ?, ?, ' + _UTC_NOW + ')',
+                                  (username, generate_password_hash(password), email))
         except UniqueViolation:      # two people registering the same name at once
             db.rollback()
             db.close()
-            return render_template('register.html', error='That username is already taken.', username=username, next=request.form.get('next', ''))
+            return render_template('register.html', error='That username is already taken.', username=username, email=email, next=request.form.get('next', ''))
         user_id = cur.lastrowid
         db.commit()
+        if mailer.enabled():                                  # best effort: the account exists either way, and /account can resend
+            try:
+                _send_verification(db, {'id': user_id, 'username': username, 'display_name': None}, email)
+            except Exception:                                 # noqa: BLE001 - never lose a new account over a mail problem
+                db.rollback()
+                app.logger.warning('signup confirmation email failed', exc_info=True)
         db.close()
 
         _start_session(user_id, username)
-        return redirect(_safe_next(request.form.get('next', '')) or url_for('campaigns_list'))
-    return render_template('register.html', error=None, username='', next=request.args.get('next', ''))
+        nxt = _safe_next(request.form.get('next', ''))
+        if must_confirm:                                      # DL-165: ask for the confirmation right away
+            return redirect(url_for('confirm_email', next=nxt) if nxt else url_for('confirm_email'))
+        return redirect(_after_sign_in_url(user_id, nxt))
+    return render_template('register.html', error=None, username='', email='', next=request.args.get('next', ''))
+
+
+def _user_by_email(db, address):
+    """The one account an email address points to: the account that confirmed it, else the only account that typed it.
+    Several accounts and no single confirmed owner means nobody (the person can use their username)."""
+    rows = db.execute('SELECT * FROM users WHERE lower(email) = lower(?)', (address,)).fetchall()
+    confirmed = [r for r in rows if r['email_verified_at']]
+    if len(confirmed) == 1:
+        return confirmed[0]
+    return rows[0] if len(rows) == 1 else None
 
 
 @app.route('/login', methods=['GET', 'POST'])
@@ -359,26 +534,1007 @@ def login():
             return render_template('login.html', error=_wait_message(wait), username=username, next=next_value), 429
 
         user = db.execute('SELECT * FROM users WHERE lower(username) = lower(?)', (username,)).fetchone()
+        if user is None and '@' in username:                 # the same box takes an email address
+            user = _user_by_email(db, username)
         stored_hash = (user['password_hash'] if user else None) or DUMMY_PASSWORD_HASH     # always do one hash check
         password_ok = check_password_hash(stored_hash, password)
         if user is None or not user['password_hash'] or not password_ok:
             security.record_login_failure(db, app.secret_key, username, ip)
             db.commit()
             db.close()
-            return render_template('login.html', error='Incorrect username or password.', username=username, next=next_value)
+            message = 'Incorrect username or password.'
+            if user is not None and not user['password_hash']:
+                message = 'This account signs in with Google. Use Continue with Google, or choose Forgot your password to add a password.'
+            return render_template('login.html', error=message, username=username, next=next_value)
 
         security.clear_login_failures(db, app.secret_key, username, ip)
         db.commit()
         db.close()
-        _start_session(user['id'], user['username'], remember=bool(request.form.get('remember')))
-        return redirect(_safe_next(next_value or request.args.get('next')) or url_for('campaigns_list'))
+        _start_session(user['id'], user['username'], remember=bool(request.form.get('remember')),
+                       version=dict(user).get('session_version', 0))
+        return redirect(_after_sign_in_url(user['id'], _safe_next(next_value or request.args.get('next'))))
     return render_template('login.html', error=None, username='', next=request.args.get('next', ''))
 
 
 @app.route('/logout', methods=['POST'])
 def logout():
+    # Exempt from the CSRF check on purpose (see csrf_protect): the worst a forged logout can do is sign someone out,
+    # while a failed check here used to leave a real user signed in with an error page.
     session.clear()
     return redirect(url_for('login'))
+
+
+# ---------------- SIGN IN WITH GOOGLE ----------------
+# Standard OAuth 2.0 authorization-code flow with PKCE, talking to Google server-to-server over TLS.  Off until
+# GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are set (the buttons are hidden).  Google proves the email address, so a
+# Google account starts with a confirmed email and no password.
+GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth'
+GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token'
+GOOGLE_USERINFO_URL = 'https://openidconnect.googleapis.com/v1/userinfo'
+GOOGLE_MESSAGES = {
+    'expired': 'The Google sign-in took too long or was interrupted. Try again.',
+    'denied': 'Google sign-in was cancelled.',
+    'failed': 'Google could not be reached. Try again in a moment.',
+    'unverified': 'Google did not share a confirmed email address, so we cannot sign you in with it.',
+    'conflict': 'That email belongs to an account linked to a different Google account.',
+    'busy': 'Too many accounts were created from this connection. Wait a bit and try again.',
+    'off': 'Google sign-in is not set up on this server yet.',
+}
+
+
+def google_enabled():
+    return bool(os.environ.get('GOOGLE_CLIENT_ID') and os.environ.get('GOOGLE_CLIENT_SECRET'))
+
+
+app.jinja_env.globals['google_enabled'] = google_enabled
+app.jinja_env.globals['google_messages'] = GOOGLE_MESSAGES
+
+
+def _google_redirect_uri():
+    uri = os.environ.get('GOOGLE_REDIRECT_URI') or url_for('google_callback', _external=True)
+    if _SECURE_COOKIES and uri.startswith('http://'):
+        uri = 'https://' + uri[len('http://'):]
+    return uri
+
+
+def _free_username(db, seed):
+    """A valid, unused username built from `seed` (an email's first part or a name)."""
+    base = re.sub(r'[^A-Za-z0-9._-]+', '', seed or '')[:24] or 'player'
+    if len(base) < 3:
+        base = (base + 'player')[:24]
+    candidate = base
+    for _ in range(12):
+        if not db.execute('SELECT 1 FROM users WHERE lower(username) = lower(?)', (candidate,)).fetchone():
+            return candidate
+        candidate = '%s%d' % (base[:20], secrets.randbelow(9000) + 1000)
+    return '%s%s' % (base[:12], secrets.token_hex(4))
+
+
+@app.route('/auth/google')
+def google_start():
+    if session.get('user_id'):
+        return redirect(url_for('campaigns_list'))
+    if not google_enabled():
+        return redirect(url_for('login', google='off'))
+    state, verifier = secrets.token_urlsafe(24), secrets.token_urlsafe(48)
+    challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b'=').decode()
+    session['g_oauth'] = {'s': state, 'v': verifier, 'n': _safe_next(request.args.get('next')) or ''}
+    params = {'client_id': os.environ['GOOGLE_CLIENT_ID'], 'redirect_uri': _google_redirect_uri(), 'response_type': 'code',
+              'scope': 'openid email profile', 'state': state, 'code_challenge': challenge, 'code_challenge_method': 'S256',
+              'prompt': 'select_account'}
+    return redirect(GOOGLE_AUTH_URL + '?' + urlencode(params))
+
+
+@app.route('/auth/google/callback')
+def google_callback():
+    pending = session.pop('g_oauth', None)
+
+    def back(code):
+        return redirect(url_for('login', google=code))
+
+    if session.get('user_id'):
+        return redirect(url_for('campaigns_list'))
+    if not google_enabled() or not pending:
+        return back('expired')
+    if request.args.get('error'):
+        return back('denied')
+    code, state = request.args.get('code', ''), request.args.get('state', '')
+    if not code or not hmac.compare_digest(state.encode(), pending['s'].encode()):
+        return back('expired')
+    try:
+        tok = requests.post(GOOGLE_TOKEN_URL, timeout=8, data={
+            'code': code, 'client_id': os.environ['GOOGLE_CLIENT_ID'], 'client_secret': os.environ['GOOGLE_CLIENT_SECRET'],
+            'redirect_uri': _google_redirect_uri(), 'grant_type': 'authorization_code', 'code_verifier': pending['v']})
+        tok.raise_for_status()
+        info = requests.get(GOOGLE_USERINFO_URL, timeout=8, headers={'Authorization': 'Bearer ' + tok.json()['access_token']})
+        info.raise_for_status()
+        info = info.json()
+    except (requests.RequestException, ValueError, KeyError):
+        app.logger.warning('google sign-in failed while talking to Google', exc_info=True)
+        return back('failed')
+    sub = str(info.get('sub') or '')
+    email = ' '.join(str(info.get('email') or '').split())
+    if not sub or not email or info.get('email_verified') is not True or _email_error(email):
+        return back('unverified')
+
+    db = get_db()
+    try:
+        user = db.execute('SELECT * FROM users WHERE google_sub = ?', (sub,)).fetchone()
+        if user is None:
+            user = db.execute('SELECT * FROM users WHERE lower(email) = lower(?) AND email_verified_at IS NOT NULL', (email,)).fetchone()
+            if user is not None:
+                if user['google_sub']:
+                    return back('conflict')
+                db.execute('UPDATE users SET google_sub = ? WHERE id = ?', (sub, user['id']))        # same confirmed email: link
+        if user is None:
+            ip = client_ip()
+            if security.register_blocked_for(db, app.secret_key, ip):
+                return back('busy')
+            security.record_registration(db, app.secret_key, ip)
+            name = ' '.join(str(info.get('name') or '').split())
+            display = name if name and not _profile_error(name, '') else None
+            username = _free_username(db, email.split('@')[0])
+            try:
+                cur = db.execute('INSERT INTO users (username, password_hash, email, email_verified_at, google_sub, display_name, terms_accepted_at) '
+                                 'VALUES (?, NULL, ?, ' + _UTC_NOW + ', ?, ?, ' + _UTC_NOW + ')', (username, email, sub, display))
+            except UniqueViolation:
+                db.rollback()
+                return back('failed')
+            # An unconfirmed copy of this address on another account was only ever typed in; Google has now proved it.
+            db.execute('UPDATE users SET email = NULL WHERE lower(email) = lower(?) AND email_verified_at IS NULL AND id <> ?', (email, cur.lastrowid))
+            user = db.execute('SELECT * FROM users WHERE id = ?', (cur.lastrowid,)).fetchone()
+        db.commit()
+    finally:
+        db.close()
+    _start_session(user['id'], user['username'], remember=True, version=dict(user).get('session_version', 0))
+    return redirect(_after_sign_in_url(user['id'], _safe_next(pending.get('n'))))
+
+
+# ---------------- ACCOUNT / PROFILE ----------------
+# A basic profile (display name, avatar, bio).  It belongs to the account, not to any campaign, and for now only its
+# owner can see it (the sidebar and /account); showing it to other people is a separate, later decision.
+
+DISPLAY_NAME_MAX = 40
+BIO_MAX = 500
+
+
+def _profile_error(display_name, bio):
+    if len(display_name) > DISPLAY_NAME_MAX or not display_name.isprintable() or any(c in display_name for c in '<>'):
+        return f'Display name must be at most {DISPLAY_NAME_MAX} characters, without < or >.'
+    if len(bio) > BIO_MAX:
+        return f'Bio must be at most {BIO_MAX} characters.'
+    return None
+
+
+def _must_confirm_email(db, user_id):
+    """DL-165: True while this account still has to confirm its email (it signed up with a password while the site could
+    send mail, and has not opened the link).  Creating or joining a campaign waits for it; everything else works."""
+    try:
+        row = db.execute('SELECT email_confirm_required, email_verified_at FROM users WHERE id = ?', (user_id,)).fetchone()
+    except pgerr.UndefinedColumn:                           # migration 0049 not applied yet
+        db.rollback()
+        return False
+    return bool(row and row['email_confirm_required'] and row['email_verified_at'] is None)
+
+
+def _email_confirm_flag(db, user_id):
+    try:
+        row = db.execute('SELECT email_confirm_required FROM users WHERE id = ?', (user_id,)).fetchone()
+    except pgerr.UndefinedColumn:
+        db.rollback()
+        return False
+    return bool(row and row['email_confirm_required'])
+
+
+def _confirm_gate():
+    """A redirect to the "confirm your email" page when the signed-in account still has to, else None."""
+    me = my_profile()
+    if me and me.get('must_confirm'):
+        return redirect(url_for('confirm_email', next=request.full_path.rstrip('?')))
+    return None
+
+
+def my_profile():
+    """The logged-in user's profile row (cached for the request); None when logged out."""
+    uid = session.get('user_id')
+    if not uid:
+        return None
+    if '_profile' not in g:
+        db = get_db()
+        try:
+            row = db.execute('SELECT id, username, display_name, avatar_path, bio, email FROM users WHERE id = ?', (uid,)).fetchone()
+            g._profile = dict(row, needs_email=not row['email'], must_confirm=_must_confirm_email(db, uid)) if row else None
+        except pgerr.UndefinedColumn:
+            # Code deployed before migration 0022 was applied: every page renders this in the sidebar, so a missing
+            # column must not take the whole site down.  Fall back to the username until the migration runs.
+            db.rollback()
+            app.logger.error('users.display_name is missing: apply migration 0022_user_profile.sql')
+            g._profile = {'id': uid, 'username': session.get('username'), 'display_name': None, 'avatar_path': None, 'bio': None, 'needs_email': False, 'must_confirm': False}
+    return g._profile
+
+
+app.jinja_env.globals['my_profile'] = my_profile
+app.jinja_env.globals['mail_enabled'] = mailer.enabled
+
+
+EMAIL_MAX = 254
+EMAIL_TOKEN_MAX_AGE = 24 * 3600
+
+
+def _email_error(address):
+    """None when `address` looks like a usable email address (the real test is the verification link)."""
+    if not address or len(address) > EMAIL_MAX or any(c.isspace() or c in '<>,;"\\' for c in address) or address.count('@') != 1:
+        return 'Enter a valid email address.'
+    local, domain = address.split('@')
+    if not local or len(local) > 64 or '.' not in domain or domain.startswith('.') or domain.endswith('.') or '..' in domain or not domain.isascii():
+        return 'Enter a valid email address.'
+    return None
+
+
+def _account_row(db, user_id):
+    """The signed-in user's account row as a dict, with `email_ready` telling whether migration 0024 is applied."""
+    try:
+        row = db.execute('SELECT id, username, display_name, avatar_path, bio, email, email_verified_at FROM users WHERE id = ?', (user_id,)).fetchone()
+        ready = True
+    except pgerr.UndefinedColumn:
+        db.rollback()
+        app.logger.error('users.email is missing: apply migration 0024_user_email.sql')
+        row = db.execute('SELECT id, username, display_name, avatar_path, bio FROM users WHERE id = ?', (user_id,)).fetchone()
+        ready = False
+    if row is None:
+        return None
+    d = dict(row)
+    d.setdefault('email', None)
+    d.setdefault('email_verified_at', None)
+    d['email_ready'] = ready
+    d['mail_enabled'] = mailer.enabled()
+    return d
+
+
+def _email_serializer():
+    return URLSafeTimedSerializer(app.secret_key, salt='verify-email')
+
+
+def _send_verification(db, user, address):
+    """Rate-limit, then mail a verification link.  Returns an error message or None."""
+    ip = client_ip()
+    wait = security.mail_blocked_for(db, app.secret_key, user['id'], address, ip)
+    if wait:
+        return _wait_message(wait)
+    token = _email_serializer().dumps({'u': user['id'], 'e': address.lower()})
+    link = url_for('verify_email', token=token, _external=True)
+    ctx = {'name': user.get('display_name') or user['username'], 'username': user['username'], 'link': link}
+    try:
+        security.record_mail(db, app.secret_key, user['id'], address, ip)
+        db.commit()                                                     # the attempt counts even if sending fails
+        mailer.send(address, 'Confirm your email for Campaign Ledger',
+                    render_template('email/verify_email.txt', **ctx), render_template('email/verify_email.html', **ctx))
+    except mailer.MailError as exc:
+        return str(exc)
+    return None
+
+
+@app.route('/account/email', methods=['POST'])
+def account_email():
+    """Set (or change) the account's email and send the verification link.  Changing it clears the verified mark."""
+    db = get_db()
+    user = _account_row(db, session['user_id'])
+    if user is None:
+        session.clear()
+        return redirect(url_for('login'))
+    if not user['email_ready']:
+        return api_error('Email needs a database update that has not been applied yet (migration 0024_user_email.sql).', 503, code='migration_pending')
+
+    def fail(message, status=400):
+        return render_template('account.html', profile=user, form=user, error=None, email_error=message), status
+
+    address = request.form.get('email', '').strip()
+    error = _email_error(address)
+    if error:
+        return fail(error)
+    if not mailer.enabled():
+        return fail('Email is not set up on this server yet, so addresses cannot be confirmed.', 503)
+    if (user['email'] or '').lower() != address.lower():
+        db.execute('UPDATE users SET email = ?, email_verified_at = NULL WHERE id = ?', (address, user['id']))
+        db.commit()
+        user['email'], user['email_verified_at'] = address, None
+    elif user['email_verified_at']:
+        return redirect(url_for('account', mail='already'))
+    error = _send_verification(db, user, address)
+    if error:
+        return fail(error, 429 if error.startswith('Too many') else 502)
+    return redirect(url_for('account', mail='sent'))
+
+
+@app.route('/account/email/resend', methods=['POST'])
+def account_email_resend():
+    db = get_db()
+    user = _account_row(db, session['user_id'])
+    if user is None:
+        session.clear()
+        return redirect(url_for('login'))
+    if not user['email_ready'] or not user['email'] or user['email_verified_at']:
+        return redirect(url_for('account'))
+    error = _send_verification(db, user, user['email'])
+    if error:
+        return render_template('account.html', profile=user, form=user, error=None, email_error=error), (429 if error.startswith('Too many') else 502)
+    return redirect(url_for('account', mail='sent'))
+
+
+@app.route('/account/email/remove', methods=['POST'])
+def account_email_remove():
+    db = get_db()
+    user = _account_row(db, session['user_id'])
+    if user is not None and user['email_ready']:
+        db.execute('UPDATE users SET email = NULL, email_verified_at = NULL WHERE id = ?', (user['id'],))
+        db.commit()
+    return redirect(url_for('account', mail='removed'))
+
+
+# ---- delete account (DL-38) ----
+
+def _owned_campaigns(db, user_id):
+    """Campaigns the user is an owner of, each with whether it would be deleted and who could take it over."""
+    out = []
+    for c in db.execute('SELECT c.id, c.name FROM campaigns c JOIN campaign_members cm ON cm.campaign_id = c.id '
+                        "WHERE cm.user_id = ? AND cm.role = 'owner' ORDER BY c.name", (user_id,)).fetchall():
+        others = db.execute('SELECT u.id, u.username, u.display_name, cm.role FROM campaign_members cm JOIN users u ON u.id = cm.user_id '
+                            'WHERE cm.campaign_id = ? AND cm.user_id != ? ORDER BY u.username', (c['id'], user_id)).fetchall()
+        out.append({'id': c['id'], 'name': c['name'], 'members': [dict(o) for o in others],
+                    'has_other_owner': any(o['role'] == 'owner' for o in others)})
+    return out
+
+
+def owned_campaigns_for_page():
+    if 'owned' not in g:
+        g.owned = _owned_campaigns(get_db(), session['user_id']) if session.get('user_id') else []
+    return g.owned
+
+
+app.jinja_env.globals['owned_campaigns'] = owned_campaigns_for_page
+
+
+@app.route('/account/delete', methods=['POST'])
+def account_delete():
+    """Delete the account.  Campaigns the user solely owns are deleted for good unless the user hands each one to a
+    member first (the form says so); campaigns with another owner just lose this member."""
+    db = get_db()
+    user = _account_row(db, session['user_id'])
+    if user is None:
+        session.clear()
+        return redirect(url_for('login'))
+    row = db.execute('SELECT password_hash FROM users WHERE id = ?', (user['id'],)).fetchone()
+    ip = client_ip()
+
+    def fail(message, status=400):
+        return render_template('account.html', profile=user, form=user, error=None, delete_error=message), status
+
+    wait = security.login_blocked_for(db, app.secret_key, user['username'], ip)
+    if wait:
+        return fail(_wait_message(wait), 429)
+    if row['password_hash'] and not check_password_hash(row['password_hash'], request.form.get('current_password', '')[:1024]):
+        security.record_login_failure(db, app.secret_key, user['username'], ip)
+        db.commit()
+        return fail('Your current password is not correct.')
+    if request.form.get('confirm_delete') != 'DELETE':
+        return fail('Type DELETE to confirm.')
+
+    plan = []                                      # (campaign, new owner id or None)
+    for c in _owned_campaigns(db, user['id']):
+        if c['has_other_owner']:
+            plan.append((c, None))
+            continue
+        choice = request.form.get('transfer_%d' % c['id'], '')
+        new_owner = None
+        if choice:
+            if not choice.isdigit() or int(choice) not in {m['id'] for m in c['members']}:
+                return fail('Pick one of the campaign\'s members to hand it to.')
+            new_owner = int(choice)
+        plan.append((c, new_owner))
+
+    files = []
+    for c, new_owner in plan:
+        if c['has_other_owner']:
+            continue                               # membership goes with the user row below
+        if new_owner is not None:
+            db.execute("UPDATE campaign_members SET role = 'owner', status = 'dm' WHERE campaign_id = ? AND user_id = ?", (c['id'], new_owner))
+            notify(db, new_owner, 'ownership_transferred', '%s handed you the campaign %s' % (user['username'], c['name']),
+                   link=url_for('characters_list', campaign_id=c['id']))
+        else:
+            files += _delete_campaign_rows(db, c['id'])
+    for r in db.execute('SELECT avatar_path AS p FROM characters WHERE owner_id = ? AND campaign_id IS NULL AND avatar_path IS NOT NULL UNION ALL '
+                        'SELECT s.image_path FROM character_sheets s JOIN characters c ON c.id = s.character_id WHERE c.owner_id = ? AND c.campaign_id IS NULL',
+                        (user['id'], user['id'])).fetchall():
+        files.append(r['p'])                       # the library goes with the account (its rows are removed with the user below)
+    if user['avatar_path']:
+        files.append(user['avatar_path'])
+    if user['avatar_path']:
+        db.execute('DELETE FROM stored_files WHERE key = ?', (user['avatar_path'],))
+    db.execute('UPDATE stored_files SET user_id = NULL WHERE user_id = ?', (user['id'],))       # files stay with their campaigns
+    db.execute('DELETE FROM users WHERE id = ?', (user['id'],))    # memberships, invitations, notifications cascade; "made by" fields clear
+    db.commit()
+    db.close()
+    delete_uploads(files)
+    if user.get('email') and user.get('email_verified_at'):
+        try:
+            mailer.send(user['email'], 'Your Campaign Ledger account was deleted',
+                        render_template('email/account_deleted.txt', name=user['display_name'] or user['username'], username=user['username']))
+        except mailer.MailError:
+            pass
+    session.clear()
+    return redirect(url_for('login', deleted=1))
+
+
+# ---- password reset by email (DL-38) ----
+RESET_TOKEN_MAX_AGE = 3600
+
+
+def _reset_serializer():
+    return URLSafeTimedSerializer(app.secret_key, salt='reset-password')
+
+
+def _password_fingerprint(password_hash):
+    """Ties a reset link to the password it was issued for, so it stops working once the password changes."""
+    return hashlib.sha256((password_hash or '').encode()).hexdigest()[:16]
+
+
+NO_CONFIRMED_ACCOUNT = ('No account has this email address confirmed. Check the spelling, or log in and confirm it on your account page first. '
+                        'Accounts without a confirmed email cannot be reset this way.')
+
+
+@app.route('/forgot-password', methods=['GET', 'POST'])
+def forgot_password():
+    """Ask for a reset link.  The address must be one an account has confirmed; if not, the page says so (the throttles
+    below keep that from being used to scan for addresses in bulk)."""
+    if session.get('user_id'):
+        return redirect(url_for('account'))
+    if not mailer.enabled():
+        return render_template('forgot_password.html', sent=False, email='', error='Password reset by email is not available on this server yet.'), 503
+    if request.method == 'GET':
+        return render_template('forgot_password.html', sent=False, email='', error=None)
+    address = request.form.get('email', '').strip()
+    if _email_error(address):
+        return render_template('forgot_password.html', sent=False, email=address[:254], error='Enter a valid email address.'), 400
+    db = get_db()
+    ip = client_ip()
+    wait = security.mail_blocked_for(db, app.secret_key, 0, address, ip)
+    if wait:
+        return render_template('forgot_password.html', sent=False, email=address, error=_wait_message(wait)), 429
+    security.record_mail(db, app.secret_key, 0, address, ip)
+    db.commit()
+    try:
+        user = db.execute('SELECT id, username, display_name, password_hash FROM users '
+                          'WHERE lower(email) = lower(?) AND email_verified_at IS NOT NULL', (address,)).fetchone()
+    except pgerr.UndefinedColumn:
+        db.rollback()
+        user = None
+    if user is None:
+        db.close()
+        return render_template('forgot_password.html', sent=False, email=address, error=NO_CONFIRMED_ACCOUNT), 404
+    token = _reset_serializer().dumps({'u': user['id'], 'f': _password_fingerprint(user['password_hash'])})
+    ctx = {'name': user['display_name'] or user['username'], 'username': user['username'],
+           'link': url_for('reset_password', token=token, _external=True)}
+    try:
+        mailer.send(address, 'Reset your Campaign Ledger password',
+                    render_template('email/password_reset.txt', **ctx), render_template('email/password_reset.html', **ctx))
+    except mailer.MailError:                    # the details are already in the log
+        db.close()
+        return render_template('forgot_password.html', sent=False, email=address,
+                               error='The email could not be sent right now. Try again in a few minutes.'), 502
+    db.close()
+    return render_template('forgot_password.html', sent=True, email='', error=None)
+
+
+@app.route('/reset-password/<token>', methods=['GET', 'POST'])
+def reset_password(token):
+    """The link from the reset email: choose a new password.  Ends every session of the account."""
+    try:
+        data = _reset_serializer().loads(token, max_age=RESET_TOKEN_MAX_AGE)
+    except BadSignature:                            # includes SignatureExpired
+        return render_template('reset_password.html', invalid=True), 400
+    db = get_db()
+    user = db.execute('SELECT id, username, display_name, email, password_hash FROM users WHERE id = ?', (data.get('u'),)).fetchone()
+    if user is None or _password_fingerprint(user['password_hash']) != data.get('f'):
+        return render_template('reset_password.html', invalid=True), 400
+    if request.method == 'GET':
+        return render_template('reset_password.html', invalid=False, error=None)
+    new = request.form.get('new_password', '')
+    error = None
+    if new != request.form.get('confirm_password', ''):
+        error = 'The new passwords do not match.'
+    elif len(new) < 8:
+        error = 'Password must be at least 8 characters.'
+    elif len(new) > 128:
+        error = 'Password must be at most 128 characters.'
+    if error:
+        return render_template('reset_password.html', invalid=False, error=error), 400
+    db.execute('UPDATE users SET password_hash = ? WHERE id = ?', (generate_password_hash(new), user['id']))
+    security.clear_login_failures(db, app.secret_key, user['username'], client_ip())
+    db.commit()
+    _bump_session_version(db, user['id'])           # every device is signed out, including whoever had the old password
+    if user['email']:
+        try:
+            mailer.send(user['email'], 'Your Campaign Ledger password was changed',
+                        render_template('email/password_changed.txt', name=user['display_name'] or user['username'], username=user['username']))
+        except mailer.MailError:
+            pass
+    session.clear()
+    return redirect(url_for('login', reset=1))
+
+
+@app.route('/verify-email/<token>')
+def verify_email(token):
+    """The link from the verification email.  Needs the same signed-in account the link was issued for."""
+    try:
+        data = _email_serializer().loads(token, max_age=EMAIL_TOKEN_MAX_AGE)
+    except SignatureExpired:
+        return redirect(url_for('account', mail='expired'))
+    except BadSignature:
+        return redirect(url_for('account', mail='invalid'))
+    signed_in = session.get('user_id')
+    if signed_in and data.get('u') != signed_in:
+        return redirect(url_for('account', mail='wrong_account'))
+    db = get_db()
+    user = _account_row(db, data.get('u'))                          # opened on another device (signed out): the link itself proves the mailbox
+    if user is None or not user['email_ready'] or (user['email'] or '').lower() != data.get('e'):
+        return redirect(url_for('account', mail='invalid'))        # the address was changed or removed since
+    flagged = _email_confirm_flag(db, user['id'])
+
+    def landing():
+        if not signed_in:
+            return redirect(url_for('login', confirmed=1))
+        return redirect(url_for('confirm_email', done=1) if flagged else url_for('account', mail='verified'))
+
+    if user['email_verified_at']:
+        return landing()
+    try:
+        db.execute('UPDATE users SET email_verified_at = ' + _UTC_NOW + ' WHERE id = ?', (user['id'],))
+        db.commit()
+    except UniqueViolation:                                        # someone else verified this address first
+        db.rollback()
+        return redirect(url_for('account', mail='taken'))
+    return landing()
+
+
+@app.route('/confirm-email')
+def confirm_email():
+    """DL-165: where a new password account lands after signing up: check your inbox, resend, or carry on.  Creating or
+    joining a campaign stays locked until the link is opened; everything else works."""
+    db = get_db()
+    user = _account_row(db, session['user_id'])
+    if user is None:
+        session.clear()
+        return redirect(url_for('login'))
+    nxt = _safe_next(request.args.get('next', ''))
+    confirmed = bool(user['email_verified_at'])
+    resent = request.args.get('sent') == '1'
+    error = request.args.get('error') or None
+    return render_template('confirm_email.html', user=user, confirmed=confirmed, next=nxt, resent=resent,
+                           error={'wait': 'Too many emails just now. Wait a little and try again.', 'send': 'The email could not be sent. Try again in a moment.'}.get(error),
+                           continue_url=_after_sign_in_url(user['id'], nxt))
+
+
+@app.route('/confirm-email/resend', methods=['POST'])
+def confirm_email_resend():
+    db = get_db()
+    user = _account_row(db, session['user_id'])
+    nxt = _safe_next(request.form.get('next', ''))
+    if user is None or not user['email'] or user['email_verified_at']:
+        return redirect(url_for('confirm_email', next=nxt) if nxt else url_for('confirm_email'))
+    error = _send_verification(db, user, user['email'])
+    args = {'next': nxt} if nxt else {}
+    if error:
+        args['error'] = 'wait' if error.startswith('Too many') else 'send'
+    else:
+        args['sent'] = 1
+    return redirect(url_for('confirm_email', **args))
+
+
+def _legal_page(template):
+    """The public legal pages (privacy, terms, cookies).  The contact line appears once PRIVACY_CONTACT (an email address) is set."""
+    contact = os.environ.get('PRIVACY_CONTACT', '').strip()
+    return render_template(template, contact=contact if '@' in contact and ' ' not in contact and len(contact) < 255 else '')
+
+
+@app.route('/privacy')
+def privacy():
+    """DL-69: the privacy policy, public.  It restates docs/DATA_WE_COLLECT.md in plain words."""
+    return _legal_page('privacy.html')
+
+
+@app.route('/about')
+def about():
+    """DL-25: what Campaign Ledger is, public."""
+    return _legal_page('about.html')
+
+
+@app.route('/contact')
+def contact():
+    """DL-25: how to reach the people behind the site, public.  Shows PRIVACY_CONTACT once it is set."""
+    return _legal_page('contact.html')
+
+
+@app.route('/terms')
+def terms():
+    """DL-74: the terms of use, public."""
+    return _legal_page('terms.html')
+
+
+@app.route('/cookies')
+def cookies():
+    """DL-77: the cookies page, public."""
+    return _legal_page('cookies.html')
+
+
+@app.route('/welcome', methods=['GET', 'POST'])
+def welcome():
+    """DL-161: the one-time "Set up your profile" page every new account (password or Google) lands on.  Saving or skipping
+    marks it done, so it is never shown again; everything on it can be changed later in Account settings."""
+    db = get_db()
+    nxt = _safe_next(request.values.get('next', '')) or url_for('campaigns_list')
+    try:
+        user = db.execute('SELECT id, username, display_name, avatar_path, bio, email, google_sub, password_hash, profile_visibility, profile_setup_at '
+                          'FROM users WHERE id = ?', (session['user_id'],)).fetchone()
+    except pgerr.UndefinedColumn:
+        db.rollback()
+        return redirect(nxt)
+    if user is None:
+        session.clear()
+        return redirect(url_for('login'))
+    if user['profile_setup_at'] is not None:
+        return redirect(nxt)
+    user = dict(user)
+    form = {'username': user['username'], 'display_name': user['display_name'] or '', 'bio': user['bio'] or '', 'profile_visibility': user['profile_visibility']}
+
+    def page(error=None, status=200):
+        return render_template('welcome.html', profile=user, form=form, error=error, next=nxt, from_google=bool(user['google_sub'] and not user['password_hash'])), status
+
+    if request.method == 'POST':
+        if request.form.get('action') == 'skip':
+            db.execute('UPDATE users SET profile_setup_at = ' + _UTC_NOW + ' WHERE id = ?', (user['id'],))
+            db.commit()
+            return redirect(nxt)
+        form['username'] = request.form.get('username', '').strip()
+        form['display_name'] = ' '.join(request.form.get('display_name', '').split())
+        form['bio'] = request.form.get('bio', '').replace('\r\n', '\n').strip()
+        visibility = request.form.get('profile_visibility', '')
+        if visibility in PROFILE_VISIBILITY:
+            form['profile_visibility'] = visibility
+        error = _username_error(form['username']) or _profile_error(form['display_name'], form['bio'])
+        if not error and form['username'].lower() != user['username'].lower() and db.execute(
+                'SELECT 1 FROM users WHERE lower(username) = lower(?) AND id <> ?', (form['username'], user['id'])).fetchone():
+            error = 'That username is already taken.'
+        if error:
+            return page(error, 400)
+        new_avatar = save_upload_field('avatar', 'avatars')
+        if new_avatar:
+            delete_upload(user['avatar_path'])
+        try:
+            db.execute('UPDATE users SET username = ?, display_name = ?, bio = ?, profile_visibility = ?, avatar_path = COALESCE(?, avatar_path), '
+                       'profile_setup_at = ' + _UTC_NOW + ' WHERE id = ?',
+                       (form['username'], form['display_name'] or None, form['bio'] or None, form['profile_visibility'], new_avatar, user['id']))
+        except UniqueViolation:                              # someone took the name a moment ago
+            db.rollback()
+            return page('That username is already taken.', 400)
+        db.commit()
+        session['username'] = form['username']
+        g.pop('_profile', None)
+        return redirect(nxt)
+    return page()
+
+
+@app.route('/account', methods=['GET', 'POST'])
+def account():
+    db = get_db()
+    try:
+        user = _account_row(db, session['user_id'])
+    except pgerr.UndefinedColumn:
+        db.rollback()
+        return api_error('Profiles need a database update that has not been applied yet (migration 0022_user_profile.sql).', 503, code='migration_pending')
+    if user is None:
+        session.clear()
+        return redirect(url_for('login'))
+    if request.method == 'POST':
+        display_name = ' '.join(request.form.get('display_name', '').split())
+        bio = request.form.get('bio', '').replace('\r\n', '\n').strip()
+        error = _profile_error(display_name, bio)
+        if error:
+            return render_template('account.html', profile=user, form={'display_name': display_name, 'bio': bio}, error=error), 400
+        new_avatar = save_upload_field('avatar', 'avatars')      # a full quota is answered by the app-wide banner
+        old_avatar = user['avatar_path']
+        if new_avatar:
+            db.execute('UPDATE users SET avatar_path = ? WHERE id = ?', (new_avatar, user['id']))
+            delete_upload(old_avatar)
+        elif request.form.get('remove_avatar') == '1' and old_avatar:
+            db.execute('UPDATE users SET avatar_path = NULL WHERE id = ?', (user['id'],))
+            delete_upload(old_avatar)
+        db.execute('UPDATE users SET display_name = ?, bio = ? WHERE id = ?', (display_name or None, bio or None, user['id']))
+        visibility = request.form.get('profile_visibility', '')
+        if visibility in PROFILE_VISIBILITY:
+            try:
+                db.execute('UPDATE users SET profile_visibility = ? WHERE id = ?', (visibility, user['id']))
+            except pgerr.UndefinedColumn:
+                db.rollback()
+                return api_error('Profile visibility needs a database update that has not been applied yet (migration 0039).', 503, code='migration_pending')
+        if request.form.get('showcase_present') == '1':
+            error = _save_showcase(db, user['id'], request.form.getlist('showcase'))
+            if error:
+                db.rollback()
+                return render_template('account.html', profile=user, form={'display_name': display_name, 'bio': bio}, error=error), 400
+        db.commit()
+        return redirect(url_for('account', saved=1))
+    return render_template('account.html', profile=user, form=user, error=None)
+
+
+# ---- public profile (DL-97 first step) ----
+# /u/<username> shows a person's avatar, name, bio and a handful of the player characters they chose to feature.  Who may
+# open it is the owner's choice (users.profile_visibility); a profile you may not open answers 404, exactly like a name
+# that does not exist, so the page cannot be used to find out who has an account.  Only name, class, level and portrait of a
+# showcased character are shown: never the campaign it belongs to, its stats or its notes.
+PROFILE_VISIBILITY = {
+    'members': ('Everyone signed in', 'Any signed-in Campaign Ledger user can open your profile.'),
+    'shared': ('People I play with', 'Only people who share a campaign with you.'),
+    'private': ('Only me', 'Nobody else can open it.'),
+}
+SHOWCASE_MAX = 6
+_SHOWCASE_ELIGIBLE = ('(c.created_by = ? OR c.player_id = ?) AND COALESCE(c.is_npc, 0) = 0 AND COALESCE(c.is_temp_familiar, 0) = 0')
+
+
+def _class_label(key):
+    for k, label, _desc in CHARACTER_CLASSES:
+        if k == key:
+            return label
+    return None
+
+
+def _can_view_profile(db, owner, viewer_id):
+    if owner['id'] == viewer_id or owner['profile_visibility'] == 'members':
+        return True
+    if owner['profile_visibility'] == 'shared':
+        return db.execute('SELECT 1 FROM campaign_members a JOIN campaign_members b ON b.campaign_id = a.campaign_id '
+                          'WHERE a.user_id = ? AND b.user_id = ? LIMIT 1', (viewer_id, owner['id'])).fetchone() is not None
+    return False
+
+
+def _showcase_characters(db, user_id):
+    rows = db.execute('SELECT c.id, c.name, c.level, c.class_key, c.avatar_path FROM profile_showcase s '
+                      'JOIN characters c ON c.id = s.character_id WHERE s.user_id = ? AND ' + _SHOWCASE_ELIGIBLE +
+                      ' ORDER BY s.position, c.name', (user_id, user_id, user_id)).fetchall()
+    return [dict(r, class_label=_class_label(r['class_key'])) for r in rows]
+
+
+def _save_showcase(db, user_id, raw_ids):
+    ids = []
+    for value in raw_ids:
+        if not str(value).isdigit():
+            return 'Pick characters from the list.'
+        if int(value) not in ids:
+            ids.append(int(value))
+    if len(ids) > SHOWCASE_MAX:
+        return 'Feature at most %d characters.' % SHOWCASE_MAX
+    if ids:
+        allowed = {r['id'] for r in db.execute('SELECT c.id FROM characters c WHERE ' + _SHOWCASE_ELIGIBLE, (user_id, user_id)).fetchall()}
+        if not set(ids) <= allowed:
+            return 'You can only feature your own player characters.'
+    db.execute('DELETE FROM profile_showcase WHERE user_id = ?', (user_id,))
+    for position, cid in enumerate(ids):
+        db.execute('INSERT INTO profile_showcase (user_id, character_id, position) VALUES (?, ?, ?)', (user_id, cid, position))
+    return None
+
+
+def profile_extra():
+    """What the account page needs beyond the basic row: visibility, password state, the showcase picker."""
+    if '_profile_extra' not in g:
+        uid = session.get('user_id')
+        extra = {'visibility': 'shared', 'has_password': True, 'showcase_ids': [], 'showcase_options': [], 'ready': False}
+        if uid:
+            db = get_db()
+            try:
+                row = db.execute('SELECT profile_visibility, password_hash FROM users WHERE id = ?', (uid,)).fetchone()
+                extra.update(visibility=row['profile_visibility'], has_password=bool(row['password_hash']), ready=True)
+                extra['showcase_ids'] = [r['character_id'] for r in db.execute(
+                    'SELECT character_id FROM profile_showcase WHERE user_id = ? ORDER BY position', (uid,)).fetchall()]
+                extra['showcase_options'] = [dict(r, class_label=_class_label(r['class_key'])) for r in db.execute(
+                    'SELECT c.id, c.name, c.level, c.class_key, c.avatar_path, ca.name AS campaign_name FROM characters c '
+                    'LEFT JOIN campaigns ca ON ca.id = c.campaign_id WHERE ' + _SHOWCASE_ELIGIBLE + ' ORDER BY ca.name, c.name',
+                    (uid, uid)).fetchall()]
+            except pgerr.UndefinedColumn:
+                db.rollback()
+                row = db.execute('SELECT password_hash FROM users WHERE id = ?', (uid,)).fetchone()
+                extra['has_password'] = bool(row['password_hash'])
+            except pgerr.UndefinedTable:
+                db.rollback()
+        g._profile_extra = extra
+    return g._profile_extra
+
+
+app.jinja_env.globals['profile_extra'] = profile_extra
+app.jinja_env.globals['profile_visibility_options'] = PROFILE_VISIBILITY
+app.jinja_env.globals['showcase_max'] = SHOWCASE_MAX
+
+
+@app.route('/u/<username>')
+def profile_view(username):
+    db = get_db()
+    try:
+        owner = db.execute('SELECT id, username, display_name, avatar_path, bio, created_at, profile_visibility FROM users '
+                           'WHERE lower(username) = lower(?)', (username,)).fetchone()
+    except pgerr.UndefinedColumn:
+        db.rollback()
+        return api_error('Profiles need a database update that has not been applied yet (migration 0039).', 503, code='migration_pending')
+    if owner is None or not _can_view_profile(db, owner, session['user_id']):
+        abort(404)
+    created = owner['created_at']
+    if isinstance(created, str):
+        created = datetime.fromisoformat(created[:10])
+    return render_template('profile_view.html', owner=owner, is_me=owner['id'] == session['user_id'],
+                           member_since=created.strftime('%B %Y'), showcase=_showcase_characters(db, owner['id']))
+
+
+@app.route('/account/username', methods=['POST'])
+def account_username():
+    """Change the username (what you log in with): needs the current password, counted like a login attempt so the form
+    cannot be used to guess it.  Sessions stay signed in; a confirmed email address is told about the change."""
+    db = get_db()
+    user = _account_row(db, session['user_id'])
+    if user is None:
+        session.clear()
+        return redirect(url_for('login'))
+    row = db.execute('SELECT password_hash FROM users WHERE id = ?', (user['id'],)).fetchone()
+    new = request.form.get('username', '').strip()
+    ip = client_ip()
+
+    def fail(message, status=400):
+        db.close()
+        return render_template('account.html', profile=user, form=user, error=None, username_error=message, new_username=new[:64]), status
+
+    wait = security.login_blocked_for(db, app.secret_key, user['username'], ip)
+    if wait:
+        return fail(_wait_message(wait), 429)
+    if row['password_hash'] and not check_password_hash(row['password_hash'], request.form.get('current_password', '')[:1024]):
+        security.record_login_failure(db, app.secret_key, user['username'], ip)
+        db.commit()
+        return fail('Your current password is not correct.')
+    old = user['username']
+    if _username_error(new) or not new:
+        return fail(_username_error(new) or 'Enter a new username.')
+    if new == old:
+        return fail('That is already your username.')
+    if db.execute('SELECT id FROM users WHERE lower(username) = lower(?) AND id <> ?', (new, user['id'])).fetchone():
+        return fail('That username is already taken.')
+    try:
+        db.execute('UPDATE users SET username = ? WHERE id = ?', (new, user['id']))
+    except UniqueViolation:                       # someone took it a moment ago
+        db.rollback()
+        return fail('That username is already taken.')
+    security.clear_login_failures(db, app.secret_key, old, ip)
+    db.commit()
+    db.close()
+    session['username'] = new
+    g.pop('_profile', None)
+    if user.get('email') and user.get('email_verified_at') and mailer.enabled():
+        try:
+            mailer.send(user['email'], 'Your Campaign Ledger username was changed',
+                        render_template('email/username_changed.txt', name=user['display_name'] or new, old=old, new=new))
+        except mailer.MailError:
+            pass                                  # the change is made; the notice is a courtesy and the failure is in the log
+    return redirect(url_for('account', un=1))
+
+
+@app.route('/account/password', methods=['POST'])
+def account_password():
+    """Change the password: needs the current one.  A wrong current password counts as a failed login
+    (same throttle), so this form cannot be used to guess passwords."""
+    db = get_db()
+    user = db.execute('SELECT id, username, password_hash, display_name, avatar_path, bio FROM users WHERE id = ?', (session['user_id'],)).fetchone()
+    if user is None:
+        session.clear()
+        return redirect(url_for('login'))
+    current = request.form.get('current_password', '')[:1024]
+    new = request.form.get('new_password', '')
+    confirm = request.form.get('confirm_password', '')
+    ip = client_ip()
+
+    def fail(message, status=400):
+        return render_template('account.html', profile=_account_row(db, user['id']), form=user, error=None, password_error=message), status
+
+    wait = security.login_blocked_for(db, app.secret_key, user['username'], ip)
+    if wait:
+        return fail(_wait_message(wait), 429)
+    if user['password_hash'] and not check_password_hash(user['password_hash'], current):      # a Google account has none yet
+        security.record_login_failure(db, app.secret_key, user['username'], ip)
+        db.commit()
+        return fail('Your current password is not correct.')
+    if new != confirm:
+        return fail('The new passwords do not match.')
+    if len(new) < 8:
+        return fail('Password must be at least 8 characters.')
+    if len(new) > 128:
+        return fail('Password must be at most 128 characters.')
+    if user['password_hash'] and new == current:
+        return fail('Choose a password different from the current one.')
+    db.execute('UPDATE users SET password_hash = ? WHERE id = ?', (generate_password_hash(new), user['id']))
+    security.clear_login_failures(db, app.secret_key, user['username'], ip)
+    db.commit()
+    version = _bump_session_version(db, user['id'])                        # ends every other session of this account
+    permanent = session.permanent
+    _start_session(user['id'], user['username'], remember=permanent, version=version)   # fresh session and CSRF token
+    return redirect(url_for('account', pw=1))
+
+
+def _bump_session_version(db, user_id):
+    """Invalidate all sessions of the account; returns the new version (0 if migration 0023 is not applied yet)."""
+    try:
+        db.execute('UPDATE users SET session_version = session_version + 1 WHERE id = ?', (user_id,))
+        row = db.execute('SELECT session_version FROM users WHERE id = ?', (user_id,)).fetchone()
+        db.commit()
+        return int(row['session_version'])
+    except pgerr.UndefinedColumn:
+        db.rollback()
+        app.logger.error('users.session_version is missing: apply migration 0023_session_version.sql')
+        return 0
+
+
+@app.route('/account/export', methods=['POST'])
+def account_export():
+    """Download everything the app holds about the logged-in user as one JSON file: the account, memberships, and the
+    characters, factions, maps and dice rolls they made.  Never includes the password hash, session data or anyone
+    else's account details."""
+    db = get_db()
+    user = _account_row(db, session['user_id'])
+    if user is None:
+        session.clear()
+        return redirect(url_for('login'))
+    uid = user['id']
+    joined = db.execute('SELECT created_at FROM users WHERE id = ?', (uid,)).fetchone()['created_at']
+    rows = lambda sql, *a: [dict(r) for r in db.execute(sql, a).fetchall()]
+    data = {
+        'exported_at': datetime.now(timezone.utc).isoformat(timespec='seconds'),
+        'account': {
+            'username': user['username'], 'display_name': user['display_name'], 'bio': user['bio'],
+            'email': user.get('email'), 'email_verified': bool(user.get('email_verified_at')),
+            'created_at': joined,
+        },
+        'campaign_memberships': rows(
+            'SELECT c.name AS campaign, cm.role, cm.status FROM campaign_members cm JOIN campaigns c ON c.id = cm.campaign_id '
+            'WHERE cm.user_id = ? ORDER BY c.id', uid),
+        'characters_you_made': rows(
+            'SELECT c.name AS campaign, ch.* FROM characters ch JOIN campaigns c ON c.id = ch.campaign_id WHERE ch.created_by = ? ORDER BY ch.id', uid),
+        'library_characters': rows(
+            'SELECT ch.id, ch.name, ch.level, ch.class_key, ch.max_hp, ch.armor_class, ch.speed, ch.str_score, ch.dex_score, ch.con_score, '
+            'ch.int_score, ch.wis_score, ch.cha_score, ch.notes, ch.added_from, ch.created_at FROM characters ch '
+            'WHERE ch.owner_id = ? AND ch.campaign_id IS NULL ORDER BY ch.id', uid),
+        'factions_you_made': rows(
+            'SELECT c.name AS campaign, g.* FROM groups g JOIN campaigns c ON c.id = g.campaign_id WHERE g.created_by = ? ORDER BY g.id', uid),
+        'maps_you_made': rows(
+            'SELECT c.name AS campaign, m.id, m.name, m.created_at FROM maps m JOIN campaigns c ON c.id = m.campaign_id WHERE m.created_by = ? ORDER BY m.id', uid),
+        'dice_rolls': rows(
+            'SELECT c.name AS campaign, d.label, d.dice, d.modifier, d.total, d.mode, d.created_at FROM dice_rolls d '
+            'JOIN campaigns c ON c.id = d.campaign_id WHERE d.user_id = ? ORDER BY d.id', uid),
+    }
+    for item in data['characters_you_made']:
+        item.pop('created_by', None)
+    for key in ('factions_you_made', 'maps_you_made'):
+        for item in data[key]:
+            item.pop('created_by', None)
+    db.close()
+    body = json.dumps(data, indent=2, ensure_ascii=False, default=str)
+    return Response(body, mimetype='application/json',
+                    headers={'Content-Disposition': 'attachment; filename="campaign-ledger-%s.json"' % re.sub(r'[^A-Za-z0-9_-]+', '_', user['username'])})
+
+
+@app.route('/account/sessions/logout-all', methods=['POST'])
+def account_logout_all():
+    """Sign out every other browser/device; this one stays signed in."""
+    db = get_db()
+    try:
+        db.execute('SELECT session_version FROM users WHERE id = ?', (session['user_id'],)).fetchone()
+    except pgerr.UndefinedColumn:
+        db.rollback()
+        return api_error('Signing out everywhere needs a database update that has not been applied yet (migration 0023_session_version.sql).', 503, code='migration_pending')
+    version = _bump_session_version(db, session['user_id'])
+    _start_session(session['user_id'], session['username'], remember=session.permanent, version=version)
+    return redirect(url_for('account', out=1))
 
 
 # ---------------- CAMPAIGN SCOPING (Phase C) ----------------
@@ -447,6 +1603,32 @@ def campaign_access_required(view_func):
     return wrapped
 
 
+def npcs_hidden_from_viewer():
+    """True when this campaign hides its NPCs and the person asking is not the DM (the DM viewing as a player counts as a Player)."""
+    c = getattr(g, 'campaign', None)
+    return bool(c is not None and c['hide_npcs'] and not g.is_dm)
+
+
+def is_foe(is_npc, is_ally=0):
+    """An NPC the table does not treat as one of its own.  An ally is still an NPC, but its stats are shown to Players and
+    the "Hide NPCs" switch leaves it alone."""
+    return bool(is_npc) and not is_ally
+
+
+def npc_is_hidden(is_npc, created_by, is_ally=0):
+    """One character's visibility: an NPC is hidden from a Player while the switch is on, except from the Player who made it
+    (and except an ally, which is always visible)."""
+    mine = created_by == session.get('user_id') and not getattr(g, 'previewing', False)     # "View as player" shows what a Player who did not make it sees
+    return is_foe(is_npc, is_ally) and npcs_hidden_from_viewer() and not mine
+
+
+def npc_filter(alias='c'):
+    """(sql, params) to AND onto a characters query so a Player never gets a hidden NPC; empty when nothing is hidden."""
+    if not npcs_hidden_from_viewer():
+        return '', []
+    return f' AND ({alias}.is_npc = 0 OR {alias}.is_ally = 1 OR {alias}.created_by = ?)', [None if getattr(g, 'previewing', False) else session.get('user_id')]
+
+
 @app.route('/campaigns/<int:campaign_id>/preview-as-player', methods=['POST'])
 @campaign_access_required
 def preview_as_player():
@@ -508,14 +1690,29 @@ def campaigns_list():
 
 @app.route('/campaigns/new', methods=['GET', 'POST'])
 def campaign_new():
+    gate = _confirm_gate()
+    if gate:
+        return gate
     if request.method == 'POST':
         name = request.form.get('name', '').strip() or 'Untitled Campaign'
-        description = request.form.get('description', '').strip()
-        avatar_path = save_upload_field('avatar', 'avatars')
+        description = sanitize_bio(request.form.get('description'))
+        avatar_path = _campaign_banner_upload()
         setting = _resolve_campaign_setting(request.form)
         status = _campaign_status_field(request.form)
         access_mode = _campaign_access_field(request.form)
         db = get_db()
+        owned = db.execute("SELECT COUNT(*) AS n FROM campaign_members WHERE user_id = ? AND role = 'owner'", (session['user_id'],)).fetchone()['n']
+        wait = 0 if owned >= security.MAX_OWNED_CAMPAIGNS else security.hit(db, app.secret_key, 'campaign-create', session['user_id'])
+        if owned >= security.MAX_OWNED_CAMPAIGNS or wait:
+            db.commit()
+            db.close()
+            msg = ('You already own %d campaigns, the most one account can have. Delete one you no longer use first.' % security.MAX_OWNED_CAMPAIGNS
+                   if owned >= security.MAX_OWNED_CAMPAIGNS else 'You are creating campaigns too fast. Try again in a little while.')
+            resp = Response(msg, status=429, mimetype='text/plain')
+            if wait:
+                resp.headers['Retry-After'] = str(wait)
+            return resp
+        db.commit()
         cur = db.execute('''
             INSERT INTO campaigns (name, description, avatar_path, setting, status, access_mode)
             VALUES (?, ?, ?, ?, ?, ?)
@@ -523,12 +1720,14 @@ def campaign_new():
         campaign_id = cur.lastrowid
         db.execute('INSERT INTO campaign_members (campaign_id, user_id, role, status) VALUES (?, ?, ?, ?)',
                    (campaign_id, session['user_id'], 'owner', 'dm'))
+        if avatar_path:                                             # the cover image now belongs to this campaign's quota
+            db.execute('UPDATE stored_files SET campaign_id = ? WHERE key = ?', (campaign_id, avatar_path))
         db.commit()
         db.close()
         session['last_campaign_id'] = campaign_id
-        return redirect(url_for('characters_list', campaign_id=campaign_id))
+        return redirect(url_for('campaign_home', campaign_id=campaign_id))
     setting_preset, setting_custom = _split_campaign_setting(None)
-    return render_template('campaign_form.html', campaign=None, members=None,
+    return render_template('campaign_form.html', campaign=None, members=None, bio_entries=[{'t': '', 'h': False}], notes_entries=[{'t': '', 'h': False}], assignable=[],
                             setting_preset=setting_preset, setting_custom=setting_custom)
 
 
@@ -540,8 +1739,8 @@ def campaign_edit():
         if g.campaign_role != 'owner':
             abort(403)
         name = request.form.get('name', '').strip() or 'Untitled Campaign'
-        description = request.form.get('description', '').strip()
-        avatar_path = save_upload_field('avatar', 'avatars')
+        description = sanitize_bio(request.form.get('description'))
+        avatar_path = _campaign_banner_upload()
         remove_avatar = request.form.get('remove_avatar') == '1'
         if avatar_path:
             old = db.execute('SELECT avatar_path FROM campaigns WHERE id = ?', (g.campaign_id,)).fetchone()
@@ -560,6 +1759,8 @@ def campaign_edit():
             UPDATE campaigns SET name = ?, description = ?, setting = ?, status = ?, access_mode = ?
             WHERE id = ?
         ''', (name, description, setting, status, access_mode, g.campaign_id))
+        if 'notes' in request.form:                         # campaign notes: the same boxes as a character's notes
+            db.execute('UPDATE campaigns SET notes = ? WHERE id = ?', (sanitize_notes_payload(request.form.get('notes')), g.campaign_id))
         if access_mode != 'invite_link':           # leaving invite-link mode kills every outstanding link for good
             db.execute('UPDATE campaign_invite_links SET revoked_at = ' + _UTC_NOW + ' WHERE campaign_id = ? AND revoked_at IS NULL',
                        (g.campaign_id,))
@@ -584,11 +1785,16 @@ def campaign_edit():
                (expires_at <= ''' + _UTC_NOW + ''') AS expired
         FROM campaign_invite_links WHERE campaign_id = ? ORDER BY id DESC LIMIT 15
     ''', (g.campaign_id,)).fetchall() if g.campaign_role == 'owner' and campaign['access_mode'] == 'invite_link' else []
+    storage = quotas.summary(db, session['user_id'], g.campaign_id)
+    assignable = db.execute('SELECT id, name, is_npc, player_id FROM characters WHERE campaign_id = ? AND is_temp_familiar = 0 '
+                            'ORDER BY is_npc, lower(name)', (g.campaign_id,)).fetchall() if (g.real_is_dm or g.campaign_role == 'owner') else []
     db.close()
     new_invite_link = session.pop('new_invite_link', None) if g.campaign_role == 'owner' else None
     setting_preset, setting_custom = _split_campaign_setting(campaign['setting'])
-    return render_template('campaign_form.html', campaign=campaign, members=members, invitations=invitations,
-                            invite_links=invite_links, new_invite_link=new_invite_link,
+    return render_template('campaign_form.html', campaign=campaign, members=members, invitations=invitations, assignable=assignable,
+                            bio_entries=notes_parse_entries(campaign['description']) or [{'t': '', 'h': False}],
+                            notes_entries=notes_parse_entries(campaign['notes']) or [{'t': '', 'h': False}],
+                            invite_links=invite_links, new_invite_link=new_invite_link, storage=storage,
                             setting_preset=setting_preset, setting_custom=setting_custom)
 
 
@@ -597,12 +1803,35 @@ MAX_PENDING_INVITATIONS = 25          # open invitations per campaign (keeps inv
 STATUS_LABELS = {'dm': 'DM', 'player': 'Player'}
 
 
+NOTIFICATION_KEEP = 200        # notifications kept per user; older ones are deleted as new ones arrive
+ACTIVITY_KEEP = 200            # events kept per campaign; older ones are deleted as new ones arrive
+
+
+def log_activity(db, campaign_id, kind, text, link=None):
+    """Record one event in the campaign's activity feed by the logged-in user (the caller commits).  `text` says what
+    happened without naming the actor: the page adds the name when it is shown, so a deleted account leaves no name."""
+    if link and not (link.startswith('/') and not link.startswith('//')):
+        link = None
+    try:
+        db.execute('INSERT INTO campaign_activity (campaign_id, user_id, kind, text, link) VALUES (?, ?, ?, ?, ?)',
+                   (campaign_id, session.get('user_id'), kind, text[:300], link))
+        db.execute('DELETE FROM campaign_activity WHERE campaign_id = ? AND id NOT IN '
+                   '(SELECT id FROM campaign_activity WHERE campaign_id = ? ORDER BY id DESC LIMIT ?)',
+                   (campaign_id, campaign_id, ACTIVITY_KEEP))
+    except pgerr.UndefinedTable:
+        db.rollback()                                       # code deployed before migration 0025: skip rather than fail the action
+        app.logger.error('campaign_activity is missing: apply migration 0025_campaign_activity.sql')
+
+
 def notify(db, user_id, kind, title, body='', link=None, invitation_id=None):
     """Add an in-app notification for one user (the caller commits)."""
     if link and not (link.startswith('/') and not link.startswith('//')):
         link = None                                         # notification links are in-app paths only, never an external URL
     db.execute('INSERT INTO notifications (user_id, kind, title, body, link, invitation_id) VALUES (?, ?, ?, ?, ?, ?)',
                (user_id, kind, title[:200], body[:500], link, invitation_id))
+    db.execute('DELETE FROM notifications WHERE user_id = ? AND id NOT IN '
+               '(SELECT id FROM notifications WHERE user_id = ? ORDER BY id DESC LIMIT ?)',
+               (user_id, user_id, NOTIFICATION_KEEP))      # DL-141: a user's inbox stays bounded without a cron job
 
 
 def unread_notification_count():
@@ -787,6 +2016,9 @@ def _is_member(db, campaign_id):
 
 @app.route('/join/<token>')
 def join_via_link(token):
+    gate = _confirm_gate()
+    if gate:
+        return gate
     db = get_db()
     link = _usable_link(db, token)
     member = link is not None and _is_member(db, link['campaign_id'])
@@ -800,6 +2032,9 @@ def join_via_link(token):
 
 @app.route('/join/<token>', methods=['POST'])
 def join_via_link_accept(token):
+    gate = _confirm_gate()
+    if gate:
+        return gate
     db = get_db()
     link = _usable_link(db, token)
     if link is None:
@@ -821,6 +2056,7 @@ def join_via_link_accept(token):
     if link['created_by_id'] and link['created_by_id'] != session['user_id']:
         notify(db, link['created_by_id'], 'invite_link_joined', '%s joined %s' % (session['username'], link['campaign_name']),
                'They used your invite link and joined as a Player.', url_for('campaign_edit', campaign_id=link['campaign_id']))
+    log_activity(db, link['campaign_id'], 'member_joined', 'joined the campaign')
     db.commit()
     db.close()
     return redirect(url_for('characters_list', campaign_id=link['campaign_id']))
@@ -890,6 +2126,8 @@ def _respond_to_invitation(invitation_id, accept):
                        ON CONFLICT (campaign_id, user_id) DO NOTHING''', (inv['campaign_id'], session['user_id'], inv['status']))
     db.execute('UPDATE notifications SET read_at = ' + _UTC_NOW + ' WHERE invitation_id = ? AND user_id = ? AND read_at IS NULL',
                (invitation_id, session['user_id']))
+    if accept:
+        log_activity(db, inv['campaign_id'], 'member_joined', 'joined the campaign')
     if inv['invited_by_id']:
         notify(db, inv['invited_by_id'], 'invite_accepted' if accept else 'invite_declined',
                '%s %s your invitation' % (session['username'], 'accepted' if accept else 'declined'),
@@ -928,7 +2166,7 @@ def api_member_search():
     retry = security.member_search_blocked_for(db, secret, session['user_id'], g.campaign_id)
     if retry:
         db.close()
-        return jsonify({'error': 'Searching too fast -- try again in a moment.'}), 429
+        return api_error('Searching too fast -- try again in a moment.', 429)
     security.record_member_search(db, secret, session['user_id'], g.campaign_id)
     db.commit()
     like = q.replace('\\', '\\\\').replace('%', r'\%').replace('_', r'\_') + '%'
@@ -962,6 +2200,48 @@ def campaign_member_status(user_id):
     return redirect(url_for('campaign_edit', campaign_id=g.campaign_id))
 
 
+@app.route('/campaigns/<int:campaign_id>/npc-visibility', methods=['POST'])
+@campaign_access_required
+def campaign_npc_visibility():
+    """The DM or an owner switches "Hide NPCs from Players" on or off.  Judged by the real status, so a DM previewing as
+    a Player can still turn it off."""
+    if not (g.real_is_dm or g.campaign_role == 'owner'):
+        abort(403)
+    hide = request.form.get('hide_npcs') == 'on'
+    db = get_db()
+    db.execute('UPDATE campaigns SET hide_npcs = ? WHERE id = ?', (hide, g.campaign_id))
+    db.commit()
+    db.close()
+    return redirect(url_for('campaign_edit', campaign_id=g.campaign_id))
+
+
+@app.route('/campaigns/<int:campaign_id>/members/<int:user_id>/characters', methods=['POST'])
+@campaign_access_required
+def campaign_member_characters(user_id):
+    """The DM or an owner chooses which characters a member plays.  That member can then edit them and move their map
+    tokens.  A character has at most one player, so choosing it here takes it from whoever had it."""
+    if not (g.real_is_dm or g.campaign_role == 'owner'):
+        abort(403)
+    db = get_db()
+    if db.execute('SELECT 1 FROM campaign_members WHERE campaign_id = ? AND user_id = ?', (g.campaign_id, user_id)).fetchone() is None:
+        db.close()
+        abort(404)
+    wanted = set()
+    for raw in request.form.getlist('character_ids'):
+        try:
+            wanted.add(int(raw))
+        except ValueError:
+            continue
+    valid = {r['id'] for r in db.execute('SELECT id FROM characters WHERE campaign_id = ? AND is_temp_familiar = 0', (g.campaign_id,)).fetchall()}
+    wanted &= valid
+    db.execute('UPDATE characters SET player_id = NULL WHERE campaign_id = ? AND player_id = ?', (g.campaign_id, user_id))
+    for cid in wanted:
+        db.execute('UPDATE characters SET player_id = ? WHERE id = ? AND campaign_id = ?', (user_id, cid, g.campaign_id))
+    db.commit()
+    db.close()
+    return redirect(url_for('campaign_edit', campaign_id=g.campaign_id) + '#member-list')
+
+
 @app.route('/campaigns/<int:campaign_id>/members/<int:user_id>/make-owner', methods=['POST'])
 @campaign_access_required
 def campaign_member_make_owner(user_id):
@@ -993,6 +2273,7 @@ def campaign_leave():
             db.close()
             return redirect(url_for('campaign_edit', campaign_id=g.campaign_id))
     db.execute('DELETE FROM campaign_members WHERE campaign_id = ? AND user_id = ?', (g.campaign_id, session['user_id']))
+    log_activity(db, g.campaign_id, 'member_left', 'left the campaign')
     db.commit()
     db.close()
     if session.get('last_campaign_id') == g.campaign_id:
@@ -1020,6 +2301,37 @@ def campaign_member_remove(user_id):
     return redirect(url_for('campaign_edit', campaign_id=g.campaign_id))
 
 
+def _delete_campaign_rows(db, campaign_id):
+    """Delete a campaign and everything in it inside the caller's transaction; returns the uploaded files to remove
+    after the caller commits (once the rows are gone the files could no longer be found).  The explicit deletes are
+    kept even though Postgres enforces the same ON DELETE CASCADE constraints -- belt and braces."""
+    avatar_paths = [r['avatar_path'] for r in db.execute(
+        'SELECT avatar_path FROM characters WHERE campaign_id = ? AND avatar_path IS NOT NULL', (campaign_id,))]
+    avatar_paths += [r['avatar_path'] for r in db.execute(
+        'SELECT avatar_path FROM groups WHERE campaign_id = ? AND avatar_path IS NOT NULL', (campaign_id,))]
+    avatar_paths += [r['avatar_path'] for r in db.execute(
+        'SELECT avatar_path FROM campaigns WHERE id = ? AND avatar_path IS NOT NULL', (campaign_id,))]
+    sheet_paths = [r['image_path'] for r in db.execute('''
+        SELECT cs.image_path FROM character_sheets cs
+        JOIN characters c ON cs.character_id = c.id
+        WHERE c.campaign_id = ?
+    ''', (campaign_id,))]
+    map_paths = [r['image_path'] for r in db.execute(
+        'SELECT image_path FROM maps WHERE campaign_id = ? AND image_path IS NOT NULL', (campaign_id,))]
+
+    db.execute('DELETE FROM battle_participants WHERE character_id IN (SELECT id FROM characters WHERE campaign_id = ?)', (campaign_id,))
+    db.execute('DELETE FROM character_sheets WHERE character_id IN (SELECT id FROM characters WHERE campaign_id = ?)', (campaign_id,))
+    db.execute('DELETE FROM map_drawings WHERE map_id IN (SELECT id FROM maps WHERE campaign_id = ?)', (campaign_id,))
+    db.execute('DELETE FROM map_pins WHERE map_id IN (SELECT id FROM maps WHERE campaign_id = ?)', (campaign_id,))
+    db.execute('DELETE FROM characters WHERE campaign_id = ?', (campaign_id,))
+    db.execute('DELETE FROM groups WHERE campaign_id = ?', (campaign_id,))
+    db.execute('DELETE FROM maps WHERE campaign_id = ?', (campaign_id,))
+    db.execute('DELETE FROM campaign_members WHERE campaign_id = ?', (campaign_id,))
+    db.execute('DELETE FROM stored_files WHERE campaign_id = ?', (campaign_id,))
+    db.execute('DELETE FROM campaigns WHERE id = ?', (campaign_id,))
+    return [p for p in avatar_paths + sheet_paths + map_paths if p]
+
+
 @app.route('/campaigns/<int:campaign_id>/delete', methods=['POST'])
 @campaign_access_required
 def campaign_delete():
@@ -1027,40 +2339,11 @@ def campaign_delete():
         abort(403)
     db = get_db()
 
-    # Collect every uploaded file this campaign owns before touching any
-    # rows (once the rows are gone we could no longer find the files). The
-    # explicit deletes below are kept even though Postgres enforces the same
-    # ON DELETE CASCADE constraints -- belt and braces.
-    avatar_paths = [r['avatar_path'] for r in db.execute(
-        'SELECT avatar_path FROM characters WHERE campaign_id = ? AND avatar_path IS NOT NULL', (g.campaign_id,)
-    )]
-    avatar_paths += [r['avatar_path'] for r in db.execute(
-        'SELECT avatar_path FROM groups WHERE campaign_id = ? AND avatar_path IS NOT NULL', (g.campaign_id,)
-    )]
-    if g.campaign['avatar_path']:
-        avatar_paths.append(g.campaign['avatar_path'])
-    sheet_paths = [r['image_path'] for r in db.execute('''
-        SELECT cs.image_path FROM character_sheets cs
-        JOIN characters c ON cs.character_id = c.id
-        WHERE c.campaign_id = ?
-    ''', (g.campaign_id,))]
-    map_paths = [r['image_path'] for r in db.execute(
-        'SELECT image_path FROM maps WHERE campaign_id = ? AND image_path IS NOT NULL', (g.campaign_id,)
-    )]
-
-    db.execute('DELETE FROM battle_participants WHERE character_id IN (SELECT id FROM characters WHERE campaign_id = ?)', (g.campaign_id,))
-    db.execute('DELETE FROM character_sheets WHERE character_id IN (SELECT id FROM characters WHERE campaign_id = ?)', (g.campaign_id,))
-    db.execute('DELETE FROM map_drawings WHERE map_id IN (SELECT id FROM maps WHERE campaign_id = ?)', (g.campaign_id,))
-    db.execute('DELETE FROM map_pins WHERE map_id IN (SELECT id FROM maps WHERE campaign_id = ?)', (g.campaign_id,))
-    db.execute('DELETE FROM characters WHERE campaign_id = ?', (g.campaign_id,))
-    db.execute('DELETE FROM groups WHERE campaign_id = ?', (g.campaign_id,))
-    db.execute('DELETE FROM maps WHERE campaign_id = ?', (g.campaign_id,))
-    db.execute('DELETE FROM campaign_members WHERE campaign_id = ?', (g.campaign_id,))
-    db.execute('DELETE FROM campaigns WHERE id = ?', (g.campaign_id,))
+    files = _delete_campaign_rows(db, g.campaign_id)
     db.commit()
     db.close()
 
-    delete_uploads(avatar_paths + sheet_paths + map_paths)
+    delete_uploads(files)
 
     if session.get('last_campaign_id') == g.campaign_id:
         session.pop('last_campaign_id', None)
@@ -1117,6 +2400,22 @@ def sanitize_notes_payload(raw):
     return json.dumps(cleaned)
 
 
+def sanitize_bio(raw):
+    """The campaign bio: bold/italic/list text in the same storage format as notes (one box).  Plain text, including
+    text that happens to be valid JSON such as 123, is kept as plain text."""
+    raw = (raw or '').replace('\x00', '').strip()
+    if not raw:
+        return ''
+    try:
+        parsed = json.loads(raw)
+    except (ValueError, TypeError):
+        parsed = None
+    if isinstance(parsed, list):
+        out = sanitize_notes_payload(raw)
+        return '' if out == '[]' else out
+    return json.dumps([_escape_text(raw).replace('\n', '<br>')])
+
+
 def notes_parse_entries(raw):
     """Parse characters.notes into [{'t': trusted html, 'h': bool hidden-from-Players}, ...],
     one per note box. Plain-string entries (and every note saved before this flag
@@ -1151,12 +2450,23 @@ def notes_parse_blocks(raw):
     return [e['t'] for e in notes_parse_entries(raw)]
 
 
+def owns_character(row):
+    """True when the signed-in member made this character or the DM attached it to them ("played by").
+    Those two may edit it and read its hidden notes; the DM always may.  Works on any row that carries
+    created_by and, when it has one, player_id."""
+    me = session.get('user_id')
+    if me is None:
+        return False
+    keys = row.keys() if hasattr(row, 'keys') else row
+    return bool(row['created_by'] == me or ('player_id' in keys and row['player_id'] == me))
+
+
 def can_see_hidden_notes(character):
-    """The DM and the character's own creator see every note; other members
+    """The DM and the character's own creator (or the member it is attached to) see every note; other members
     never receive a note flagged hidden. Single source of truth for the rule."""
     if getattr(g, 'previewing', False):      # "View as player" shows exactly what a Player gets, even to the DM who made the NPC
         return False
-    return bool(g.is_dm or character['created_by'] == session.get('user_id'))
+    return bool(g.is_dm or owns_character(character))
 
 
 def notes_for_viewer(raw, can_see_hidden):
@@ -1192,13 +2502,15 @@ def notes_plain_preview(raw, show_hidden=False):
     blocks = [e['t'] for e in notes_parse_entries(raw) if show_hidden or not e['h']]
     if not blocks:
         return ''
-    joined = re.sub(r'<(br|/div|/li|/p)\s*/?>', '\n', '\n'.join(blocks), flags=re.I)
+    # a line break comes before a block opens as well as after it closes: the editor stores "line 1<div>line 2</div>"
+    joined = re.sub(r'<(br|/?div|/?li|/?p|/?ul)\s*/?>', '\n', '\n'.join(blocks), flags=re.I)
     joined = _NOTE_STRIP_TAGS_RE.sub('', joined)
     joined = joined.replace('&lt;', '<').replace('&gt;', '>').replace('&amp;', '&')
     return preview_lines(joined)
 
 
 app.jinja_env.filters['notes_preview'] = notes_plain_preview
+app.jinja_env.globals['can_see_hidden_notes'] = can_see_hidden_notes
 app.jinja_env.filters['preview_lines'] = preview_lines
 
 
@@ -1240,6 +2552,16 @@ def _read_upload_source(file_storage=None, direct_key=None):
     return file_storage.read(), None
 
 
+def _put_upload(key, processed, kind):
+    """Store one processed image if the user's and the campaign's quota allow it, and record its size.
+    The ledger row joins the request's transaction (committed with the record that points at the file)."""
+    db = get_db()
+    uid, cid = session.get('user_id'), g.get('campaign_id')
+    quotas.check(db, uid, cid, len(processed.data))                       # raises QuotaExceeded before anything is written
+    get_storage().put(UPLOADS, key, processed.data, processed.content_type)
+    quotas.record(db, key, uid, cid, kind, len(processed.data))
+
+
 def _store_image(data, subfolder, cap_dimension=None):
     """Validate + store; returns Stored or None when the file is not an acceptable image."""
     try:
@@ -1247,7 +2569,7 @@ def _store_image(data, subfolder, cap_dimension=None):
     except images.ImageError:
         return None
     key = f"{subfolder}/{uuid.uuid4().hex}.{p.ext}"
-    get_storage().put(UPLOADS, key, p.data, p.content_type)
+    _put_upload(key, p, subfolder)
     return Stored(key, p.width, p.height)
 
 
@@ -1280,6 +2602,14 @@ def store_uploads(field, subfolder):
     return out
 
 
+CAMPAIGN_BANNER_PX = 1200                      # longest edge of a campaign image (DL-164); the cropper saves 1200 x 720
+
+
+def _campaign_banner_upload():
+    stored = store_upload('avatar', 'avatars', cap_dimension=CAMPAIGN_BANNER_PX)
+    return stored.path if stored else None
+
+
 def save_upload_field(field, subfolder):
     stored = store_upload(field, subfolder)
     return stored.path if stored else None
@@ -1287,6 +2617,7 @@ def save_upload_field(field, subfolder):
 
 def delete_upload(rel_path):
     if rel_path:
+        quotas.forget(get_db(), [rel_path])       # frees the quota with the caller's commit
         try:
             get_storage().delete(UPLOADS, rel_path)
         except StorageError:
@@ -1296,6 +2627,7 @@ def delete_upload(rel_path):
 def delete_uploads(paths):
     paths = [p for p in paths if p]
     if paths:
+        quotas.forget(get_db(), paths)
         try:
             get_storage().delete_many(UPLOADS, paths)
         except StorageError:
@@ -1306,7 +2638,7 @@ def _generate_blank_canvas(width, height):
     """Create a plain white PNG for maps without a background image; returns its key."""
     p = images.blank_canvas(width, height)
     key = f"maps/{uuid.uuid4().hex}.png"
-    get_storage().put(UPLOADS, key, p.data, p.content_type)
+    _put_upload(key, p, 'maps')
     return key
 
 
@@ -1334,18 +2666,23 @@ def upload_sign():
     data = request.get_json(silent=True) or {}
     purpose = data.get('purpose')
     if purpose not in UPLOAD_PURPOSES:
-        return jsonify({'error': 'unknown upload type'}), 400
+        return api_error('That kind of upload is not supported.', 400, code='unknown_upload_type')
     max_bytes, allowed_types = UPLOAD_PURPOSES[purpose]
     try:
         size = int(data.get('size', 0))
     except (TypeError, ValueError):
-        return jsonify({'error': 'invalid size'}), 400
+        return api_error('The file size could not be read.', 400, code='invalid_size')
     if size <= 0:
-        return jsonify({'error': 'empty file'}), 400
+        return api_error('That file is empty.', 400, code='empty_file')
     if size > max_bytes:
-        return jsonify({'error': 'file too large (limit %d MB)' % (max_bytes // (1024 * 1024))}), 413
+        return api_error('That file is too large (limit %d MB).' % (max_bytes // (1024 * 1024)), 413, code='file_too_large')
     if (data.get('content_type') or 'application/octet-stream') not in allowed_types:
-        return jsonify({'error': 'unsupported file type'}), 415
+        return api_error('That type of file is not supported.', 415, code='unsupported_type')
+    if purpose != 'import':
+        try:
+            quotas.check(get_db(), session['user_id'], None)             # already full: say so before the file travels
+        except quotas.QuotaExceeded as exc:
+            return api_error(str(exc), 413, code='quota_exceeded', scope=exc.scope)
     key = f"tmp/{session['user_id']}/{uuid.uuid4().hex}"
     target = get_storage().create_upload_target(TEMP, key, data.get('content_type'), max_bytes)
     return jsonify({'key': key, 'upload': target})
@@ -1390,7 +2727,8 @@ def _csp(nonce=None):
         "default-src 'self'",
         "img-src 'self' data: blob:",
         "media-src 'self' data: blob:",
-        "style-src 'self' 'unsafe-inline'",
+        "style-src 'self'",                                                # no inline <style> blocks: there are none, so none may run
+        "style-src-attr 'unsafe-inline'",                                  # style="..." attributes are still used all over the templates
         "font-src 'self' data:",
         "script-src 'self'" + (" 'nonce-%s'" % nonce if nonce else ''),   # inline scripts run only with this page's one-time token
         "connect-src " + ' '.join(connect),
@@ -1399,6 +2737,7 @@ def _csp(nonce=None):
         "base-uri 'self'",
         "form-action 'self'",
         "frame-ancestors 'none'",
+        "report-uri /csp-report",
     ])
 
 
@@ -1459,6 +2798,9 @@ def security_headers(resp):
     h.setdefault('Referrer-Policy', 'same-origin')
     h.setdefault('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=(), usb=()')
     h.setdefault('Cross-Origin-Opener-Policy', 'same-origin')
+    h.setdefault('Cross-Origin-Resource-Policy', 'same-origin')           # other sites cannot embed our images, scripts or JSON
+    if request.endpoint not in PUBLIC_ENDPOINTS:
+        h.setdefault('X-Robots-Tag', 'noindex, nofollow')            # everything behind sign-in stays out of search results
     if resp.mimetype in ('text/html', 'application/json'):
         h.setdefault('Content-Security-Policy', _csp(getattr(g, 'csp_nonce', None)))
         h.setdefault('Cache-Control', 'no-store')                  # logged-in pages never linger in caches / back button
@@ -1479,11 +2821,24 @@ def bad_input(exc):
     return _reject_request('The submitted data was not valid.', 400)
 
 
+@app.errorhandler(quotas.QuotaExceeded)
+def quota_exceeded(exc):
+    """A storage limit was reached: nothing was saved.  Pages get their own banner back, JSON callers the message."""
+    app.logger.info('quota refused on %s %s: %s', request.method, request.path, exc.scope)
+    if _wants_json():
+        return api_error(str(exc), 413, code='quota_exceeded', scope=exc.scope)
+    ref = urlparse(request.referrer or '')
+    if request.method == 'POST' and ref.netloc == request.host and ref.path:
+        sep = '&' if ref.query else '?'
+        return redirect(f"{ref.path}{'?' + ref.query if ref.query else ''}{sep}quota_error={exc.scope}")
+    return Response(str(exc), status=413, mimetype='text/plain')
+
+
 @app.errorhandler(StorageError)
 def storage_unavailable(exc):
     app.logger.error('storage error: %s', exc)
     if request.is_json or '/api/' in request.path or request.path.startswith('/uploads/sign'):
-        return jsonify({'error': 'file storage is temporarily unavailable'}), 503
+        return api_error('File storage is temporarily unavailable. Try again in a moment.', 503, code='storage_unavailable')
     return Response('File storage is temporarily unavailable. Please try again in a moment.', status=503,
                     mimetype='text/plain')
 
@@ -1496,14 +2851,14 @@ def index():
         'SELECT 1 FROM campaign_members WHERE campaign_id = ? AND user_id = ?', (last_id, session['user_id'])
     ).fetchone():
         db.close()
-        return redirect(url_for('characters_list', campaign_id=last_id))
+        return redirect(url_for('campaign_home', campaign_id=last_id))
     campaigns = db.execute(
         'SELECT c.id FROM campaigns c JOIN campaign_members cm ON cm.campaign_id = c.id WHERE cm.user_id = ?',
         (session['user_id'],)
     ).fetchall()
     db.close()
     if len(campaigns) == 1:
-        return redirect(url_for('characters_list', campaign_id=campaigns[0]['id']))
+        return redirect(url_for('campaign_home', campaign_id=campaigns[0]['id']))
     # Zero campaigns, or more than one with no remembered choice: let the
     # person pick (or create their first one) on the campaigns list.
     return redirect(url_for('campaigns_list'))
@@ -1515,19 +2870,28 @@ def index():
 @campaign_access_required
 def characters_list():
     db = get_db()
+    hide_sql, hide_params = npc_filter()
     characters = db.execute('''
         SELECT c.*, g.name AS group_name, g.color AS group_color, mk.username AS made_by
         FROM characters c
         LEFT JOIN groups g ON c.group_id = g.id
         LEFT JOIN users mk ON mk.id = c.created_by
-        WHERE c.is_temp_familiar = 0 AND c.campaign_id = ?
+        WHERE c.is_temp_familiar = 0 AND c.campaign_id = ?''' + hide_sql + '''
         ORDER BY lower(c.name) ASC
-    ''', (g.campaign_id,)).fetchall()
+    ''', [g.campaign_id] + hide_params).fetchall()
     groups = db.execute('SELECT * FROM groups WHERE campaign_id = ? ORDER BY lower(name) ASC', (g.campaign_id,)).fetchall()
     by_char = _factions_by_character(db, g.campaign_id)
     characters = [dict(c, factions=by_char.get(c['id'], [])) for c in characters]
+    live = _battle_live_status(db)
+    library_options = [dict(r, class_label=_class_label(r['class_key'])) for r in db.execute(
+        'SELECT lib.id, lib.name, lib.level, lib.class_key, lib.avatar_path FROM characters lib WHERE lib.owner_id = ? AND lib.campaign_id IS NULL '
+        'AND NOT EXISTS (SELECT 1 FROM characters c WHERE c.campaign_id = ? AND c.library_id = lib.id) ORDER BY lower(lib.name)',
+        (session['user_id'], g.campaign_id)).fetchall()]
     db.close()
-    return render_template('characters_list.html', characters=characters, groups=groups,
+    added = request.args.get('library_added', '')
+    library_banner = (('success', 'Added %d character%s to this campaign.' % (int(added), '' if int(added) == 1 else 's')) if added.isdigit() and len(added) < 5
+                      else LIBRARY_NOTES['nothing'] if request.args.get('library_note') == 'nothing' else None)
+    return render_template('characters_list.html', characters=characters, groups=groups, live=live, library_options=library_options, library_banner=library_banner,
                            deletable={c['id'] for c in characters if can_delete(c['created_by'])})
 
 
@@ -1537,6 +2901,13 @@ def character_new():
     db = get_db()
     if request.method == 'POST':
         new_id = _save_character(db, None)
+        if request.form.get('also_keep') == '1' and not request.form.get('is_npc') and _library_count(db) < LIBRARY_MAX:
+            row = db.execute('SELECT ch.*, ca.name AS campaign_name FROM characters ch JOIN campaigns ca ON ca.id = ch.campaign_id WHERE ch.id = ?', (new_id,)).fetchone()
+            campaign_id, g.campaign_id = g.campaign_id, None
+            lib_id = _clone_character(db, row, None, session['user_id'], None, row['campaign_name'])
+            g.campaign_id = campaign_id
+            db.execute('UPDATE characters SET library_id = ? WHERE id = ?', (lib_id, new_id))
+            db.commit()
         db.close()
         if request.form.get('from_battle') == '1':
             return redirect(url_for('battle_view', added=new_id))
@@ -1557,19 +2928,34 @@ def character_detail(char_id):
         LEFT JOIN users mk ON mk.id = c.created_by
         WHERE c.id = ? AND c.campaign_id = ?
     ''', (char_id, g.campaign_id)).fetchone()
-    if character is None:
+    if character is None or npc_is_hidden(character['is_npc'], character['created_by'], character['is_ally']):
         db.close()
         return redirect(url_for('characters_list'))
     # A Player can open an NPC's dossier for its notes only: stats and sheet
     # images stay withheld (sheets are pictures of the stat block), and the
     # template gets neither -- it renders blurred placeholders instead.
-    stats_hidden = bool(character['is_npc']) and not g.is_dm
+    stats_hidden = is_foe(character['is_npc'], character['is_ally']) and not g.is_dm
     sheets = [] if stats_hidden else db.execute(
         'SELECT * FROM character_sheets WHERE character_id = ? ORDER BY sort_order', (char_id,)).fetchall()
     factions = _factions_by_character(db, g.campaign_id).get(char_id, [])
+    level_history = [] if stats_hidden else _level_history(db, char_id)
+    attacks = [] if stats_hidden else _attacks_for(db, char_id)
+    purse = recent_coins = None
+    if not character['is_npc']:                                   # player characters carry a purse (see the Treasury page)
+        purse = _purse(db, char_id)
+        recent_coins = db.execute('SELECT cp, sp, ep, gp, pp, note FROM treasury_entries WHERE campaign_id = ? AND character_id = ? '
+                                  'ORDER BY id DESC LIMIT 4', (g.campaign_id, char_id)).fetchall()
     db.close()
-    can_edit = g.is_dm or character['created_by'] == session['user_id']
-    return render_template('character_detail.html', character=character, sheets=sheets, factions=factions,
+    can_edit = bool(g.is_dm or owns_character(character))
+    can_archive = bool(owns_character(character) and not character['is_npc'] and not character['is_temp_familiar'])
+    library_link = None
+    if can_archive and character['library_id']:                       # only a link to the viewer's own library counts
+        db = get_db()
+        if db.execute('SELECT 1 FROM characters WHERE id = ? AND owner_id = ?', (character['library_id'], session['user_id'])).fetchone():
+            library_link = character['library_id']
+        db.close()
+    return render_template('character_detail.html', can_archive=can_archive, library_link=library_link, character=character, sheets=sheets, factions=factions, level_history=level_history, attacks=attacks,
+                            purse=purse, recent_coins=recent_coins,
                             notes_html=notes_to_html(character['notes'], show_hidden=can_see_hidden_notes(character)), can_edit=can_edit,
                             can_delete=can_delete(character['created_by']), stats_hidden=stats_hidden,
                             sheet=None if stats_hidden else dnd5e.derive(character))
@@ -1579,14 +2965,14 @@ def character_detail(char_id):
 @campaign_access_required
 def character_edit(char_id):
     db = get_db()
-    owner_row = db.execute('SELECT created_by FROM characters WHERE id = ? AND campaign_id = ?',
+    owner_row = db.execute('SELECT created_by, player_id FROM characters WHERE id = ? AND campaign_id = ?',
                             (char_id, g.campaign_id)).fetchone()
     if owner_row is None:
         db.close()
         return redirect(url_for('characters_list'))
-    # A Player can only edit a character they personally added; the DM can
+    # A Player can only edit a character they personally added or that the DM attached to them; the DM can
     # edit anyone's.
-    if not g.is_dm and owner_row['created_by'] != session['user_id']:
+    if not g.is_dm and not owns_character(owner_row):
         db.close()
         abort(403)
     if request.method == 'POST':
@@ -1597,6 +2983,8 @@ def character_edit(char_id):
     sheets = db.execute('SELECT * FROM character_sheets WHERE character_id = ? ORDER BY sort_order', (char_id,)).fetchall()
     groups = db.execute('SELECT * FROM groups WHERE campaign_id = ? ORDER BY lower(name) ASC', (g.campaign_id,)).fetchall()
     faction_ids = [f['id'] for f in _factions_by_character(db, g.campaign_id).get(char_id, [])]
+    level_history = _level_history(db, char_id)
+    attacks = _attacks_for(db, char_id)
     db.close()
     if character is None:
         return redirect(url_for('characters_list'))
@@ -1604,7 +2992,8 @@ def character_edit(char_id):
     return render_template('character_form.html', character=character, sheets=sheets, groups=groups, from_battle=False, notes_entries=notes_entries,
                            can_delete_sheets=can_delete(owner_row['created_by']), character_faction_ids=faction_ids,
                            character_save_prof=dnd5e.clean_save_prof(character['save_prof']),
-                           character_skill_prof=dnd5e.clean_skill_prof(character['skill_prof']))
+                           character_skill_prof=dnd5e.clean_skill_prof(character['skill_prof']),
+                           level_history={str(r['level']): r for r in level_history}, attacks=attacks)
 
 
 # Character classes (DL-43).  Optional on a character.  The text is the hover guide in the picker.
@@ -1711,11 +3100,63 @@ def _factions_by_character(db, campaign_id):
     return out
 
 
+LEVEL_STAT_KEYS = ('max_hp', 'armor_class', 'str_score', 'dex_score', 'con_score', 'int_score', 'wis_score', 'cha_score', 'speed')
+
+
+def _save_level_stats(db, char_id, level, max_hp, armor_class, scores, speed, skill_prof, save_prof):
+    """Remember the stats the character has at this level (DL-105); saving the same level again replaces them."""
+    db.execute('''INSERT INTO character_levels (character_id, level, max_hp, armor_class, str_score, dex_score, con_score, int_score, wis_score, cha_score,
+                                                speed, skill_prof, save_prof)
+                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                  ON CONFLICT (character_id, level) DO UPDATE SET max_hp = EXCLUDED.max_hp, armor_class = EXCLUDED.armor_class,
+                      str_score = EXCLUDED.str_score, dex_score = EXCLUDED.dex_score, con_score = EXCLUDED.con_score,
+                      int_score = EXCLUDED.int_score, wis_score = EXCLUDED.wis_score, cha_score = EXCLUDED.cha_score,
+                      speed = EXCLUDED.speed, skill_prof = EXCLUDED.skill_prof, save_prof = EXCLUDED.save_prof
+                  RETURNING character_id''',            # (this table has no id column, so the db layer must not add its own RETURNING id)
+               (char_id, level, max_hp, armor_class, *scores, speed, skill_prof, save_prof))
+
+
+def _attacks_for(db, char_id):
+    """A character's saved attacks in order, each with what its two roll buttons need (DL-150)."""
+    out = []
+    for r in db.execute('SELECT name, attack_bonus, damage, damage_type FROM character_attacks WHERE character_id = ? '
+                        'ORDER BY position, id', (char_id,)).fetchall():
+        a = dict(r)
+        spec = dnd5e.damage_roll_spec(a['damage'])
+        a['dice_json'] = json.dumps(spec[0]) if spec else ''
+        a['damage_bonus'] = spec[1] if spec else 0
+        a['to_hit_text'] = '%+d' % a['attack_bonus']
+        out.append(a)
+    return out
+
+
+def _save_attacks(db, char_id, attacks):
+    """Replace a character's attacks with the (already cleaned) list."""
+    db.execute('DELETE FROM character_attacks WHERE character_id = ?', (char_id,))
+    for pos, a in enumerate(attacks):
+        db.execute('INSERT INTO character_attacks (character_id, position, name, attack_bonus, damage, damage_type) VALUES (?, ?, ?, ?, ?, ?)',
+                   (char_id, pos, a['name'], a['attack_bonus'], a['damage'], a['damage_type']))
+
+
+def _level_history(db, char_id):
+    """Every level that has saved stats, lowest first.  Proficiencies come back as real objects (what the form needs)."""
+    out = []
+    for r in db.execute('SELECT level, ' + ', '.join(LEVEL_STAT_KEYS) + ', skill_prof, save_prof FROM character_levels '
+                        'WHERE character_id = ? ORDER BY level', (char_id,)).fetchall():
+        r = dict(r)
+        r['skill_prof'] = dnd5e.clean_skill_prof(r['skill_prof'])
+        r['save_prof'] = dnd5e.clean_save_prof(r['save_prof'])
+        out.append(r)
+    return out
+
+
 def _save_character(db, char_id):
     form = request.form
+    library = getattr(g, 'campaign_id', None) is None       # outside a campaign this is a character in the person's own library
     name = form.get('name', '').strip() or 'Unnamed'
-    is_npc = 1 if form.get('is_npc') == 'on' else 0
-    level = int(form.get('level') or 1)
+    is_npc = 1 if form.get('is_npc') == 'on' and not library else 0
+    is_ally = 1 if is_npc and form.get('is_ally') == 'on' else 0      # only an NPC can be an ally
+    level = max(1, min(30, int(form.get('level') or 1)))
     max_hp = int(form.get('max_hp') or 10)
     str_score = int(form.get('str_score') or 10)
     dex_score = int(form.get('dex_score') or 10)
@@ -1725,7 +3166,7 @@ def _save_character(db, char_id):
     cha_score = int(form.get('cha_score') or 10)
     armor_class = int(form.get('armor_class') or 10)
     notes = sanitize_notes_payload(form.get('notes', ''))
-    faction_ids = _faction_ids_from_form(db, form)
+    faction_ids = [] if library else _faction_ids_from_form(db, form)
     group_id = faction_ids[0] if faction_ids else None
     class_key = _clean_class(form.get('class_key'))
     speed = dnd5e.clean_speed(form.get('speed'))
@@ -1738,14 +3179,17 @@ def _save_character(db, char_id):
     if char_id is None:
         cur = db.execute('''
             INSERT INTO characters
-            (name, is_npc, level, max_hp, str_score, dex_score, con_score, int_score,
+            (name, is_npc, is_ally, level, max_hp, str_score, dex_score, con_score, int_score,
              wis_score, cha_score, armor_class, avatar_path, notes, group_id, class_key, campaign_id, created_by,
-             speed, skill_prof, save_prof)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (name, is_npc, level, max_hp, str_score, dex_score, con_score, int_score,
-              wis_score, cha_score, armor_class, avatar_path, notes, group_id, class_key, g.campaign_id, session['user_id'],
-              speed, skill_prof, save_prof))
+             speed, skill_prof, save_prof, owner_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (name, is_npc, is_ally, level, max_hp, str_score, dex_score, con_score, int_score,
+              wis_score, cha_score, armor_class, avatar_path, notes, group_id, class_key, None if library else g.campaign_id, session['user_id'],
+              speed, skill_prof, save_prof, session['user_id'] if library else None))
         char_id = cur.lastrowid
+        if not library:
+            log_activity(db, g.campaign_id, 'character_created', 'added the %s %s' % ('ally' if is_ally else 'NPC' if is_npc else 'character', name),
+                         url_for('character_detail', campaign_id=g.campaign_id, char_id=char_id))
     else:
         if avatar_path:
             old = db.execute('SELECT avatar_path FROM characters WHERE id = ?', (char_id,)).fetchone()
@@ -1758,14 +3202,20 @@ def _save_character(db, char_id):
                 delete_upload(old['avatar_path'])
             db.execute('UPDATE characters SET avatar_path = NULL WHERE id = ?', (char_id,))
         db.execute('''
-            UPDATE characters SET name=?, is_npc=?, level=?, max_hp=?, str_score=?, dex_score=?,
+            UPDATE characters SET name=?, is_npc=?, is_ally=?, level=?, max_hp=?, str_score=?, dex_score=?,
                 con_score=?, int_score=?, wis_score=?, cha_score=?, armor_class=?, notes=?, class_key=?,
                 speed=?, skill_prof=?, save_prof=?
             WHERE id=?
-        ''', (name, is_npc, level, max_hp, str_score, dex_score, con_score, int_score,
+        ''', (name, is_npc, is_ally, level, max_hp, str_score, dex_score, con_score, int_score,
               wis_score, cha_score, armor_class, notes, class_key, speed, skill_prof, save_prof, char_id))
 
-    _set_character_factions(db, char_id, faction_ids)
+    if not library:
+        _set_character_factions(db, char_id, faction_ids)
+    _save_level_stats(db, char_id, level, max_hp, armor_class, (str_score, dex_score, con_score, int_score, wis_score, cha_score),
+                      speed, skill_prof, save_prof)
+    if form.get('attacks_present') == '1':            # only a form that shows the Attacks card may replace them (DL-150)
+        _save_attacks(db, char_id, dnd5e.clean_attacks(zip(form.getlist('attack_name'), form.getlist('attack_bonus'),
+                                                           form.getlist('attack_damage'), form.getlist('attack_type'))))
 
     # multiple sheet images
     max_order = db.execute('SELECT COALESCE(MAX(sort_order), -1) AS m FROM character_sheets WHERE character_id = ?', (char_id,)).fetchone()['m']
@@ -1782,7 +3232,7 @@ def _save_character(db, char_id):
 @campaign_access_required
 def character_delete(char_id):
     db = get_db()
-    char = db.execute('SELECT avatar_path, created_by FROM characters WHERE id = ? AND campaign_id = ?',
+    char = db.execute('SELECT name, avatar_path, created_by FROM characters WHERE id = ? AND campaign_id = ?',
                        (char_id, g.campaign_id)).fetchone()
     if char and not can_delete(char['created_by']):
         db.close()
@@ -1793,6 +3243,7 @@ def character_delete(char_id):
         for s in sheets:
             delete_upload(s['image_path'])
         db.execute('DELETE FROM characters WHERE id = ? AND campaign_id = ?', (char_id, g.campaign_id))
+        log_activity(db, g.campaign_id, 'character_deleted', 'removed the character %s' % char['name'])
         db.commit()
     db.close()
     return redirect(url_for('characters_list'))
@@ -1816,6 +3267,410 @@ def sheet_delete(char_id, sheet_id):
     return redirect(url_for('character_edit', char_id=char_id))
 
 
+# ---------------- CHARACTER LIBRARY (DL-160) ----------------
+# A person's own characters, kept outside any campaign.  They can be added to any campaign the person belongs to (a copy
+# goes in, so what happens at one table never changes the sheet kept here) and featured on the profile.  Everything here
+# is private to the owner; other people only ever see what the profile showcase shows.
+
+LIBRARY_MAX = 60
+LIBRARY_NOTES = {
+    'added': ('success', 'Added to the campaign. It is a copy: changes made there stay there.'),
+    'created': ('success', 'Saved to your characters.'),
+    'created_added': ('success', 'Saved to your characters, and a copy was added to the campaign.'),
+    'saved': ('success', 'Saved to your characters.'),
+    'deleted': ('success', 'Removed from your characters. Copies already in campaigns are untouched.'),
+    'featured': ('success', 'Now featured on your profile.'),
+    'unfeatured': ('success', 'No longer featured on your profile.'),
+    'full': ('error', 'You can keep %d characters here. Delete one you no longer use first.' % LIBRARY_MAX),
+    'featured_full': ('error', 'You can feature at most %d characters on your profile. Unfeature one first.' % SHOWCASE_MAX),
+    'already': ('error', 'That character is already in that campaign.'),
+    'not_member': ('error', 'Pick one of your own campaigns.'),
+    'nothing': ('error', 'Pick at least one character.'),
+    'import_error': ('error', "That file couldn't be read as a Campaign Ledger export. Upload a .zip made by an Export button."),
+    'import_quota': ('error', 'That import would pass your image storage limit, so nothing was imported. Delete images you no longer need or import a smaller file.'),
+}
+
+
+def _library_note(args):
+    """The banner for ?note=...  Import results carry counts (digits only, so nothing typed in a URL is ever echoed back)."""
+    code = args.get('note', '')
+    if code == 'imported':
+        n = args.get('n', '0'); skipped = args.get('skipped', '0'); full = args.get('full', '0')
+        n, skipped, full = (int(v) if v.isdigit() and len(v) < 5 else 0 for v in (n, skipped, full))
+        text = 'Imported %d character%s.' % (n, '' if n == 1 else 's') if n else 'Nothing was imported.'
+        if skipped:
+            text += ' %d NPC%s skipped: only player characters are kept here.' % (skipped, '' if skipped == 1 else 's')
+        if full:
+            text += ' %d did not fit (the limit is %d).' % (full, LIBRARY_MAX)
+        return ('success' if n else 'error', text)
+    if code == 'added_many':
+        n = args.get('n', '0')
+        n = int(n) if n.isdigit() and len(n) < 5 else 0
+        return ('success', 'Added %d character%s to the campaign.' % (n, '' if n == 1 else 's'))
+    return LIBRARY_NOTES.get(code)
+
+
+def _library_character(db, char_id):
+    """One of the signed-in person's library characters, or a 404 (someone else's library is never revealed)."""
+    row = db.execute('SELECT * FROM characters WHERE id = ? AND owner_id = ? AND campaign_id IS NULL',
+                     (char_id, session['user_id'])).fetchone()
+    if row is None:
+        db.close()
+        abort(404)
+    return row
+
+
+def _library_count(db):
+    return db.execute('SELECT COUNT(*) AS n FROM characters WHERE owner_id = ? AND campaign_id IS NULL', (session['user_id'],)).fetchone()['n']
+
+
+def _my_campaigns(db):
+    return db.execute('SELECT c.id, c.name FROM campaigns c JOIN campaign_members m ON m.campaign_id = c.id '
+                      'WHERE m.user_id = ? ORDER BY lower(c.name)', (session['user_id'],)).fetchall()
+
+
+def _copy_image(path, subfolder, made):
+    """A second stored copy of an image (the two characters must never share a file: deleting one would break the other).
+    The new key is appended to `made` so a failed copy can clean up after itself."""
+    data = get_storage().get(UPLOADS, path) if path else None
+    if data is None:
+        return None
+    ext = path.rsplit('.', 1)[-1].lower()
+    content_type = images.EXT_TO_CONTENT_TYPE.get(ext)
+    if not content_type:
+        return None
+    key = f'{subfolder}/{uuid.uuid4().hex}.{ext}'
+    _put_upload(key, SimpleNamespace(data=data, content_type=content_type), subfolder)
+    made.append(key)
+    return key
+
+
+def _clone_character(db, src, campaign_id, owner_id, library_id, added_from):
+    """Copy a character with its sheet images, level history and attacks.  Into a campaign (campaign_id) it becomes a player
+    character played by the signed-in person; into the library (owner_id) it becomes a library character.  The caller commits."""
+    made = []
+    try:
+        avatar = _copy_image(src['avatar_path'], 'avatars', made)
+        me = session['user_id']
+        cur = db.execute(
+            'INSERT INTO characters (name, is_npc, is_ally, level, max_hp, str_score, dex_score, con_score, int_score, wis_score, cha_score, '
+            'armor_class, avatar_path, notes, class_key, speed, skill_prof, save_prof, campaign_id, created_by, player_id, owner_id, library_id, added_from) '
+            'VALUES (?, 0, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            (src['name'], src['level'], src['max_hp'], src['str_score'], src['dex_score'], src['con_score'], src['int_score'],
+             src['wis_score'], src['cha_score'], src['armor_class'], avatar, src['notes'], src['class_key'], src['speed'],
+             src['skill_prof'], src['save_prof'], campaign_id, me, me if campaign_id else None, owner_id, library_id, added_from))
+        new_id = cur.lastrowid
+        for r in db.execute('SELECT level, ' + ', '.join(LEVEL_STAT_KEYS) + ', skill_prof, save_prof FROM character_levels WHERE character_id = ?',
+                            (src['id'],)).fetchall():
+            _save_level_stats(db, new_id, r['level'], r['max_hp'], r['armor_class'],
+                              tuple(r[k] for k in ('str_score', 'dex_score', 'con_score', 'int_score', 'wis_score', 'cha_score')),
+                              r['speed'], r['skill_prof'], r['save_prof'])
+        for a in db.execute('SELECT position, name, attack_bonus, damage, damage_type FROM character_attacks WHERE character_id = ? ORDER BY position, id',
+                            (src['id'],)).fetchall():
+            db.execute('INSERT INTO character_attacks (character_id, position, name, attack_bonus, damage, damage_type) VALUES (?, ?, ?, ?, ?, ?)',
+                       (new_id, a['position'], a['name'], a['attack_bonus'], a['damage'], a['damage_type']))
+        for sh in db.execute('SELECT image_path, sort_order FROM character_sheets WHERE character_id = ? ORDER BY sort_order, id', (src['id'],)).fetchall():
+            path = _copy_image(sh['image_path'], 'sheets', made)
+            if path:
+                db.execute('INSERT INTO character_sheets (character_id, image_path, sort_order) VALUES (?, ?, ?)', (new_id, path, sh['sort_order']))
+        return new_id
+    except Exception:
+        db.rollback()
+        delete_uploads(made)
+        raise
+
+
+def _library_back(note=None, char_id=None, **args):
+    if note:
+        args['note'] = note
+    if char_id:
+        return redirect(url_for('library_detail', char_id=char_id, **args))
+    return redirect(url_for('library_list', **args))
+
+
+def _member_campaign(db, raw):
+    """The campaign with this id when the signed-in person belongs to it, else None."""
+    return db.execute('SELECT c.id, c.name FROM campaigns c JOIN campaign_members m ON m.campaign_id = c.id WHERE c.id = ? AND m.user_id = ?',
+                      (int(raw) if str(raw).isdigit() else 0, session['user_id'])).fetchone()
+
+
+def _add_copy(db, source, campaign):
+    """Put a copy of a library character into a campaign (the caller commits).  None when that campaign already has one."""
+    if db.execute('SELECT 1 FROM characters WHERE campaign_id = ? AND library_id = ?', (campaign['id'], source['id'])).fetchone():
+        return None
+    g.campaign_id = campaign['id']                        # the copied pictures count towards this campaign's storage too
+    new_id = _clone_character(db, source, campaign['id'], None, source['id'], 'their own characters')
+    log_activity(db, campaign['id'], 'character_created', 'added the character %s' % source['name'],
+                 url_for('character_detail', campaign_id=campaign['id'], char_id=new_id))
+    return new_id
+
+
+@app.route('/library')
+def library_list():
+    db = get_db()
+    uid = session['user_id']
+    chars = db.execute('SELECT * FROM characters WHERE owner_id = ? AND campaign_id IS NULL ORDER BY lower(name)', (uid,)).fetchall()
+    campaigns = _my_campaigns(db)
+    placed = {}
+    if chars:
+        marks = ','.join('?' * len(chars))
+        for r in db.execute('SELECT ch.library_id, ch.id, ch.campaign_id, ca.name FROM characters ch JOIN campaigns ca ON ca.id = ch.campaign_id '
+                            'WHERE ch.library_id IN (' + marks + ') ORDER BY lower(ca.name)', [c['id'] for c in chars]).fetchall():
+            placed.setdefault(r['library_id'], []).append(r)
+    featured = {r['character_id'] for r in db.execute('SELECT character_id FROM profile_showcase WHERE user_id = ?', (uid,)).fetchall()}
+    db.close()
+    items = []
+    for c in chars:
+        in_campaigns = placed.get(c['id'], [])
+        taken = {p['campaign_id'] for p in in_campaigns}
+        items.append(dict(c, class_label=_class_label(c['class_key']), in_campaigns=in_campaigns, featured=c['id'] in featured,
+                          open_campaigns=[ca for ca in campaigns if ca['id'] not in taken]))
+    return render_template('library.html', items=items, campaigns=campaigns, limit=LIBRARY_MAX, showcase_limit=SHOWCASE_MAX,
+                           featured_count=len(featured & {c['id'] for c in chars}), note=_library_note(request.args))
+
+
+@app.route('/library/new', methods=['GET', 'POST'])
+def library_new():
+    db = get_db()
+    full = _library_count(db) >= LIBRARY_MAX
+    if full:
+        db.close()
+        return _library_back('full')
+    if request.method == 'POST':
+        new_id = _save_character(db, None)
+        campaign = _member_campaign(db, request.form.get('add_to_campaign', ''))
+        note = 'created'
+        if campaign:                                      # made and added in one go
+            source = db.execute('SELECT * FROM characters WHERE id = ?', (new_id,)).fetchone()
+            if _add_copy(db, source, campaign):
+                db.commit()
+                note = 'created_added'
+        db.close()
+        return _library_back(note, char_id=new_id)
+    campaigns = _my_campaigns(db)
+    db.close()
+    return render_template('character_form.html', library=True, character=None, sheets=[], groups=[], from_battle=False,
+                           notes_entries=[{'t': '', 'h': False}], my_campaigns=campaigns,
+                           add_to_campaign=request.args.get('campaign', ''))
+
+
+@app.route('/library/<int:char_id>')
+def library_detail(char_id):
+    db = get_db()
+    character = _library_character(db, char_id)
+    sheets = db.execute('SELECT * FROM character_sheets WHERE character_id = ? ORDER BY sort_order', (char_id,)).fetchall()
+    level_history = _level_history(db, char_id)
+    attacks = _attacks_for(db, char_id)
+    placed = db.execute('SELECT ch.id, ch.campaign_id, ca.name FROM characters ch JOIN campaigns ca ON ca.id = ch.campaign_id '
+                        'WHERE ch.library_id = ? ORDER BY lower(ca.name)', (char_id,)).fetchall()
+    taken = {p['campaign_id'] for p in placed}
+    open_campaigns = [c for c in _my_campaigns(db) if c['id'] not in taken]
+    featured = db.execute('SELECT 1 FROM profile_showcase WHERE user_id = ? AND character_id = ?', (session['user_id'], char_id)).fetchone() is not None
+    db.close()
+    return render_template('library_detail.html', character=character, sheets=sheets, level_history=level_history, attacks=attacks,
+                           class_label=_class_label(character['class_key']), sheet=dnd5e.derive(character),
+                           notes_html=notes_to_html(character['notes'], show_hidden=True), placed=placed, open_campaigns=open_campaigns,
+                           featured=featured, note=_library_note(request.args))
+
+
+@app.route('/library/<int:char_id>/edit', methods=['GET', 'POST'])
+def library_edit(char_id):
+    db = get_db()
+    character = _library_character(db, char_id)
+    if request.method == 'POST':
+        _save_character(db, char_id)
+        db.close()
+        return _library_back(char_id=char_id)
+    sheets = db.execute('SELECT * FROM character_sheets WHERE character_id = ? ORDER BY sort_order', (char_id,)).fetchall()
+    level_history = _level_history(db, char_id)
+    attacks = _attacks_for(db, char_id)
+    db.close()
+    return render_template('character_form.html', library=True, character=character, sheets=sheets, groups=[], from_battle=False,
+                           notes_entries=notes_parse_entries(character['notes']) or [{'t': '', 'h': False}], can_delete_sheets=True,
+                           character_faction_ids=[], character_save_prof=dnd5e.clean_save_prof(character['save_prof']),
+                           character_skill_prof=dnd5e.clean_skill_prof(character['skill_prof']),
+                           level_history={str(r['level']): r for r in level_history}, attacks=attacks)
+
+
+@app.route('/library/<int:char_id>/delete', methods=['POST'])
+def library_delete(char_id):
+    db = get_db()
+    character = _library_character(db, char_id)
+    paths = [character['avatar_path']] + [s['image_path'] for s in
+                                           db.execute('SELECT image_path FROM character_sheets WHERE character_id = ?', (char_id,)).fetchall()]
+    db.execute('DELETE FROM characters WHERE id = ? AND owner_id = ?', (char_id, session['user_id']))
+    db.commit()
+    db.close()
+    delete_uploads(paths)
+    return _library_back('deleted')
+
+
+@app.route('/library/<int:char_id>/sheets/<int:sheet_id>/delete', methods=['POST'])
+def library_sheet_delete(char_id, sheet_id):
+    db = get_db()
+    _library_character(db, char_id)
+    sheet = db.execute('SELECT image_path FROM character_sheets WHERE id = ? AND character_id = ?', (sheet_id, char_id)).fetchone()
+    if sheet:
+        delete_upload(sheet['image_path'])
+        db.execute('DELETE FROM character_sheets WHERE id = ?', (sheet_id,))
+        db.commit()
+    db.close()
+    return redirect(url_for('library_edit', char_id=char_id))
+
+
+@app.route('/library/<int:char_id>/add-to-campaign', methods=['POST'])
+def library_add_to_campaign(char_id):
+    """Put a copy of a library character into one of the person's campaigns, as a player character played by them."""
+    db = get_db()
+    source = _library_character(db, char_id)
+    back_id = char_id if request.form.get('back') == 'detail' else None
+    campaign = _member_campaign(db, request.form.get('campaign_id', ''))
+    if campaign is None:
+        db.close()
+        return _library_back('not_member', back_id)
+    new_id = _add_copy(db, source, campaign)
+    if new_id is None:
+        db.close()
+        return _library_back('already', back_id)
+    db.commit()
+    db.close()
+    if request.form.get('next') == 'campaign':
+        return redirect(url_for('character_detail', campaign_id=campaign['id'], char_id=new_id))
+    return _library_back('added', back_id)
+
+
+@app.route('/library/add-many', methods=['POST'])
+def library_add_many():
+    """Several library characters into one campaign at once (the picker on a campaign's Characters page)."""
+    db = get_db()
+    campaign = _member_campaign(db, request.form.get('campaign_id', ''))
+    if campaign is None:
+        db.close()
+        abort(404)
+    ids = [int(v) for v in request.form.getlist('char_ids') if v.isdigit()][:LIBRARY_MAX]
+    if not ids:
+        db.close()
+        return redirect(url_for('characters_list', campaign_id=campaign['id'], library_note='nothing'))
+    added = 0
+    for source in db.execute('SELECT * FROM characters WHERE owner_id = ? AND campaign_id IS NULL AND id IN (' + ','.join('?' * len(ids)) + ') ORDER BY lower(name)',
+                             [session['user_id']] + ids).fetchall():
+        if _add_copy(db, source, campaign):
+            added += 1
+    db.commit()
+    db.close()
+    return redirect(url_for('characters_list', campaign_id=campaign['id'], library_added=added))
+
+
+@app.route('/library/save', methods=['POST'])
+def library_save():
+    """Keep one of the person's own campaign characters in their library (a copy; the campaign keeps its character)."""
+    db = get_db()
+    cid, chid = request.form.get('campaign_id', ''), request.form.get('character_id', '')
+    me = session['user_id']
+    row = db.execute('SELECT ch.*, ca.name AS campaign_name FROM characters ch JOIN campaigns ca ON ca.id = ch.campaign_id '
+                     'JOIN campaign_members m ON m.campaign_id = ch.campaign_id AND m.user_id = ? '
+                     'WHERE ch.id = ? AND ch.campaign_id = ? AND ch.is_npc = 0 AND ch.is_temp_familiar = 0 AND (ch.created_by = ? OR ch.player_id = ?)',
+                     (me, int(chid) if chid.isdigit() else 0, int(cid) if cid.isdigit() else 0, me, me)).fetchone()
+    if row is None:
+        db.close()
+        abort(404)
+    if row['library_id'] and db.execute('SELECT 1 FROM characters WHERE id = ? AND owner_id = ?', (row['library_id'], me)).fetchone():
+        db.close()
+        return _library_back(char_id=row['library_id'])            # already kept: just show it
+    if _library_count(db) >= LIBRARY_MAX:
+        db.close()
+        return _library_back('full')
+    g.campaign_id = None
+    new_id = _clone_character(db, row, None, me, None, row['campaign_name'])
+    db.execute('UPDATE characters SET library_id = ? WHERE id = ?', (new_id, row['id']))
+    db.commit()
+    db.close()
+    return _library_back('saved', new_id)
+
+
+def _library_manifest(db, rows):
+    """The same manifest an ordinary export uses (so a file exported here can be imported into a campaign, and back)."""
+    ids = [r['id'] for r in rows]
+    attacks, sheets = {}, {}
+    if ids:
+        marks = ','.join('?' * len(ids))
+        for a in db.execute('SELECT character_id, name, attack_bonus, damage, damage_type FROM character_attacks WHERE character_id IN (' + marks +
+                            ') ORDER BY character_id, position, id', ids).fetchall():
+            attacks.setdefault(a['character_id'], []).append({'name': a['name'], 'attack_bonus': a['attack_bonus'], 'damage': a['damage'], 'damage_type': a['damage_type']})
+        for sh in db.execute('SELECT character_id, image_path FROM character_sheets WHERE character_id IN (' + marks + ') ORDER BY character_id, sort_order, id', ids).fetchall():
+            sheets.setdefault(sh['character_id'], []).append(sh['image_path'])
+    return {
+        'version': 1, 'exported_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 'groups': [],
+        'characters': [{
+            'name': c['name'], 'is_npc': 0, 'is_ally': 0, 'level': c['level'], 'max_hp': c['max_hp'],
+            'str_score': c['str_score'], 'dex_score': c['dex_score'], 'con_score': c['con_score'],
+            'int_score': c['int_score'], 'wis_score': c['wis_score'], 'cha_score': c['cha_score'],
+            'armor_class': c['armor_class'], 'class_key': c['class_key'], 'speed': dnd5e.clean_speed(c['speed']),
+            'skill_prof': dnd5e.clean_skill_prof(c['skill_prof']), 'save_prof': dnd5e.clean_save_prof(c['save_prof']),
+            'attacks': attacks.get(c['id'], []), 'notes': c['notes'], 'group_name': None, 'group_names': [],
+            'avatar_file': c['avatar_path'], 'sheet_files': sheets.get(c['id'], []),
+        } for c in rows],
+    }
+
+
+@app.route('/library/export')
+def library_export():
+    db = get_db()
+    rows = db.execute('SELECT * FROM characters WHERE owner_id = ? AND campaign_id IS NULL ORDER BY id', (session['user_id'],)).fetchall()
+    manifest = _library_manifest(db, rows)
+    db.close()
+    return _send_manifest_zip(manifest, 'your_characters.zip')
+
+
+@app.route('/library/<int:char_id>/export')
+def library_export_one(char_id):
+    db = get_db()
+    row = _library_character(db, char_id)
+    manifest = _library_manifest(db, [row])
+    db.close()
+    return _send_manifest_zip(manifest, f'{_slugify(row["name"])}.zip')
+
+
+@app.route('/library/import', methods=['POST'])
+def library_import():
+    """Add the player characters from an export (made by this page or by a campaign's Export button) to your characters."""
+    try:
+        opened = _read_import_zip()
+    except importer.ImportRejected:
+        return _library_back('import_error')
+    if opened is None:
+        return _library_back()
+    zf, manifest = opened
+    g.campaign_id = None
+    db = get_db()
+    stats = _import_manifest(db, zf, manifest, None)
+    if stats is None:
+        return _library_back('import_quota')
+    return _library_back('imported', n=stats['added'], skipped=stats['skipped_npcs'], full=stats['skipped_full'])
+
+
+@app.route('/library/<int:char_id>/showcase', methods=['POST'])
+def library_showcase(char_id):
+    """Feature a library character on the profile, or take it off again."""
+    db = get_db()
+    _library_character(db, char_id)
+    uid = session['user_id']
+    back_id = char_id if request.form.get('back') == 'detail' else None
+    if db.execute('SELECT 1 FROM profile_showcase WHERE user_id = ? AND character_id = ?', (uid, char_id)).fetchone():
+        db.execute('DELETE FROM profile_showcase WHERE user_id = ? AND character_id = ?', (uid, char_id))
+        note = 'unfeatured'
+    else:
+        count = db.execute('SELECT COUNT(*) AS n, COALESCE(MAX(position), -1) AS top FROM profile_showcase WHERE user_id = ?', (uid,)).fetchone()
+        if count['n'] >= SHOWCASE_MAX:
+            db.close()
+            return _library_back('featured_full', back_id)
+        db.execute('INSERT INTO profile_showcase (user_id, character_id, position) VALUES (?, ?, ?)', (uid, char_id, count['top'] + 1))
+        note = 'featured'
+    db.commit()
+    db.close()
+    return _library_back(note, back_id)
+
+
 # ---------------- FACTIONS ----------------
 
 @app.route('/campaigns/<int:campaign_id>/factions')
@@ -1823,10 +3678,10 @@ def sheet_delete(char_id, sheet_id):
 def factions_list():
     db = get_db()
     groups = db.execute('''
-        SELECT g.*, (SELECT COUNT(*) FROM character_groups cg JOIN characters c ON c.id = cg.character_id WHERE cg.group_id = g.id AND c.is_temp_familiar = 0) AS member_count, mk.username AS made_by
+        SELECT g.*, (SELECT COUNT(*) FROM character_groups cg JOIN characters c ON c.id = cg.character_id WHERE cg.group_id = g.id AND c.is_temp_familiar = 0 AND (? = 0 OR c.is_npc = 0 OR c.is_ally = 1 OR c.created_by = ?)) AS member_count, mk.username AS made_by
         FROM groups g LEFT JOIN users mk ON mk.id = g.created_by
         WHERE g.campaign_id = ? ORDER BY lower(g.name) ASC
-    ''', (g.campaign_id,)).fetchall()
+    ''', (1 if npcs_hidden_from_viewer() else 0, None if getattr(g, 'previewing', False) else session.get('user_id'), g.campaign_id)).fetchall()
     db.close()
     return render_template('groups_list.html', groups=groups,
                            deletable={x['id'] for x in groups if can_delete(x['created_by'])})
@@ -1857,12 +3712,13 @@ def faction_detail(group_id):
     if group is None:
         db.close()
         return redirect(url_for('factions_list'))
+    hide_sql, hide_params = npc_filter()
     members = db.execute('''
         SELECT c.id, c.name, c.avatar_path, c.is_npc, c.level, c.class_key
         FROM characters c JOIN character_groups cg ON cg.character_id = c.id
-        WHERE cg.group_id = ? AND c.campaign_id = ? AND c.is_temp_familiar = 0
+        WHERE cg.group_id = ? AND c.campaign_id = ? AND c.is_temp_familiar = 0''' + hide_sql + '''
         ORDER BY lower(c.name) ASC
-    ''', (group_id, g.campaign_id)).fetchall()
+    ''', [group_id, g.campaign_id] + hide_params).fetchall()
     db.close()
     return render_template('group_detail.html', group=group, members=members)
 
@@ -1939,6 +3795,8 @@ def _save_faction(db, group_id):
     if group_id is None:
         group_id = db.execute('INSERT INTO groups (name, avatar_path, bio, color, campaign_id, created_by) VALUES (?, ?, ?, ?, ?, ?)',
                               (name, avatar_path, bio, color, g.campaign_id, session['user_id'])).lastrowid
+        log_activity(db, g.campaign_id, 'faction_created', 'added the faction %s' % name,
+                     url_for('faction_detail', campaign_id=g.campaign_id, group_id=group_id))
     else:
         if avatar_path:
             old = db.execute('SELECT avatar_path FROM groups WHERE id = ?', (group_id,)).fetchone()
@@ -1970,7 +3828,7 @@ def _save_faction(db, group_id):
 @dm_required
 def faction_delete(group_id):
     db = get_db()
-    group = db.execute('SELECT avatar_path, created_by FROM groups WHERE id = ? AND campaign_id = ?', (group_id, g.campaign_id)).fetchone()
+    group = db.execute('SELECT name, avatar_path, created_by FROM groups WHERE id = ? AND campaign_id = ?', (group_id, g.campaign_id)).fetchone()
     if group and not can_delete(group['created_by']):
         db.close()
         abort(403)
@@ -1981,6 +3839,7 @@ def faction_delete(group_id):
         db.execute('DELETE FROM groups WHERE id = ? AND campaign_id = ?', (group_id, g.campaign_id))
         for cid_ in members:                       # anyone whose MAIN faction this was moves on to their next one
             _resync_main_faction(db, cid_)
+        log_activity(db, g.campaign_id, 'faction_deleted', 'removed the faction %s' % group['name'])
         db.commit()
     db.close()
     return redirect(url_for('factions_list'))
@@ -1992,19 +3851,20 @@ def faction_delete(group_id):
 @campaign_access_required
 def api_characters():
     db = get_db()
+    hide_sql, hide_params = npc_filter()
     rows = db.execute('''
         SELECT c.*, g.name AS group_name, g.color AS group_color
         FROM characters c LEFT JOIN groups g ON c.group_id = g.id
-        WHERE c.is_temp_familiar = 0 AND c.campaign_id = ?
+        WHERE c.is_temp_familiar = 0 AND c.campaign_id = ?''' + hide_sql + '''
         ORDER BY lower(c.name) ASC
-    ''', (g.campaign_id,)).fetchall()
+    ''', [g.campaign_id] + hide_params).fetchall()
     by_char = _factions_by_character(db, g.campaign_id)
     db.close()
     out = []
     for r in rows:
         d = dict(r, factions=by_char.get(r['id'], []))
         if not g.is_dm:
-            if d['is_npc']:
+            if is_foe(d['is_npc'], d['is_ally']):
                 # Players never receive an NPC's numbers (same allow-list as the detail API).
                 d = {k: d[k] for k in ('id', 'name', 'avatar_path', 'level', 'is_npc',
                                        'group_id', 'group_name', 'group_color', 'factions')}
@@ -2025,10 +3885,10 @@ def api_character_detail(char_id):
         LEFT JOIN users mk ON mk.id = c.created_by
         WHERE c.id = ? AND c.campaign_id = ?
     ''', (char_id, g.campaign_id)).fetchone()
-    if character is None:
+    if character is None or npc_is_hidden(character['is_npc'], character['created_by'], character['is_ally']):
         db.close()
-        return jsonify({'error': 'not found'}), 404
-    if not g.is_dm and character['is_npc']:
+        return api_error(None, 404)
+    if not g.is_dm and is_foe(character['is_npc'], character['is_ally']):
         # 5e convention: a Player may read an NPC's notes but never its
         # numbers. This is the real enforcement point -- an allow-list, so a
         # column added to `characters` later can't leak by default. No stat
@@ -2052,8 +3912,10 @@ def api_character_detail(char_id):
         })
     sheets = db.execute('SELECT * FROM character_sheets WHERE character_id = ? ORDER BY sort_order', (char_id,)).fetchall()
     factions = _factions_by_character(db, g.campaign_id).get(char_id, [])
+    attacks = _attacks_for(db, char_id)
     db.close()
     data = dict(character)
+    data['attacks'] = attacks
     data['factions'] = factions
     data['can_delete'] = can_delete(character['created_by'])
     can_see_hidden = can_see_hidden_notes(character)
@@ -2071,12 +3933,13 @@ def api_character_detail(char_id):
 @campaign_access_required
 def battle_view():
     db = get_db()
+    hide_sql, hide_params = npc_filter()
     characters = db.execute('''
         SELECT c.*, g.name AS group_name, g.color AS group_color
         FROM characters c LEFT JOIN groups g ON c.group_id = g.id
-        WHERE c.is_temp_familiar = 0 AND c.campaign_id = ?
+        WHERE c.is_temp_familiar = 0 AND c.campaign_id = ?''' + hide_sql + '''
         ORDER BY lower(c.name) ASC
-    ''', (g.campaign_id,)).fetchall()
+    ''', [g.campaign_id] + hide_params).fetchall()
     by_char = _factions_by_character(db, g.campaign_id)
     db.close()
     characters = [dict(c, factions=by_char.get(c['id'], [])) for c in characters]
@@ -2134,6 +3997,22 @@ def _load_custom_conditions(stored):
         return []
 
 
+def _battle_live_status(db):
+    """What the character cards show for anyone in the running battle: HP bar and conditions, keyed by character id.
+    Built from _battle_rows, so a Player never gets a monster's numbers (those rows come back without HP)."""
+    labels = dict(BATTLE_CONDITIONS)
+    out = {}
+    for r in _battle_rows(db, redact_enemies=not g.is_dm):
+        cid = r['character_id']
+        if r.get('is_temp_familiar') or cid in out or (is_foe(r.get('is_npc'), r.get('is_ally')) and not g.is_dm):
+            continue
+        cur, mx = r.get('current_hp'), r.get('char_max_hp')
+        pct = None if cur is None or not mx else max(0, min(100, round(100 * cur / mx)))
+        out[cid] = {'hp': cur, 'max': mx, 'pct': pct, 'dead': bool(r.get('is_dead')),
+                    'conditions': [labels[k] for k in r['conditions'] if k in labels] + list(r['custom_conditions'])}
+    return out
+
+
 def _battle_rows(db, redact_enemies=False):
     """redact_enemies=True (a Player viewing the battle) strips HP, AC, and
     initiative off every NPC/monster row before it ever reaches the
@@ -2142,8 +4021,8 @@ def _battle_rows(db, redact_enemies=False):
     is just presentation on top of it. PCs (is_npc=0) and familiars are
     never redacted -- a party can see its own stats."""
     rows = db.execute('''
-        SELECT bp.*, c.name AS char_name, c.avatar_path, c.is_npc, c.max_hp AS char_max_hp,
-               c.armor_class AS base_ac, c.is_temp_familiar, c.familiar_icon_key, c.class_key,
+        SELECT bp.*, c.name AS char_name, c.avatar_path, c.is_npc, c.is_ally, c.max_hp AS char_max_hp,
+               c.armor_class AS base_ac, c.is_temp_familiar, c.familiar_icon_key, c.class_key, c.created_by AS owner_id, c.player_id AS player_id,
                g.id AS gid, g.name AS group_name, g.color AS group_color
         FROM battle_participants bp
         JOIN characters c ON bp.character_id = c.id
@@ -2167,6 +4046,20 @@ def _battle_rows(db, redact_enemies=False):
         # a hidden enemy go down without ever learning its actual numbers.
         r['is_downed'] = bool(r['current_hp'] is not None and r['current_hp'] <= 0 and not r['is_dead'])
 
+    # Death saves (DL-145) belong to player characters; monsters just die.  Whether a character is stable is visible to
+    # everyone, but the 3-and-3 tally only to the DM and to the player who made the character.
+    me, dm = session.get('user_id'), getattr(g, 'is_dm', False)
+    if getattr(g, 'previewing', False):                       # "View as player" sees what a Player who did not make the character sees
+        me = None
+    for r in rows:
+        mine = me is not None and (r['owner_id'] == me or r.get('player_id') == me)
+        r['is_stable'] = bool(r['is_stable'])
+        r['can_death_save'] = bool(r['is_downed'] and not r['is_npc'] and not r['is_stable'] and (dm or mine))
+        if not (dm or mine):
+            r['death_successes'] = r['death_failures'] = None
+        r['owner_id_'] = r.pop('owner_id', None)
+        r.pop('player_id', None)
+
     # compute duplicate-name suffixes, in the order participants were added
     name_counts = {}
     name_seen = {}
@@ -2180,12 +4073,16 @@ def _battle_rows(db, redact_enemies=False):
         else:
             r['display_name'] = n
 
+    if redact_enemies and getattr(g, 'campaign', None) is not None and g.campaign['hide_npcs']:
+        rows = [r for r in rows if not is_foe(r['is_npc'], r['is_ally']) or (me is not None and r['owner_id_'] == me)]   # gone from a Player's battle unless they made it
+    for r in rows:
+        r.pop('owner_id_', None)
     if redact_enemies:
         for r in rows:
             # A familiar the DM has marked as an NPC gets the same treatment
             # as any other monster -- only a familiar left as a PC (or any
             # real PC) stays fully visible to its party.
-            if r['is_npc']:
+            if is_foe(r['is_npc'], r['is_ally']):
                 r['hidden_stats'] = True
                 # conditions (standard and custom) stay visible: the table can see what is affecting a monster
                 r['class_key'] = None                  # ...and so is what class it is
@@ -2197,6 +4094,72 @@ def _battle_rows(db, redact_enemies=False):
                 r['effective_ac'] = None
                 r['base_ac'] = None
     return rows
+
+
+BATTLE_LOG_KEEP = 50           # entries kept per campaign; older ones are deleted as new ones arrive
+
+
+def log_battle(db, text, public=None, kind='info', npc=False):
+    """One line in the battle log (the caller commits).  `public` is what Players read: None = the same text, '' = hidden
+    from Players (used for enemy numbers they must not see)."""
+    try:
+        db.execute('INSERT INTO battle_log (campaign_id, kind, text, public_text, about_npc) VALUES (?, ?, ?, ?, ?)',
+                   (g.campaign_id, kind, text[:200], None if public is None else public[:200], bool(npc)))
+        db.execute('DELETE FROM battle_log WHERE campaign_id = ? AND id NOT IN '
+                   '(SELECT id FROM battle_log WHERE campaign_id = ? ORDER BY id DESC LIMIT ?)',
+                   (g.campaign_id, g.campaign_id, BATTLE_LOG_KEEP))
+    except pgerr.UndefinedTable:
+        db.rollback()                                       # code deployed before migration 0026: skip rather than fail the action
+        app.logger.error('battle_log is missing: apply migration 0026_battle_log.sql')
+
+
+def _bp_state(db, pid):
+    """What the log needs to know about one participant of THIS campaign: name (with the "#2" suffix when several share
+    a name), whether it is an NPC, HP, temp HP, dead flag and conditions.  None if it is not in this campaign's battle."""
+    rows = db.execute('''SELECT bp.id, c.name, c.is_npc, c.is_ally, bp.current_hp, bp.temp_hp, bp.is_dead, bp.conditions, bp.custom_conditions
+                          FROM battle_participants bp JOIN characters c ON c.id = bp.character_id
+                          WHERE c.campaign_id = ? ORDER BY bp.sort_order ASC, bp.id ASC''', (g.campaign_id,)).fetchall()
+    total, seen, found = {}, {}, None
+    for r in rows:
+        total[r['name']] = total.get(r['name'], 0) + 1
+    for r in rows:
+        seen[r['name']] = seen.get(r['name'], 0) + 1
+        if r['id'] == pid:
+            found = {'name': f"{r['name']} #{seen[r['name']]}" if total[r['name']] > 1 else r['name'], 'npc': is_foe(r['is_npc'], r['is_ally']),
+                     'hp': r['current_hp'] or 0, 'temp': r['temp_hp'] or 0, 'dead': bool(r['is_dead']),
+                     'conditions': [k for k in _CONDITION_KEYS if k in (r['conditions'] or '').split(',')],
+                     'custom': _load_custom_conditions(r['custom_conditions'])}
+    return found
+
+
+def _reset_death_saves(db, pid, force=False):
+    """Back to 0 successes, 0 failures, not stable (the caller commits).  Without `force` this only happens once the
+    participant is above 0 HP, so a heal that still leaves them down keeps the tally."""
+    db.execute('UPDATE battle_participants SET death_successes = 0, death_failures = 0, is_stable = 0 '
+               'WHERE id = ? AND (? OR current_hp > 0) AND (death_successes <> 0 OR death_failures <> 0 OR is_stable <> 0)',
+               (pid, bool(force)))
+
+
+def _log_hp_change(db, b, a, intent):
+    """Log what changed between two _bp_state snapshots: damage or healing (temp HP soaks up damage first), and whether
+    the creature went down, got back up or was revived.  Players only learn that an enemy was hurt or healed, never by how much."""
+    n, npc = a['name'], a['npc']
+    absorbed, lost, gained = b['temp'] - a['temp'], b['hp'] - a['hp'], a['hp'] - b['hp']
+    if intent == 'damage' and absorbed + lost > 0:
+        extra = f' ({absorbed} absorbed by temp HP)' if absorbed > 0 else ''
+        log_battle(db, f'{n} took {absorbed + lost} damage{extra}', f'{n} was hurt' if npc else None, 'damage', npc=npc)
+    elif intent == 'heal' and gained > 0:
+        log_battle(db, f'{n} healed {gained} HP', f'{n} was healed' if npc else None, 'heal', npc=npc)
+    elif intent == 'set' and a['hp'] != b['hp']:
+        sign = '+' if gained > 0 else '\u2212'
+        log_battle(db, f"{n}'s HP set to {a['hp']} ({sign}{abs(gained)})",
+                   (f'{n} was healed' if gained > 0 else f'{n} was hurt') if npc else None, 'heal' if gained > 0 else 'damage', npc=npc)
+    if b['dead'] and not a['dead']:
+        log_battle(db, f'{n} was revived', None, 'revive', npc=npc)
+    elif b['hp'] <= 0 and a['hp'] > 0 and not b['dead']:
+        log_battle(db, f'{n} is back on their feet', None, 'revive', npc=npc)
+    if b['hp'] > 0 and a['hp'] <= 0 and not a['dead']:
+        log_battle(db, f'{n} is down', None, 'down', npc=npc)
 
 
 def _turn_order(db):
@@ -2240,6 +4203,19 @@ def _pass_turn(db, skip_id=None, step=1):
         'UPDATE campaigns SET battle_turn_id = ?, battle_round = ? WHERE id = ? AND battle_turn_id IS NOT DISTINCT FROM CAST(? AS INTEGER)',
         (nxt, rnd if nxt is not None else camp['battle_round'], g.campaign_id, current))
     return cur.rowcount == 1
+
+
+def _pass_turn_logged(db, step):
+    """_pass_turn, plus a log line when combat starts or the round changes (a line per turn would only be noise)."""
+    camp = db.execute('SELECT battle_round, battle_turn_id FROM campaigns WHERE id = ?', (g.campaign_id,)).fetchone()
+    _pass_turn(db, step=step)
+    now = db.execute('SELECT battle_round, battle_turn_id FROM campaigns WHERE id = ?', (g.campaign_id,)).fetchone()
+    if camp['battle_turn_id'] is None and now['battle_turn_id'] is not None:
+        log_battle(db, 'Combat started: round 1', None, 'round')
+    elif now['battle_round'] > camp['battle_round']:
+        log_battle(db, f"Round {now['battle_round']} begins", None, 'round')
+    elif now['battle_round'] < camp['battle_round']:
+        log_battle(db, f"Back to round {now['battle_round']}", None, 'round')
 
 
 def _create_familiar_participant(db, icon_key, custom_name):
@@ -2289,6 +4265,29 @@ def api_battle_list():
     return jsonify(rows)
 
 
+@app.route('/campaigns/<int:campaign_id>/api/battle/log')
+@campaign_access_required
+def api_battle_log():
+    """The battle log, newest first.  Players get the public wording of enemy events (and none of the hidden ones)."""
+    db = get_db()
+    try:
+        rows = db.execute('SELECT id, kind, text, public_text, about_npc, created_at FROM battle_log WHERE campaign_id = ? ORDER BY id DESC LIMIT ?',
+                          (g.campaign_id, BATTLE_LOG_KEEP)).fetchall()
+    except pgerr.UndefinedTable:
+        db.rollback()
+        rows = []                                           # not migrated yet: an empty log, not an error on the battle page
+    db.close()
+    out = []
+    hide_npc_lines = npcs_hidden_from_viewer()
+    for r in rows:
+        if hide_npc_lines and r['about_npc']:
+            continue
+        text = r['text'] if g.is_dm or r['public_text'] is None else r['public_text']
+        if text:
+            out.append({'id': r['id'], 'kind': r['kind'], 'text': text, 'at': str(r['created_at']).replace(' ', 'T') + 'Z'})      # UTC, shown in the viewer's own time zone
+    return jsonify(out)
+
+
 @app.route('/campaigns/<int:campaign_id>/api/battle/add', methods=['POST'])
 @campaign_access_required
 @dm_required
@@ -2296,15 +4295,16 @@ def api_battle_add():
     data = request.get_json(force=True)
     character_id = data.get('character_id')
     db = get_db()
-    char = db.execute('SELECT max_hp FROM characters WHERE id = ? AND campaign_id = ?', (character_id, g.campaign_id)).fetchone()
+    char = db.execute('SELECT max_hp, name, is_npc, is_ally FROM characters WHERE id = ? AND campaign_id = ?', (character_id, g.campaign_id)).fetchone()
     if char is None:
         db.close()
-        return jsonify({'error': 'character not found'}), 404
+        return api_error('That character could not be found.', 404)
     max_order = db.execute('SELECT COALESCE(MAX(sort_order), -1) AS m FROM battle_participants').fetchone()['m']
     db.execute('''
         INSERT INTO battle_participants (character_id, current_hp, initiative, is_dead, sort_order)
         VALUES (?, ?, 0, 0, ?)
     ''', (character_id, char['max_hp'], max_order + 1))
+    log_battle(db, f"{char['name']} joined the battle", None, 'joined', npc=is_foe(char['is_npc'], char['is_ally']))
     db.commit()
     rows = _battle_rows(db)
     db.close()
@@ -2327,6 +4327,71 @@ def _roll_monster_hp(expr, average):
     return max(1, sum(secrets.randbelow(sides) + 1 for _ in range(n)) + bonus)
 
 
+def _monster_sig(db, char_id):
+    """A fingerprint of a monster character as it stands now: stats, notes, pictures, group, attacks.  Stored when the
+    character is made from a stat block; if it still matches later, nobody has edited the character."""
+    r = db.execute('SELECT name, level, max_hp, str_score, dex_score, con_score, int_score, wis_score, cha_score, armor_class, speed, '
+                   'notes, skill_prof, save_prof, group_id, is_ally, is_npc, avatar_path, class_key, player_id '
+                   'FROM characters WHERE id = ?', (char_id,)).fetchone()
+    if r is None:
+        return None
+    attacks = [[a['name'], a['attack_bonus'], a['damage'], a['damage_type']] for a in db.execute(
+        'SELECT name, attack_bonus, damage, damage_type FROM character_attacks WHERE character_id = ? ORDER BY position, id', (char_id,)).fetchall()]
+    sheets = db.execute('SELECT COUNT(*) AS n FROM character_sheets WHERE character_id = ?', (char_id,)).fetchone()['n']
+    groups = db.execute('SELECT COUNT(*) AS n FROM character_groups WHERE character_id = ?', (char_id,)).fetchone()['n']
+    blob = json.dumps([list(dict(r).values()), attacks, sheets, groups], sort_keys=True, default=str)
+    return hashlib.sha1(blob.encode()).hexdigest()
+
+
+def _monster_untouched(db, row):
+    """True for a character made from a stat block that nobody has edited since."""
+    return bool(row['added_from'] and row['added_sig'] and _monster_sig(db, row['id']) == row['added_sig'])
+
+
+def _monster_character(db, c, hp, source, notes, skill_prof, save_prof):
+    """The one character that stands for this monster at this hit point total: an untouched one made earlier when there is
+    one, else a new one.  Returns its id."""
+    base = c['name'][:120]
+    name = base if hp == c['max_hp'] else f'{base} ({hp} HP)'[:120]
+    for r in db.execute(
+            'SELECT id, added_from, added_sig FROM characters WHERE campaign_id = ? AND is_npc = 1 AND is_temp_familiar = 0 AND name = ? '
+            'AND added_from IS NOT NULL AND level = ? AND max_hp = ? AND str_score = ? AND dex_score = ? AND con_score = ? AND int_score = ? '
+            'AND wis_score = ? AND cha_score = ? AND armor_class = ? AND speed = ? ORDER BY id',
+            (g.campaign_id, name, c['level'], hp, c['str_score'], c['dex_score'], c['con_score'], c['int_score'], c['wis_score'],
+             c['cha_score'], c['armor_class'], c['speed'])).fetchall():
+        if _monster_untouched(db, r):
+            return r['id']
+    cur = db.execute('''
+        INSERT INTO characters
+        (name, is_npc, level, max_hp, str_score, dex_score, con_score, int_score, wis_score, cha_score,
+         armor_class, notes, campaign_id, created_by, speed, skill_prof, save_prof, added_from)
+        VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (name, c['level'], hp, c['str_score'], c['dex_score'], c['con_score'], c['int_score'], c['wis_score'], c['cha_score'],
+          c['armor_class'], notes, g.campaign_id, session['user_id'], c['speed'], skill_prof, save_prof, source))
+    _save_attacks(db, cur.lastrowid, c.get('attacks') or [])
+    db.execute('UPDATE characters SET added_sig = ? WHERE id = ?', (_monster_sig(db, cur.lastrowid), cur.lastrowid))
+    return cur.lastrowid
+
+
+def _add_monsters_to_battle(db, entry, count, rolled, source='encounter'):
+    """Put `count` copies of a 2024 stat block into the battle (the caller commits).  All copies share ONE character, so the
+    character list holds a single "Goblin Warrior" however many fight (the battle numbers them #1, #2...).  An earlier
+    character made from the same stat block is used again as long as nobody has edited it; an edited one is left alone and a
+    fresh one is made.  Rolled hit points that differ from the average get a character per total, named with it."""
+    c = entry['prefill']
+    notes = sanitize_notes_payload(json.dumps([{'t': n, 'h': 1} for n in entry.get('notes') or []]))
+    skill_prof = json.dumps(dnd5e.clean_skill_prof(c['skill_prof']))
+    save_prof = json.dumps(dnd5e.clean_save_prof(c['save_prof']))
+    max_order = db.execute('SELECT COALESCE(MAX(sort_order), -1) AS m FROM battle_participants').fetchone()['m']
+    for _ in range(count):
+        hp = _roll_monster_hp(c.get('hp_roll'), c['max_hp']) if rolled else c['max_hp']
+        char_id = _monster_character(db, c, hp, source, notes, skill_prof, save_prof)
+        max_order += 1
+        db.execute('INSERT INTO battle_participants (character_id, current_hp, initiative, is_dead, sort_order) VALUES (?, ?, 0, 0, ?)',
+                   (char_id, hp, max_order))
+    log_battle(db, f"{c['name']} joined the battle" if count == 1 else f"{count} \u00d7 {c['name']} joined the battle", None, 'joined', npc=True)
+
+
 @app.route('/campaigns/<int:campaign_id>/api/battle/add-monster', methods=['POST'])
 @campaign_access_required
 @dm_required
@@ -2336,37 +4401,20 @@ def api_battle_add_monster():
     ("Goblin 1", "Goblin 2"...), so each can have its own rolled hit points; the stat block is a note hidden from Players."""
     data = request.get_json(silent=True)
     if not isinstance(data, dict):
-        return jsonify({'error': 'bad request'}), 400
+        return api_error(None, 400)
     try:
         count = 1 if data.get('count') in (None, '') else int(data['count'])
     except (TypeError, ValueError):
-        return jsonify({'error': 'bad request'}), 400
+        return api_error(None, 400)
     if not 1 <= count <= MONSTER_COUNT_MAX:
-        return jsonify({'error': f'Add between 1 and {MONSTER_COUNT_MAX} at a time.'}), 400
+        return api_error(f'Add between 1 and {MONSTER_COUNT_MAX} at a time.', 400)
     rolled = data.get('hp') == 'rolled'
     try:
         entry = srd.detail('monsters', data.get('ref'))
     except srd.SrdError as e:
-        return jsonify({'error': str(e)}), _srd_status(e)
-    c = entry['prefill']
-    notes = sanitize_notes_payload(json.dumps([{'t': n, 'h': 1} for n in entry.get('notes') or []]))
-    skill_prof = json.dumps(dnd5e.clean_skill_prof(c['skill_prof']))
-    save_prof = json.dumps(dnd5e.clean_save_prof(c['save_prof']))
+        return api_error(str(e), _srd_status(e))
     db = get_db()
-    max_order = db.execute('SELECT COALESCE(MAX(sort_order), -1) AS m FROM battle_participants').fetchone()['m']
-    for i in range(1, count + 1):
-        hp = _roll_monster_hp(c.get('hp_roll'), c['max_hp']) if rolled else c['max_hp']
-        cur = db.execute('''
-            INSERT INTO characters
-            (name, is_npc, level, max_hp, str_score, dex_score, con_score, int_score, wis_score, cha_score,
-             armor_class, notes, campaign_id, created_by, speed, skill_prof, save_prof)
-            VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', ((c['name'] if count == 1 else f"{c['name']} {i}")[:120], c['level'], hp, c['str_score'], c['dex_score'],
-              c['con_score'], c['int_score'], c['wis_score'], c['cha_score'], c['armor_class'], notes,
-              g.campaign_id, session['user_id'], c['speed'], skill_prof, save_prof))
-        max_order += 1
-        db.execute('INSERT INTO battle_participants (character_id, current_hp, initiative, is_dead, sort_order) VALUES (?, ?, 0, 0, ?)',
-                   (cur.lastrowid, hp, max_order))
+    _add_monsters_to_battle(db, entry, count, rolled, 'monster manual')
     db.commit()
     rows = _battle_rows(db)
     db.close()
@@ -2388,6 +4436,9 @@ def api_battle_add_group():
             INSERT INTO battle_participants (character_id, current_hp, initiative, is_dead, sort_order)
             VALUES (?, ?, 0, 0, ?)
         ''', (m['id'], m['max_hp'], max_order + 1 + i))
+    if members:
+        gname = db.execute('SELECT name FROM groups WHERE id = ? AND campaign_id = ?', (group_id, g.campaign_id)).fetchone()
+        log_battle(db, f"{gname['name'] if gname else 'A faction'} joined the battle ({len(members)})", None, 'joined')
     db.commit()
     rows = _battle_rows(db)
     db.close()
@@ -2401,6 +4452,10 @@ def api_battle_heal(pid):
     data = request.get_json(force=True)
     amount = max(0, int(data.get('amount', 0)))
     db = get_db()
+    before = _bp_state(db, pid)
+    if before is None:
+        db.close()
+        return api_error(None, 404)
     # One atomic statement (no read-then-write), so two people healing/damaging
     # the same creature at the same moment can never overwrite each other.
     cur = db.execute('''
@@ -2414,7 +4469,9 @@ def api_battle_heal(pid):
     if cur.rowcount == 0:
         db.rollback()
         db.close()
-        return jsonify({'error': 'not found'}), 404
+        return api_error(None, 404)
+    _log_hp_change(db, before, _bp_state(db, pid), 'heal')
+    _reset_death_saves(db, pid)
     db.commit()
     rows = _battle_rows(db)
     db.close()
@@ -2428,6 +4485,10 @@ def api_battle_damage(pid):
     data = request.get_json(force=True)
     amount = max(0, int(data.get('amount', 0)))
     db = get_db()
+    before = _bp_state(db, pid)
+    if before is None:
+        db.close()
+        return api_error(None, 404)
     # Temporary HP absorbs damage first (standard D&D rule); any leftover spills
     # onto real HP.  Done as ONE atomic statement (all right-hand sides see the
     # row's pre-update values) so concurrent hits are never lost.
@@ -2440,7 +4501,8 @@ def api_battle_damage(pid):
     if cur.rowcount == 0:
         db.rollback()
         db.close()
-        return jsonify({'error': 'not found'}), 404
+        return api_error(None, 404)
+    _log_hp_change(db, before, _bp_state(db, pid), 'damage')
     db.commit()
     rows = _battle_rows(db)
     db.close()
@@ -2454,7 +4516,14 @@ def api_battle_temphp(pid):
     data = request.get_json(force=True)
     value = max(0, int(data.get('value', 0)))
     db = get_db()
+    before = _bp_state(db, pid)
+    if before is None:
+        db.close()
+        return api_error(None, 404)
     db.execute('UPDATE battle_participants SET temp_hp = ? WHERE id = ?', (value, pid))
+    if value != before['temp']:
+        log_battle(db, f"{before['name']} has {value} temp HP" if value else f"{before['name']} lost their temp HP",
+                   '' if before['npc'] else None, 'temp', npc=before['npc'])            # an enemy's temp HP is not for Players to see
     db.commit()
     rows = _battle_rows(db)
     db.close()
@@ -2468,6 +4537,10 @@ def api_battle_set_hp(pid):
     data = request.get_json(force=True)
     db = get_db()
     wanted = int(data.get('value', 0))
+    before = _bp_state(db, pid)
+    if before is None:
+        db.close()
+        return api_error(None, 404)
     cur = db.execute('''
         UPDATE battle_participants SET
             current_hp = GREATEST(0, LEAST(c.max_hp, ?)),
@@ -2479,7 +4552,9 @@ def api_battle_set_hp(pid):
     if cur.rowcount == 0:
         db.rollback()
         db.close()
-        return jsonify({'error': 'not found'}), 404
+        return api_error(None, 404)
+    _log_hp_change(db, before, _bp_state(db, pid), 'set')
+    _reset_death_saves(db, pid)
     db.commit()
     rows = _battle_rows(db)
     db.close()
@@ -2500,22 +4575,103 @@ def api_battle_initiative(pid):
     return jsonify(rows)
 
 
+INITIATIVE_SCOPES = {'all': ('everyone', None), 'pc': ('the player characters', 0), 'npc': ('the NPCs and monsters', 1)}
+
+
 @app.route('/campaigns/<int:campaign_id>/api/battle/roll-initiative', methods=['POST'])
 @campaign_access_required
 @dm_required
 def api_battle_roll_initiative():
-    """d20 + Dexterity modifier for everyone still standing.  Typing a number by hand keeps working afterwards."""
+    """d20 + Dexterity modifier for everyone still standing, or only for the player characters or only for the NPCs
+    ({"scope": "all" | "pc" | "npc"}, default all).  The others keep the numbers they have.  Typing a number by hand
+    keeps working afterwards."""
+    data = request.get_json(silent=True) or {}
+    scope = data.get('scope', 'all')
+    if scope not in INITIATIVE_SCOPES:
+        return api_error('Roll for everyone, the player characters or the NPCs.', 400)
+    who, npc_flag = INITIATIVE_SCOPES[scope]
     db = get_db()
-    for r in db.execute('''
+    sql = '''
         SELECT bp.id, c.dex_score FROM battle_participants bp JOIN characters c ON c.id = bp.character_id
-        WHERE c.campaign_id = ? AND bp.is_dead = 0
-    ''', (g.campaign_id,)).fetchall():
+        WHERE c.campaign_id = ? AND bp.is_dead = 0'''
+    params = [g.campaign_id]
+    if npc_flag is not None:
+        sql += ' AND c.is_npc = ?'
+        params.append(npc_flag)
+    for r in db.execute(sql, params).fetchall():
         total = secrets.randbelow(20) + 1 + dnd5e.modifier(r['dex_score'] if r['dex_score'] is not None else 10)
         db.execute('UPDATE battle_participants SET initiative = ? WHERE id = ?', (total, r['id']))
+    log_battle(db, 'Initiative rolled for ' + who, None, 'initiative', npc=(scope == 'npc'))
     db.commit()
     rows = _battle_rows(db)
     db.close()
     return jsonify(rows)
+
+
+@app.route('/campaigns/<int:campaign_id>/api/battle/long-rest', methods=['POST'])
+@campaign_access_required
+@dm_required
+def api_battle_long_rest():
+    """The player characters take a long rest: full HP, no temporary HP, death saves cleared, back on their feet.  Conditions,
+    NPCs and monsters are left alone.  Optional {"id": <participant id>} rests just that one character."""
+    data = request.get_json(silent=True) or {}
+    db = get_db()
+    sql = '''UPDATE battle_participants SET current_hp = c.max_hp, temp_hp = 0, is_dead = 0,
+                death_successes = 0, death_failures = 0, is_stable = 0
+            FROM characters c
+            WHERE battle_participants.character_id = c.id AND c.campaign_id = ? AND c.is_npc = 0'''
+    params = [g.campaign_id]
+    if data.get('id') is not None:
+        sql += ' AND battle_participants.id = ?'
+        params.append(int(data['id']))
+    changed = db.execute(sql, params).rowcount
+    if changed == 0:
+        db.rollback()
+        db.close()
+        return api_error('There are no player characters in the battle to rest.', 404)
+    log_battle(db, 'The party took a long rest' if data.get('id') is None else 'A character took a long rest', None, 'heal')
+    db.commit()
+    rows = _battle_rows(db)
+    db.close()
+    return jsonify(rows)
+
+
+@app.route('/campaigns/<int:campaign_id>/api/battle/short-rest', methods=['POST'])
+@campaign_access_required
+@dm_required
+def api_battle_short_rest():
+    """A short rest for the player characters in the battle: {"heals": {"<participant id>": hp regained}}.  Each amount is
+    added to that character's HP (never past the maximum, nobody who is dead), and a character back above 0 HP has their
+    death saves cleared.  Nothing else changes: Hit Dice are not tracked, so the DM types what was regained."""
+    data = request.get_json(silent=True) or {}
+    heals = data.get('heals') if isinstance(data.get('heals'), dict) else {}
+    db = get_db()
+    rows = db.execute('SELECT bp.id, bp.current_hp, bp.is_dead, c.max_hp, c.name FROM battle_participants bp JOIN characters c ON c.id = bp.character_id '
+                      'WHERE c.campaign_id = ? AND c.is_npc = 0 AND c.is_temp_familiar = 0', (g.campaign_id,)).fetchall()
+    if not rows:
+        db.close()
+        return api_error('There are no player characters in the battle to rest.', 404)
+    gained_lines = []
+    for r in rows:
+        raw = heals.get(str(r['id']))
+        try:
+            amount = int(raw)
+        except (TypeError, ValueError):
+            continue
+        if amount <= 0 or r['is_dead']:
+            continue
+        before = r['current_hp'] or 0
+        after = min(int(r['max_hp'] or 0), before + min(amount, 100000))
+        if after <= before:
+            continue
+        db.execute('UPDATE battle_participants SET current_hp = ? WHERE id = ?', (after, r['id']))
+        _reset_death_saves(db, r['id'])
+        gained_lines.append('%s +%d' % (r['name'], after - before))
+    log_battle(db, ('The party took a short rest: ' + ', '.join(gained_lines))[:200] if gained_lines else 'The party took a short rest', None, 'heal')
+    db.commit()
+    out = _battle_rows(db)
+    db.close()
+    return jsonify(out)
 
 
 @app.route('/campaigns/<int:campaign_id>/api/battle/<int:pid>/ac', methods=['POST'])
@@ -2560,7 +4716,13 @@ def api_battle_max_hp(pid):
 @dm_required
 def api_battle_die(pid):
     db = get_db()
+    before = _bp_state(db, pid)
+    if before is None:
+        db.close()
+        return api_error(None, 404)
     db.execute('UPDATE battle_participants SET is_dead = 1 WHERE id = ?', (pid,))
+    if not before['dead']:
+        log_battle(db, f"{before['name']} died", None, 'died', npc=before['npc'])
     db.commit()
     rows = _battle_rows(db)
     db.close()
@@ -2572,11 +4734,86 @@ def api_battle_die(pid):
 @dm_required
 def api_battle_revive(pid):
     db = get_db()
+    before = _bp_state(db, pid)
+    if before is None:
+        db.close()
+        return api_error(None, 404)
     db.execute('UPDATE battle_participants SET is_dead = 0 WHERE id = ?', (pid,))
+    _reset_death_saves(db, pid, force=True)                 # a revived character starts the count again
+    if before['dead']:
+        log_battle(db, f"{before['name']} was revived", None, 'revive', npc=before['npc'])
     db.commit()
     rows = _battle_rows(db)
     db.close()
     return jsonify(rows)
+
+
+@app.route('/campaigns/<int:campaign_id>/api/battle/<int:pid>/death-save', methods=['POST'])
+@campaign_access_required
+def api_battle_death_save(pid):
+    """One death saving throw for a character who is down at 0 HP (2024 rules).  The DM can roll for any player
+    character; a Player only for a character they made.  The d20 is rolled here, never in the browser.
+    10 or more is a success, 9 or less a failure, a natural 1 counts as two failures and a natural 20 puts the character
+    back on 1 HP.  Three successes make them stable, three failures kill them.  The tally lives on the participant
+    (migration 0027) and is cleared by healing, setting HP above 0 or reviving.  A Player's own roll is not announced
+    in the log (the table sees only the outcome: stable, back on 1 HP, died); the DM gets every roll."""
+    db = get_db()
+    row = db.execute('''SELECT bp.current_hp, bp.is_dead, bp.is_stable, bp.death_successes AS ok, bp.death_failures AS bad,
+                               c.is_npc, c.created_by, c.player_id
+                        FROM battle_participants bp JOIN characters c ON c.id = bp.character_id
+                        WHERE bp.id = ? AND c.campaign_id = ?''', (pid, g.campaign_id)).fetchone()
+    if row is None:
+        db.close()
+        return api_error(None, 404)
+    if not (g.is_dm or owns_character(row)):
+        db.close()
+        return api_error(None, 403)
+    if row['is_npc']:
+        db.close()
+        return api_error('Monsters and NPCs do not make death saves.', 400, code='not_applicable')
+    if row['current_hp'] > 0 or row['is_dead'] or row['is_stable']:
+        db.close()
+        return api_error('Only a character who is down and not yet stable can make a death save.', 409, code='not_downed')
+    before = _bp_state(db, pid)
+    roll = secrets.randbelow(20) + 1
+    ok, bad, hp, stable, dead = row['ok'], row['bad'], 0, 0, 0
+    if roll == 20:
+        outcome, hp, ok, bad = 'revived', 1, 0, 0
+    else:
+        if roll >= 10:
+            ok += 1
+        else:
+            bad = min(3, bad + (2 if roll == 1 else 1))
+        outcome = 'success' if roll >= 10 else 'failure'
+    tally = (ok, bad)                                       # as it stands after this roll (before a reset)
+    if outcome in ('success', 'failure'):
+        if ok >= 3:
+            outcome, stable, ok, bad = 'stable', 1, 0, 0
+        elif bad >= 3:
+            outcome, dead = 'dead', 1
+    # compare-and-swap on the tally we read, so two rolls at the same instant cannot overwrite each other
+    cur = db.execute('''UPDATE battle_participants SET current_hp = ?, death_successes = ?, death_failures = ?, is_stable = ?, is_dead = ?
+                        WHERE id = ? AND current_hp <= 0 AND is_dead = 0 AND is_stable = 0
+                          AND death_successes = ? AND death_failures = ?''',
+                     (hp, ok, bad, stable, dead, pid, row['ok'], row['bad']))
+    if cur.rowcount == 0:
+        db.rollback()
+        db.close()
+        return api_error('Someone else just rolled for this character; look again and retry.', 409, code='conflict')
+    n = before['name']
+    if outcome != 'revived':
+        verdict = 'two failures' if roll == 1 else ('success' if roll >= 10 else 'failure')
+        log_battle(db, f"{n} rolled {roll} on a death save: {verdict} ({tally[0]} of 3 successes, {tally[1]} of 3 failures)", '', 'deathsave')
+    if outcome == 'revived':
+        log_battle(db, f'{n} rolled a natural 20 on a death save and is back on 1 HP', None, 'revive')
+    elif outcome == 'stable':
+        log_battle(db, f'{n} is stable', None, 'stable')
+    elif outcome == 'dead':
+        log_battle(db, f'{n} died', None, 'died')
+    db.commit()
+    rows = _battle_rows(db, redact_enemies=not g.is_dm)
+    db.close()
+    return jsonify({'roll': roll, 'outcome': outcome, 'rows': rows})
 
 
 @app.route('/campaigns/<int:campaign_id>/api/battle/<int:pid>/conditions', methods=['POST'])
@@ -2587,19 +4824,38 @@ def api_battle_conditions(pid):
     payload = request.get_json(silent=True) or {}
     wanted = payload.get('conditions')
     if not isinstance(wanted, list) or any(not isinstance(k, str) or k not in _CONDITION_KEYS for k in wanted):
-        return jsonify({'error': 'Unknown condition'}), 400
+        return api_error('Unknown condition.', 400, code='unknown_condition')
     custom = None                                          # omitted = leave the participant's custom conditions alone
     if 'custom_conditions' in payload:
         try:
             custom = _clean_custom_conditions(payload['custom_conditions'])
         except ValueError:
-            return jsonify({'error': 'Custom conditions: up to %d, each 1-%d characters of plain text.'
-                                     % (MAX_CUSTOM_CONDITIONS, CUSTOM_CONDITION_MAX_LEN)}), 400
+            return api_error('Custom conditions: up to %d, each 1-%d characters of plain text.'
+                             % (MAX_CUSTOM_CONDITIONS, CUSTOM_CONDITION_MAX_LEN), 400)
     db = get_db()
+    before = _bp_state(db, pid)
+    if before is None:
+        db.close()
+        return api_error(None, 404)
     db.execute('UPDATE battle_participants SET conditions = ? WHERE id = ?',
                (','.join(k for k in _CONDITION_KEYS if k in wanted), pid))
     if custom is not None:
         db.execute('UPDATE battle_participants SET custom_conditions = ? WHERE id = ?', (json.dumps(custom), pid))
+    labels = dict(BATTLE_CONDITIONS)
+    now_std = [k for k in _CONDITION_KEYS if k in wanted]
+    for k in now_std:
+        if k not in before['conditions']:
+            log_battle(db, f"{before['name']} is now {labels[k]}", None, 'condition', npc=before['npc'])
+    for k in before['conditions']:
+        if k not in now_std:
+            log_battle(db, f"{before['name']} is no longer {labels[k]}", None, 'condition', npc=before['npc'])
+    if custom is not None:
+        for c in custom:
+            if c not in before['custom']:
+                log_battle(db, f"{before['name']} is now {c}", None, 'condition', npc=before['npc'])
+        for c in before['custom']:
+            if c not in custom:
+                log_battle(db, f"{before['name']} is no longer {c}", None, 'condition', npc=before['npc'])
     db.commit()
     rows = _battle_rows(db)
     db.close()
@@ -2613,7 +4869,7 @@ def api_battle_next_turn():
     """DM only. Starts the fight (first in initiative order) or passes the turn on; the round
     counter goes up each time the order wraps round to the top."""
     db = get_db()
-    _pass_turn(db)
+    _pass_turn_logged(db, 1)
     db.commit()
     rows = _battle_rows(db)
     db.close()
@@ -2626,7 +4882,7 @@ def api_battle_next_turn():
 def api_battle_prev_turn():
     """DM only. Steps back one turn (undo a mis-click); going back past the top returns to the previous round."""
     db = get_db()
-    _pass_turn(db, step=-1)
+    _pass_turn_logged(db, -1)
     db.commit()
     rows = _battle_rows(db)
     db.close()
@@ -2641,6 +4897,7 @@ def api_battle_restart_turns():
     db = get_db()
     first = next((i for i, dead in _turn_order(db) if not dead), None)
     db.execute('UPDATE campaigns SET battle_round = 1, battle_turn_id = ? WHERE id = ?', (first, g.campaign_id))
+    log_battle(db, 'Turns restarted: round 1', None, 'round')
     db.commit()
     rows = _battle_rows(db)
     db.close()
@@ -2669,7 +4926,9 @@ def _remove_participant(db, pid):
 @dm_required
 def api_battle_remove(pid):
     db = get_db()
-    _remove_participant(db, pid)
+    before = _bp_state(db, pid)
+    if _remove_participant(db, pid) and before:
+        log_battle(db, f"{before['name']} left the battle", None, 'left', npc=before['npc'])
     db.commit()
     rows = _battle_rows(db)
     db.close()
@@ -2681,14 +4940,563 @@ def api_battle_remove(pid):
 @dm_required
 def api_battle_clear():
     db = get_db()
+    try:
+        db.execute('DELETE FROM battle_log WHERE campaign_id = ?', (g.campaign_id,))      # a new encounter starts with a clean log
+    except pgerr.UndefinedTable:
+        db.rollback()                                       # not migrated yet
     db.execute(
         'DELETE FROM battle_participants WHERE character_id IN (SELECT id FROM characters WHERE campaign_id = ?)',
         (g.campaign_id,)
     )
     db.execute('UPDATE campaigns SET battle_round = 1, battle_turn_id = NULL WHERE id = ?', (g.campaign_id,))
+    log_battle(db, 'Battle cleared', None, 'left')
     db.commit()
     db.close()
     return jsonify([])
+
+
+def _activity_events(db, limit=100):
+    """Recent campaign events this person may see (NPC events are left out while NPCs are hidden from Players)."""
+    try:
+        events = db.execute('''SELECT a.id, a.kind, a.text, a.link, a.created_at, COALESCE(NULLIF(u.display_name, ''), u.username) AS actor
+                                FROM campaign_activity a LEFT JOIN users u ON u.id = a.user_id
+                                WHERE a.campaign_id = ? ORDER BY a.id DESC LIMIT ?''', (g.campaign_id, limit)).fetchall()
+    except pgerr.UndefinedTable:
+        db.rollback()
+        return []
+    if npcs_hidden_from_viewer():                  # nothing about an NPC (its name is in the text) while they are hidden from Players
+        hidden_ids = {str(r['id']) for r in db.execute('SELECT id, created_by FROM characters WHERE campaign_id = ? AND is_npc = 1 AND is_ally = 0',
+                                                      (g.campaign_id,)).fetchall() if npc_is_hidden(1, r['created_by'])}
+        events = [e for e in events if not (e['link'] and e['link'].rstrip('/').rsplit('/', 1)[-1] in hidden_ids and '/characters/' in e['link'])
+                  and not (e['text'] or '').startswith('added the NPC ')]
+    return events
+
+
+@app.route('/campaigns/<int:campaign_id>/activity')
+@campaign_access_required
+def activity_view():
+    """What has happened in this campaign lately: members joining or leaving, and things added or removed."""
+    db = get_db()
+    events = _activity_events(db)
+    db.close()
+    return render_template('activity.html', events=events)
+
+
+@app.route('/campaigns/<int:campaign_id>/home')
+@campaign_access_required
+def campaign_home():
+    """The campaign's front page: the party, where the battle stands, what happened lately and the latest rolls."""
+    db = get_db()
+    hide_sql, hide_params = npc_filter()
+    party = db.execute('''SELECT c.id, c.name, c.level, c.max_hp, c.armor_class, c.avatar_path, c.class_key
+                           FROM characters c WHERE c.campaign_id = ? AND c.is_temp_familiar = 0 AND c.is_npc = 0
+                           ORDER BY lower(c.name) ASC''', (g.campaign_id,)).fetchall()
+    members = db.execute('''SELECT u.id, u.username, u.profile_visibility, cm.role, cm.status
+                             FROM campaign_members cm JOIN users u ON u.id = cm.user_id
+                             WHERE cm.campaign_id = ?
+                             ORDER BY (cm.status = 'dm') DESC, lower(u.username) ASC''', (g.campaign_id,)).fetchall()
+    counts = db.execute('''SELECT (SELECT COUNT(*) FROM characters c WHERE c.campaign_id = ? AND c.is_temp_familiar = 0''' + hide_sql + ''') AS characters,
+                                  (SELECT COUNT(*) FROM groups WHERE campaign_id = ?) AS factions,
+                                  (SELECT COUNT(*) FROM maps WHERE campaign_id = ?) AS maps''',
+                        [g.campaign_id] + hide_params + [g.campaign_id, g.campaign_id]).fetchone()
+    rows = _battle_rows(db, redact_enemies=not g.is_dm)
+    battle = {'count': len(rows), 'round': rows[0]['battle_round'] if rows else 1,
+              'active': next((r['display_name'] for r in rows if r['is_active']), None)}
+    events = _activity_events(db, 5)
+    rolls = list(reversed(_dice_feed(db, limit=5)))
+    played = {}
+    for r in db.execute('SELECT c.id, c.name, c.player_id FROM characters c WHERE c.campaign_id = ? AND c.is_temp_familiar = 0 AND c.player_id IS NOT NULL'
+                        + hide_sql + ' ORDER BY lower(c.name)', [g.campaign_id] + hide_params).fetchall():
+        played.setdefault(r['player_id'], []).append(r)
+    next_session = _next_session(db)
+    try:
+        quests = db.execute('SELECT id, title, details, done, hidden FROM quests WHERE campaign_id = ?' + ('' if g.is_dm else ' AND hidden = FALSE')
+                            + ' ORDER BY done, id', (g.campaign_id,)).fetchall()
+    except pgerr.UndefinedTable:
+        db.rollback()
+        quests = []                                         # code deployed before migration 0038: show no quests rather than fail
+    db.close()
+    return render_template('campaign_home.html', quests=quests, next_session=next_session, played=played, bio_html=notes_to_html(g.campaign['description']),
+                           campaign_notes=notes_to_html(g.campaign['notes'], show_hidden=g.is_dm), members=members, party=party, counts=counts, battle=battle, events=events, rolls=rolls)
+
+
+# ---------------- SESSION SCHEDULING (DL-152) ----------------
+# One "next session" per campaign: a UTC time and a short note.  Members answer yes / maybe / no; changing the time
+# clears the answers.  The browser turns the UTC time into the viewer's own time zone (static/js/home.js).
+
+SESSION_STATUSES = ('yes', 'maybe', 'no')
+SESSION_NOTE_MAX = 300
+SESSION_STALE_AFTER = timedelta(hours=6)       # a session that started more than this long ago no longer counts as "next"
+
+
+def _parse_session_time(raw):
+    """A UTC datetime (naive) from an ISO-8601 string such as 2026-11-07T18:00:00.000Z, or None if it is not one or is
+    unreasonable (more than a day ago or more than two years ahead)."""
+    raw = (raw or '').strip()
+    if not raw or len(raw) > 40:
+        return None
+    try:
+        when = datetime.fromisoformat(raw.replace('Z', '+00:00'))
+    except ValueError:
+        return None
+    if when.tzinfo is not None:
+        when = when.astimezone(timezone.utc).replace(tzinfo=None)
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    if when < now - timedelta(days=1) or when > now + timedelta(days=730):
+        return None
+    return when.replace(microsecond=0)
+
+
+def _as_utc_datetime(value):
+    """A timestamp column as a naive UTC datetime (the database layer may hand back text)."""
+    if value is None or isinstance(value, datetime):
+        return value
+    return datetime.fromisoformat(str(value).replace(' ', 'T'))
+
+
+def _next_session(db):
+    """The upcoming session for the Home card and the calendar file, or None."""
+    c = db.execute('SELECT next_session_at, next_session_note FROM campaigns WHERE id = ?', (g.campaign_id,)).fetchone()
+    when = _as_utc_datetime(c['next_session_at']) if c else None
+    if when is None or when < datetime.now(timezone.utc).replace(tzinfo=None) - SESSION_STALE_AFTER:
+        return None
+    answers = {k: [] for k in SESSION_STATUSES}
+    for r in db.execute('''SELECT r.status, r.user_id, u.username FROM session_rsvps r JOIN users u ON u.id = r.user_id
+                           WHERE r.campaign_id = ? ORDER BY lower(u.username)''', (g.campaign_id,)).fetchall():
+        answers[r['status']].append(r['username'])
+    mine = db.execute('SELECT status FROM session_rsvps WHERE campaign_id = ? AND user_id = ?', (g.campaign_id, session['user_id'])).fetchone()
+    return {'at': when, 'iso': when.strftime('%Y-%m-%dT%H:%M:%SZ'), 'note': c['next_session_note'] or '', 'answers': answers,
+            'mine': mine['status'] if mine else None}
+
+
+@app.route('/campaigns/<int:campaign_id>/session', methods=['POST'])
+@campaign_access_required
+def campaign_session_set():
+    """The DM or an owner sets, changes or clears the next session.  A new time clears the answers and tells the members."""
+    if not (g.real_is_dm or g.campaign_role == 'owner'):
+        abort(403)
+    db = get_db()
+    note = ' '.join((request.form.get('note') or '').split())[:SESSION_NOTE_MAX]
+    if request.form.get('clear'):
+        db.execute('UPDATE campaigns SET next_session_at = NULL, next_session_note = NULL WHERE id = ?', (g.campaign_id,))
+        db.execute('DELETE FROM session_rsvps WHERE campaign_id = ?', (g.campaign_id,))
+        db.commit(); db.close()
+        return redirect(url_for('campaign_home'))
+    when = _parse_session_time(request.form.get('starts_at'))
+    if when is None:
+        db.close()
+        abort(400)
+    old = _as_utc_datetime(db.execute('SELECT next_session_at FROM campaigns WHERE id = ?', (g.campaign_id,)).fetchone()['next_session_at'])
+    db.execute('UPDATE campaigns SET next_session_at = ?, next_session_note = ? WHERE id = ?', (when, note or None, g.campaign_id))
+    if old != when:
+        db.execute('DELETE FROM session_rsvps WHERE campaign_id = ?', (g.campaign_id,))
+        text = when.strftime('%a %d %b %Y, %H:%M UTC')
+        for m in db.execute('SELECT user_id FROM campaign_members WHERE campaign_id = ? AND user_id <> ?', (g.campaign_id, session['user_id'])).fetchall():
+            notify(db, m['user_id'], 'session_scheduled', 'Next session of %s: %s' % (g.campaign['name'], text),
+                   'Open the campaign to say whether you can come.', url_for('campaign_home', campaign_id=g.campaign_id))
+        log_activity(db, g.campaign_id, 'session', 'scheduled the next session for ' + text, url_for('campaign_home', campaign_id=g.campaign_id))
+    db.commit(); db.close()
+    return redirect(url_for('campaign_home'))
+
+
+@app.route('/campaigns/<int:campaign_id>/session/rsvp', methods=['POST'])
+@campaign_access_required
+def campaign_session_rsvp():
+    """Any member answers yes / maybe / no for the scheduled session."""
+    status = request.form.get('status')
+    if status not in SESSION_STATUSES:
+        abort(400)
+    db = get_db()
+    if _next_session(db) is None:
+        db.close()
+        abort(409)                                          # nothing scheduled to answer
+    db.execute('''INSERT INTO session_rsvps (campaign_id, user_id, status) VALUES (?, ?, ?)
+                  ON CONFLICT (campaign_id, user_id) DO UPDATE SET status = EXCLUDED.status, updated_at = ''' + _UTC_NOW,
+               (g.campaign_id, session['user_id'], status))
+    db.commit(); db.close()
+    return redirect(url_for('campaign_home'))
+
+
+# ---------------- QUESTS (DL-151) ----------------
+# A short list on the Home page.  The DM adds, finishes, hides and deletes; Players read the ones that are not hidden.
+QUEST_TITLE_MAX, QUEST_DETAILS_MAX, QUEST_LIMIT = 120, 600, 60
+
+
+@app.route('/campaigns/<int:campaign_id>/quests/add', methods=['POST'])
+@campaign_access_required
+@dm_required
+def quest_add():
+    title = ' '.join((request.form.get('title') or '').split())[:QUEST_TITLE_MAX]
+    if not title:
+        abort(400)
+    details = (request.form.get('details') or '').strip()[:QUEST_DETAILS_MAX]
+    db = get_db()
+    if db.execute('SELECT COUNT(*) AS n FROM quests WHERE campaign_id = ?', (g.campaign_id,)).fetchone()['n'] >= QUEST_LIMIT:
+        db.close()
+        abort(409)
+    hidden = bool(request.form.get('hidden'))
+    db.execute('INSERT INTO quests (campaign_id, title, details, hidden) VALUES (?, ?, ?, ?)', (g.campaign_id, title, details or None, hidden))
+    if not hidden:
+        log_activity(db, g.campaign_id, 'quest', 'added the quest "%s"' % title, url_for('campaign_home', campaign_id=g.campaign_id))
+    db.commit(); db.close()
+    return redirect(url_for('campaign_home'))
+
+
+@app.route('/campaigns/<int:campaign_id>/quests/<int:quest_id>', methods=['POST'])
+@campaign_access_required
+@dm_required
+def quest_change(quest_id):
+    """The form field `action`: done | reopen | hide | show | delete."""
+    action = request.form.get('action')
+    if action not in ('done', 'reopen', 'hide', 'show', 'delete'):
+        abort(400)
+    db = get_db()
+    q = db.execute('SELECT title, hidden FROM quests WHERE id = ? AND campaign_id = ?', (quest_id, g.campaign_id)).fetchone()
+    if q is None:
+        db.close()
+        abort(400)
+    if action == 'delete':
+        db.execute('DELETE FROM quests WHERE id = ? AND campaign_id = ?', (quest_id, g.campaign_id))
+    else:
+        col, val = {'done': ('done', True), 'reopen': ('done', False), 'hide': ('hidden', True), 'show': ('hidden', False)}[action]
+        db.execute('UPDATE quests SET %s = ? WHERE id = ? AND campaign_id = ?' % col, (val, quest_id, g.campaign_id))
+        if action == 'done' and not q['hidden']:
+            log_activity(db, g.campaign_id, 'quest', 'completed the quest "%s"' % q['title'], url_for('campaign_home', campaign_id=g.campaign_id))
+    db.commit(); db.close()
+    return redirect(url_for('campaign_home'))
+
+
+# ---- Party treasury (DL-148) -------------------------------------------------------------------------------------
+COINS = ('cp', 'sp', 'ep', 'gp', 'pp')
+COIN_VALUE = {'cp': 1, 'sp': 10, 'ep': 50, 'gp': 100, 'pp': 1000}            # worth in copper
+TREASURY_NOTE_MAX, TREASURY_COIN_MAX, TREASURY_LIMIT = 200, 1000000, 3000
+
+
+def _coins_from_form():
+    """The five coin amounts of a form as whole numbers >= 0 (blank = 0); None when one is not a valid amount."""
+    out = {}
+    for c in COINS:
+        raw = (request.form.get(c) or '').strip() or '0'
+        if not raw.isdigit() or int(raw) > TREASURY_COIN_MAX:
+            return None
+        out[c] = int(raw)
+    return out
+
+
+def coins_value(coins):
+    """Copper worth of a {coin: count} dict."""
+    return sum(COIN_VALUE[c] * int(coins.get(c, 0)) for c in COINS)
+
+
+def settle_payment(purse, cost):
+    """Pay `cost` (coins) out of `purse` (coins on hand).  The coins named are paid when the purse has them; what is
+    missing is made up from the smallest coins first, and any overpayment comes back as change (pp, gp, sp, cp).
+    Returns the signed change per coin, or None when the purse is worth less than the cost."""
+    paid, short = {}, 0
+    for c in COINS:
+        use = min(cost.get(c, 0), purse.get(c, 0))
+        paid[c] = use
+        short += (cost.get(c, 0) - use) * COIN_VALUE[c]
+    for c in COINS:
+        if short <= 0:
+            break
+        need = -(-short // COIN_VALUE[c])
+        take = min(purse.get(c, 0) - paid[c], need)
+        paid[c] += take
+        short -= take * COIN_VALUE[c]
+    if short > 0:
+        return None
+    change, back = -short, {c: 0 for c in COINS}
+    for c in ('pp', 'gp', 'sp', 'cp'):
+        back[c], change = divmod(change, COIN_VALUE[c])
+    return {c: back[c] - paid[c] for c in COINS}
+
+
+def format_coins(coins, signed=False):
+    """'3 gp 5 sp' - only the coins that are not zero; '0 gp' for an empty hand."""
+    parts = []
+    for c in ('pp', 'gp', 'ep', 'sp', 'cp'):
+        n = int(coins.get(c, 0))
+        if n:
+            parts.append(('%+d %s' if signed else '%d %s') % (n, c))
+    return ' '.join(parts) or '0 gp'
+
+
+def format_gold(copper):
+    """Total worth in gold: 12.5 gp, 3 gp, 0.05 gp."""
+    whole, rest = divmod(abs(int(copper)), 100)
+    text = str(whole) + (('.%02d' % rest).rstrip('0') if rest else '')
+    return ('-' if copper < 0 else '') + text + ' gp'
+
+
+app.jinja_env.globals.update(format_coins=format_coins, format_gold=format_gold, coins_value=coins_value, treasury_coins=COINS)
+
+
+def _purse_from(row):
+    return {c: int(row[c] or 0) for c in COINS}
+
+
+def _purses(db):
+    """Every purse of the campaign at once: {None: the party's, character_id: that character's}."""
+    out = {None: {c: 0 for c in COINS}}
+    for r in db.execute('SELECT character_id, COALESCE(SUM(cp), 0) AS cp, COALESCE(SUM(sp), 0) AS sp, COALESCE(SUM(ep), 0) AS ep, '
+                        'COALESCE(SUM(gp), 0) AS gp, COALESCE(SUM(pp), 0) AS pp FROM treasury_entries WHERE campaign_id = ? '
+                        'GROUP BY character_id', (g.campaign_id,)).fetchall():
+        out[r['character_id']] = _purse_from(r)
+    return out
+
+
+def _purse(db, holder=None):
+    """The coins one holder has: the party's purse (holder None) or one character's."""
+    return _purses(db).get(holder) or {c: 0 for c in COINS}
+
+
+def _treasury_party(db):
+    """The player characters, each with whether the signed-in member may spend from their purse (the DM, or whoever made or plays them)."""
+    rows = db.execute('SELECT id, name, created_by, player_id FROM characters WHERE campaign_id = ? AND is_temp_familiar = 0 AND is_npc = 0 '
+                      'ORDER BY lower(name) ASC', (g.campaign_id,)).fetchall()
+    return [{'id': r['id'], 'name': r['name'], 'can_manage': bool(g.is_dm or owns_character(r))} for r in rows]
+
+
+TREASURY_PAGE = 10                      # entries per page, newest first
+
+
+def _treasury_script():
+    """True for the page's own scripts (fetch with X-Requested-With: fetch); everything else gets the normal redirect and full page."""
+    return request.headers.get('X-Requested-With') == 'fetch'
+
+
+def _treasury_context(db):
+    purses = _purses(db)
+    zero = {c: 0 for c in COINS}
+    party = _treasury_party(db)
+    for p in party:
+        p['purse'] = purses.get(p['id']) or zero
+        p['total'] = coins_value(p['purse'])
+    party_purse = purses.get(None) or zero
+    who = request.args.get('who') or ''
+    where, args = '', ()
+    if who == 'party':
+        where = ' AND t.character_id IS NULL'
+    elif who.isdigit():
+        where, args = ' AND t.character_id = ?', (int(who),)
+    else:
+        who = ''
+    count = db.execute('SELECT COUNT(*) AS n FROM treasury_entries t WHERE t.campaign_id = ?' + where, (g.campaign_id,) + args).fetchone()['n']
+    pages = max(1, -(-count // TREASURY_PAGE))
+    raw = request.args.get('page') or '1'
+    page = min(max(int(raw) if raw.isdigit() and len(raw) < 6 else 1, 1), pages)
+    entries = db.execute('SELECT t.id, t.created_by, t.character_id, t.batch, t.cp, t.sp, t.ep, t.gp, t.pp, t.note, t.created_at, '
+                         "COALESCE(NULLIF(u.display_name, ''), u.username) AS actor, c.name AS character_name "
+                         'FROM treasury_entries t LEFT JOIN users u ON u.id = t.created_by '
+                         'LEFT JOIN characters c ON c.id = t.character_id '
+                         'WHERE t.campaign_id = ?' + where + ' ORDER BY t.id DESC LIMIT ? OFFSET ?',
+                         (g.campaign_id,) + args + (TREASURY_PAGE, (page - 1) * TREASURY_PAGE)).fetchall()
+    return dict(purse=party_purse, total=coins_value(party_purse), entries=entries, party=party, me=session.get('user_id'), who=who,
+                holder=request.args.get('holder') or '', page=page, pages=pages, count=count, page_size=TREASURY_PAGE,
+                grand_total=coins_value(party_purse) + sum(p['total'] for p in party))
+
+
+def _treasury_page(db, error=None, status=200):
+    if error and _treasury_script():
+        db.close()
+        return jsonify(error=error), status
+    ctx = _treasury_context(db)
+    db.close()
+    return render_template('treasury.html', error=error, **ctx), status
+
+
+def _treasury_done(message, **redirect_args):
+    """The answer to a finished change: a short message for the page's own scripts, a redirect for a plain form post."""
+    if _treasury_script():
+        return jsonify(ok=True, message=message)
+    return redirect(url_for('treasury_view', **redirect_args))
+
+
+@app.route('/campaigns/<int:campaign_id>/treasury/panels')
+@campaign_access_required
+def treasury_panels():
+    """The purses and the entries list alone (HTML), so the page can refresh them after a change without reloading."""
+    db = get_db()
+    ctx = _treasury_context(db)
+    db.close()
+    return render_template('_treasury_live.html', error=None, **ctx)
+
+
+@app.route('/campaigns/<int:campaign_id>/treasury')
+@campaign_access_required
+def treasury_view():
+    """The party purse, every character's purse, every entry that got the coins there, and the forms to add, spend and share."""
+    return _treasury_page(get_db())
+
+
+def _treasury_insert(db, deltas, note, holder=None, batch=None, log=True):
+    db.execute('INSERT INTO treasury_entries (campaign_id, created_by, character_id, cp, sp, ep, gp, pp, note, batch) '
+               'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+               (g.campaign_id, session.get('user_id'), holder) + tuple(deltas[c] for c in COINS) + (note, batch))
+    if log:
+        what = 'added to the purse' if coins_value(deltas) > 0 else 'spent from the purse'
+        log_activity(db, g.campaign_id, 'treasury', '%s: %s' % (what, note[:80]), url_for('treasury_view', campaign_id=g.campaign_id))
+
+
+def _holder_from(db, raw):
+    """(ok, holder): the purse a form names - blank/'party' is the party's, a number a player character of this campaign.
+    ok is False when the character is unknown or the signed-in member may not use its purse."""
+    raw = (raw or '').strip()
+    if raw in ('', 'party'):
+        return True, None
+    if not raw.isdigit():
+        return False, None
+    for p in _treasury_party(db):
+        if p['id'] == int(raw):
+            return p['can_manage'], p['id']
+    return False, None
+
+
+@app.route('/campaigns/<int:campaign_id>/treasury/add', methods=['POST'])
+@campaign_access_required
+def treasury_add():
+    """Coins in (kind=income) or out (kind=expense) of a purse (character_id: blank = the party's).  Spending makes change by
+    itself and cannot take a purse below zero.  A character's purse is for the DM and whoever made or plays that character."""
+    kind = request.form.get('kind')
+    coins = _coins_from_form()
+    db = get_db()
+    if kind not in ('income', 'expense'):
+        db.close()
+        abort(400)
+    if coins is None:
+        return _treasury_page(db, error='Coin amounts must be whole numbers from 0 to %d.' % TREASURY_COIN_MAX, status=400)
+    if not any(coins.values()):
+        return _treasury_page(db, error='Type how many coins first.', status=400)
+    note = ' '.join((request.form.get('note') or '').split())[:TREASURY_NOTE_MAX] or ('Income' if kind == 'income' else 'Expense')
+    ok, holder = _holder_from(db, request.form.get('character_id'))
+    if not ok:
+        db.close()
+        abort(403 if (request.form.get('character_id') or '').strip().isdigit() else 400)
+    if db.execute('SELECT COUNT(*) AS n FROM treasury_entries WHERE campaign_id = ?', (g.campaign_id,)).fetchone()['n'] >= TREASURY_LIMIT:
+        db.close()
+        abort(409)
+    if kind == 'income':
+        deltas = coins
+    else:
+        deltas = settle_payment(_purse(db, holder), coins)
+        if deltas is None:
+            return _treasury_page(db, error='That purse does not have enough for that.', status=400)
+    _treasury_insert(db, deltas, note, holder)
+    names = {p['id']: p['name'] for p in _treasury_party(db)}
+    db.commit(); db.close()
+    owner = 'the party purse' if holder is None else "%s's purse" % names.get(holder, 'the character')
+    return _treasury_done(('Added %s to %s.' if kind == 'income' else 'Spent %s from %s.') % (format_coins(coins), owner),
+                          who='party' if holder is None else holder)
+
+
+@app.route('/campaigns/<int:campaign_id>/treasury/split', methods=['POST'])
+@campaign_access_required
+def treasury_split():
+    """Move coins out of one purse (`source`: blank = the party's) and share them evenly between the chosen purses
+    (`to`: 'party' and/or character ids; one recipient is a plain hand-over).  The whole purse (`whole`) or the amounts
+    typed; each gets the same share, worked out in copper and rounded down, and what does not divide stays behind.
+    One entry per purse, tied together so they are removed together."""
+    coins = _coins_from_form()
+    wanted = request.form.getlist('to')
+    db = get_db()
+    if coins is None:
+        return _treasury_page(db, error='Coin amounts must be whole numbers from 0 to %d.' % TREASURY_COIN_MAX, status=400)
+    whole = bool(request.form.get('whole')) or not any(coins.values())       # no amount typed: the whole purse
+    ok, source = _holder_from(db, request.form.get('source'))
+    if not ok:
+        db.close()
+        abort(403)
+    names = {p['id']: p['name'] for p in _treasury_party(db)}
+    names[None] = 'the party purse'
+    recipients = []
+    for raw in wanted:
+        if raw == 'party':
+            h = None
+        elif raw.isdigit() and int(raw) in names:
+            h = int(raw)
+        else:
+            db.close()
+            abort(400)
+        if h != source and h not in recipients:                         # never back into the purse it comes out of
+            recipients.append(h)
+    if not recipients:
+        return _treasury_page(db, error='Tick who should get the coins (not the purse they come from).', status=400)
+    purse = _purse(db, source)
+    amount = coins_value(purse) if whole else coins_value(coins)
+    share = amount // len(recipients)
+    if share < 1:
+        return _treasury_page(db, error='That is too little to share between %d.' % len(recipients), status=400)
+    deltas = settle_payment(purse, {'cp': share * len(recipients)})
+    if deltas is None:
+        return _treasury_page(db, error='That purse does not have enough for that.', status=400)
+    each, left = {}, share
+    for c in ('pp', 'gp', 'sp', 'cp'):
+        each[c], left = divmod(left, COIN_VALUE[c])
+    each['ep'] = 0
+    batch = secrets.token_hex(8)
+    from_name = names[source] if source is not None else 'the party purse'
+    to_names = ', '.join(names[h] for h in recipients)
+    verb = 'Handed over to' if len(recipients) == 1 else 'Shared evenly with'
+    _treasury_insert(db, deltas, ('%s %s: %s each' % (verb, to_names, format_coins(each)))[:TREASURY_NOTE_MAX], source, batch)
+    for h in recipients:
+        _treasury_insert(db, each, ('From %s: %s' % (from_name, format_coins(each)))[:TREASURY_NOTE_MAX], h, batch, log=False)
+    db.commit(); db.close()
+    return _treasury_done('%s %s: %s each.' % (verb, to_names, format_coins(each)))
+
+
+@app.route('/campaigns/<int:campaign_id>/treasury/<int:entry_id>/delete', methods=['POST'])
+@campaign_access_required
+def treasury_delete(entry_id):
+    """The DM can remove any entry, a member the ones they made - unless that would leave a purse with a coin below zero.
+    A share between purses is removed as a whole (every entry of it)."""
+    db = get_db()
+    e = db.execute('SELECT created_by, batch FROM treasury_entries WHERE id = ? AND campaign_id = ?', (entry_id, g.campaign_id)).fetchone()
+    if e is None:
+        db.close()
+        abort(400)
+    if not (g.is_dm or e['created_by'] == session.get('user_id')):
+        db.close()
+        abort(403)
+    if e['batch']:
+        group = db.execute('SELECT id, character_id, cp, sp, ep, gp, pp FROM treasury_entries WHERE campaign_id = ? AND batch = ?', (g.campaign_id, e['batch'])).fetchall()
+    else:
+        group = db.execute('SELECT id, character_id, cp, sp, ep, gp, pp FROM treasury_entries WHERE id = ? AND campaign_id = ?', (entry_id, g.campaign_id)).fetchall()
+    purses = _purses(db)
+    for h in {r['character_id'] for r in group}:
+        have = purses.get(h) or {c: 0 for c in COINS}
+        if any(have[c] - sum(int(r[c]) for r in group if r['character_id'] == h) < 0 for c in COINS):
+            return _treasury_page(db, error='That entry cannot be removed: later entries spent coins it brought in.', status=409)
+    db.execute('DELETE FROM treasury_entries WHERE campaign_id = ? AND id IN (%s)' % ', '.join('?' * len(group)), (g.campaign_id,) + tuple(r['id'] for r in group))
+    db.commit(); db.close()
+    return _treasury_done('Entry removed.')
+
+
+def _ics_escape(text):
+    """RFC 5545 text escaping: backslash, semicolon, comma and line breaks."""
+    return str(text).replace('\\', '\\\\').replace(';', '\\;').replace(',', '\\,').replace('\r', '').replace('\n', '\\n')
+
+
+@app.route('/campaigns/<int:campaign_id>/session.ics')
+@campaign_access_required
+def campaign_session_ics():
+    """The next session as a calendar file (a three-hour event; the DM's note goes in the description)."""
+    db = get_db()
+    nxt = _next_session(db)
+    db.close()
+    if nxt is None:
+        abort(409)                                          # no session scheduled
+    start = nxt['at']
+    stamp = lambda d: d.strftime('%Y%m%dT%H%M%SZ')
+    lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Campaign Ledger//Session//EN', 'CALSCALE:GREGORIAN', 'BEGIN:VEVENT',
+             'UID:session-%d-%s@campaign-ledger' % (g.campaign_id, stamp(start)),
+             'DTSTAMP:' + stamp(datetime.now(timezone.utc)), 'DTSTART:' + stamp(start), 'DTEND:' + stamp(start + timedelta(hours=3)),
+             'SUMMARY:' + _ics_escape('%s: next session' % g.campaign['name'])]
+    if nxt['note']:
+        lines.append('DESCRIPTION:' + _ics_escape(nxt['note']))
+    lines += ['END:VEVENT', 'END:VCALENDAR']
+    return Response('\r\n'.join(lines) + '\r\n', mimetype='text/calendar',
+                    headers={'Content-Disposition': 'attachment; filename="session.ics"', 'Cache-Control': 'no-store'})
 
 
 @app.route('/campaigns/<int:campaign_id>/dice')
@@ -2700,14 +5508,14 @@ def dice_view():
 # ---------------- DICE: rolls are made on the server and shared with the whole campaign ----------------
 
 DICE_SIDES = (4, 6, 8, 10, 12, 20, 100)
-DICE_MAX_PER_ROLL = 40
+DICE_MAX_PER_ROLL = 30
 DICE_KEEP = 20                  # rolls kept per campaign: older ones are deleted as new ones arrive, so the table stays tiny
 DICE_FEED_LIMIT = DICE_KEEP
 DICE_NEEDS_MIGRATION = 'The dice log is not set up in this database yet. Run the database migrations (python migrate.py) and try again.'
 
 
 def _dice_error(message, status=400):
-    return jsonify({'error': message}), status
+    return api_error(message, status)
 
 
 def _roll_row_out(r, names):
@@ -2746,10 +5554,11 @@ def _dice_feed(db, after=None, limit=DICE_FEED_LIMIT):
     names = {r['id']: r['username'] for r in db.execute(
         'SELECT u.id, u.username FROM users u JOIN campaign_members cm ON cm.user_id = u.id WHERE cm.campaign_id = ?',
         (g.campaign_id,)).fetchall()}
-    for r in db.execute('SELECT id, name, is_npc FROM characters WHERE campaign_id = ?', (g.campaign_id,)).fetchall():
+    for r in db.execute('SELECT id, name, is_npc, is_ally, created_by FROM characters WHERE campaign_id = ?', (g.campaign_id,)).fetchall():
         names[('c', r['id'])] = r['name']
-        names[('npc', r['id'])] = bool(r['is_npc'])
-    return [_roll_row_out(r, names) for r in rows]
+        names[('npc', r['id'])] = is_foe(r['is_npc'], r['is_ally'])
+        names[('gone', r['id'])] = npc_is_hidden(r['is_npc'], r['created_by'], r['is_ally'])      # an NPC the DM hid: its rolls are not for Players
+    return [_roll_row_out(r, names) for r in rows if not names.get(('gone', r['character_id']))]
 
 
 @app.route('/campaigns/<int:campaign_id>/api/dice/roll', methods=['POST'])
@@ -2761,6 +5570,19 @@ def dice_roll():
     data = request.get_json(silent=True)
     if not isinstance(data, dict):
         return _dice_error('bad request')
+    _db = get_db()
+    try:
+        _wait = security.hit(_db, app.secret_key, 'dice-user', session['user_id'])
+        _db.commit()
+    except pgerr.UndefinedTable:
+        _db.rollback()
+        _wait = 0
+    finally:
+        _db.close()
+    if _wait:
+        r = api_error('Rolling too fast -- give it a moment.', 429)
+        r.headers['Retry-After'] = str(_wait)
+        return r
     spec = data.get('dice')
     if not isinstance(spec, dict) or not spec:
         return _dice_error('Pick at least one die.')
@@ -2886,7 +5708,7 @@ def reference_search():
     try:
         return jsonify(srd.search(request.args.get('kind', ''), request.args.get('q', '')))
     except srd.SrdError as e:
-        return jsonify({'error': str(e)}), _srd_status(e)
+        return api_error(str(e), _srd_status(e))
 
 
 @app.route('/campaigns/<int:campaign_id>/api/reference/entry')
@@ -2895,7 +5717,7 @@ def reference_detail():
     try:
         return jsonify(srd.detail(request.args.get('kind', ''), request.args.get('ref', '')))
     except srd.SrdError as e:
-        return jsonify({'error': str(e)}), _srd_status(e)
+        return api_error(str(e), _srd_status(e))
 
 
 # ---------------- EXPORT / IMPORT ----------------
@@ -2927,7 +5749,7 @@ def _build_export_zip(campaign_id, group_ids=None, character_ids=None, download_
     if not g.is_dm:
         # Same boundary as the detail API: a Player's export never carries
         # someone else's NPC (stat block + notes).
-        characters = [c for c in characters if not c['is_npc'] or c['created_by'] == session.get('user_id')]
+        characters = [c for c in characters if not is_foe(c['is_npc'], c['is_ally']) or c['created_by'] == session.get('user_id')]
 
     # Pull in any group referenced by an exported character but not already included
     existing_group_ids = {g['id'] for g in groups}
@@ -2944,6 +5766,13 @@ def _build_export_zip(campaign_id, group_ids=None, character_ids=None, download_
         groups = list(groups) + list(extra_groups)
 
     char_ids_for_sheets = [c['id'] for c in characters]
+    attacks_by_char = {}
+    if char_ids_for_sheets:
+        placeholders = ','.join('?' * len(char_ids_for_sheets))
+        for a in db.execute(f'SELECT character_id, name, attack_bonus, damage, damage_type FROM character_attacks '
+                            f'WHERE character_id IN ({placeholders}) ORDER BY character_id, position, id', char_ids_for_sheets).fetchall():
+            attacks_by_char.setdefault(a['character_id'], []).append(
+                {'name': a['name'], 'attack_bonus': a['attack_bonus'], 'damage': a['damage'], 'damage_type': a['damage_type']})
     sheets_by_char = {}
     if char_ids_for_sheets:
         placeholders = ','.join('?' * len(char_ids_for_sheets))
@@ -2970,6 +5799,7 @@ def _build_export_zip(campaign_id, group_ids=None, character_ids=None, download_
             {
                 'name': c['name'],
                 'is_npc': c['is_npc'],
+                'is_ally': c['is_ally'],
                 'level': c['level'],
                 'max_hp': c['max_hp'],
                 'str_score': c['str_score'],
@@ -2983,6 +5813,7 @@ def _build_export_zip(campaign_id, group_ids=None, character_ids=None, download_
                 'speed': dnd5e.clean_speed(c['speed']),
                 'skill_prof': dnd5e.clean_skill_prof(c['skill_prof']),
                 'save_prof': dnd5e.clean_save_prof(c['save_prof']),
+                'attacks': attacks_by_char.get(c['id'], []),
                 'notes': notes_for_viewer(c['notes'], can_see_hidden_notes(c)),
                 'group_name': group_id_to_name.get(c['group_id']),
                 'group_names': [group_id_to_name[i] for i in groups_of.get(c['id'], []) if i in group_id_to_name],
@@ -2993,6 +5824,11 @@ def _build_export_zip(campaign_id, group_ids=None, character_ids=None, download_
         ],
     }
 
+    return _send_manifest_zip(manifest, download_name)
+
+
+def _send_manifest_zip(manifest, download_name):
+    """Pack a manifest and every image it points at into a zip and hand it to the browser (big ones via a signed link)."""
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
         zf.writestr('manifest.json', json.dumps(manifest, indent=2))
@@ -3051,11 +5887,11 @@ def export_data():
 @campaign_access_required
 def character_export(char_id):
     db = get_db()
-    row = db.execute('SELECT name, is_npc, created_by FROM characters WHERE id = ? AND campaign_id = ?', (char_id, g.campaign_id)).fetchone()
+    row = db.execute('SELECT name, is_npc, is_ally, created_by FROM characters WHERE id = ? AND campaign_id = ?', (char_id, g.campaign_id)).fetchone()
     db.close()
     if row is None:
         return redirect(url_for('characters_list'))
-    if row['is_npc'] and not g.is_dm and row['created_by'] != session['user_id']:
+    if is_foe(row['is_npc'], row['is_ally']) and not g.is_dm and row['created_by'] != session['user_id']:
         abort(403)   # an NPC's stat block + notes are not a Player's to export
     return _build_export_zip(g.campaign_id, character_ids=[char_id], download_name=f'{_slugify(row["name"])}.zip')
 
@@ -3071,23 +5907,25 @@ def faction_export(group_id):
     return _build_export_zip(g.campaign_id, group_ids=[group_id], character_ids=[], download_name=f'{_slugify(row["name"])}.zip')
 
 
-@app.route('/campaigns/<int:campaign_id>/import/data', methods=['POST'])
-@campaign_access_required
-def import_data():
-    dest = 'factions_list' if 'groups' in (request.referrer or '') else 'characters_list'
+def _read_import_zip():
+    """(zip file, cleaned manifest) from the uploaded export, or None when nothing was sent.  Raises importer.ImportRejected."""
     data, temp_key = _read_upload_source(request.files.get('import_file'), request.form.get('import_file__key'))
     try:
         if not data:
-            return redirect(request.referrer or url_for('characters_list'))
-        try:
-            zf, raw_manifest = importer.open_zip(data)
-            manifest = importer.normalize_manifest(raw_manifest, sanitize_notes_payload)
-        except importer.ImportRejected:
-            return redirect(url_for(dest, import_error=1))
+            return None
+        zf, raw_manifest = importer.open_zip(data)
+        return zf, importer.normalize_manifest(raw_manifest, sanitize_notes_payload)
     finally:
         if temp_key:
             get_storage().delete(TEMP, temp_key)
 
+
+def _import_manifest(db, zf, manifest, campaign_id):
+    """Add what an export holds.  With a campaign_id it goes into that campaign (factions included); with None it goes into the
+    signed-in person's own characters: player characters only (NPCs are skipped), up to the library limit.
+    Returns None when the images would pass a storage limit (nothing is kept), else {'added': n, 'skipped_npcs': n, 'skipped_full': n}."""
+    library = campaign_id is None
+    me = session['user_id']
     pending = []                                   # (key, Processed) uploaded just before commit
 
     def extract_image(rel_path, subfolder):
@@ -3105,28 +5943,34 @@ def import_data():
         pending.append((key, processed))
         return key
 
-    db = get_db()
+    group_name_to_id = {}
+    if not library:
+        # Groups: dedupe by name (case-insensitive) so re-importing doesn't duplicate factions
+        # -- scoped to this campaign only, so importing into campaign B never
+        # matches a same-named group that only exists in campaign A.
+        group_name_to_id = {row['name'].lower(): row['id'] for row in db.execute('SELECT id, name FROM groups WHERE campaign_id = ?', (campaign_id,))}
+        for grp in manifest['groups']:
+            key = grp['name'].lower()
+            if key in group_name_to_id:
+                continue
+            avatar_path = extract_image(grp['avatar_file'], 'avatars')
+            cur = db.execute('INSERT INTO groups (name, avatar_path, bio, color, campaign_id, created_by) VALUES (?, ?, ?, ?, ?, ?)',
+                              (grp['name'], avatar_path, grp['bio'], grp['color'], campaign_id, me))
+            group_name_to_id[key] = cur.lastrowid
 
-    # Groups: dedupe by name (case-insensitive) so re-importing doesn't duplicate factions
-    # -- scoped to this campaign only, so importing into campaign B never
-    # matches a same-named group that only exists in campaign A.
-    existing_groups = {
-        row['name'].lower(): row['id']
-        for row in db.execute('SELECT id, name FROM groups WHERE campaign_id = ?', (g.campaign_id,))
-    }
-    group_name_to_id = dict(existing_groups)
-
-    for grp in manifest['groups']:
-        key = grp['name'].lower()
-        if key in group_name_to_id:
-            continue
-        avatar_path = extract_image(grp['avatar_file'], 'avatars')
-        cur = db.execute('INSERT INTO groups (name, avatar_path, bio, color, campaign_id, created_by) VALUES (?, ?, ?, ?, ?, ?)',
-                          (grp['name'], avatar_path, grp['bio'], grp['color'], g.campaign_id, session['user_id']))
-        group_name_to_id[key] = cur.lastrowid
+    stats = {'added': 0, 'skipped_npcs': 0, 'skipped_full': 0}
+    room = max(0, LIBRARY_MAX - _library_count(db)) if library else None
 
     # Characters: always inserted as new records (never merged/overwritten)
     for c in manifest['characters']:
+        if library:
+            if c['is_npc']:
+                stats['skipped_npcs'] += 1
+                continue
+            if room <= 0:
+                stats['skipped_full'] += 1
+                continue
+            room -= 1
         wanted = c.get('group_names') or ([c['group_name']] if c.get('group_name') else [])
         import_group_ids = []
         for nm in wanted:
@@ -3137,17 +5981,19 @@ def import_data():
         avatar_path = extract_image(c['avatar_file'], 'avatars')
         cur = db.execute('''
             INSERT INTO characters
-            (name, is_npc, level, max_hp, str_score, dex_score, con_score, int_score,
+            (name, is_npc, is_ally, level, max_hp, str_score, dex_score, con_score, int_score,
              wis_score, cha_score, armor_class, avatar_path, notes, group_id, class_key, campaign_id, created_by,
-             speed, skill_prof, save_prof)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (c['name'], c['is_npc'], c['level'], c['max_hp'],
+             speed, skill_prof, save_prof, owner_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (c['name'], c['is_npc'], c['is_ally'], c['level'], c['max_hp'],
               c['str_score'], c['dex_score'], c['con_score'], c['int_score'],
               c['wis_score'], c['cha_score'], c['armor_class'],
-              avatar_path, c['notes'], group_id, _clean_class(c.get('class_key')), g.campaign_id, session['user_id'],
+              avatar_path, c['notes'], group_id, _clean_class(c.get('class_key')), campaign_id, me,
               dnd5e.clean_speed(c.get('speed')), json.dumps(dnd5e.clean_skill_prof(c.get('skill_prof'))),
-              json.dumps(dnd5e.clean_save_prof(c.get('save_prof')))))
+              json.dumps(dnd5e.clean_save_prof(c.get('save_prof'))), me if library else None))
         new_char_id = cur.lastrowid
+        stats['added'] += 1
+        _save_attacks(db, new_char_id, c['attacks'])
         for pos, gid_ in enumerate(import_group_ids):
             db.execute('INSERT INTO character_groups (character_id, group_id, position) VALUES (?, ?, ?) RETURNING character_id', (new_char_id, gid_, pos))
 
@@ -3156,9 +6002,20 @@ def import_data():
             if sheet_path:
                 db.execute('INSERT INTO character_sheets (character_id, image_path, sort_order) VALUES (?, ?, ?)',
                            (new_char_id, sheet_path, i))
+        if library:                                 # level history starts with the imported level, like a character made by hand
+            _save_level_stats(db, new_char_id, c['level'], c['max_hp'], c['armor_class'],
+                              (c['str_score'], c['dex_score'], c['con_score'], c['int_score'], c['wis_score'], c['cha_score']),
+                              dnd5e.clean_speed(c.get('speed')), json.dumps(dnd5e.clean_skill_prof(c.get('skill_prof'))),
+                              json.dumps(dnd5e.clean_save_prof(c.get('save_prof'))))
 
     # Upload every queued image (in parallel) BEFORE committing, so a storage failure
     # rolls the whole import back instead of leaving rows that point at missing files.
+    try:
+        quotas.check(db, me, campaign_id, sum(len(p.data) for _, p in pending))
+    except quotas.QuotaExceeded:
+        db.rollback()
+        db.close()
+        return None
     st = get_storage()
     try:
         with ThreadPoolExecutor(6) as pool:
@@ -3171,9 +6028,27 @@ def import_data():
         except StorageError:
             pass
         raise
+    for key, processed in pending:
+        quotas.record(db, key, me, campaign_id, key.split('/')[0], len(processed.data))
     db.commit()
     db.close()
+    return stats
 
+
+@app.route('/campaigns/<int:campaign_id>/import/data', methods=['POST'])
+@campaign_access_required
+def import_data():
+    dest = 'factions_list' if 'groups' in (request.referrer or '') else 'characters_list'
+    try:
+        opened = _read_import_zip()
+    except importer.ImportRejected:
+        return redirect(url_for(dest, import_error=1))
+    if opened is None:
+        return redirect(request.referrer or url_for('characters_list'))
+    zf, manifest = opened
+    db = get_db()
+    if _import_manifest(db, zf, manifest, g.campaign_id) is None:
+        return redirect(url_for(dest, import_error='quota'))
     return redirect(url_for(dest, imported=1))
 
 
@@ -3227,6 +6102,7 @@ def map_new():
         (name, image_path, width, height, g.campaign_id, session['user_id'])
     )
     map_id = cur.lastrowid
+    log_activity(db, g.campaign_id, 'map_created', 'added the map %s' % name, url_for('map_editor', campaign_id=g.campaign_id, map_id=map_id))
     db.commit()
     db.close()
     return redirect(url_for('map_editor', map_id=map_id))
@@ -3271,7 +6147,7 @@ def map_editor(map_id):
 @campaign_access_required
 def map_delete(map_id):
     db = get_db()
-    m = db.execute('SELECT image_path, created_by FROM maps WHERE id = ? AND campaign_id = ?', (map_id, g.campaign_id)).fetchone()
+    m = db.execute('SELECT name, image_path, created_by FROM maps WHERE id = ? AND campaign_id = ?', (map_id, g.campaign_id)).fetchone()
     if m and not can_delete(m['created_by']):
         db.close()
         abort(403)
@@ -3279,6 +6155,7 @@ def map_delete(map_id):
         _cleanup_familiar_participants(db, map_id)
         delete_upload(m['image_path'])
         db.execute('DELETE FROM maps WHERE id = ? AND campaign_id = ?', (map_id, g.campaign_id))
+        log_activity(db, g.campaign_id, 'map_deleted', 'removed the map %s' % m['name'])
         db.commit()
     db.close()
     last_map_by_campaign = session.get('last_map_by_campaign', {})
@@ -3328,7 +6205,7 @@ def api_map_state(map_id):
 def _map_state_payload(db, map_id):
     row = db.execute('''
         SELECT grid_size, grid_color, grid_visible, grid_offset_x, grid_offset_y,
-               snap_to_grid, grid_setup_done, locked_for_players, linked_to_battle,
+               snap_to_grid, grid_setup_done, locked_for_players, linked_to_battle, feet_per_square,
                fog_version, (fog_mask IS NOT NULL) AS fog_active
         FROM maps WHERE id = ? AND campaign_id = ?
     ''', (map_id, g.campaign_id)).fetchone()
@@ -3408,7 +6285,7 @@ def api_map_fog_set(map_id):
     dims = fog.grid_dims(w, h)
     if dims is None:
         db.close()
-        return jsonify({'error': 'this map cannot have fog'}), 400
+        return api_error('This map cannot have fog.', 400)
     cols, rows = dims
     if data.get('clear'):
         raw = None
@@ -3419,7 +6296,7 @@ def api_map_fog_set(map_id):
             raw = fog.decode_client(data.get('mask'), cols, rows)
         except ValueError as e:
             db.close()
-            return jsonify({'error': str(e)}), 400
+            return api_error(str(e), 400)
         if not fog.any_fogged(raw):
             raw = None
     db.execute('UPDATE maps SET fog_mask = ?, fog_cols = ?, fog_rows = ?, fog_version = fog_version + 1 WHERE id = ? AND campaign_id = ?',
@@ -3451,6 +6328,13 @@ def api_map_settings(map_id):
         fields.append('locked_for_players = ?'); values.append(1 if data['locked_for_players'] else 0)
     if 'grid_size' in data:
         fields.append('grid_size = ?'); values.append(max(25, min(100, int(data['grid_size']))))
+    if 'feet_per_square' in data:
+        try:
+            feet = int(data['feet_per_square'])
+        except (TypeError, ValueError):
+            db.close()
+            return api_error('Feet per square must be a whole number.', 400)
+        fields.append('feet_per_square = ?'); values.append(max(1, min(100, feet)))
     if 'grid_offset_x' in data:
         fields.append('grid_offset_x = ?'); values.append(int(data['grid_offset_x']))
     if 'grid_offset_y' in data:
@@ -3512,12 +6396,29 @@ def _map_drawings_payload(db, map_id):
     # DM-only drawings never leave the server for a Player (the same redaction pattern as hidden notes).
     rows = db.execute('SELECT * FROM map_drawings WHERE map_id = ?' + ('' if g.is_dm else ' AND dm_only = 0')
                       + ' ORDER BY sort_order, id', (map_id,)).fetchall()
+    hidden_pins = set() if g.is_dm else {r['id'] for r in db.execute('SELECT id FROM map_pins WHERE map_id = ? AND dm_only = 1', (map_id,)).fetchall()}
     result = []
     for r in rows:
         d = dict(r)
         d['data'] = json.loads(d['data'])
+        if d.get('attached_pin_id') in hidden_pins:
+            d['attached_pin_id'] = None                    # a Player is never told a hidden token exists
         result.append(d)
     return result
+
+
+def _attach_target(db, map_id, raw):
+    """The token id a shape may be attached to: None (let go), or a token of THIS map the person can see.  ValueError otherwise."""
+    if raw in (None, '', False):
+        return None
+    try:
+        pin_id = int(raw)
+    except (TypeError, ValueError):
+        raise ValueError('Unknown token.')
+    row = db.execute('SELECT dm_only FROM map_pins WHERE id = ? AND map_id = ?', (pin_id, map_id)).fetchone()
+    if row is None or (row['dm_only'] and not g.is_dm):
+        raise ValueError('Unknown token.')
+    return pin_id
 
 
 @app.route('/campaigns/<int:campaign_id>/api/maps/<int:map_id>/drawings', methods=['POST'])
@@ -3538,13 +6439,18 @@ def api_map_drawings_add(map_id):
     locked = 1 if data.get('locked') else 0
     dm_only = 1 if (g.is_dm and data.get('dm_only')) else 0        # only the DM can hide an object
     if kind not in ('line', 'rect', 'oval', 'pen', 'angle'):
-        return jsonify({'error': 'invalid kind'}), 400
+        return api_error('Unknown kind of drawing.', 400)
     db = get_db()
+    try:
+        attached = _attach_target(db, map_id, data.get('attached_pin_id'))
+    except ValueError as e:
+        db.close()
+        return api_error(str(e), 400)
     max_order = db.execute('SELECT COALESCE(MAX(sort_order), -1) AS m FROM map_drawings WHERE map_id = ?', (map_id,)).fetchone()['m']
     cur = db.execute(
-        '''INSERT INTO map_drawings (map_id, kind, data, cx, cy, w, h, rotation, color, fill, fill_opacity, sort_order, locked, dm_only)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-        (map_id, kind, json.dumps(geometry), cx, cy, w, h, rotation, color, fill, fill_opacity, max_order + 1, locked, dm_only)
+        '''INSERT INTO map_drawings (map_id, kind, data, cx, cy, w, h, rotation, color, fill, fill_opacity, sort_order, locked, dm_only, attached_pin_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+        (map_id, kind, json.dumps(geometry), cx, cy, w, h, rotation, color, fill, fill_opacity, max_order + 1, locked, dm_only, attached)
     )
     db.commit()
     db.close()
@@ -3575,6 +6481,12 @@ def api_map_drawing_update(map_id, drawing_id):
         fields.append('dm_only = ?'); values.append(1 if data['dm_only'] else 0)
     if 'data' in data:
         fields.append('data = ?'); values.append(json.dumps(data['data']))
+    if 'attached_pin_id' in data:
+        try:
+            fields.append('attached_pin_id = ?'); values.append(_attach_target(db, map_id, data['attached_pin_id']))
+        except ValueError as e:
+            db.close()
+            return api_error(str(e), 400)
     if fields:
         values.append(drawing_id)
         values.append(map_id)
@@ -3637,7 +6549,7 @@ def _reconcile_map_battle(db, map_id):
             db.execute('DELETE FROM map_pins WHERE id = ?', (pin['id'],))
     max_order = db.execute('SELECT COALESCE(MAX(sort_order), -1) AS m FROM battle_participants').fetchone()['m']
     for pin in unplaced:
-        char = db.execute('SELECT max_hp FROM characters WHERE id = ? AND campaign_id = ?', (pin['character_id'], g.campaign_id)).fetchone()
+        char = db.execute('SELECT max_hp, name, is_npc, is_ally FROM characters WHERE id = ? AND campaign_id = ?', (pin['character_id'], g.campaign_id)).fetchone()
         if char is None:
             continue
         pid = next((r['id'] for r in parts if r['character_id'] == pin['character_id'] and r['id'] not in pinned), None)
@@ -3653,6 +6565,8 @@ def _reconcile_map_battle(db, map_id):
             (pid, pin['id'], map_id, pid)).rowcount == 1
         if won:
             pinned.add(pid)
+            if created:
+                log_battle(db, f"{char['name']} joined the battle", None, 'joined', npc=is_foe(char['is_npc'], char['is_ally']))      # put on the map: now on the field too
         elif created:                                           # another request got there first: don't leave a stray row
             db.execute('DELETE FROM battle_participants WHERE id = ?', (pid,))
     missing = [r for r in parts if r['id'] not in pinned]
@@ -3680,8 +6594,9 @@ def _map_pins_payload(db, map_id):
     if char_ids:
         marks = ','.join('?' * len(char_ids))
         for c in db.execute(f'''
-            SELECT c.id AS character_id, c.name AS char_name, c.avatar_path, c.max_hp AS char_max_hp, c.is_npc,
-                   c.is_temp_familiar, c.class_key, g.color AS group_color
+            SELECT c.id AS character_id, c.name AS char_name, c.avatar_path, c.max_hp AS char_max_hp, c.is_npc, c.is_ally,
+                   c.is_temp_familiar, c.class_key, g.color AS group_color, c.created_by AS char_made_by,
+                   c.player_id AS char_player_id
             FROM characters c LEFT JOIN groups g ON c.group_id = g.id
             WHERE c.campaign_id = ? AND c.id IN ({marks})
         ''', [g.campaign_id] + char_ids).fetchall():
@@ -3697,9 +6612,10 @@ def _map_pins_payload(db, map_id):
     for p in rows:
         if p['pin_type'] == 'character':
             c = chars.get(p['character_id'])
-            if c is None:
+            if c is None or npc_is_hidden(c['is_npc'], c['char_made_by'], c['is_ally']):
                 continue
             p.update(c)
+            p.pop('char_made_by', None)
             live = None
             if p['participant_id']:
                 live = db.execute('SELECT current_hp, is_dead FROM battle_participants WHERE id = ?', (p['participant_id'],)).fetchone()
@@ -3711,7 +6627,7 @@ def _map_pins_payload(db, map_id):
                 if plain_total.get(p['character_id'], 0) > 1:
                     plain_seen[p['character_id']] = plain_seen.get(p['character_id'], 0) + 1
                     p['char_name'] = f"{p['char_name']} #{plain_seen[p['character_id']]}"
-            if not g.is_dm and p['is_npc']:
+            if not g.is_dm and is_foe(p['is_npc'], p.get('is_ally')):
                 p['hidden_stats'] = True
                 p['current_hp'] = None
                 p['char_max_hp'] = None
@@ -3721,17 +6637,18 @@ def _map_pins_payload(db, map_id):
             # is_npc/HP too, so a familiar the DM has marked as an NPC gets the same PC/NPC-aware treatment.
             live = db.execute('''
                 SELECT bp.current_hp, bp.is_dead, c.id AS character_id, c.name AS char_name, c.avatar_path,
-                       c.max_hp AS char_max_hp, c.is_npc, c.is_temp_familiar, c.class_key, g.color AS group_color
+                       c.max_hp AS char_max_hp, c.is_npc, c.is_ally, c.is_temp_familiar, c.class_key, g.color AS group_color, c.created_by AS char_made_by
                 FROM battle_participants bp
                 JOIN characters c ON bp.character_id = c.id
                 LEFT JOIN groups g ON c.group_id = g.id
                 WHERE bp.id = ?
             ''', (p['participant_id'],)).fetchone()
-            if live is None:
+            if live is None or npc_is_hidden(live['is_npc'], live['char_made_by'], live['is_ally']):
                 continue
             p.update(dict(live))
+            p.pop('char_made_by', None)
             p['char_name'] = battle_display_names.get(p['participant_id'], p['char_name'])
-            if not g.is_dm and p['is_npc']:
+            if not g.is_dm and is_foe(p['is_npc'], p.get('is_ally')):
                 p['hidden_stats'] = True
                 p['current_hp'] = None
                 p['char_max_hp'] = None
@@ -3746,8 +6663,8 @@ def _map_pins_payload(db, map_id):
     me = session.get('user_id')
     for p in result:                                        # the client greys out what this person may not move
         p['owner_name'] = owner_names.get(p.get('owner_user_id'))
-        p['can_move'] = bool(g.is_dm or (not m['locked_for_players'] and p.get('owner_user_id') is not None
-                                         and p['owner_user_id'] == me))
+        p['can_move'] = bool(g.is_dm or (not m['locked_for_players'] and me is not None
+                                         and me in (p.get('owner_user_id'), p.get('char_player_id'))))
     return result
 
 
@@ -3799,13 +6716,14 @@ def _pin_name(value):
 def _pin_owned_by_me(db, map_id, pin_id):
     """Token ownership: the DM may touch any token; a Player only the ones the DM attached to them (or that they
     placed themselves).  Returns the pin row, or None when there is no such token on this map."""
-    return db.execute('SELECT owner_user_id FROM map_pins WHERE id = ? AND map_id = ?' + ('' if g.is_dm else ' AND dm_only = 0'),
+    return db.execute('SELECT p.owner_user_id, c.player_id AS char_player_id FROM map_pins p LEFT JOIN characters c ON c.id = p.character_id '
+                      'WHERE p.id = ? AND p.map_id = ?' + ('' if g.is_dm else ' AND p.dm_only = 0'),
                       (pin_id, map_id)).fetchone()
 
 
 def _may_move_pin(pin_row):
-    return bool(g.is_dm or (pin_row is not None and pin_row['owner_user_id'] is not None
-                            and pin_row['owner_user_id'] == session.get('user_id')))
+    me = session.get('user_id')
+    return bool(g.is_dm or (pin_row is not None and me is not None and me in (pin_row['owner_user_id'], pin_row['char_player_id'])))
 
 
 @app.route('/campaigns/<int:campaign_id>/api/maps/<int:map_id>/pins', methods=['POST'])
@@ -3823,15 +6741,15 @@ def api_map_pins_add(map_id):
         try:
             character_id = int(data.get('character_id'))
         except (TypeError, ValueError):
-            return jsonify({'error': 'Unknown character.'}), 400
+            return api_error('Unknown character.', 400)
     elif pin_type != 'prop':
-        return jsonify({'error': 'Unknown pin type.'}), 400
+        return api_error('Unknown pin type.', 400)
     if icon_key is not None and icon_key not in PIN_ICON_KEYS:
-        return jsonify({'error': 'Unknown pin icon.'}), 400
+        return api_error('Unknown pin icon.', 400)
     try:
         custom_name = _pin_name(data.get('custom_name'))
     except ValueError:
-        return jsonify({'error': 'Pin names must be plain text of at most %d characters.' % PIN_NAME_MAX}), 400
+        return api_error('Pin names must be plain text of at most %d characters.' % PIN_NAME_MAX, 400)
     x = float(data.get('x', 0))
     y = float(data.get('y', 0))
     scale = float(data.get('scale', 1.0))
@@ -3846,7 +6764,7 @@ def api_map_pins_add(map_id):
         if db.execute('SELECT 1 FROM characters WHERE id = ? AND campaign_id = ? AND is_temp_familiar = 0',
                       (character_id, g.campaign_id)).fetchone() is None:
             db.close()
-            return jsonify({'error': 'Character not found.'}), 404
+            return api_error('Character not found.', 404)
     elif linked:
         participant_id = _create_familiar_participant(db, icon_key, custom_name)
     cur = db.execute(
@@ -3889,11 +6807,11 @@ def api_map_pin_update(map_id, pin_id):
                 new_owner = int(new_owner)
             except (TypeError, ValueError):
                 db.close()
-                return jsonify({'error': 'Unknown member.'}), 400
+                return api_error('Unknown member.', 400)
             if db.execute('SELECT 1 FROM campaign_members WHERE campaign_id = ? AND user_id = ?',
                           (g.campaign_id, new_owner)).fetchone() is None:
                 db.close()
-                return jsonify({'error': 'That person is not a member of this campaign.'}), 400
+                return api_error('That person is not a member of this campaign.', 400)
         fields.append('owner_user_id = ?'); values.append(new_owner)
     if 'x' in data:
         fields.append('x = ?'); values.append(float(data['x']))
@@ -3915,7 +6833,7 @@ def api_map_pin_update(map_id, pin_id):
             new_custom_name = _pin_name(data['custom_name'])
         except ValueError:
             db.close()
-            return jsonify({'error': 'Pin names must be plain text of at most %d characters.' % PIN_NAME_MAX}), 400
+            return api_error('Pin names must be plain text of at most %d characters.' % PIN_NAME_MAX, 400)
         fields.append('custom_name = ?'); values.append(new_custom_name)
         # Keep a familiar's battle-tracker name in sync with its pin name.
         pin_row = db.execute('SELECT participant_id, icon_key FROM map_pins WHERE id = ? AND map_id = ?', (pin_id, map_id)).fetchone()
@@ -3938,9 +6856,18 @@ def api_map_pin_update(map_id, pin_id):
                            (1 if data['is_npc'] else 0, char_row['character_id']))
                 db.commit()
     if fields:
+        moved = None
+        if 'x' in data or 'y' in data:
+            moved = db.execute('SELECT x, y FROM map_pins WHERE id = ? AND map_id = ?', (pin_id, map_id)).fetchone()
         values.append(pin_id)
         values.append(map_id)
         db.execute(f'UPDATE map_pins SET {", ".join(fields)} WHERE id = ? AND map_id = ?', values)
+        if moved is not None:
+            # Shapes attached to this token travel with it by the same amount (DL-159), in the same save.
+            now = db.execute('SELECT x, y FROM map_pins WHERE id = ? AND map_id = ?', (pin_id, map_id)).fetchone()
+            dx, dy = now['x'] - moved['x'], now['y'] - moved['y']
+            if dx or dy:
+                db.execute('UPDATE map_drawings SET cx = cx + ?, cy = cy + ? WHERE attached_pin_id = ? AND map_id = ?', (dx, dy, pin_id, map_id))
         db.commit()
     db.close()
     return jsonify({'ok': True})
@@ -3951,7 +6878,8 @@ def api_map_pin_update(map_id, pin_id):
 @map_edit_allowed
 def api_map_pin_delete(map_id, pin_id):
     db = get_db()
-    pin = db.execute('SELECT participant_id, pin_type, owner_user_id, dm_only FROM map_pins WHERE id = ? AND map_id = ?', (pin_id, map_id)).fetchone()
+    pin = db.execute('SELECT p.participant_id, p.pin_type, p.owner_user_id, p.dm_only, c.player_id AS char_player_id FROM map_pins p '
+                     'LEFT JOIN characters c ON c.id = p.character_id WHERE p.id = ? AND p.map_id = ?', (pin_id, map_id)).fetchone()
     if pin and not g.is_dm and (pin['dm_only'] or not _may_move_pin(pin)):
         db.close()
         abort(403)

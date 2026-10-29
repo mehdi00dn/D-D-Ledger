@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon, class_icon %}
+{% set active_page = 'library' %}
+{% block title %}Your characters — Campaign Ledger{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Your characters</h1>
+    <p class="page-sub">{{ items|length }} of {{ limit }}. Yours alone, kept outside any campaign. Add a copy to a table, or show up to {{ showcase_limit }} on your profile.</p>
+  </div>
+  <div class="page-actions toolbar">
+    <a href="{{ url_for('library_new') }}" class="btn btn-primary">{{ icon('plus') }} New character</a>
+    <details class="menu">
+      <summary class="btn-icon" aria-haspopup="menu" aria-label="More actions" title="Import and export">{{ icon('more') }}</summary>
+      <div class="menu-list" role="menu">
+        <form method="POST" action="{{ url_for('library_import') }}" enctype="multipart/form-data" class="import-form">{{ csrf_field() }}
+          <label class="menu-item import-label" role="menuitem">{{ icon('download') }} <span class="btn-label">Import from a file</span>
+            <input type="file" name="import_file" accept=".zip" data-auto-submit-request>
+          </label>
+          <div class="upload-progress" hidden><div class="upload-progress-bar"></div></div>
+        </form>
+        {% if items %}<a href="{{ url_for('library_export') }}" class="menu-item" role="menuitem">{{ icon('upload') }} Export all</a>{% endif %}
+        <p class="menu-note">Files exported from a campaign import here too. Only player characters are kept.</p>
+      </div>
+    </details>
+  </div>
+</div>
+
+{% if note %}<div class="banner-notice banner-{{ note[0] }}" role="{{ 'alert' if note[0] == 'error' else 'status' }}">{{ note[1] }}</div>{% endif %}
+
+{% if items %}
+<div class="card-grid lib-grid">
+  {% for c in items %}
+  <div class="dossier-card lib-card" data-id="{{ c.id }}">
+    <span class="dossier-tag">{{ 'On profile' if c.featured else 'Yours' }}</span>
+    <div class="dossier-head">
+      <div class="avatar-frame">
+        {% if c.avatar_path %}
+          <img src="{{ url_for('uploaded_file', filename=c.avatar_path) }}" alt="{{ c.name }} avatar">
+        {% elif c.class_key and c.class_key in class_labels %}
+          <span class="avatar-class" title="{{ class_labels[c.class_key] }}" role="img" aria-label="{{ class_labels[c.class_key] }}"><svg aria-hidden="true"><use href="/static/icons/classes.svg#{{ c.class_key }}"></use></svg></span>
+        {% else %}
+          <span class="avatar-initial" aria-hidden="true">{{ (c.name or '?')[:1]|upper }}</span>
+        {% endif %}
+      </div>
+      <div class="dossier-name-block">
+        <div class="dossier-name">{{ c.name }}</div>
+        <div class="dossier-meta">{{ c.class_label or 'No class' }} &middot; Lvl {{ c.level }}</div>
+      </div>
+    </div>
+
+    <div class="dossier-stats">
+      <div class="stat-pill"><span class="val">{{ c.str_score }}</span><span class="lbl">STR</span></div>
+      <div class="stat-pill"><span class="val">{{ c.dex_score }}</span><span class="lbl">DEX</span></div>
+      <div class="stat-pill"><span class="val">{{ c.con_score }}</span><span class="lbl">CON</span></div>
+      <div class="stat-pill"><span class="val">{{ c.int_score }}</span><span class="lbl">INT</span></div>
+      <div class="stat-pill"><span class="val">{{ c.wis_score }}</span><span class="lbl">WIS</span></div>
+      <div class="stat-pill"><span class="val">{{ c.cha_score }}</span><span class="lbl">CHA</span></div>
+    </div>
+    <div class="dossier-vitals" aria-label="Hit points and armor class">
+      <span class="vital vital-hp" title="Maximum hit points">{{ icon('heart') }}<b>{{ c.max_hp }}</b><small>Max HP</small></span>
+      <span class="vital vital-ac" title="Armor class">{{ icon('shield') }}<b>{{ c.armor_class }}</b><small>AC</small></span>
+    </div>
+    {% if c.added_from %}<p class="added-from">{{ icon('archive') }} From {{ c.added_from }}</p>{% endif %}
+
+    <div class="lib-placed">
+      <span class="lib-placed-label">In campaigns</span>
+      {% if c.in_campaigns %}
+      <ul class="lib-chips">
+        {% for p in c.in_campaigns %}<li><a class="cd-chip" href="{{ url_for('character_detail', campaign_id=p.campaign_id, char_id=p.id) }}">{{ p.name }}</a></li>{% endfor %}
+      </ul>
+      {% else %}
+      <span class="lib-none">None yet</span>
+      {% endif %}
+    </div>
+
+    {% if c.open_campaigns %}
+    <form method="POST" action="{{ url_for('library_add_to_campaign', char_id=c.id) }}" class="lib-add">{{ csrf_field() }}
+      <label class="sr-only" for="lib-camp-{{ c.id }}">Campaign to add {{ c.name }} to</label>
+      <div class="field lib-select"><select name="campaign_id" id="lib-camp-{{ c.id }}">
+        {% for ca in c.open_campaigns %}<option value="{{ ca.id }}">{{ ca.name }}</option>{% endfor %}
+      </select></div>
+      <button type="submit" class="btn btn-ghost btn-sm" title="Put a copy of {{ c.name }} into this campaign">{{ icon('plus') }} Add</button>
+    </form>
+    {% elif not campaigns %}
+    <p class="hint-text lib-hint">Join or create a campaign to add this character to it.</p>
+    {% else %}
+    <p class="hint-text lib-hint">Already in all of your campaigns.</p>
+    {% endif %}
+
+    <div class="dossier-actions">
+      <a href="{{ url_for('library_detail', char_id=c.id) }}" class="btn btn-ghost btn-sm">{{ icon('eye') }} Details</a>
+      <a href="{{ url_for('library_edit', char_id=c.id) }}" class="btn-icon" title="Edit {{ c.name }}" aria-label="Edit {{ c.name }}">{{ icon('pencil') }}</a>
+      <details class="menu">
+        <summary class="btn-icon" aria-haspopup="menu" aria-label="More actions for {{ c.name }}" title="More actions">{{ icon('more') }}</summary>
+        <div class="menu-list" role="menu">
+          <a href="{{ url_for('library_export_one', char_id=c.id) }}" class="menu-item" role="menuitem">{{ icon('upload') }} Export</a>
+          <form method="POST" action="{{ url_for('library_showcase', char_id=c.id) }}">{{ csrf_field() }}
+            <button type="submit" class="menu-item" role="menuitem" aria-pressed="{{ 'true' if c.featured else 'false' }}">{{ icon('star') }} {{ 'Remove from my profile' if c.featured else 'Show on my profile' }}</button>
+          </form>
+          <div class="menu-sep" role="separator"></div>
+          <form method="POST" action="{{ url_for('library_delete', char_id=c.id) }}" data-confirm="Delete {{ c.name }} from your characters? Copies already in campaigns are kept.">{{ csrf_field() }}
+            <button type="submit" class="menu-item is-danger" role="menuitem">{{ icon('trash-2') }} Delete</button>
+          </form>
+        </div>
+      </details>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="empty-state">
+  {{ icon('archive') }}
+  <h2>No characters kept here yet</h2>
+  <p>Build one here, import a file, or open a character from a campaign and choose Save to your characters.</p>
+  <a href="{{ url_for('library_new') }}" class="btn btn-primary">{{ icon('plus') }} New character</a>
+</div>
+{% endif %}
+{% endblock %}

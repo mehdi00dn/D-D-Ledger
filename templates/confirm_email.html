@@ -1,0 +1,22 @@
+{% extends "auth_base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Confirm your email — Campaign Ledger{% endblock %}
+{% block hero %}One quick step before you start a campaign.{% endblock %}
+{% block card %}
+{% if confirmed %}
+<h1 class="auth-title">Email confirmed</h1>
+<p class="auth-sub">Thanks. {{ user.email }} is confirmed, so you can create and join campaigns.</p>
+<a class="btn btn-primary auth-submit" href="{{ continue_url }}"><span class="auth-submit-label">Continue</span></a>
+{% else %}
+<h1 class="auth-title">Check your inbox</h1>
+<p class="auth-sub">We sent a confirmation link to <b>{{ user.email }}</b>. Open it to confirm your email. The link works for 24 hours.</p>
+{% if resent %}<p class="auth-note" role="status">A new link is on its way.</p>{% endif %}
+{% if error %}<p class="auth-error" role="alert">{{ error }}</p>{% endif %}
+<p class="auth-sub">Until you confirm, you can set up your profile and look around, but you cannot create or join a campaign.</p>
+<form method="POST" action="{{ url_for('confirm_email_resend') }}" class="auth-form" data-once>{{ csrf_field() }}
+  <input type="hidden" name="next" value="{{ next }}">
+  <button type="submit" class="btn btn-primary auth-submit"><span class="auth-submit-label">Send the link again</span><span class="auth-spinner" aria-hidden="true"></span></button>
+</form>
+<p class="auth-switch"><a class="auth-link" href="{{ continue_url }}">Continue without confirming</a> &middot; <a class="auth-link" href="{{ url_for('account') }}#email-panel">Wrong address?</a></p>
+{% endif %}
+{% endblock %}

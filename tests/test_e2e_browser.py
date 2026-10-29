@@ -19,8 +19,14 @@ class Api:
     def __init__(self, base):
         self.base = base; self.s = CsrfSession(base)
         self.name = f'e{uuid.uuid4().hex[:9]}'
-        r = self.s.post(base + '/register', data={'username': self.name, 'password': 'secret12', 'confirm': 'secret12'}, allow_redirects=False)
+        r = self.s.post(base + '/register', data={'username': self.name, 'password': 'secret12', 'email': 'player@example.com', 'confirm': 'secret12'}, allow_redirects=False)
         assert r.status_code == 302
+        import database                                                    # DL-165: these helper accounts start unlocked, like accounts that predate the rule
+        db = database.get_db()
+        try:
+            db.execute('UPDATE users SET email_confirm_required = FALSE WHERE username = ?', (self.name,)); db.commit()
+        finally:
+            db.close()
     def post(self, path, **kw): return self.s.post(self.base + path, allow_redirects=False, **kw)
     def get(self, path, **kw): return self.s.get(self.base + path, **kw)
     def campaign(self, name='E2E'):
@@ -254,6 +260,24 @@ def test_lightbox_arrows_sit_beside_the_image(pw, shared_server):
     ctx.close()
 
 
+def test_next_turn_button_stays_put_when_the_current_name_changes(pw, shared_server):
+    base = shared_server.url; dm = Api(base); cid = dm.campaign('Steady')
+    for name, init in (('Al', 18), ('Bartholomew the Very Long-Named', 9)):
+        chid = dm.character(cid, name)
+        pid = dm.post(f'/campaigns/{cid}/api/battle/add', json={'character_id': chid}).json()[-1]['id']
+        dm.post(f'/campaigns/{cid}/api/battle/{pid}/initiative', json={'value': init})
+    ctx = dm.context(pw, base); page = ctx.new_page(); page.set_viewport_size({'width': 1280, 'height': 800})
+    page.goto(base + f'/campaigns/{cid}/battle'); page.wait_for_selector('#turn-bar:not([hidden])')
+    box = lambda: page.locator('#next-turn-btn').bounding_box()
+    page.click('#next-turn-btn'); page.wait_for_selector('#turn-now:not([hidden])')
+    first = box()
+    page.click('#next-turn-btn'); page.wait_for_timeout(600)
+    assert 'Bartholomew' in page.locator('#turn-now').inner_text()
+    second = box()
+    assert abs(first['x'] - second['x']) < 0.5 and abs(first['y'] - second['y']) < 0.5     # the name sits after the buttons
+    assert page.locator('#turn-now').bounding_box()['x'] > second['x'] + second['width']
+
+
 def test_turn_tracker_highlights_the_active_turn_for_everyone(pw, shared_server):
     base = shared_server.url; dm = Api(base); player = Api(base); cid = dm.campaign('Turns')
     dm.add_member(cid, player)
@@ -385,8 +409,8 @@ def test_class_dropdown_hover_guide_select_clear_and_icons(pw, shared_server):
     page.keyboard.press('Escape')
     page.screenshot(path='/tmp/class-picker.png')
     page.click('.cf-bar button[type=submit]'); page.wait_for_timeout(1200)
-    page.goto(base + f'/campaigns/{cid}/characters'); page.wait_for_selector('.dossier-name .class-icon')
-    assert page.locator('.dossier-name .class-icon').get_attribute('title') == 'Bard'
+    page.goto(base + f'/campaigns/{cid}/characters'); page.wait_for_selector('.dossier-card [title=Bard]')
+    assert page.locator('.dossier-card [title=Bard]').first.get_attribute('title') == 'Bard'
     chid = next(c for c in dm.get(f'/campaigns/{cid}/api/characters').json() if c['name'] == 'Merlin')['id']
     dm.post(f'/campaigns/{cid}/api/battle/add', json={'character_id': chid})
     page.goto(base + f'/campaigns/{cid}/battle'); page.wait_for_selector('.battle-name .class-icon')
@@ -432,7 +456,7 @@ def test_invitation_flow_in_the_browser(pw, shared_server):
     pctx = pl.context(pw, base); ppage = pctx.new_page(); pbad, perrs = _collect(ppage)
     ppage.goto(base + '/campaigns'); ppage.wait_for_selector('.nav-badge')
     assert ppage.inner_text('.nav-badge') == '1'
-    assert 'Campaigns' in ppage.inner_text('.sidebar-nav') and ppage.locator('.foot-bell').count() == 0     # outside a campaign: Campaigns + Notifications in the menu
+    assert 'Campaigns' in ppage.inner_text('.sidebar-nav') and ppage.locator('.foot-bell:not(.foot-privacy)').count() == 0     # outside a campaign: Campaigns + Notifications in the menu
     ppage.click('.nav-notifications'); ppage.wait_for_selector('.notification-card.is-unread'); ppage.wait_for_timeout(700)
     assert 'invited you to Invites' in ppage.inner_text('.notification-card')
     ppage.screenshot(path='/tmp/invite-player.png')
@@ -468,7 +492,7 @@ def test_invite_link_options_appear_live_when_the_access_mode_changes(pw, shared
     page.click('label.access-option:has(input[value=private])')
     assert page.is_hidden('#invite-links')
     page.click('label.access-option:has(input[value=invite_link])')
-    page.screenshot(path='/tmp/invite_links_unsaved.png', clip=page.locator('#invite-links').bounding_box())
+    page.locator('#invite-links').screenshot(path='/tmp/invite_links_unsaved.png')
 
     # Create a link straight away: no page navigation, the link appears in place, and the mode is now saved.
     marker = page.evaluate("window.__marker = 'same-page'")
@@ -480,7 +504,7 @@ def test_invite_link_options_appear_live_when_the_access_mode_changes(pw, shared
     page.wait_for_selector('[data-invite-link-row]:has-text("0 / 3 used")')
     assert q_mode(cid) == 'invite_link'
     page.wait_for_timeout(600)
-    page.screenshot(path='/tmp/invite_links_saved.png', clip=page.locator('#invite-links').bounding_box())
+    page.locator('#invite-links').screenshot(path='/tmp/invite_links_saved.png')
 
     # a second link stacks on top, and the revoke button on the freshly-added row works
     page.click('#invite-link-form button[type=submit]'); page.locator('[data-invite-link-row]').nth(1).wait_for()
@@ -875,9 +899,14 @@ def test_new_character_can_start_from_a_monster_in_the_manual(pw):
         assert page.is_checked('input[name="is_npc"]')
         assert page.locator('#note-blocks [data-note-hidden]:checked').count() == page.locator('#note-blocks [data-note-hidden]').count() >= 1   # the stat block starts hidden from Players
         assert 'Small humanoid' in page.inner_text('#note-blocks') and 'Nimble Escape' in page.inner_text('#note-blocks')
+        rows = page.locator('[data-attacks] .atk-edit-row')                       # the monster's attack rolls land in the Attacks card
+        assert rows.count() == 3
+        assert rows.nth(0).locator('[name=attack_name]').input_value() == 'Scimitar' and rows.nth(0).locator('[name=attack_bonus]').input_value() == '4'
+        assert rows.nth(0).locator('[name=attack_damage]').input_value() == '1d6+2' and rows.nth(0).locator('[name=attack_type]').input_value() == 'slashing'
         with page.expect_navigation():
             page.click('.cf-bar button[type=submit]')
         ch = next(c['id'] for c in dm.get(f'/campaigns/{cid}/api/characters').json() if c['name'] == 'Goblin Warrior')
+        assert [a['name'] for a in dm.get(f'/campaigns/{cid}/api/characters/{ch}/detail').json()['attacks']] == ['Scimitar', 'Shortbow', 'Weird Gaze']
         page.goto(base + f'/campaigns/{cid}/characters/{ch}'); page.wait_for_load_state('networkidle')
         assert 'Stealth' in page.inner_text('body') and page.locator('.sheet-skill.is-expert .val').first.inner_text() == '+6'
         # the Reference page lists the same data
@@ -1097,8 +1126,8 @@ def test_phone_characters_battle_and_map_pages_are_compact(pw, shared_server):
     ctx = _touch_context(pw, dm, base, 390, 844); page = ctx.new_page(); bad, errs = _collect(page)
     # characters: one row of small buttons, a search that is a button until tapped
     page.goto(base + f'/campaigns/{cid}/characters'); page.wait_for_load_state('load')
-    ys = {round(page.locator(s).first.bounding_box()['y']) for s in ('.page-actions a[href*="export"]', '.page-actions .import-label', '.page-actions .btn-primary')}
-    assert max(ys) - min(ys) <= 3, ys                                                                  # all three on one row
+    ys = {round(page.locator(s).first.bounding_box()['y']) for s in ('.page-actions details.menu summary', '.page-actions .btn-primary')}
+    assert max(ys) - min(ys) <= 3, ys                                                                  # the primary button and the more menu share one row
     assert page.locator('#character-search').is_hidden() and page.locator('.search-bar').bounding_box()['width'] <= 44
     assert page.locator('.dossier-card').first.bounding_box()['y'] < 330, page.locator('.dossier-card').first.bounding_box()
     page.locator('[data-search-open]').tap(); playwright.expect(page.locator('#character-search')).to_be_visible()
@@ -1261,7 +1290,7 @@ def test_monster_manual_in_the_battle_add_menu_brings_copies_into_the_fight(pw):
         page.locator('[data-monster-count]').fill('2')
         page.locator('.add-monster [data-ref-list] .ref-item', has_text='Goblin Warrior').click()
         playwright.expect(page.locator('.battle-row')).to_have_count(2)
-        playwright.expect(page.locator('.battle-name').first).to_contain_text('Goblin Warrior 1')
+        playwright.expect(page.locator('.battle-name').first).to_contain_text('Goblin Warrior #1')
         playwright.expect(page.locator('[data-monster-status]')).to_contain_text('Added 2 x Goblin Warrior')
         # ...and the Monsters tab of the Reference has the same button
         page.goto(base + f'/campaigns/{cid}/reference'); page.wait_for_load_state('load')
@@ -1282,9 +1311,10 @@ def test_roll_initiative_button_fills_in_every_row_and_fits_the_phone_header(pw,
         dm.post(f'/campaigns/{cid}/api/battle/add', json={'character_id': dm.character(cid, n, dex_score=20)})
     ctx = _touch_context(pw, dm, base, 390, 800); page = ctx.new_page(); bad, errs = _collect(page)
     page.goto(base + f'/campaigns/{cid}/battle'); page.wait_for_load_state('load'); page.wait_for_timeout(600)
-    ys = {round(page.locator(f'.battle-actions .btn:nth-child({i})').bounding_box()['y']) for i in (1, 2, 3, 4)}
+    ys = {round(page.locator(f'.battle-actions > :nth-child({i})').bounding_box()['y']) for i in (1, 2, 3, 4)}
     assert max(ys) - min(ys) <= 2, ys                                                  # four buttons on one row
-    page.locator('#roll-initiative-btn').tap(); page.wait_for_timeout(700)
+    page.locator('#roll-initiative-btn').tap()                                         # no hover on a phone: the first tap opens the choices
+    page.locator('[data-roll-scope=all]').tap(); page.wait_for_timeout(700)
     vals = [int(v) for v in page.locator('input[data-action="initiative"]').evaluate_all('els => els.map(e => e.value)')]
     assert len(vals) == 2 and all(6 <= v <= 25 for v in vals), vals
     assert not bad and not errs, (bad, errs)
@@ -1567,9 +1597,12 @@ def test_phone_map_toolbar_is_a_bottom_dock_that_tucks_away_sideways(pw, shared_
     assert box['y'] > 844 / 2 and box['y'] + box['height'] <= nav['y'] + 1, (box, nav)
     page.mouse.wheel(0, 400); page.wait_for_timeout(300)
     assert abs(tb.bounding_box()['y'] - box['y']) < 2                                                # fixed: does not scroll away
-    assert abs(box['x'] + box['width'] / 2 - 390 / 2) < 3, box                                        # closed: centred
+    fab0 = page.locator('.dice-fab').bounding_box()                                                  # closed: the dock and the dice button share one row, edge to edge
+    assert abs(box['x'] - 12) < 2 and box['x'] + box['width'] < fab0['x'] and abs(fab0['x'] + fab0['width'] - (390 - 12)) < 2, (box, fab0)
+    assert abs((box['y'] + box['height'] / 2) - (fab0['y'] + fab0['height'] / 2)) < 3, (box, fab0)
     redo = page.locator('#redo-btn').bounding_box(); zr = page.locator('#zoom-reset-btn').bounding_box()
-    assert zr['x'] - (redo['x'] + redo['width']) < 40, (redo, zr)                                      # no empty gap before Reset Zoom
+    rl = page.locator('[data-tool="ruler"]').bounding_box()                                            # the Ruler sits between Redo and Reset Zoom
+    assert rl['x'] - (redo['x'] + redo['width']) < 40 and zr['x'] - (rl['x'] + rl['width']) < 40, (redo, rl, zr)      # no empty gap before Reset Zoom
     page.locator('#map-toolbar-toggle').tap(); page.wait_for_timeout(500)
     tray = page.locator('[data-tool="eraser"]').bounding_box()
     assert tray['y'] < tb.bounding_box()['y'] + tb.bounding_box()['height'] and tb.bounding_box()['y'] + tb.bounding_box()['height'] <= nav['y'] + 1
@@ -1793,3 +1826,158 @@ def test_battle_page_shows_turn_rank_and_gives_hit_and_heal_feedback(pw, shared_
     page.click('#sort-toggle [data-sort="group"]'); page.wait_for_timeout(300)
     assert page.locator('.battle-rank').count() == 0
     assert not errs, errs; ctx.close()
+
+
+@pytest.mark.parametrize('size', [(390, 844), (360, 640), (844, 390), (667, 375)])
+def test_phone_grid_settings_lightbox_fits_and_the_grid_drags_by_touch(pw, shared_server, size):
+    base = shared_server.url; dm = Api(base); cid = dm.campaign('Lightbox')
+    r = dm.post(f'/campaigns/{cid}/maps/new', data={'name': 'Hall', 'blank_width': '1000', 'blank_height': '700'})
+    mid = int(re.search(r'/maps/(\d+)', r.headers['Location']).group(1))
+    w, h = size
+    ctx = _touch_context(pw, dm, base, w, h); page = ctx.new_page(); bad, errs = _collect(page)
+    page.goto(base + f'/campaigns/{cid}/maps/{mid}'); page.wait_for_load_state('load'); page.wait_for_timeout(800)
+
+    def check_fits(label):
+        for sel in ('.map-setup-stack', '.map-setup-preview-box', '#setup-preview-canvas', '.map-setup-bar', '#setup-confirm-btn'):
+            box = page.locator(sel).bounding_box()
+            assert box and box['x'] >= -1 and box['y'] >= -1 and box['x'] + box['width'] <= w + 1 and box['y'] + box['height'] <= h + 1, (label, sel, box)
+        conf = page.locator('#setup-confirm-btn').bounding_box()
+        assert conf['height'] >= 40, (label, conf)                                    # a finger-sized Confirm
+        canvas = page.locator('#setup-preview-canvas').bounding_box()
+        assert canvas['width'] > 120 and canvas['height'] > 90, (label, canvas)       # the preview is still usable
+
+    check_fits('first open')
+    # dragging the preview with a finger moves the grid
+    box = page.locator('#setup-preview-canvas').bounding_box()
+    x, y = box['x'] + box['width'] / 2, box['y'] + box['height'] / 2
+    before = page.evaluate("() => document.getElementById('setup-preview-canvas').toDataURL()")
+    cdp = ctx.new_cdp_session(page)
+    cdp.send('Input.dispatchTouchEvent', {'type': 'touchStart', 'touchPoints': [{'x': x, 'y': y}]})
+    for i in range(1, 8):
+        cdp.send('Input.dispatchTouchEvent', {'type': 'touchMove', 'touchPoints': [{'x': x + i * 5, 'y': y + i * 3}]})
+    cdp.send('Input.dispatchTouchEvent', {'type': 'touchEnd', 'touchPoints': []})
+    page.wait_for_timeout(200)
+    assert page.evaluate("() => document.getElementById('setup-preview-canvas').toDataURL()") != before
+    page.locator('#setup-confirm-btn').tap(); page.wait_for_timeout(500)
+    assert not page.locator('#map-setup-overlay').is_visible()
+    # reopened from the toolbar: same fit, now with the close button inside the screen
+    page.evaluate("() => document.getElementById('grid-settings-btn').click()"); page.wait_for_timeout(500)
+    check_fits('reopened')
+    close = page.locator('#setup-close-btn').bounding_box()
+    assert close and close['width'] >= 40 and 0 <= close['x'] and close['x'] + close['width'] <= w and 0 <= close['y'], close
+    page.locator('#setup-close-btn').tap(); page.wait_for_timeout(300)
+    assert not page.locator('#map-setup-overlay').is_visible()
+    assert not [b for b in bad if b[0] >= 400], bad
+    assert not errs, errs
+    ctx.close()
+
+
+def test_condition_chip_hover_shows_its_rule(pw, shared_server):
+    base = shared_server.url; dm = Api(base); cid = dm.campaign('RuleTip')
+    pid = dm.post(f'/campaigns/{cid}/api/battle/add', json={'character_id': dm.character(cid, 'Aria')}).json()[0]['id']
+    dm.post(f'/campaigns/{cid}/api/battle/{pid}/conditions', json={'conditions': ['prone'], 'custom_conditions': ['Hexed']})
+    dctx = dm.context(pw, base); dpage = dctx.new_page()
+    asked = []
+    def fake(route):
+        asked.append(route.request.url)
+        route.fulfill(status=200, content_type='application/json', body='{"title":"Prone","subtitle":"Condition","facts":[],"body":"Crawl only.\\nAttacks against you have <b>x</b>."}')
+    dpage.route('**/api/reference/entry**', fake)
+    dpage.goto(base + f'/campaigns/{cid}/battle'); dpage.wait_for_selector('.cond-chip')
+    dpage.hover('.cond-chip.cond-prone .cond-name'); dpage.wait_for_selector('#cond-rule-tip:not([hidden])')
+    tip = dpage.inner_text('#cond-rule-tip')
+    assert 'Prone' in tip and 'Crawl only.' in tip and '<b>x</b>' in tip            # shown as text, never parsed as html
+    assert dpage.locator('#cond-rule-tip b').count() == 0
+    assert 'kind=conditions' in asked[0] and 'conditions%2Fprone' in asked[0]
+    dpage.mouse.move(5, 5); dpage.wait_for_selector('#cond-rule-tip', state='hidden')
+    dpage.hover('.cond-chip.cond-custom .cond-name'); dpage.wait_for_timeout(600)       # custom conditions have no rule
+    assert dpage.locator('#cond-rule-tip').is_hidden() and len(asked) == 1
+
+
+def test_condition_picker_tiles_show_the_rule_too(pw, shared_server):
+    base = shared_server.url; dm = Api(base); cid = dm.campaign('PickerTip')
+    dm.post(f'/campaigns/{cid}/api/battle/add', json={'character_id': dm.character(cid, 'Aria')})
+    dctx = dm.context(pw, base); dpage = dctx.new_page()
+    dpage.route('**/api/reference/entry**', lambda route: route.fulfill(status=200, content_type='application/json', body='{"title":"Poisoned","subtitle":"Condition","facts":[],"body":"Disadvantage on attacks."}'))
+    dpage.goto(base + f'/campaigns/{cid}/battle'); dpage.click('.cond-add'); dpage.wait_for_selector('#conditions-modal:not([hidden])')
+    dpage.hover('#conditions-picker [data-cond="poisoned"]'); dpage.wait_for_selector('#cond-rule-tip:not([hidden])')
+    assert 'Disadvantage on attacks.' in dpage.inner_text('#cond-rule-tip')
+    tip = dpage.locator('#cond-rule-tip').bounding_box(); tile = dpage.locator('#conditions-picker [data-cond="poisoned"]').bounding_box()
+    assert tip['y'] + tip['height'] <= tile['y'] + 1 or tip['y'] >= tile['y'] + tile['height'] - 1      # beside the tile, not covering it
+    dpage.click('#conditions-picker [data-cond="poisoned"]')                                           # toggling still works and drops the tip
+    dpage.wait_for_selector('#conditions-picker [data-cond="poisoned"].active'); dpage.wait_for_selector('#cond-rule-tip', state='hidden')
+
+
+def test_dice_toasts_leave_after_a_few_seconds_even_if_the_tab_was_in_the_background(pw, shared_server):
+    base = shared_server.url
+    dm, pl = Api(base), Api(base); cid = dm.campaign('Toast timing')
+    dm.add_member(cid, pl)
+    pctx = pl.context(pw, base); ppage = pctx.new_page()
+    ppage.goto(base + f'/campaigns/{cid}/characters'); ppage.wait_for_load_state('networkidle'); time.sleep(0.8)
+    dm.post(f'/campaigns/{cid}/api/dice/roll', json={'dice': {'20': 1}, 'label': 'First'})
+    playwright.expect(ppage.locator('.dice-toast').first).to_contain_text('First', timeout=15000)
+    playwright.expect(ppage.locator('.dice-toast')).to_have_count(0, timeout=9000)       # gone by itself (5 s + a moment)
+    # a background tab has its timers throttled: pretend 20 s passed without a single timer firing, then come back
+    ppage.evaluate("window.__realNow = Date.now.bind(Date); window.__skew = 0; Date.now = () => window.__realNow() + window.__skew")
+    dm.post(f'/campaigns/{cid}/api/dice/roll', json={'dice': {'20': 1}, 'label': 'Second'})
+    playwright.expect(ppage.locator('.dice-toast').first).to_contain_text('Second', timeout=15000)
+    ppage.evaluate("window.__skew = 20000; document.dispatchEvent(new Event('visibilitychange'))")
+    playwright.expect(ppage.locator('.dice-toast')).to_have_count(0, timeout=1500)
+
+
+def test_battle_log_is_collapsible_small_and_live(pw, shared_server):
+    base = shared_server.url; dm = Api(base); pl = Api(base); cid = dm.campaign('LogUI')
+    dm.add_member(cid, pl)
+    pid = dm.post(f'/campaigns/{cid}/api/battle/add', json={'character_id': dm.character(cid, 'Aria')}).json()[0]['id']
+    dctx = dm.context(pw, base); dpage = dctx.new_page(); dbad, derrs = _collect(dpage)
+    pctx = pl.context(pw, base); ppage = pctx.new_page()
+    dpage.goto(base + f'/campaigns/{cid}/battle'); ppage.goto(base + f'/campaigns/{cid}/battle')
+    dpage.wait_for_selector('#battle-log:not([hidden])'); ppage.wait_for_selector('#battle-log:not([hidden])')
+    bar = dpage.locator('#battle-log-toggle')
+    assert bar.get_attribute('aria-expanded') == 'false'                             # starts closed: one slim bar
+    box = bar.bounding_box(); vh = dpage.viewport_size['height']
+    assert box['height'] < 48 and box['y'] + box['height'] > vh - 70                  # pinned to the bottom of the page
+    main_left = dpage.locator('#main-content').bounding_box()['x']
+    assert box['width'] < 460 and abs(box['x'] - (main_left + 32)) < 80               # short, and on the left (not full width)
+    fab = dpage.locator('.dice-fab').bounding_box()
+    assert abs((box['y'] + box['height'] / 2) - (fab['y'] + fab['height'] / 2)) <= 1.5   # the strip and the dice button share one centre line
+    dpage.set_viewport_size({'width': 390, 'height': 800}); dpage.wait_for_timeout(400)         # on a phone: same centre line, and the strip stops short of the dice button
+    box = bar.bounding_box(); fab = dpage.locator('.dice-fab').bounding_box()
+    assert abs((box['y'] + box['height'] / 2) - (fab['y'] + fab['height'] / 2)) <= 1.5 and box['x'] + box['width'] <= fab['x'] - 4
+    dpage.set_viewport_size({'width': 1280, 'height': 900}); dpage.wait_for_timeout(400)
+    toggle = dpage.locator('#sidebar-toggle-btn')
+    for _ in range(2):                                                                # closing and reopening the sidebar keeps it with the content
+        toggle.click(); dpage.wait_for_timeout(600)
+        ml = dpage.locator('#main-content').bounding_box()['x']
+        assert abs(bar.bounding_box()['x'] - (ml + 32)) < 80 and bar.bounding_box()['y'] + bar.bounding_box()['height'] > vh - 70
+    assert 'Aria joined the battle' in dpage.inner_text('#battle-log-latest')
+    assert dpage.locator('#battle-log-sheet').is_hidden()
+    bar.click()
+    playwright.expect(dpage.locator('#battle-log-sheet')).to_be_visible()
+    assert dpage.locator('#battle-log-list .bl-item').count() == 1
+    blur = lambda sel: dpage.locator(sel).evaluate('(el) => getComputedStyle(el).backdropFilter || getComputedStyle(el).webkitBackdropFilter')
+    assert blur('#battle-log-sheet') != 'none'                                       # the card itself is frosted glass...
+    assert blur('#battle-log-backdrop') in ('none', '')                              # ...and the page behind is NOT blurred
+    assert dpage.locator('#battle-log-sheet').bounding_box()['y'] + dpage.locator('#battle-log-sheet').bounding_box()['height'] < dpage.locator('#battle-log-toggle').bounding_box()['y']   # floats above the bar
+    dm.post(f'/campaigns/{cid}/api/battle/{pid}/damage', json={'amount': 4})
+    playwright.expect(dpage.locator('#battle-log-list .bl-item').last).to_contain_text('Aria took', timeout=15000)       # newest at the bottom
+    playwright.expect(ppage.locator('#battle-log-list .bl-item').last).to_contain_text('Aria took', timeout=15000)   # live for the Player too
+    assert float(dpage.locator('#battle-log-list').evaluate('(el) => parseFloat(getComputedStyle(el).maxHeight)')) <= 140   # about six lines, then it scrolls
+    assert float(dpage.locator('#battle-log-list .bl-item').last.evaluate('(el) => parseFloat(getComputedStyle(el).fontSize)')) <= 12
+    dpage.keyboard.press('Escape')
+    assert bar.get_attribute('aria-expanded') == 'false'
+    bar.click(); dpage.mouse.click(20, 20)                                           # a click on the blurred page closes it too
+    assert bar.get_attribute('aria-expanded') == 'false'
+    dpage.reload(); dpage.wait_for_selector('#battle-log:not([hidden])')
+    assert dpage.locator('#battle-log-toggle').get_attribute('aria-expanded') == 'false'   # nothing is remembered: always starts closed
+    assert not dbad and not derrs
+
+
+def test_character_sheet_prints_without_the_app_chrome(pw, shared_server):
+    base = shared_server.url; dm = Api(base); cid = dm.campaign('PrintUI'); chid = dm.character(cid, 'Printable')
+    ctx = dm.context(pw, base); page = ctx.new_page()
+    page.goto(base + f'/campaigns/{cid}/characters/{chid}')
+    page.wait_for_selector('[data-print]', state='attached')
+    page.emulate_media(media='print')
+    assert not page.locator('.sidebar').is_visible() and not page.locator('[data-print]').is_visible()      # menus and buttons stay off the paper
+    assert page.locator('.cd-hero').is_visible()
+    assert page.evaluate("getComputedStyle(document.body).backgroundColor") == 'rgb(255, 255, 255)'

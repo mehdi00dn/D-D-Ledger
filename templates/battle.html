@@ -11,8 +11,25 @@
   </div>
   {% if g.is_dm %}
   <div class="page-actions battle-actions">
-    <a href="{{ url_for('character_new', **{'from': 'battle'}) }}" class="btn btn-ghost">{{ icon('plus') }} <span>Create Character</span></a>
-    <button type="button" class="btn btn-ghost" id="roll-initiative-btn" title="Roll d20 + Dexterity for everyone in the battle">{{ icon('dices') }} <span>Roll Initiative</span></button>
+    <div class="roll-menu" id="roll-menu">
+      <button type="button" class="btn btn-ghost" id="roll-initiative-btn" aria-haspopup="menu" aria-expanded="false" aria-controls="roll-menu-list" title="Roll d20 + Dexterity. Hover for the player characters or the NPCs only.">{{ icon('dices') }} <span>Roll Initiative</span> {{ icon('chevron-down') }}</button>
+      <div class="roll-menu-list" id="roll-menu-list" role="menu" aria-label="Roll initiative for">
+        <div class="roll-menu-panel">
+          <button type="button" role="menuitem" data-roll-scope="all">Everyone <small></small></button>
+          <button type="button" role="menuitem" data-roll-scope="pc">Player characters <small></small></button>
+          <button type="button" role="menuitem" data-roll-scope="npc">NPCs and monsters <small></small></button>
+        </div>
+      </div>
+    </div>
+    <div class="roll-menu rest-menu" id="rest-menu">
+      <button type="button" class="btn btn-ghost" id="rest-menu-btn" aria-haspopup="menu" aria-expanded="false" aria-controls="rest-menu-list" title="Short rest or long rest for the player characters. Hover to choose.">{{ icon('moon') }} <span>Rest</span> {{ icon('chevron-down') }}</button>
+      <div class="roll-menu-list" id="rest-menu-list" role="menu" aria-label="Rest">
+        <div class="roll-menu-panel">
+          <button type="button" role="menuitem" id="short-rest-btn" data-open-dialog="short-rest-dialog" title="Type how many HP each player character regained from Hit Dice. Nothing else changes.">{{ icon('sun') }} <span>Short rest</span></button>
+          <button type="button" role="menuitem" id="long-rest-btn" title="Full HP, no temporary HP, death saves cleared. NPCs and monsters are left as they are.">{{ icon('moon') }} <span>Long rest</span></button>
+        </div>
+      </div>
+    </div>
     <button type="button" class="btn btn-ghost" id="open-add-modal">{{ icon('user') }} <span>Add Character</span></button>
     <button type="button" class="btn btn-danger" id="clear-battle-btn">{{ icon('trash-2') }} <span>Clear Battle</span></button>
   </div>
@@ -22,7 +39,6 @@
 <div class="battle-toolbar">
   <div class="turn-bar" id="turn-bar" hidden>
     <span class="round-badge">Round <b id="round-num">1</b></span>
-    <span class="turn-now" id="turn-now" hidden aria-live="polite"></span>
     {% if g.is_dm %}
     <div class="turn-controls" role="group" aria-label="Turn controls">
       <button type="button" class="turn-btn" id="prev-turn-btn" title="Previous turn" aria-label="Previous turn">{{ icon('chevron-left') }}</button>
@@ -31,6 +47,7 @@
       <button type="button" class="turn-btn" id="restart-turns-btn" title="Restart: back to round 1, top of the order" aria-label="Restart turns">{{ icon('restart') }}</button>
     </div>
     {% endif %}
+    <span class="turn-now" id="turn-now" hidden aria-live="polite"></span>
   </div>
   {% if g.is_dm %}
   <span class="hint-text" style="margin:0;">Sort by</span>
@@ -45,10 +62,24 @@
 
 <div id="battle-root" data-added-id="{{ added_id or '' }}"></div>
 
+<div class="battle-log" id="battle-log" hidden>
+  <div class="bl-backdrop" id="battle-log-backdrop"></div>
+  <div class="bl-dock">
+    <section class="bl-sheet" id="battle-log-sheet" aria-label="Battle log" hidden>
+      <ol class="bl-list" id="battle-log-list" aria-label="Newest first"></ol>
+    </section>
+    <button type="button" class="bl-bar" id="battle-log-toggle" aria-expanded="false" aria-controls="battle-log-sheet">
+      <span class="bl-title">{{ icon('history') }} Battle log</span>
+      <span class="bl-latest" id="battle-log-latest"></span>
+      <span class="bl-chev" aria-hidden="true">{{ icon('chevron-down') }}</span>
+    </button>
+  </div>
+</div>
+
 <template id="empty-battle-template">
   <div class="empty-state">
     <span>{{ icon('swords') }}</span>
-    <h3>No one's on the field</h3>
+    <h2>No one's on the field</h2>
     <p>Add an existing character or create a new one to begin the encounter.</p>
   </div>
 </template>
@@ -112,6 +143,19 @@
 
 <script id="conditions-data" type="application/json">{{ conditions | tojson }}</script>
 <script id="characters-data" type="application/json">{{ characters | tojson }}</script>
+{% if g.is_dm %}
+<dialog class="pick-dialog treasury-dialog" id="short-rest-dialog" aria-labelledby="short-rest-title">
+  <form class="treasury-form" id="short-rest-form" method="dialog">
+    <div class="pick-head"><h2 id="short-rest-title">Short rest</h2><button type="button" class="btn-icon" data-close-dialog aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="treasury-dialog-body">
+      <p class="treasury-hint">After a short rest each player character can spend Hit Dice. Type the HP each one regained (leave blank for none). Hit Dice are not tracked here.</p>
+      <ul class="short-rest-list" id="short-rest-list"></ul>
+      <p class="home-empty" id="short-rest-empty" hidden>There are no player characters in the battle.</p>
+    </div>
+    <div class="pick-foot"><button type="button" class="btn btn-ghost" data-close-dialog>Cancel</button><button type="submit" class="btn btn-primary" id="short-rest-go">{{ icon('sun') }} Take a short rest</button></div>
+  </form>
+</dialog>
+{% endif %}
 {% endblock %}
 
 {% block extra_scripts %}

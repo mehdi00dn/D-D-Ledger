@@ -26,11 +26,14 @@
     function fire(target, ev) {
       if (target.classList.contains('is-rolling')) return;
       target.classList.add('is-rolling');
+      var dice = { '20': 1 }, damage = false;
+      var spec = target.getAttribute('data-roll-dice');      // a damage roll (DL-150): those dice, never with advantage
+      if (spec) { try { dice = JSON.parse(spec); damage = true; } catch (e) { /* fall back to a d20 */ } }
       LedgerDice.roll({
-        dice: { '20': 1 },
+        dice: dice,
         modifier: parseInt(target.getAttribute('data-roll-bonus'), 10) || 0,
         label: target.getAttribute('data-roll-label') || '',
-        mode: chosenMode(ev),
+        mode: damage ? 'normal' : chosenMode(ev),
         character_id: getCharacterId(),
         participant_id: getParticipantId ? getParticipantId() : null
       }).catch(function (err) { LedgerDice.announceError(err.message); })

@@ -61,11 +61,11 @@ def test_registration_is_rate_limited_per_address(appmod, tight):
     codes = []; ip = fresh_ip(7); ip2 = fresh_ip(8)
     for i in range(6):
         c = appmod.app.test_client()
-        codes.append(c.post('/register', data={'username': f'flood{i}{os.urandom(2).hex()}', 'password': 'secret12', 'confirm': 'secret12'},
+        codes.append(c.post('/register', data={'username': f'flood{i}{os.urandom(2).hex()}', 'password': 'secret12', 'email': 'player@example.com', 'confirm': 'secret12'},
                             headers={'X-Test-IP': ip}).status_code)
     assert codes == [302, 302, 302, 302, 429, 429]
     c = appmod.app.test_client()
-    assert c.post('/register', data={'username': 'elsewhere' + os.urandom(2).hex(), 'password': 'secret12', 'confirm': 'secret12'},
+    assert c.post('/register', data={'username': 'elsewhere' + os.urandom(2).hex(), 'password': 'secret12', 'email': 'player@example.com', 'confirm': 'secret12'},
                   headers={'X-Test-IP': ip2}).status_code == 302
 
 

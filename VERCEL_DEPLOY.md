@@ -84,13 +84,24 @@ to Production** (instant rollback). Nothing in the database changes.
 * **Temp files.** Abandoned upload staging and large-export files pile up in `ledger-temp`.
   `python scripts/cleanup_temp.py --dry-run`, then without `--dry-run`, now and then
   (needs `SUPABASE_URL` + `SUPABASE_SECRET_KEY` in your shell).
-* **Backups.** Supabase's free plan has none. Export from the app (Campaign -> Export) or use
-  `pg_dump` with the *direct* connection string. Consider the Pro plan before real campaigns.
+* **Backups.** Supabase's own backups never include the uploaded images, and the Free plan has none at all, so use
+  `python scripts/backup.py` (database + images) and rehearse it with `python scripts/restore_drill.py`.
+  The routine, recovery steps and drill log are in [BACKUPS.md](BACKUPS.md).
 * **Free plan pauses** projects after a week of inactivity; the site then returns 503 from `/healthz`
   until you resume it in the Supabase dashboard.
 * **Schema changes.** Add `migrations/000N_name.sql`, run `python migrate.py` from a trusted
   machine *before* deploying the code that needs it, and regenerate the paste-script:
   `python migrate.py --sql > supabase_setup.sql`. CI never touches your live database.
+  If the order is ever wrong, pages that read the new profile columns fall back to the username (and `/account`
+  answers 503) instead of failing, and the log says which migration to apply.
+* **Email.** Optional. Pick a transactional provider, add its SMTP settings as Vercel environment variables
+  (`MAIL_HOST`, `MAIL_PORT`, `MAIL_USER`, `MAIL_PASSWORD`, `MAIL_FROM`; see `.env.example`) and redeploy. Publish the
+  SPF and DKIM records the provider gives you for the sending domain, or messages land in spam. Until `MAIL_HOST` is
+  set the account page says addresses cannot be confirmed.
+  Resend example (Resend's SMTP is `smtp.resend.com`): `MAIL_HOST=smtp.resend.com`, `MAIL_PORT=587`, `MAIL_USER=resend`,
+  `MAIL_PASSWORD=<your Resend API key>` (mark it Sensitive in Vercel), `MAIL_FROM="Campaign Ledger <onboarding@resend.dev>"`.
+  Until a domain is verified in Resend, `onboarding@resend.dev` only delivers to the Resend account owner's own address. Sending is limited per account, per address and per
+  visitor (`MAIL_LIMIT_*`), and messages carry no tracking pixels or tracked links.
 * **Vercel storage.** Every deployment stores its own copy of the app (about 50 MB, almost all of it
   Pillow and the Postgres driver), and every push to a non-production branch makes a Preview
   deployment too. To keep usage down: set **Settings -> Build and Deployment -> Deployment Retention**
@@ -101,8 +112,13 @@ to Production** (instant rollback). Nothing in the database changes.
   Deploy in batches rather than once per small change.
 * **Logs and errors.** Runtime logs (Vercel -> Logs) are JSON lines with a `request_id`; the same id is in the
   `X-Request-ID` response header and in the reference shown on an error page, so search the logs for it to find the
-  stack trace. `/healthz` is the uptime-check URL. Optional Sentry: set `SENTRY_DSN` and add `sentry-sdk` to
+  stack trace. `/healthz` is the uptime-check URL: the `Uptime` GitHub Action pings it every 15 minutes (set the repository variable `SITE_URL`, e.g. `https://your-app.vercel.app`; a failed run emails the repo's watchers; `python scripts/check_uptime.py <url>` does the same by hand). Optional Sentry: set `SENTRY_DSN` and add `sentry-sdk` to
   `requirements.in`, recompile the lock file, redeploy.
+* **Upload quotas.** Defaults are 150 MB of stored images per user and 300 MB per campaign (Supabase Free holds 1 GB
+  in total, so size them against your plan). Override with `LEDGER_QUOTA_USER_MB` / `LEDGER_QUOTA_CAMPAIGN_MB` in
+  Vercel (`0` = off) and redeploy. After applying migration 0021 run `python scripts/backfill_storage_usage.py`
+  once (use `--dry-run` first) so images uploaded earlier are counted. Browsers still upload large files straight
+  to Supabase; the server checks the quota again when it processes the staged file, so the limit cannot be skipped.
 * **Keys.** Never paste `DATABASE_URL` or Supabase keys into chat, issues, or git. If one leaks,
   rotate it in Supabase and update Vercel, then redeploy.
 

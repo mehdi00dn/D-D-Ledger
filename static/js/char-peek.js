@@ -33,7 +33,7 @@
 
   function chips(c) {
     var out = '<span class="cd-chip">Lvl ' + esc(c.level) + '</span>' +
-      '<span class="cd-chip cd-chip--' + (c.is_npc ? 'npc' : 'pc') + '">' + (c.is_npc ? 'NPC' : 'PC') + '</span>';
+      '<span class="cd-chip cd-chip--' + (c.is_npc ? 'npc' : 'pc') + '">' + (c.is_npc ? (c.is_ally ? 'NPC · Ally' : 'NPC') : 'PC') + '</span>';
     var fs = c.factions && c.factions.length ? c.factions : (c.group_name ? [{ name: c.group_name, color: c.group_color }] : []);
     fs.forEach(function (f) {
       out += '<span class="cd-chip cd-chip--faction"><span class="group-dot" style="background:' + safeColor(f.color, '#c9a24b') + '"></span>' + esc(f.name) + '</span>';
@@ -87,6 +87,19 @@
             '<span class="mark" aria-hidden="true">' + (sv.proficient ? '●' : '○') + '</span> Save <b>' + sv.text + '</b>',
             'Roll ' + ab.name + ' saving throw' + (sv.proficient ? ' (proficient)' : '')) + '</div>';
       }).join('') + '</div>';
+
+      if (c.attacks && c.attacks.length) {
+        html += '<div class="peek-section" aria-label="Attacks"><div class="peek-section-title">Attacks</div><ul class="atk-list">' +
+          c.attacks.map(function (a) {
+            return '<li class="atk-row"><span class="atk-name">' + esc(a.name) +
+              (a.damage_type ? '<small class="atk-type">' + esc(a.damage_type) + '</small>' : '') + '</span>' +
+              '<button type="button" class="atk-btn atk-btn--hit" title="Roll ' + esc(a.name) + ' to hit" data-roll-bonus="' + a.attack_bonus +
+              '" data-roll-label="' + esc(a.name) + ' attack"><small>To hit</small><b>' + esc(a.to_hit_text) + '</b></button>' +
+              (a.damage && a.dice_json ? '<button type="button" class="atk-btn atk-btn--dmg" title="Roll ' + esc(a.name) + ' damage" data-roll-bonus="' + a.damage_bonus +
+                '" data-roll-dice="' + esc(a.dice_json) + '" data-roll-label="' + esc(a.name) + ' damage' + (a.damage_type ? ' (' + esc(a.damage_type) + ')' : '') +
+                '"><small>Damage</small><b>' + esc(a.damage) + '</b></button>' : '') + '</li>';
+          }).join('') + '</ul></div>';
+      }
 
       var trained = s.skills.filter(function (k) { return k.level; });
       function skill(k, cls) {

@@ -1,0 +1,214 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon, class_icon %}
+{% set active_page = 'home' %}
+{% block title %}{{ g.campaign.name }} — Campaign Ledger{% endblock %}
+
+{% block content %}
+{% macro clamped(html, cls) %}
+<div class="clamp {{ cls }}" data-clamp>{{ html | safe }}</div>
+<button type="button" class="clamp-toggle" data-clamp-toggle aria-expanded="false" hidden>Read more</button>
+{% endmacro %}
+
+<div class="home-grid">
+<div class="home-main">
+  <header class="home-hero{{ ' has-banner' if g.campaign.avatar_path else '' }}">
+    {% if g.campaign.avatar_path %}
+    <div class="home-banner"><img src="{{ url_for('uploaded_file', filename=g.campaign.avatar_path) }}" alt=""></div>
+    <button type="button" class="btn-icon home-banner-view" data-lightbox-src="{{ url_for('uploaded_file', filename=g.campaign.avatar_path) }}" data-lightbox-max="1200" title="View the campaign image" aria-label="View the campaign image full size">{{ icon('maximize') }}</button>
+    {% endif %}
+    <div class="home-hero-text">
+      <h1 class="home-name">{{ g.campaign.name }}</h1>
+      {% if bio_html %}<div class="home-bio">{{ clamped(bio_html, 'home-bio-text') }}</div>{% endif %}
+      <div class="home-hero-foot">
+        <div class="home-actions">
+          <a href="{{ url_for('character_new') }}" class="btn btn-primary">{{ icon('plus') }} New Character</a>
+          <a href="{{ url_for('battle_view') }}" class="btn btn-ghost">{{ icon('swords') }} Battle</a>
+        </div>
+        <nav class="home-tiles" aria-label="Campaign contents">
+          <a class="home-tile" href="{{ url_for('characters_list') }}"><b>{{ counts.characters }}</b><span>Characters</span></a>
+          <a class="home-tile" href="{{ url_for('factions_list') }}"><b>{{ counts.factions }}</b><span>Factions</span></a>
+          <a class="home-tile" href="{{ url_for('maps_list') }}"><b>{{ counts.maps }}</b><span>Maps</span></a>
+        </nav>
+      </div>
+    </div>
+  </header>
+
+  <section class="cf-card home-party" aria-label="The party">
+    <h2 class="cf-title">The party <span class="cf-count">{{ party|length }}</span></h2>
+    {% if party %}
+    <ul class="home-party-list">
+      {% for c in party[:12] %}
+      <li><a class="home-pc" href="{{ url_for('character_detail', char_id=c.id) }}">
+        <span class="avatar-frame home-pc-avatar">{% if c.avatar_path %}<img src="{{ url_for('uploaded_file', filename=c.avatar_path) }}" alt="">{% else %}{{ icon('user') }}{% endif %}</span>
+        <span class="home-pc-name">{{ class_icon(c.class_key) }}<span>{{ c.name }}</span></span>
+        <span class="home-pc-stats"><span class="home-pc-lvl">Lvl {{ c.level }}</span><span>{{ c.max_hp }} HP</span><span>AC {{ c.armor_class }}</span></span>
+      </a></li>
+      {% endfor %}
+    </ul>
+    {% if party|length > 12 %}<p class="cd-legend"><a href="{{ url_for('characters_list') }}">See all {{ party|length }} characters</a></p>{% endif %}
+    {% else %}
+    <p class="home-empty">No player characters yet. <a href="{{ url_for('character_new') }}">Add the first one</a>.</p>
+    {% endif %}
+  </section>
+
+  {% if campaign_notes %}
+  <section class="cf-card home-notes" aria-label="Campaign notes">
+    <h2 class="cf-title">Campaign notes</h2>
+    {{ clamped(campaign_notes, 'home-notes-text') }}
+  </section>
+  {% endif %}
+
+  {% if quests or g.is_dm %}
+  <section class="cf-card home-quests" aria-label="Quests">
+    <h2 class="cf-title">Quests{% if quests %} <span class="cf-count">{{ quests|rejectattr('done')|list|length }}</span>{% endif %}</h2>
+    {% if quests %}
+    <ul class="quest-list">
+      {% for q in quests %}
+      <li class="quest{{ ' is-done' if q.done else '' }}{{ ' is-hidden' if q.hidden else '' }}">
+        <div class="quest-main">
+          <p class="quest-title">{{ q.title }}{% if q.done %} <span class="quest-tag">Done</span>{% endif %}{% if q.hidden %} <span class="quest-tag quest-tag-dm">Hidden from players</span>{% endif %}</p>
+          {% if q.details %}<p class="quest-details">{{ q.details }}</p>{% endif %}
+        </div>
+        {% if g.is_dm %}
+        <div class="quest-actions">
+          <form method="POST" action="{{ url_for('quest_change', quest_id=q.id) }}">{{ csrf_field() }}<input type="hidden" name="action" value="{{ 'reopen' if q.done else 'done' }}"><button type="submit" class="btn btn-ghost btn-sm">{{ 'Reopen' if q.done else 'Mark done' }}</button></form>
+          <form method="POST" action="{{ url_for('quest_change', quest_id=q.id) }}">{{ csrf_field() }}<input type="hidden" name="action" value="{{ 'show' if q.hidden else 'hide' }}"><button type="submit" class="btn btn-ghost btn-sm">{{ 'Show to players' if q.hidden else 'Hide' }}</button></form>
+          <form method="POST" action="{{ url_for('quest_change', quest_id=q.id) }}" data-confirm="Delete this quest?">{{ csrf_field() }}<input type="hidden" name="action" value="{{ 'delete' }}"><button type="submit" class="btn btn-ghost btn-sm quest-delete" aria-label="Delete the quest {{ q.title }}" title="Delete">{{ icon('trash-2') }}</button></form>
+        </div>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="home-empty">No quests yet.</p>
+    {% endif %}
+    {% if g.is_dm %}
+    <details class="session-edit quest-add"{{ '' if quests else ' open' }}>
+      <summary class="btn btn-ghost btn-sm">{{ icon('plus') }} Add a quest</summary>
+      <form method="POST" action="{{ url_for('quest_add') }}">{{ csrf_field() }}
+        <div class="field">
+          <label for="quest-title">Quest</label>
+          <input type="text" id="quest-title" name="title" maxlength="120" required placeholder="Find the missing caravan">
+        </div>
+        <div class="field">
+          <label for="quest-details">What the players know <span class="field-optional">optional</span></label>
+          <textarea id="quest-details" name="details" rows="2" maxlength="600"></textarea>
+        </div>
+        <label class="quest-hide"><input type="checkbox" name="hidden" value="1"> Hide from players for now</label>
+        <div class="session-edit-actions"><button type="submit" class="btn btn-primary btn-sm">{{ icon('check') }} Add quest</button></div>
+      </form>
+    </details>
+    {% endif %}
+  </section>
+  {% endif %}
+
+  <section class="cf-card home-activity" aria-label="Recent activity">
+    <h2 class="cf-title">Recent activity</h2>
+    {% if events %}
+    <ul class="home-list">
+      {% for e in events %}
+      <li><span class="home-list-main"><strong>{{ e.actor or 'A former member' }}</strong> {{ e.text }}</span><small>{{ e.created_at }}</small></li>
+      {% endfor %}
+    </ul>
+    <a href="{{ url_for('activity_view') }}" class="home-more">All activity</a>
+    {% else %}
+    <p class="home-empty">Joins, new characters, factions and maps show up here as they happen.</p>
+    {% endif %}
+  </section>
+</div>
+
+<div class="home-side">
+  {% set can_schedule = g.real_is_dm or g.campaign_role == 'owner' %}
+  {% if next_session or can_schedule %}
+  <section class="cf-card home-session" aria-label="Next session">
+    <h2 class="cf-title">Next session</h2>
+    {% if next_session %}
+    <p class="session-when"><time datetime="{{ next_session.iso }}" data-local-time>{{ next_session.at.strftime('%a %d %b %Y, %H:%M') }} UTC</time></p>
+    <p class="session-rel" data-local-relative="{{ next_session.iso }}"></p>
+    {% if next_session.note %}<p class="session-note">{{ next_session.note }}</p>{% endif %}
+    <form method="POST" action="{{ url_for('campaign_session_rsvp') }}" class="session-rsvp" aria-label="Can you come?">{{ csrf_field() }}
+      {% for key, label in (('yes', 'Going'), ('maybe', 'Maybe'), ('no', "Can't")) %}
+      <button type="submit" name="status" value="{{ key }}" class="rsvp-btn rsvp-{{ key }}{{ ' is-on' if next_session.mine == key else '' }}" aria-pressed="{{ 'true' if next_session.mine == key else 'false' }}">{{ label }}{% if next_session.answers[key] %} <b>{{ next_session.answers[key]|length }}</b>{% endif %}</button>
+      {% endfor %}
+    </form>
+    {% if next_session.answers.yes or next_session.answers.maybe or next_session.answers.no %}
+    <p class="session-who">
+      {% if next_session.answers.yes %}<span><b>Going:</b> {{ next_session.answers.yes|join(', ') }}</span>{% endif %}
+      {% if next_session.answers.maybe %}<span><b>Maybe:</b> {{ next_session.answers.maybe|join(', ') }}</span>{% endif %}
+      {% if next_session.answers.no %}<span><b>Can't:</b> {{ next_session.answers.no|join(', ') }}</span>{% endif %}
+    </p>
+    {% endif %}
+    <a class="home-more" href="{{ url_for('campaign_session_ics') }}">Add to calendar</a>
+    {% else %}
+    <p class="home-empty">No session scheduled yet.</p>
+    {% endif %}
+    {% if can_schedule %}
+    <details class="session-edit"{{ '' if next_session else ' open' }}>
+      <summary class="btn btn-ghost btn-sm">{{ icon('pencil') }} {{ 'Change the date' if next_session else 'Set the date' }}</summary>
+      <form method="POST" action="{{ url_for('campaign_session_set') }}" data-session-form>{{ csrf_field() }}
+        <div class="field">
+          <label for="session-local">Date and time</label>
+          <input type="datetime-local" id="session-local" required {% if next_session %}data-initial="{{ next_session.iso }}"{% endif %}>
+          <p class="session-zone">In your time zone. Everyone else sees it in theirs.</p>
+        </div>
+        <input type="hidden" name="starts_at" value="">
+        <div class="field">
+          <label for="session-note">Note <span class="field-optional">optional</span></label>
+          <input type="text" id="session-note" name="note" maxlength="300" value="{{ next_session.note if next_session else '' }}" placeholder="Where, what to bring, which chapter...">
+        </div>
+        <div class="session-edit-actions">
+          <button type="submit" class="btn btn-primary btn-sm">{{ icon('check') }} Save</button>
+          {% if next_session %}<button type="submit" name="clear" value="1" class="btn btn-ghost btn-sm session-cancel" formnovalidate data-session-clear data-confirm="Cancel the next session? Everyone's answers are cleared.">Cancel the session</button>{% endif %}
+        </div>
+      </form>
+    </details>
+    {% endif %}
+  </section>
+  {% endif %}
+
+  <section class="cf-card home-members" aria-label="Players">
+    <h2 class="cf-title">Players <span class="cf-count">{{ members|length }}</span></h2>
+    <ul class="home-member-list">
+      {% for m in members %}
+      <li>
+        <div class="home-member-top"><span class="home-member-name">{{ icon('user') }}{% if m.profile_visibility != 'private' or m.id == session.user_id %}<a class="home-member-link" href="{{ url_for('profile_view', username=m.username) }}">{{ m.username }}</a>{% else %}<span>{{ m.username }}</span>{% endif %}</span>
+          <span class="role-badge role-badge-{{ m.status }}">{{ 'DM' if m.status == 'dm' else 'Player' }}</span></div>
+        {% if played.get(m.id) %}
+        <div class="home-member-chars">{% for c in played[m.id] %}<a href="{{ url_for('character_detail', char_id=c.id) }}">{{ c.name }}</a>{% endfor %}</div>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% if g.real_is_dm or g.campaign_role == 'owner' %}<a class="home-more" href="{{ url_for('campaign_edit') }}#member-list">Attach characters to players</a>{% endif %}
+  </section>
+
+  <section class="cf-card" aria-label="Battle">
+    <h2 class="cf-title">Battle</h2>
+    {% if battle.count %}
+    <p class="home-battle"><b>Round {{ battle.round }}</b> &middot; {{ battle.count }} on the field{% if battle.active %}<br>Up now: <b>{{ battle.active }}</b>{% endif %}</p>
+    <a href="{{ url_for('battle_view') }}" class="btn btn-ghost btn-sm">Open battle</a>
+    {% else %}
+    <p class="home-empty">No battle running.{% if g.is_dm %} Add characters from the Battle page.{% endif %}</p>
+    {% endif %}
+  </section>
+
+  <section class="cf-card" aria-label="Latest rolls">
+    <h2 class="cf-title">Latest rolls</h2>
+    {% if rolls %}
+    <ul class="home-list">
+      {% for r in rolls %}
+      <li><span class="home-list-main">{{ r.character or r.who }}{% if r.label %} <small>{{ r.label }}</small>{% endif %}</span><b class="home-roll">{{ r.total }}</b></li>
+      {% endfor %}
+    </ul>
+    <a href="{{ url_for('dice_view') }}" class="home-more">Open the dice</a>
+    {% else %}
+    <p class="home-empty">Nothing rolled yet. <a href="{{ url_for('dice_view') }}">Open the dice</a>.</p>
+    {% endif %}
+  </section>
+</div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="{{ url_for('static', filename='js/home.js') }}"></script>
+{% endblock %}

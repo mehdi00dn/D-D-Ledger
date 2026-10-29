@@ -14,12 +14,22 @@ GOBLIN = {
                       {'value': 1, 'proficiency': {'index': 'skill-bogus'}}],
     'challenge_rating': 0.25, 'xp': 50, 'proficiency_bonus': 2, 'senses': {'darkvision': '60 ft.', 'passive_perception': 9},
     'special_abilities': [{'name': 'Nimble Escape', 'desc': 'Disengage <script>x</script> as a bonus action.'}],
-    'actions': [{'name': 'Scimitar', 'desc': 'Melee Attack Roll: +4'}],
+    'actions': [
+        {'name': 'Multiattack', 'desc': 'The goblin makes two attacks.', 'actions': [], 'attacks': []},
+        {'name': 'Scimitar', 'desc': 'Melee Attack Roll: +4, reach 5 ft. Hit: 5 (1d6 + 2) Slashing damage.', 'attack_bonus': 4,
+         'damage': [{'damage_type': {'index': 'slashing', 'name': 'Slashing'}, 'damage_dice': '1d6+2'},
+                    {'damage_type': {'index': 'slashing', 'name': 'Slashing'}, 'damage_dice': '1d4'}]},
+        {'name': 'Shortbow', 'desc': 'Ranged.', 'attack_bonus': 4,
+         'damage': [{'damage_type': {'index': 'piercing', 'name': 'Piercing'}, 'damage_dice': '1d6+2'}]},
+        {'name': 'Weird Gaze', 'desc': 'odd dice', 'attack_bonus': 3,
+         'damage': [{'damage_type': {'name': 'Psychic'}, 'damage_dice': '1d6+1d4'}]},
+    ],
 }
 LISTS = {
     '/spells': {'results': [{'index': 'fireball', 'name': 'Fireball', 'level': 3}, {'index': 'fire-bolt', 'name': 'Fire Bolt', 'level': 0},
                             {'index': 'bless', 'name': 'Bless', 'level': 1}]},
     '/monsters': {'results': [{'index': 'goblin-warrior', 'name': 'Goblin Warrior'}, {'index': 'aboleth', 'name': 'Aboleth'}]},
+    '/conditions': {'results': [{'index': 'blinded', 'name': 'Blinded'}, {'index': 'prone', 'name': 'Prone'}]},
     '/equipment': {'results': [{'index': 'longsword', 'name': 'Longsword'}]},
     '/magic-items': {'results': [{'index': 'bag-of-holding', 'name': 'Bag of Holding'}, {'index': 'longsword-1', 'name': 'Longsword +1'}]},
 }
@@ -28,6 +38,7 @@ DETAILS = {
     '/spells/fireball': {'name': 'Fireball', 'level': 3, 'school': {'name': 'Evocation'}, 'casting_time': 'Action', 'range': '150 feet',
                          'components': ['V', 'S', 'M'], 'material': 'a ball of bat guano', 'duration': 'Instantaneous', 'concentration': False,
                          'ritual': False, 'classes': [{'name': 'Wizard'}], 'description': 'A bright streak flashes.', 'higher_level': 'More dice.'},
+    '/conditions/blinded': {'name': 'Blinded', 'description': 'While you have the Blinded condition, you experience the following effects.\n**Can\'t See.** You can\'t see.'},
     '/equipment/longsword': {'name': 'Longsword', 'cost': {'quantity': 15, 'unit': 'gp'}, 'weight': 3,
                              'equipment_categories': [{'name': 'Weapons'}, {'name': 'Martial Melee Weapons'}],
                              'damage': {'damage_dice': '1d8', 'damage_type': {'name': 'Slashing'}}, 'properties': [{'name': 'Versatile'}]},
@@ -82,7 +93,14 @@ def test_monster_notes_are_escaped_whitelisted_html():
     text = ''.join(notes)
     assert 'Small humanoid, chaotic neutral' in text and 'Challenge 1/4' in text and 'Speed: walk 30 ft.' in text
     assert '<script>' not in text and '&lt;script&gt;' in text
-    assert '<b>Actions</b><ul><li><b>Scimitar.</b>' in text
+    assert '<b>Actions</b><ul><li><b>Multiattack.</b>' in text
+
+
+def test_condition_rules_are_readable_plain_text():
+    assert [r['name'] for r in srd.search('conditions', '')] == ['Blinded', 'Prone']
+    c = srd.detail('conditions', 'conditions/blinded')
+    assert c['title'] == 'Blinded' and c['subtitle'] == 'Condition' and '**' not in c['body']
+    assert "Can't See. You can't see." in c['body']
 
 
 def test_spell_and_item_details_read_well():
@@ -141,8 +159,11 @@ def test_a_monster_goes_straight_into_the_battle_as_an_npc(make_user):
     note = q('SELECT notes, dex_score, save_prof FROM characters WHERE campaign_id = ?', cid)[0]
     assert '"h": 1' in note['notes'] and 'Nimble Escape' in note['notes'] and '<script>' not in note['notes'] and note['dex_score'] == 15
     rows = dm.json(url, {'ref': 'monsters/goblin-warrior', 'count': 3, 'hp': 'rolled'}).get_json()
-    assert [r['char_name'] for r in rows][1:] == ['Goblin Warrior 1', 'Goblin Warrior 2', 'Goblin Warrior 3']
+    assert len(rows) == 4 and all(r['char_name'].startswith('Goblin Warrior') for r in rows)
     assert all(3 <= r['char_max_hp'] <= 18 and r['current_hp'] == r['char_max_hp'] for r in rows[1:])      # 3d6, one roll per copy
+    assert all(r['char_name'] == 'Goblin Warrior' or r['char_name'] == f"Goblin Warrior ({r['char_max_hp']} HP)" for r in rows)   # a character per hit point total
+    again = dm.json(url, {'ref': 'monsters/goblin-warrior', 'count': 2}).get_json()                          # average hit points: the first goblin is used again
+    assert len(again) == 6 and len(q("SELECT id FROM characters WHERE campaign_id = ? AND name = 'Goblin Warrior'", cid)) == 1
 
 
 @new_code
@@ -164,3 +185,21 @@ def test_unreadable_hit_dice_fall_back_to_the_average():
     assert ledger._roll_monster_hp('weird', 22) == 22 and ledger._roll_monster_hp('', 22) == 22
     assert all(5 <= ledger._roll_monster_hp('2d6+3', 0) <= 15 for _ in range(40))
     assert ledger._roll_monster_hp('1d4-9', 0) == 1
+
+
+def test_a_monsters_attack_rolls_become_attacks():
+    atk = srd.detail('monsters', 'monsters/goblin-warrior')['prefill']['attacks']
+    assert [a['name'] for a in atk] == ['Scimitar', 'Shortbow', 'Weird Gaze']          # Multiattack has no to-hit: skipped
+    assert atk[0] == {'name': 'Scimitar', 'attack_bonus': 4, 'damage': '1d6+2', 'damage_type': 'slashing'}   # first damage entry only
+    assert atk[1]['damage_type'] == 'piercing'
+    assert atk[2]['damage'] == '' and atk[2]['attack_bonus'] == 3                       # dice the card cannot hold: still listed, no roll
+
+
+@new_code
+def test_a_monster_added_to_the_battle_keeps_its_attacks(make_user):
+    from conftest import q
+    dm = make_user()
+    cid = dm.new_campaign()
+    dm.json(f'/campaigns/{cid}/api/battle/add-monster', {'ref': 'monsters/goblin-warrior', 'count': 2})
+    rows = q('SELECT c.id, a.name, a.damage FROM characters c JOIN character_attacks a ON a.character_id = c.id WHERE c.campaign_id = ? ORDER BY c.id, a.position', cid)
+    assert [r['name'] for r in rows] == ['Scimitar', 'Shortbow', 'Weird Gaze']              # two goblins share one character

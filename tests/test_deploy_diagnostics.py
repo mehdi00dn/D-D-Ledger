@@ -44,7 +44,7 @@ def test_healthz_ready(appmod):
     r = appmod.app.test_client().get('/healthz')
     assert r.status_code == 200 and r.get_json()['ok'] is True
     assert r.get_json()['migrations'] == ['0001_initial.sql', '0002_lock_down_data_api.sql', '0003_auth_throttle.sql',
-                                           '0004_public_ids.sql', '0005_case_insensitive_usernames.sql', '0006_map_fog.sql', '0007_battle_turns.sql', '0008_battle_conditions.sql', '0009_character_class.sql', '0010_invitations_notifications.sql', '0011_invite_links.sql', '0012_custom_conditions.sql', '0013_map_character_pins.sql', '0014_made_by.sql', '0015_token_owner.sql', '0016_character_proficiencies.sql', '0017_character_factions.sql', '0018_dice_rolls.sql', '0019_dice_roll_character_label.sql', '0020_map_dm_only.sql']
+                                           '0004_public_ids.sql', '0005_case_insensitive_usernames.sql', '0006_map_fog.sql', '0007_battle_turns.sql', '0008_battle_conditions.sql', '0009_character_class.sql', '0010_invitations_notifications.sql', '0011_invite_links.sql', '0012_custom_conditions.sql', '0013_map_character_pins.sql', '0014_made_by.sql', '0015_token_owner.sql', '0016_character_proficiencies.sql', '0017_character_factions.sql', '0018_dice_rolls.sql', '0019_dice_roll_character_label.sql', '0020_map_dm_only.sql', '0021_stored_files.sql', '0022_user_profile.sql', '0023_session_version.sql', '0024_user_email.sql', '0025_campaign_activity.sql', '0026_battle_log.sql', '0027_death_saves.sql', '0028_fk_indexes.sql', '0029_action_economy.sql', '0030_drop_action_economy.sql', '0031_character_levels.sql', '0032_character_attacks.sql', '0033_hide_npcs.sql', '0034_campaign_notes_and_players.sql', '0035_next_session.sql', '0036_npc_ally.sql', '0037_map_feet_per_square.sql', '0038_quests.sql', '0039_profiles_and_google.sql', '0040_treasury.sql', '0041_encounters.sql', '0042_shape_attach.sql', '0043_treasury_purses.sql', '0044_encounter_characters.sql', '0045_character_library.sql', '0046_your_characters_wording.sql', '0047_profile_setup.sql', '0048_terms_accepted.sql', '0049_email_confirm_required.sql']
     assert r.headers['Cache-Control'] == 'no-store'
 
 
@@ -57,7 +57,7 @@ def test_healthz_reports_missing_tables():
         # ...which is exactly why every action 500s while the login page still renders
         assert requests.get(srv.url + '/login').status_code == 200
         s = CsrfSession(srv.url); s.get(srv.url + '/login')
-        assert s.post(srv.url + '/register', data={'username': 'validname', 'password': 'secret12', 'confirm': 'secret12'}).status_code == 500
+        assert s.post(srv.url + '/register', data={'username': 'validname', 'password': 'secret12', 'email': 'player@example.com', 'confirm': 'secret12'}).status_code == 500
     finally:
         srv.stop(); _drop(name)
 

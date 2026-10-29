@@ -207,11 +207,28 @@
       f.dispatchEvent(new Event('input', { bubbles: true }));
     }
 
+    // The Attacks card: replace its rows with the monster's attack rolls (the card's own Add button supplies the row markup).
+    function fillAttacks(attacks) {
+      const list = form.querySelector('[data-attacks]');
+      const tpl = form.querySelector('[data-attack-template]');
+      if (!list || !tpl) return;
+      list.innerHTML = '';
+      attacks.forEach((a) => {
+        const row = tpl.content.cloneNode(true);
+        const set = (n, v) => { const i = row.querySelector('[name="' + n + '"]'); if (i) i.value = v; };
+        set('attack_name', a.name); set('attack_bonus', a.attack_bonus); set('attack_damage', a.damage); set('attack_type', a.damage_type);
+        list.appendChild(row);
+        const dmg = list.querySelector('.atk-edit-row:last-child [name="attack_damage"]');
+        if (dmg) dmg.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+    }
+
     function fill(c, notes, name) {
       ['name', 'level', 'max_hp', 'armor_class', 'speed', 'str_score', 'dex_score', 'con_score', 'int_score', 'wis_score', 'cha_score']
         .forEach((k) => setValue(k, c[k]));
       const npc = form.elements.is_npc;
       if (npc) { npc.checked = true; npc.dispatchEvent(new Event('change', { bubbles: true })); }
+      fillAttacks(c.attacks || []);
       form.querySelectorAll('input[data-save]').forEach((cb) => {
         cb.checked = c.save_prof.includes(cb.dataset.save);
         cb.dispatchEvent(new Event('change', { bubbles: true }));

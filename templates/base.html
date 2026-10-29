@@ -8,6 +8,7 @@
 <script nonce="{{ csp_nonce() }}">
   (function () {
     var saved = localStorage.getItem('ledger-theme');
+    if (saved === 'system') saved = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
     if (saved === 'light' || saved === 'dark') {
       document.documentElement.setAttribute('data-theme', saved);
     }
@@ -30,7 +31,7 @@
 <a class="skip-link" href="#main-content">Skip to content</a>
 {% from "_icons.html" import icon %}
 <div class="app-shell">
-  <aside class="sidebar" id="sidebar">
+  <aside class="sidebar" id="sidebar" aria-label="Menu">
     <div class="sidebar-brand">
       <span class="brand-mark">
         <img src="{{ url_for('static', filename='logo/logo-128.png') }}" alt="">
@@ -43,20 +44,33 @@
         {{ icon('sidebar-collapse') }}
       </button>
     </div>
-    {% if g.campaign_id %}<a href="{{ url_for('campaigns_list') }}" class="campaign-chip-top" title="Switch campaign">{{ icon('scroll') }}<span>{{ g.campaign.name }}</span></a>{% endif %}
+    {% if g.campaign_id %}<a href="{{ url_for('campaigns_list') }}" class="campaign-chip-top" title="Change campaign">{{ icon('scroll') }}<span>{{ g.campaign.name }}</span></a>{% endif %}
 
     <nav class="sidebar-nav">
       {% if g.campaign_id %}
-      <a href="{{ url_for('campaigns_list') }}" class="campaign-switcher" title="Switch campaign">
-        {{ icon('scroll') }}
-        <span class="campaign-switcher-name">{{ g.campaign.name }}</span>
+      {% set camp_status = g.campaign['status'] or 'active' %}
+      <a href="{{ url_for('campaigns_list') }}" class="campaign-switcher" title="Change campaign" aria-label="Change campaign (current: {{ g.campaign.name }})">
+        <span class="cs-avatar" aria-hidden="true">{% if g.campaign['avatar_path'] %}<img src="{{ url_for('uploaded_file', filename=g.campaign['avatar_path']) }}" alt="">{% else %}{{ icon('scroll') }}{% endif %}</span>
+        <span class="cs-labels" aria-hidden="true">
+          <span class="campaign-switcher-name">{{ g.campaign.name }}</span>
+          <span class="cs-meta">{{ 'DM' if g.is_dm else 'Player' }}{% if camp_status != 'active' %} &middot; {{ {'on_hold': 'On hold', 'completed': 'Completed', 'archived': 'Archived'}.get(camp_status, camp_status) }}{% endif %}</span>
+        </span>
+        <span class="cs-swap" aria-hidden="true">{{ icon('swap') }}</span>
       </a>
+      <a href="{{ url_for('campaign_home') }}" data-more class="nav-tab {{ 'active' if active_page == 'home' else '' }}" title="Campaign home">
+        {{ icon('home') }}<span>Home</span>
+      </a>
+      <span class="nav-group">Table</span>
       <a href="{{ url_for('characters_list') }}" class="nav-tab {{ 'active' if active_page == 'characters' else '' }}" title="Characters">
         {{ icon('scroll-text') }}<span>Characters</span>
       </a>
       <a href="{{ url_for('factions_list') }}" data-more class="nav-tab {{ 'active' if active_page == 'factions' else '' }}" title="Factions">
         {{ icon('faction') }}<span>Factions</span>
       </a>
+      <a href="{{ url_for('treasury_view') }}" data-more class="nav-tab {{ 'active' if active_page == 'treasury' else '' }}" title="Party treasury">
+        {{ icon('coins') }}<span>Treasury</span>
+      </a>
+      <span class="nav-group">Play</span>
       <a href="{{ url_for('battle_view') }}" class="nav-tab {{ 'active' if active_page == 'battle' else '' }}" title="Battle">
         {{ icon('swords') }}<span>Battle</span>
       </a>
@@ -66,8 +80,16 @@
       <a href="{{ url_for('dice_view') }}" class="nav-tab {{ 'active' if active_page == 'dice' else '' }}" title="Dice">
         {{ icon('dices') }}<span>Dice</span>
       </a>
+      <span class="nav-group">Lore</span>
       <a href="{{ url_for('reference_view') }}" data-more class="nav-tab {{ 'active' if active_page == 'reference' else '' }}" title="Spells, monsters and items">
         {{ icon('book-open') }}<span>Reference</span>
+      </a>
+      <a href="{{ url_for('activity_view') }}" data-more class="nav-tab {{ 'active' if active_page == 'activity' else '' }}" title="What happened lately">
+        {{ icon('history') }}<span>Activity</span>
+      </a>
+      <span class="nav-group">Campaign</span>
+      <a href="{{ url_for('campaign_edit', campaign_id=g.campaign_id) }}" data-more class="nav-tab {{ 'active' if active_page == 'settings' else '' }}" title="Campaign settings: details, members, access">
+        {{ icon('settings') }}<span>Settings</span>
       </a>
       {% if g.real_is_dm %}
       <form method="POST" action="{{ url_for('preview_as_player') }}" class="nav-form" data-more>{{ csrf_field() }}
@@ -82,6 +104,11 @@
         {{ icon('scroll') }}<span>Campaigns</span>
       </a>
       {% if session.user_id %}
+      <a href="{{ url_for('library_list') }}" class="nav-tab {{ 'active' if active_page == 'library' else '' }}" title="Your characters, kept outside any campaign">
+        {{ icon('archive') }}<span>Your characters</span>
+      </a>
+      {% endif %}
+      {% if session.user_id %}
       {% set unread = unread_notification_count() %}
       <a href="{{ url_for('notifications_page') }}" class="nav-tab nav-notifications {{ 'active' if active_page == 'notifications' else '' }}" title="Notifications">
         {{ icon('bell') }}<span>Notifications</span>
@@ -90,7 +117,7 @@
       {% endif %}
       {% endif %}
       {# Phone only: the bar keeps four places; everything else (and the quick settings) lives in this sheet. #}
-      <button type="button" class="nav-tab nav-more-btn {{ 'active' if active_page in ('factions', 'reference') else '' }}" id="nav-more-btn" aria-haspopup="dialog" aria-expanded="false" aria-controls="more-sheet" title="More">
+      <button type="button" class="nav-tab nav-more-btn {{ 'active' if active_page in ('home', 'factions', 'reference', 'activity', 'settings') else '' }}" id="nav-more-btn" aria-haspopup="dialog" aria-expanded="false" aria-controls="more-sheet" title="More">
         {{ icon('more') }}<span>More</span>
       </button>
     </nav>
@@ -98,7 +125,11 @@
     <div class="sidebar-foot">
       {% if session.username %}
       <div class="user-row">
-        <span class="user-name">{{ icon('user') }}<span>{{ session.username }}</span></span>
+        {% set me = my_profile() %}
+        <a href="{{ url_for('account') }}" class="user-name" title="Your profile" aria-label="Your profile ({{ (me.display_name if me and me.display_name else session.username) }})">
+          {% if me and me.avatar_path %}<img class="user-avatar" src="{{ url_for('uploaded_file', filename=me.avatar_path) }}" alt="">{% else %}{{ icon('user') }}{% endif %}
+          <span>{{ me.display_name if me and me.display_name else session.username }}</span>
+        </a>
         <form method="POST" action="{{ url_for('logout') }}">{{ csrf_field() }}
           <button type="submit" class="btn-icon" title="Log out">{{ icon('unlock') }}</button>
         </form>
@@ -112,6 +143,7 @@
           <span class="theme-icon theme-icon-sun">{{ icon('sun') }}</span>
           <span class="theme-icon theme-icon-moon">{{ icon('moon') }}</span>
         </button>
+        {% if not g.campaign_id %}<a href="{{ url_for('privacy') }}" class="foot-bell foot-privacy" title="Privacy" aria-label="Privacy">{{ icon('shield') }}</a>{% endif %}
         {% if g.campaign_id and session.user_id %}
         {% set unread = unread_notification_count() %}
         <a href="{{ url_for('notifications_page') }}" class="foot-bell" title="Notifications{{ ' (%d unread)' % unread if unread else '' }}" aria-label="Notifications{{ ' (%d unread)' % unread if unread else '' }}">
@@ -121,7 +153,7 @@
         {% endif %}
       </div>
       <span class="foot-line"></span>
-      <span class="foot-label">v0.1 &middot; local session</span>
+      <span class="foot-label">Campaign Ledger v0.1</span>
     </div>
   </aside>
 
@@ -136,6 +168,14 @@
       </form>
     </div>
     {% endif %}
+    {% if request.args.get('quota_error') %}
+    <div class="banner-notice banner-error" role="alert">{{ 'This campaign\'s image storage is full, so the image was not saved. Delete images you no longer need and try again.' if request.args.get('quota_error') == 'campaign' else 'Your upload storage is full, so the image was not saved. Delete images you no longer need and try again.' }}</div>
+    {% endif %}
+    {% if session.user_id and active_page != 'account' %}{% set me_banner = my_profile() %}{% if me_banner and me_banner.needs_email %}
+    <div class="banner-notice" role="status">Add an email address to your account so you can recover it. <a href="{{ url_for('account') }}#email-panel">Add email</a></div>
+    {% elif me_banner and me_banner.must_confirm and active_page != 'confirm_email' %}
+    <div class="banner-notice" role="status">Confirm your email to create or join a campaign. We sent a link to your inbox. <a href="{{ url_for('confirm_email') }}">Resend it</a></div>
+    {% endif %}{% endif %}
     {% block content %}{% endblock %}
   </main>
 </div>
@@ -155,7 +195,9 @@
   <div class="more-grip" id="more-grip"><span class="more-grabber"></span></div>
   {% if g.campaign_id %}
   <div class="more-links">
+    <a href="{{ url_for('campaign_home') }}" class="more-link {{ 'active' if active_page == 'home' else '' }}">{{ icon('home') }}<span>Home</span></a>
     <a href="{{ url_for('factions_list') }}" class="more-link {{ 'active' if active_page == 'factions' else '' }}">{{ icon('faction') }}<span>Factions</span></a>
+    <a href="{{ url_for('treasury_view') }}" class="more-link {{ 'active' if active_page == 'treasury' else '' }}">{{ icon('coins') }}<span>Treasury</span></a>
     <a href="{{ url_for('reference_view') }}" class="more-link {{ 'active' if active_page == 'reference' else '' }}">{{ icon('book-open') }}<span>Reference</span></a>
     {% if g.real_is_dm %}
     <form method="POST" action="{{ url_for('preview_as_player') }}">{{ csrf_field() }}
@@ -163,16 +205,20 @@
       <button type="submit" class="more-link {{ 'active' if g.previewing else '' }}">{{ icon('eye') }}<span>{{ 'Exit player view' if g.previewing else 'View as player' }}</span></button>
     </form>
     {% endif %}
-    <a href="{{ url_for('campaigns_list') }}" class="more-link">{{ icon('scroll') }}<span>Switch campaign</span></a>
+    <a href="{{ url_for('activity_view') }}" class="more-link {{ 'active' if active_page == 'activity' else '' }}">{{ icon('history') }}<span>Activity</span></a>
+    <a href="{{ url_for('campaign_edit', campaign_id=g.campaign_id) }}" class="more-link {{ 'active' if active_page == 'settings' else '' }}">{{ icon('settings') }}<span>Campaign settings</span></a>
+    <a href="{{ url_for('campaigns_list') }}" class="more-link">{{ icon('swap') }}<span>Change campaign</span></a>
   </div>
   {% endif %}
   <div class="more-quick">
     <button type="button" class="more-chip js-theme-toggle" title="Toggle light/dark mode"><span class="more-chip-ico"><span class="theme-icon theme-icon-sun">{{ icon('sun') }}</span><span class="theme-icon theme-icon-moon">{{ icon('moon') }}</span></span><span class="more-chip-label">Theme</span></button>
     <button type="button" class="more-chip js-fullscreen" title="Full screen" hidden><span class="fs-on">{{ icon('maximize') }}</span><span class="fs-off">{{ icon('minimize') }}</span><span class="more-chip-label">Full screen</span></button>
   </div>
+  {% if not g.campaign_id %}<div class="more-quick"><a href="{{ url_for('privacy') }}" class="more-chip"><span class="more-chip-ico">{{ icon('shield') }}</span><span class="more-chip-label">Privacy</span></a></div>{% endif %}
   {% if session.username %}
   <div class="more-user">
-    <span class="more-user-name">{{ icon('user') }}<span>{{ session.username }}</span></span>
+    {% set me = my_profile() %}
+    <a href="{{ url_for('account') }}" class="more-user-name" aria-label="Your profile">{% if me and me.avatar_path %}<img class="user-avatar" src="{{ url_for('uploaded_file', filename=me.avatar_path) }}" alt="">{% else %}{{ icon('user') }}{% endif %}<span>{{ me.display_name if me and me.display_name else session.username }}</span></a>
     <form method="POST" action="{{ url_for('logout') }}">{{ csrf_field() }}
       <button type="submit" class="more-logout">{{ icon('log-out') }}<span>Log out</span></button>
     </form>
@@ -190,6 +236,7 @@
     </div>
     <button type="button" class="btn-icon lightbox-nav lightbox-next" id="lightbox-next-btn" title="Next image">{{ icon('chevron-right') }}</button>
   </div>
+  <p class="lightbox-size" id="lightbox-size" hidden></p>
   <p class="lightbox-hint">Click or scroll to zoom &middot; hold and drag to pan</p>
 </div>
 
@@ -232,6 +279,7 @@
 {% if g.campaign_id %}<script nonce="{{ csp_nonce() }}">window.CAMPAIGN_ID = {{ g.campaign_id | tojson }}; window.IS_DM = {{ g.is_dm | default(false) | tojson }}; window.USER_ID = {{ session.user_id | tojson }}; window.CLASS_LABELS = {{ class_labels | tojson }};</script>{% endif %}
 {% if g.campaign_id and realtime_settings %}<script nonce="{{ csp_nonce() }}">window.LEDGER_REALTIME = {{ realtime_settings | tojson }};</script>{% endif %}
 <script src="{{ url_for('static', filename='js/csrf.js') }}"></script>
+<script src="{{ url_for('static', filename='js/api.js') }}"></script>
 <script src="{{ url_for('static', filename='js/poller.js') }}"></script>
 <script src="{{ url_for('static', filename='js/realtime.js') }}"></script>
 <script src="{{ url_for('static', filename='js/form-actions.js') }}"></script>
@@ -247,6 +295,7 @@
 <script src="{{ url_for('static', filename='js/confirm.js') }}"></script>
 <script src="{{ url_for('static', filename='js/class-icons.js') }}"></script>
 <script src="{{ url_for('static', filename='js/phone-ui.js') }}"></script>
+<script src="{{ url_for('static', filename='js/menus.js') }}"></script>
 {% if g.campaign_id %}<script src="{{ url_for('static', filename='js/dice-feed.js') }}"></script>
 <script src="{{ url_for('static', filename='js/character-rolls.js') }}"></script>
 <script src="{{ url_for('static', filename='js/dice-art.js') }}"></script>

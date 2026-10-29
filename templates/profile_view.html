@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon, class_icon %}
+{% set active_page = 'account' if is_me else 'profile' %}
+{% block title %}{{ owner.display_name or owner.username }} — Campaign Ledger{% endblock %}
+
+{% block content %}
+<article class="profile-page">
+  <header class="profile-head">
+    <div class="profile-avatar">
+      {% if owner.avatar_path %}<img src="{{ url_for('uploaded_file', filename=owner.avatar_path) }}" alt="">{% else %}{{ icon('user') }}{% endif %}
+    </div>
+    <div class="profile-id">
+      <h1 class="profile-name">{{ owner.display_name or owner.username }}</h1>
+      <p class="profile-handle">{% if owner.display_name %}@{{ owner.username }} · {% endif %}Playing since {{ member_since }}</p>
+      {% if owner.bio %}<p class="profile-bio">{{ owner.bio }}</p>{% endif %}
+    </div>
+    {% if is_me %}
+    <div class="profile-actions">
+      <a class="btn btn-ghost" href="{{ url_for('account') }}">{{ icon('pencil') }} Edit profile</a>
+      <p class="hint-text">Who can open this page: {{ profile_visibility_options[owner.profile_visibility][0] }}</p>
+    </div>
+    {% endif %}
+  </header>
+
+  <section class="profile-section" aria-labelledby="profile-chars">
+    <h2 class="profile-section-title" id="profile-chars">Characters</h2>
+    {% if showcase %}
+    <ul class="profile-chars">
+      {% for c in showcase %}
+      <li class="profile-char">
+        <div class="profile-char-art">
+          {% if c.avatar_path %}<img src="{{ url_for('uploaded_file', filename=c.avatar_path) }}" alt="" loading="lazy">{% else %}<span class="profile-char-ph">{{ class_icon(c.class_key) if c.class_key else icon('user') }}</span>{% endif %}
+        </div>
+        <div class="profile-char-info">
+          <b>{{ c.name }}</b>
+          <span>{{ c.class_label or 'Adventurer' }} · level {{ c.level }}</span>
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+    {% elif is_me %}
+    <p class="profile-empty">No characters featured yet. <a href="{{ url_for('account') }}#showcase">Choose up to {{ showcase_max }}</a> to show here.</p>
+    {% else %}
+    <p class="profile-empty">{{ owner.display_name or owner.username }} has not featured any characters yet.</p>
+    {% endif %}
+  </section>
+</article>
+{% endblock %}

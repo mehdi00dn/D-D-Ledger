@@ -9,24 +9,66 @@
     <h1 class="page-title">Characters</h1>
     <p class="page-sub">{{ characters|length }} recorded {{ 'entry' if characters|length == 1 else 'entries' }} in the ledger.</p>
   </div>
-  <div class="page-actions">
-    <a href="{{ url_for('export_data') }}" class="btn btn-ghost">{{ icon('upload') }} Export</a>
-    <form method="POST" action="{{ url_for('import_data') }}" enctype="multipart/form-data" class="import-form">{{ csrf_field() }}
-      <label class="btn btn-ghost import-label">
-        {{ icon('images') }} <span class="btn-label">Import</span>
-        <input type="file" name="import_file" accept=".zip" data-auto-submit-request>
-      </label>
-      <div class="upload-progress" hidden><div class="upload-progress-bar"></div></div>
-    </form>
-    <a href="{{ url_for('character_new') }}" class="btn btn-primary">{{ icon('plus') }} New Character</a>
+  <div class="page-actions toolbar">
+    {% if library_options %}
+    <button type="button" class="btn btn-ghost" data-open-dialog="pick-dialog" title="Add characters you keep in Your characters">{{ icon('archive') }} <span class="sm-hide">From your characters</span><span class="sm-only">Your characters</span> <span class="cf-count">{{ library_options|length }}</span></button>
+    {% endif %}
+    <a href="{{ url_for('character_new') }}" class="btn btn-primary">{{ icon('plus') }} New character</a>
+    <details class="menu">
+      <summary class="btn-icon" aria-haspopup="menu" aria-label="More actions" title="Export, import and more">{{ icon('more') }}</summary>
+      <div class="menu-list" role="menu">
+        <a href="{{ url_for('export_data') }}" class="menu-item" role="menuitem">{{ icon('upload') }} Export this campaign</a>
+        <form method="POST" action="{{ url_for('import_data') }}" enctype="multipart/form-data" class="import-form">{{ csrf_field() }}
+          <label class="menu-item import-label" role="menuitem">{{ icon('download') }} <span class="btn-label">Import from a file</span>
+            <input type="file" name="import_file" accept=".zip" data-auto-submit-request>
+          </label>
+          <div class="upload-progress" hidden><div class="upload-progress-bar"></div></div>
+        </form>
+        <div class="menu-sep" role="separator"></div>
+        <a href="{{ url_for('library_list') }}" class="menu-item" role="menuitem">{{ icon('archive') }} Open Your characters</a>
+      </div>
+    </details>
   </div>
 </div>
 
+{% if library_banner %}<div class="banner-notice banner-{{ library_banner[0] }}" role="status">{{ library_banner[1] }}</div>{% endif %}
 {% if request.args.get('imported') %}
 <div class="banner-notice banner-success">Import complete — new characters and factions have been added.</div>
 {% endif %}
-{% if request.args.get('import_error') %}
+{% if request.args.get('import_error') == 'quota' %}
+<div class="banner-notice banner-error">That import would pass this campaign's or your image storage limit, so nothing was imported. Free some space (delete images you no longer need) or import a smaller file.</div>
+{% elif request.args.get('import_error') %}
 <div class="banner-notice banner-error">That file couldn't be read as a Campaign Ledger export. Make sure you're uploading a .zip created by the Export button.</div>
+{% endif %}
+
+{% if library_options %}
+<dialog class="pick-dialog" id="pick-dialog" aria-labelledby="pick-title">
+  <form method="POST" action="{{ url_for('library_add_many') }}" class="pick-form" data-pick>{{ csrf_field() }}
+    <input type="hidden" name="campaign_id" value="{{ g.campaign_id }}">
+    <div class="pick-head"><h2 id="pick-title">Add from your characters</h2>
+      <button type="button" class="btn-icon" data-close-dialog aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="pick-tools">
+      <div class="field"><input type="search" data-pick-search placeholder="Search" aria-label="Search your characters" autocomplete="off"></div>
+      <button type="button" class="btn btn-ghost btn-sm" data-pick-all>Select all</button>
+      <button type="button" class="btn btn-ghost btn-sm" data-pick-none>Clear</button>
+    </div>
+    <ul class="pick-list">
+      {% for o in library_options %}
+      <li class="pick-row" data-pick-row data-name="{{ o.name|lower }}">
+        <label>
+          <input type="checkbox" name="char_ids" value="{{ o.id }}">
+          <span class="avatar-frame">{% if o.avatar_path %}<img src="{{ url_for('uploaded_file', filename=o.avatar_path) }}" alt="">{% else %}<span class="avatar-initial" aria-hidden="true">{{ (o.name or '?')[:1]|upper }}</span>{% endif %}</span>
+          <span class="pick-name"><b>{{ o.name }}</b><small>{{ o.class_label or 'No class' }} &middot; Lvl {{ o.level }}</small></span>
+        </label>
+      </li>
+      {% endfor %}
+    </ul>
+    <div class="pick-foot">
+      <a href="{{ url_for('library_new', campaign=g.campaign_id) }}">Make a new one</a>
+      <button type="submit" class="btn btn-primary" data-pick-submit disabled>{{ icon('plus') }} <span>Add<span data-pick-count></span> to this campaign</span></button>
+    </div>
+  </form>
+</dialog>
 {% endif %}
 
 <div class="char-tools">
@@ -70,19 +112,21 @@
 {% if characters %}
 <div class="card-grid" id="character-grid">
   {% for c in characters %}
-  {% set npc_hidden = c.is_npc and not g.is_dm %}
+  {% set npc_hidden = c.is_npc and not c.is_ally and not g.is_dm %}
   <div class="dossier-card" data-id="{{ c.id }}" data-level="{{ c.level }}" data-group="{{ c.factions|map(attribute='id')|join(' ') }}" data-name="{{ c.name|lower }}" data-type="{{ 'npc' if c.is_npc else 'pc' }}">
-    <span class="dossier-tag {{ 'npc' if c.is_npc else '' }}">{{ 'NPC' if c.is_npc else 'PC' }}</span>
+    <span class="dossier-tag {{ 'npc' if c.is_npc else '' }}">{{ ('NPC · Ally' if c.is_ally else 'NPC') if c.is_npc else 'PC' }}</span>
     <div class="dossier-head">
       <div class="avatar-frame">
         {% if c.avatar_path %}
           <img src="{{ url_for('uploaded_file', filename=c.avatar_path) }}" alt="{{ c.name }} avatar">
+        {% elif c.class_key and c.class_key in class_labels and not npc_hidden %}
+          <span class="avatar-class" title="{{ class_labels[c.class_key] }}" role="img" aria-label="{{ class_labels[c.class_key] }}"><svg aria-hidden="true"><use href="/static/icons/classes.svg#{{ c.class_key }}"></use></svg></span>
         {% else %}
-          {{ icon('user') }}
+          <span class="avatar-initial" aria-hidden="true">{{ (c.name or '?')[:1]|upper }}</span>
         {% endif %}
       </div>
       <div class="dossier-name-block">
-        <div class="dossier-name">{% if not npc_hidden %}{{ class_icon(c.class_key) }}{% endif %}{{ c.name }}</div>
+        <div class="dossier-name">{% if not npc_hidden and c.avatar_path %}{{ class_icon(c.class_key) }}{% endif %}{{ c.name }}</div>
         <div class="dossier-meta">
           Lvl {{ c.level }}
           {% for f in c.factions %}
@@ -99,11 +143,11 @@
       <div class="stat-pill"><span class="val" aria-hidden="true">10</span><span class="lbl">{{ lbl }}</span></div>
       {% endfor %}
     </div>
-
-    <div class="dossier-hp-ac stats-fogged" aria-label="HP and AC hidden">
-      <span class="badge-hp" aria-hidden="true">{{ icon('heart') }}00 HP</span>
-      <span class="badge-ac" aria-hidden="true">{{ icon('shield') }}00 AC</span>
+    <div class="dossier-vitals stats-fogged" aria-label="HP and AC hidden">
+      <span class="vital vital-hp" aria-hidden="true">{{ icon('heart') }}<b>00</b><small>Max HP</small></span>
+      <span class="vital vital-ac" aria-hidden="true">{{ icon('shield') }}<b>00</b><small>AC</small></span>
     </div>
+
     {% else %}
     <div class="dossier-stats">
       <div class="stat-pill"><span class="val">{{ c.str_score }}</span><span class="lbl">STR</span></div>
@@ -113,18 +157,26 @@
       <div class="stat-pill"><span class="val">{{ c.wis_score }}</span><span class="lbl">WIS</span></div>
       <div class="stat-pill"><span class="val">{{ c.cha_score }}</span><span class="lbl">CHA</span></div>
     </div>
+    <div class="dossier-vitals" aria-label="Hit points and armor class">
+      <span class="vital vital-hp" title="Maximum hit points">{{ icon('heart') }}<b>{{ c.max_hp }}</b><small>Max HP</small></span>
+      <span class="vital vital-ac" title="Armor class">{{ icon('shield') }}<b>{{ c.armor_class }}</b><small>AC</small></span>
+    </div>
 
-    <div class="dossier-hp-ac">
-      <span class="badge-hp">{{ icon('heart') }}{{ c.max_hp }} HP</span>
-      <span class="badge-ac">{{ icon('shield') }}{{ c.armor_class }} AC</span>
+    {% if c.added_from %}<p class="added-from">{{ icon('archive' if c.added_from == 'their own characters' else 'skull') }} Added from {{ c.added_from }}</p>{% endif %}
+    {% set st = live.get(c.id) %}
+    {% if st %}
+    <div class="dossier-live" aria-label="In the battle">
+      <span class="live-state">{{ 'Down' if st.dead else 'In battle' }}</span>
+      {% if st.conditions %}<div class="live-conds">{% for n in st.conditions[:4] %}<span class="live-cond">{{ n }}</span>{% endfor %}{% if st.conditions|length > 4 %}<span class="live-cond">+{{ st.conditions|length - 4 }}</span>{% endif %}</div>{% endif %}
     </div>
     {% endif %}
+    {% endif %}
 
-    <div class="dossier-notes">{{ c.notes | notes_preview(g.is_dm or c.created_by == session.user_id) }}</div>
+    <div class="dossier-notes">{{ c.notes | notes_preview(can_see_hidden_notes(c)) }}</div>
 
     <div class="dossier-actions">
       <a href="{{ url_for('character_detail', char_id=c.id) }}" class="btn btn-ghost btn-sm">{{ icon('eye') }} Details</a>
-      {% if g.is_dm or c.created_by == session.user_id %}
+      {% if g.is_dm or c.created_by == session.user_id or c.player_id == session.user_id %}
       <a href="{{ url_for('character_export', char_id=c.id) }}" class="btn-icon" title="Export this character">{{ icon('upload') }}</a>
       {% endif %}
       {% if c.id in deletable %}
@@ -141,7 +193,7 @@
 {% else %}
 <div class="empty-state">
   {{ icon('scroll-text') }}
-  <h3>No characters yet</h3>
+  <h2>No characters yet</h2>
   <p>Start your dossier by adding your first hero or villain.</p>
   <a href="{{ url_for('character_new') }}" class="btn btn-primary">{{ icon('plus') }} New Character</a>
 </div>

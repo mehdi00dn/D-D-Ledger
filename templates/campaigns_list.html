@@ -16,19 +16,20 @@
 <div class="group-grid">
   {% for c in campaigns %}
   <div class="group-card">
-    <div class="group-image-block" style="{{ '' if c.avatar_path else 'background: linear-gradient(135deg, var(--brass), var(--bg-panel-inset));' }}">
+    <div class="group-image-block{{ '' if c.avatar_path else ' is-generated' }}" style="--cover-hue: {{ (c.id * 53) % 360 }}">
       {% if c.avatar_path %}
         <img src="{{ url_for('uploaded_file', filename=c.avatar_path) }}" alt="{{ c.name }} avatar">
       {% else %}
-        <div class="group-image-placeholder">{{ icon('scroll') }}</div>
+        {% set words = c.name.split() %}
+        <div class="cover-monogram" aria-hidden="true">{{ ((words[0][:1] ~ (words[1][:1] if words|length > 1 else '')) if words else '?')|upper }}</div>
       {% endif %}
     </div>
     <div class="group-body">
-      <h3 class="group-name">{{ c.name }} <span class="role-badge role-badge-{{ c.my_role }}">{{ c.my_role }}</span></h3>
+      <h2 class="group-name">{{ c.name }} <span class="role-badge role-badge-{{ c.my_role }}">{{ c.my_role }}</span></h2>
       <p class="group-count">{{ c.character_count }} character{{ '' if c.character_count == 1 else 's' }} &middot; {{ c.group_count }} group{{ '' if c.group_count == 1 else 's' }} &middot; {{ c.map_count }} map{{ '' if c.map_count == 1 else 's' }}</p>
-      <p class="group-bio">{{ c.description | preview_lines }}</p>
+      <p class="group-bio">{{ c.description | notes_preview }}</p>
       <div class="group-actions">
-        <a href="{{ url_for('characters_list', campaign_id=c.id) }}" class="btn btn-primary btn-sm">{{ icon('scroll') }} Enter</a>
+        <a href="{{ url_for('campaign_home', campaign_id=c.id) }}" class="btn btn-primary btn-sm">{{ icon('scroll') }} Enter</a>
         {% if c.my_role == 'owner' %}
         <a href="{{ url_for('campaign_edit', campaign_id=c.id) }}" class="btn-icon" title="Edit campaign">{{ icon('pencil') }}</a>
         <form method="POST" action="{{ url_for('campaign_delete', campaign_id=c.id) }}" data-confirm="Delete campaign '{{ c.name }}'? This permanently deletes all its characters, groups, and maps. This cannot be undone.">{{ csrf_field() }}
@@ -43,7 +44,7 @@
 {% else %}
 <div class="empty-state">
   {{ icon('scroll') }}
-  <h3>No campaigns yet</h3>
+  <h2>No campaigns yet</h2>
   <p>Create your first campaign to start adding characters, groups, and maps.</p>
   <a href="{{ url_for('campaign_new') }}" class="btn btn-primary">{{ icon('plus') }} New Campaign</a>
 </div>

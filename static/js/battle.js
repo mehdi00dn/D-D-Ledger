@@ -57,6 +57,58 @@
   let condSeen = null;
   let condNow = new Set();
 
+  // Hover (or focus / tap) a standard condition (a chip on the row, or a tile in the picker) to read its 2024 rule.  The text comes from the rules reference
+  // (fetched once per condition, then kept); custom conditions have no rule.
+  const ruleCache = new Map();
+  let ruleTip = null, ruleTimer = null, ruleFor = null;
+  function hideRule() {
+    clearTimeout(ruleTimer); ruleFor = null;
+    if (ruleTip) { ruleTip.hidden = true; }
+    document.querySelectorAll('[aria-describedby="cond-rule-tip"]').forEach((n) => n.removeAttribute('aria-describedby'));
+  }
+  async function ruleText(key) {
+    if (ruleCache.has(key)) return ruleCache.get(key);
+    const res = await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/reference/entry?kind=conditions&ref=${encodeURIComponent('conditions/' + key)}`, { headers: { Accept: 'application/json' }, credentials: 'same-origin' });
+    if (!res.ok) throw new Error('unavailable');
+    const d = await res.json();
+    ruleCache.set(key, d);
+    return d;
+  }
+  async function showRule(chip) {
+    const key = chip.dataset.rule;
+    ruleFor = chip;
+    let d;
+    try { d = await ruleText(key); } catch (e) { return; }      // no rule shown when the reference is down; the chip still works
+    if (ruleFor !== chip || !chip.isConnected) return;
+    if (!ruleTip) {
+      ruleTip = document.createElement('div');
+      ruleTip.id = 'cond-rule-tip'; ruleTip.className = 'cond-rule-tip'; ruleTip.setAttribute('role', 'tooltip');
+      document.body.append(ruleTip);
+    }
+    ruleTip.replaceChildren();
+    const h = document.createElement('strong'); h.textContent = d.title;
+    ruleTip.append(h);
+    String(d.body || '').split(/\n+/).filter(Boolean).forEach((line) => { const p = document.createElement('p'); p.textContent = line; ruleTip.append(p); });
+    ruleTip.hidden = false;
+    const r = chip.getBoundingClientRect(), w = ruleTip.offsetWidth, ht = ruleTip.offsetHeight;
+    const left = Math.max(8, Math.min(window.innerWidth - w - 8, r.left + r.width / 2 - w / 2));
+    const top = r.top - ht - 8 >= 8 ? r.top - ht - 8 : r.bottom + 8;
+    ruleTip.style.left = `${left}px`; ruleTip.style.top = `${top}px`;
+    chip.setAttribute('aria-describedby', 'cond-rule-tip');
+  }
+  function ruleTarget(e) { return e.target.closest ? e.target.closest('[data-rule]') : null; }
+  document.addEventListener('mouseover', (e) => {
+    const chip = ruleTarget(e);
+    if (!chip || chip === ruleFor) return;
+    hideRule(); ruleTimer = setTimeout(() => showRule(chip), 250);
+  });
+  document.addEventListener('mouseout', (e) => { const chip = ruleTarget(e); if (chip && !chip.contains(e.relatedTarget)) hideRule(); });
+  document.addEventListener('focusin', (e) => { const chip = ruleTarget(e); if (chip) { hideRule(); showRule(chip); } });
+  document.addEventListener('focusout', (e) => { if (ruleTarget(e)) hideRule(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideRule(); });
+  document.addEventListener('pointerdown', (e) => { if (!ruleTarget(e)) hideRule(); });
+  window.addEventListener('scroll', hideRule, true);
+
   function conditionChips(p) {
     const list = (p.conditions || []).filter((k) => CONDITION_LABEL[k]);
     const customs = p.custom_conditions || [];
@@ -71,14 +123,43 @@
       const slot = isDM
         ? `<span class="cond-slot">${condIcon(icon)}<button type="button" class="cond-x" ${removeAttrs} title="Remove ${escapeHtml(name)}" aria-label="Remove ${escapeHtml(name)}"></button></span>`
         : `<span class="cond-slot">${condIcon(icon)}</span>`;
-      return `<span class="cond-chip ${cls}${isNew ? ' is-new' : ''}">${slot}<span class="cond-name">${escapeHtml(name)}</span></span>`;
+      return `<span class="cond-chip ${cls}${isNew ? ' is-new' : ''}" data-rule="${escapeHtml(icon)}" tabindex="0">${slot}<span class="cond-name">${escapeHtml(name)}</span></span>`;
     };
     const chips = list.map((k) => chip(`${p.id}:s:${k}`, `cond-${escapeHtml(k)}`, k, CONDITION_LABEL[k], `data-action="cond-remove" data-cond="${escapeHtml(k)}"`)).join('')
       + customs.map((n, i) => chip(`${p.id}:c:${n}`, 'cond-custom', 'custom', n, `data-action="cond-remove" data-chip-custom="${i}"`)).join('');
     const addBtn = isDM
-      ? `<button type="button" class="cond-add" data-action="conditions" title="Conditions" aria-label="Conditions for ${escapeHtml(p.display_name)}">${ICONS.heart}${(list.length || customs.length) ? '' : '<span>Conditions</span>'}</button>`
+      ? `<button type="button" class="cond-add" data-action="conditions" title="Conditions" aria-label="Conditions for ${escapeHtml(p.display_name)}">${ICONS.heart}</button>`
       : '';
     return (chips || addBtn) ? `<div class="cond-row">${chips}${addBtn}</div>` : '';
+  }
+
+  // Death saves (DL-145).  Only a downed player character has them.  Everyone sees "Stable"; the 3-and-3 tally and the Roll
+  // button come only to the DM and the player who made the character (the server sends null tallies to everyone else).
+  const lastSave = {};                                              // participant id -> what the latest roll was, shown for a few seconds
+  const SAVE_SHOWN_MS = 5000;
+  function saveResultText(r) {
+    if (r.outcome === 'revived') return 'Natural 20: back on 1 HP';
+    const verdict = { success: 'success', failure: r.roll === 1 ? 'two failures' : 'failure', stable: 'stable', dead: 'dead' }[r.outcome] || '';
+    return `Rolled ${r.roll}: ${verdict}`;
+  }
+  function deathSavesMarkup(p) {
+    if (p.is_npc || p.is_dead || !p.is_downed) return '';
+    if (p.is_stable) {
+      return `<div class="death-saves is-stable" role="group" aria-label="${escapeHtml(p.display_name)} is stable"><span class="ds-stable">Stable</span><span class="ds-note">Unconscious at 0 HP; no more death saves.</span></div>`;
+    }
+    if (p.death_successes === null || p.death_successes === undefined) return '';
+    const pips = (n, kind) => `<span class="ds-pips ds-pips--${kind}" role="img" aria-label="${n} of 3 ${kind === 'ok' ? 'successes' : 'failures'}">`
+      + [0, 1, 2].map((i) => `<i class="ds-pip${i < n ? ' is-on' : ''}"></i>`).join('') + '</span>';
+    const shown = lastSave[p.id];
+    const result = shown && Date.now() < shown.until
+      ? `<span class="ds-result is-${escapeHtml(shown.outcome)}" role="status">${escapeHtml(saveResultText(shown))}</span>` : '';
+    const roll = p.can_death_save
+      ? `<button type="button" class="btn btn-ghost btn-sm ds-roll" data-action="death-save" aria-label="Roll a death save for ${escapeHtml(p.display_name)}">Roll death save</button>` : '';
+    return `<div class="death-saves" role="group" aria-label="Death saves for ${escapeHtml(p.display_name)}">`
+      + `<span class="ds-title">Death saves</span>`
+      + `<span class="ds-tag">Pass</span>${pips(p.death_successes, 'ok')}`
+      + `<span class="ds-tag">Fail</span>${pips(p.death_failures, 'bad')}`
+      + `${result}${roll}</div>`;
   }
 
   function rowMarkup(p, rank) {
@@ -168,18 +249,19 @@
       <div class="battle-avatar${openAttrs ? ' is-link' : ''}"${openAttrs} aria-label="${escapeHtml(p.display_name)}: details" style="border-color:${safeColor(p.group_color, 'var(--brass)')};">${avatarMarkup(p)}</div>
 
       <div class="battle-name-block">
-        <div class="battle-name${openAttrs ? ' is-link' : ''}"${openAttrs}>${classIconHtml(p.class_key)}${escapeHtml(p.display_name)}${p.is_active ? '<span class="turn-tag">Turn</span>' : ''}</div>
-        <div class="battle-meta">${groupDot}${p.group_name ? escapeHtml(p.group_name) : 'No Faction'} &middot; ${p.is_npc ? 'NPC' : 'PC'}</div>
-        ${conditionChips(p)}
+        <div class="battle-name${openAttrs ? ' is-link' : ''}"${openAttrs}>${classIconHtml(p.class_key)}${escapeHtml(p.display_name)}</div>
+        <div class="battle-sub">
+          <div class="battle-meta">${groupDot}${p.group_name ? escapeHtml(p.group_name) : 'No Faction'} &middot; ${p.is_npc ? 'NPC' : 'PC'}</div>
+          ${conditionChips(p)}
+        </div>
       </div>
 
       ${statsArea}
       ${hpControls}
       ${detailControl}
+      ${deathSavesMarkup(p)}
 
-      ${isDM ? `<div class="battle-extra">${showDiedBtn ? `<button type="button" class="btn btn-danger btn-sm" data-action="die">${ICONS.skull} Died?</button>` : ''}${dead ? `<button type="button" class="btn btn-ghost btn-sm" data-action="revive">Revive</button>` : ''}</div>` : ''}
-
-      ${isDM ? `<button type="button" class="btn-icon battle-remove" data-action="remove" title="Remove from battle">${ICONS.x}</button>` : ''}
+      ${isDM ? `<div class="battle-end">${showDiedBtn ? `<button type="button" class="btn-icon battle-die" data-action="die" title="Mark as died" aria-label="Mark ${escapeHtml(p.display_name)} as died">${ICONS.skull}</button>` : ''}${dead ? `<button type="button" class="btn btn-ghost btn-sm" data-action="revive">Revive</button>` : ''}<button type="button" class="btn-icon battle-remove" data-action="remove" title="Remove from battle" aria-label="Remove ${escapeHtml(p.display_name)} from battle">${ICONS.x}</button></div>` : ''}
     </div>`;
   }
 
@@ -336,13 +418,108 @@
     }
   }
 
+  // ---- Battle log: a ledger strip pinned to the bottom-left of the page; opened, a small card of the last lines rises out of it ----
+  const logBox = document.getElementById('battle-log');
+  const logBar = document.getElementById('battle-log-toggle');
+  const logSheet = document.getElementById('battle-log-sheet');
+  const logBackdrop = document.getElementById('battle-log-backdrop');
+  const logList = document.getElementById('battle-log-list');
+  const logLatest = document.getElementById('battle-log-latest');
+  let logSig = '', logTimer = null, logHideTimer = null;
+  const clock = (iso) => { const d = new Date(iso); return isNaN(d) ? '' : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); };
+
+  function setLogOpen(open) {
+    if (!logBox) return;
+    clearTimeout(logHideTimer);
+    logBar.setAttribute('aria-expanded', String(open));
+    if (open) {
+      logSheet.hidden = false;
+      void logSheet.offsetWidth;                                   // let the closed state paint once, so the card eases in
+      logBox.classList.add('is-open');
+      logList.scrollTop = logList.scrollHeight;                    // newest at the bottom, and that is where it opens
+    } else {
+      logBox.classList.remove('is-open');
+      logHideTimer = setTimeout(() => { logSheet.hidden = true; }, 160);   // after the quick fade out
+    }
+  }
+  if (logBar) {
+    logBar.addEventListener('click', () => setLogOpen(!logBox.classList.contains('is-open')));
+    logBackdrop.addEventListener('click', () => setLogOpen(false));
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && logBox.classList.contains('is-open')) { setLogOpen(false); logBar.focus(); }
+    });
+  }
+  // The words that follow a name ("Mira took 9 damage", "Grub is now Hexed"), so the name, the verb and the numbers can each be styled.
+  const VERBS = [' took ', ' healed ', ' is down', ' died', ' is stable', ' rolled ', ' was revived', ' was hurt', ' was healed', ' is back on', ' has ', ' lost their',
+                 ' is now ', ' is no longer ', ' joined the', ' left the', "'s HP set"];
+  function span(cls, text) { const el = document.createElement('span'); el.className = cls; el.textContent = text; return el; }
+  function withNumbers(text, cls) {                                // digits get their own bold, tabular style
+    const out = document.createDocumentFragment();
+    text.split(/(\d+)/).forEach((part, i) => { if (part) out.append(i % 2 ? span('bl-n', part) : span(cls, part)); });
+    return out;
+  }
+  function styledText(e) {
+    const text = String(e.text), box = document.createElement('span');
+    box.className = 'bl-text'; box.title = text;
+    if (e.kind === 'round' || e.kind === 'initiative' || (e.kind === 'left' && !/ left the/.test(text))) { box.append(withNumbers(text, 'bl-v')); return box; }
+    let at = -1;
+    VERBS.forEach((v) => { const i = text.indexOf(v); if (i > 0 && (at < 0 || i < at)) at = i; });
+    if (at < 0) { box.append(withNumbers(text, 'bl-v')); return box; }
+    box.append(span('bl-who', text.slice(0, at)));
+    let rest = text.slice(at);
+    if (e.kind === 'condition') {                                  // " is now " / " is no longer " + the condition, which is the point of the line
+      const m = rest.match(/^( is now | is no longer )(.*)$/);
+      if (m) { box.append(span('bl-v', m[1]), span('bl-who bl-cond', m[2])); return box; }
+    }
+    box.append(withNumbers(rest, 'bl-v'));
+    return box;
+  }
+  function renderLog(entries) {
+    if (!logBox) return;
+    logBox.hidden = entries.length === 0;
+    if (entries.length === 0) setLogOpen(false);
+    const sig = entries.map((e) => e.id).join(',');
+    if (sig === logSig) return;
+    const hadAny = logSig !== '';
+    logSig = sig;
+    const oldestFirst = entries.slice().reverse();                 // the API sends newest first; the card reads like a ledger, newest at the bottom
+    const nearBottom = logList.scrollHeight - logList.scrollTop - logList.clientHeight < 40;
+    logList.replaceChildren(...oldestFirst.map((e) => {
+      const li = document.createElement('li');
+      li.className = 'bl-item bl-' + String(e.kind).replace(/[^a-z]/g, '');
+      const t = document.createElement('time'); t.dateTime = e.at; t.textContent = clock(e.at);
+      li.append(t, styledText(e));
+      return li;
+    }));
+    if (nearBottom || !logBox.classList.contains('is-open')) logList.scrollTop = logList.scrollHeight;
+    const newest = entries[0];
+    logBox.dataset.kind = String(newest.kind).replace(/[^a-z]/g, '');
+    if (logLatest) logLatest.textContent = newest.text;
+    if (hadAny && !logBox.classList.contains('is-open')) {         // a quick wash on the closed strip when something new lands
+      logBox.classList.remove('has-new'); void logBox.offsetWidth; logBox.classList.add('has-new');
+    }
+  }
+  async function loadLog() {
+    try {
+      const res = await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/battle/log`, { headers: { Accept: 'application/json' }, credentials: 'same-origin' });
+      if (res.ok) renderLog(await res.json());
+    } catch (e) { /* the log is a nicety: a failed fetch just leaves the old one on screen */ }
+  }
+  function refreshLogSoon() { clearTimeout(logTimer); logTimer = setTimeout(loadLog, 120); }
+  loadLog();
+
   async function apiCall(path, body) {
     const res = await fetch(`/campaigns/${window.CAMPAIGN_ID}${path}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body || {}),
     });
-    if (!res.ok) throw new Error('Request failed');
+    if (!res.ok) {
+      const message = await LedgerApi.message(res, 'That did not work. Please try again.');
+      LedgerApi.notify(message);                 // say why (no permission, session ended, ...) instead of failing silently
+      throw new LedgerApi.Error(message, res.status);
+    }
+    refreshLogSoon();                              // whatever just changed may have a line in the log
     return res.json();
   }
 
@@ -389,6 +566,16 @@
     } else if (action === 'revive') {
       participants = await apiCall(`/api/battle/${pid}/revive`, {});
       render();
+    } else if (action === 'death-save') {
+      btn.disabled = true;                                          // one roll per click; the row is redrawn from the answer
+      try {
+        const out = await apiCall(`/api/battle/${pid}/death-save`, {});
+        lastSave[pid] = { roll: out.roll, outcome: out.outcome, until: Date.now() + SAVE_SHOWN_MS };
+        participants = out.rows;
+        render();
+      } catch (err) {
+        btn.disabled = false;                                       // apiCall has already said why
+      }
     } else if (action === 'remove') {
       const p = participants.find((x) => String(x.id) === pid);
       const label = p ? p.display_name : 'this character';
@@ -456,6 +643,43 @@
       btn.classList.add('active');
       sortMode = btn.dataset.sort;
       render();
+    });
+  }
+
+  // ---- Long rest (DM-only) ----
+  const longRestBtn = document.getElementById('long-rest-btn');
+  if (longRestBtn) {
+    longRestBtn.addEventListener('click', async () => {
+      if (!(await window.confirmAction('Long rest: every player character goes back to full HP, with no temporary HP and no death saves?'))) return;
+      participants = await apiCall('/api/battle/long-rest', {});
+      render();
+    });
+  }
+
+  // ---- Short rest (DM-only): type the HP each player character regained ----
+  const shortRestBtn = document.getElementById('short-rest-btn');
+  const shortRestForm = document.getElementById('short-rest-form');
+  if (shortRestBtn && shortRestForm) {
+    const list = document.getElementById('short-rest-list');
+    const empty = document.getElementById('short-rest-empty');
+    const go = document.getElementById('short-rest-go');
+    shortRestBtn.addEventListener('click', () => {
+      const pcs = participants.filter((p) => !p.is_npc && !p.is_dead);
+      list.innerHTML = pcs.map((p) => `<li class="short-rest-row"><label for="sr-${p.id}" class="short-rest-name"><b>${escapeHtml(p.char_name)}</b><small>${p.current_hp} / ${p.char_max_hp} HP</small></label>` +
+        `<div class="field short-rest-field"><input type="number" id="sr-${p.id}" data-pid="${p.id}" min="0" max="${Math.max(0, p.char_max_hp - p.current_hp)}" inputmode="numeric" placeholder="0" aria-label="HP regained by ${escapeHtml(p.char_name)}"></div></li>`).join('');
+      empty.hidden = pcs.length > 0;
+      go.disabled = pcs.length === 0;
+    });
+    shortRestForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const heals = {};
+      list.querySelectorAll('input[data-pid]').forEach((i) => { if (i.value) heals[i.dataset.pid] = parseInt(i.value, 10) || 0; });
+      go.disabled = true;
+      try {
+        participants = await apiCall('/api/battle/short-rest', { heals });
+        render();
+        shortRestForm.closest('dialog').close();
+      } catch (err) { /* the message was already shown */ } finally { go.disabled = false; }
     });
   }
 
@@ -531,15 +755,63 @@
 
   const rollInitBtn = document.getElementById('roll-initiative-btn');
   if (rollInitBtn) {
-    rollInitBtn.addEventListener('click', async () => {
-      const standing = participants.filter((p) => !p.is_dead);
+    const menu = document.getElementById('roll-menu');
+    const scopeLabel = { all: 'everyone', pc: 'the player characters', npc: 'the NPCs and monsters' };
+    const inScope = (p, scope) => !p.is_dead && (scope === 'all' || (scope === 'npc') === !!p.is_npc);
+    const refreshMenu = () => {
+      menu.querySelectorAll('[data-roll-scope]').forEach((b) => {
+        const n = participants.filter((p) => inScope(p, b.dataset.rollScope)).length;
+        b.disabled = n === 0;
+        b.querySelector('small').textContent = String(n);
+      });
+    };
+    const setOpen = (open) => { menu.classList.toggle('is-open', open); rollInitBtn.setAttribute('aria-expanded', open ? 'true' : 'false'); if (open) refreshMenu(); };
+    const rollFor = async (scope) => {
+      const standing = participants.filter((p) => inScope(p, scope));
       if (!standing.length) return;
-      if (standing.some((p) => p.initiative) && !(await window.confirmAction('Roll initiative for everyone again? The numbers already entered are replaced.'))) return;
+      if (standing.some((p) => p.initiative) && !(await window.confirmAction('Roll initiative for ' + scopeLabel[scope] + ' again? The numbers already entered are replaced.'))) return;
       rollInitBtn.disabled = true;
-      try { participants = await apiCall('/api/battle/roll-initiative', {}); render(); }
+      try { participants = await apiCall('/api/battle/roll-initiative', { scope }); render(); }
       catch (e) { if (window.LedgerDice) LedgerDice.announceError('Could not roll initiative.'); }
       rollInitBtn.disabled = false;
+    };
+    // A mouse hovers to see the choices and a click still rolls for everyone; a touch screen has no hover, so the first tap opens them.
+    const touchOnly = window.matchMedia && window.matchMedia('(hover: none)').matches;
+    rollInitBtn.addEventListener('click', () => {
+      if (touchOnly) { setOpen(!menu.classList.contains('is-open')); return; }
+      rollFor('all');
     });
+    menu.addEventListener('pointerenter', refreshMenu);
+    menu.addEventListener('focusin', refreshMenu);
+    menu.addEventListener('click', (e) => {
+      const item = e.target.closest('[data-roll-scope]');
+      if (!item) return;
+      setOpen(false);
+      menu.querySelector('.roll-menu-list').classList.add('is-closing');          // keeps it shut under the pointer until it leaves
+      rollFor(item.dataset.rollScope);
+    });
+    menu.addEventListener('pointerleave', () => { menu.querySelector('.roll-menu-list').classList.remove('is-closing'); if (!touchOnly) setOpen(false); });
+    document.addEventListener('click', (e) => { if (touchOnly && !menu.contains(e.target)) setOpen(false); });
+    menu.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') { setOpen(false); rollInitBtn.focus(); menu.querySelector('.roll-menu-list').classList.add('is-closing'); }
+    });
+  }
+
+  // Rest menu: same hover dropdown as Roll Initiative; a click (or tap) opens it too.
+  const restMenu = document.getElementById('rest-menu');
+  if (restMenu) {
+    const restBtn = document.getElementById('rest-menu-btn');
+    const restList = restMenu.querySelector('.roll-menu-list');
+    const setRestOpen = (open) => { restMenu.classList.toggle('is-open', open); restBtn.setAttribute('aria-expanded', open ? 'true' : 'false'); };
+    restBtn.addEventListener('click', () => setRestOpen(!restMenu.classList.contains('is-open')));
+    restMenu.addEventListener('click', (e) => {
+      if (!e.target.closest('[role=menuitem]')) return;
+      setRestOpen(false);
+      restList.classList.add('is-closing');                                       // stays shut under the pointer until it leaves
+    });
+    restMenu.addEventListener('pointerleave', () => { restList.classList.remove('is-closing'); setRestOpen(false); });
+    document.addEventListener('click', (e) => { if (!restMenu.contains(e.target)) setRestOpen(false); });
+    restMenu.addEventListener('keydown', (e) => { if (e.key === 'Escape') { setRestOpen(false); restBtn.focus(); restList.classList.add('is-closing'); } });
   }
 
   const openAddModalBtn = document.getElementById('open-add-modal');
@@ -579,11 +851,12 @@
   function renderConditionPicker() {
     const p = participants.find((x) => String(x.id) === String(condPid));
     if (!p) { condModal.hidden = true; return; }
+    hideRule();                                   // the tiles below are rebuilt, so a tip pointing at an old one would be stale
     document.getElementById('conditions-modal-title').textContent = `Conditions — ${p.display_name}`;
     const on = new Set(p.conditions || []);
     const customs = p.custom_conditions || [];
     condPicker.innerHTML = CONDITIONS.map((c) => `
-      <button type="button" class="cond-tile ${on.has(c.key) ? 'active' : ''}" data-cond="${escapeHtml(c.key)}" aria-pressed="${on.has(c.key)}">${condIcon(c.key, 'cond-icon-lg')}<span>${escapeHtml(c.label)}</span></button>`).join('')
+      <button type="button" class="cond-tile ${on.has(c.key) ? 'active' : ''}" data-cond="${escapeHtml(c.key)}" data-rule="${escapeHtml(c.key)}" aria-pressed="${on.has(c.key)}">${condIcon(c.key, 'cond-icon-lg')}<span>${escapeHtml(c.label)}</span></button>`).join('')
       + customs.map((n, i) => `
       <button type="button" class="cond-tile cond-tile-custom active" data-custom-index="${i}" aria-pressed="true" title="Click to remove"><span>${escapeHtml(n)}</span></button>`).join('')
       + (customs.length < MAX_CUSTOM ? `
@@ -794,6 +1067,7 @@
       participants = rows;
       render();
     }
+    if (serverChanged) loadLog();
     return serverChanged;
   }, { base: 3000, max: 12000 });
 

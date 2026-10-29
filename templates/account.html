@@ -1,0 +1,277 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% set active_page = 'account' %}
+{% block title %}Account settings — Campaign Ledger{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Account settings</h1>
+    <p class="page-sub">Signed in as <b>{{ profile.username }}</b>. These settings belong to you, not to any campaign.</p>
+  </div>
+  <a class="btn btn-ghost" href="{{ url_for('profile_view', username=profile.username) }}">{{ icon('user') }} View my profile</a>
+</div>
+{% set px = profile_extra() %}
+{% if not profile.email and profile.email_ready %}<div class="banner-notice banner-error" role="alert">Add an email address below. Every account needs one, so we can reach you and you can recover the account.</div>{% endif %}
+
+{% if request.args.get('saved') %}<div class="banner-notice" role="status">Profile saved.</div>{% endif %}
+{% if request.args.get('pw') %}<div class="banner-notice" role="status">Password changed. Your other devices were signed out.</div>{% endif %}
+{% if request.args.get('un') %}<div class="banner-notice" role="status">Username changed. Use the new one next time you log in.</div>{% endif %}
+{% if request.args.get('out') %}<div class="banner-notice" role="status">Signed out everywhere else.</div>{% endif %}
+{% set mail_notes = {'sent': 'Confirmation email sent. Open the link in it to finish (it works for 24 hours).', 'verified': 'Email address confirmed.', 'already': 'That address is already confirmed.', 'removed': 'Email address removed.'} %}
+{% set mail_errors = {'expired': 'That confirmation link has expired. Send a new one below.', 'invalid': 'That confirmation link is not valid any more. Send a new one below.', 'wrong_account': 'That link belongs to a different account. Sign in with the account you asked from.', 'taken': 'Another account has already confirmed that address.'} %}
+{% if request.args.get('mail') in mail_notes %}<div class="banner-notice" role="status">{{ mail_notes[request.args.get('mail')] }}</div>{% endif %}
+{% if request.args.get('mail') in mail_errors %}<div class="banner-notice banner-error" role="alert">{{ mail_errors[request.args.get('mail')] }}</div>{% endif %}
+{% if email_error %}<div class="banner-notice banner-error" role="alert" id="email-error">{{ email_error }}</div>{% endif %}
+{% if delete_error %}<div class="banner-notice banner-error" role="alert" id="delete-error">{{ delete_error }}</div>{% endif %}
+{% if error %}<div class="banner-notice banner-error" role="alert">{{ error }}</div>{% endif %}
+{% if username_error %}<div class="banner-notice banner-error" role="alert" id="username-error">{{ username_error }}</div>{% endif %}
+{% if password_error %}<div class="banner-notice banner-error" role="alert" id="password-error">{{ password_error }}</div>{% endif %}
+
+<div class="account-layout">
+<nav class="account-nav" aria-label="Account settings">
+  <a href="#profile" data-section-link="profile">Profile</a>
+  <a href="#privacy" data-section-link="privacy">Privacy</a>
+  <a href="#security" data-section-link="security">Sign-in and security</a>
+  <a href="#appearance" data-section-link="appearance">Appearance</a>
+  <a href="#data" data-section-link="data">Your data</a>
+</nav>
+<div class="account-sections">
+
+<form class="form-panel account-form" method="POST" enctype="multipart/form-data" id="account-form" data-section="profile privacy">{{ csrf_field() }}
+  <div class="form-section" data-section="profile">
+    <p class="form-section-title">Profile</p>
+
+    <div class="field" style="margin-bottom:14px;">
+      <label>Avatar</label>
+      <div class="avatar-preview-row">
+        <div class="avatar-frame-wrap">
+          <div class="avatar-frame">
+            {% if profile.avatar_path %}
+              <img id="account-avatar-preview" src="{{ url_for('uploaded_file', filename=profile.avatar_path) }}" alt="Your avatar">
+            {% else %}
+              <img id="account-avatar-preview" style="display:none;" alt="Avatar preview">
+              {{ icon('user', 'avatar-placeholder-icon') }}
+            {% endif %}
+          </div>
+          <button type="button" class="avatar-remove-btn" id="account-avatar-remove-btn" title="Remove avatar" {{ '' if profile.avatar_path else 'hidden' }}>{{ icon('x') }}</button>
+          <div class="upload-progress upload-progress-circle" hidden></div>
+        </div>
+        <div class="file-drop">
+          {{ icon('upload') }}
+          <div>Click or drop an image</div>
+          <span class="file-name"></span>
+          <input type="file" name="avatar" aria-label="Choose an image" accept="image/*" data-avatar-input="#account-avatar-preview" data-remove-btn="#account-avatar-remove-btn" data-remove-input="#account-remove-avatar-input" data-crop-shape="circle">
+        </div>
+      </div>
+      <input type="hidden" name="remove_avatar" id="account-remove-avatar-input" value="">
+    </div>
+
+    <div class="field" style="margin-bottom:14px;">
+      <label for="display_name">Display name</label>
+      <input type="text" id="display_name" name="display_name" value="{{ form.display_name or '' }}" maxlength="40" placeholder="{{ profile.username }}" autocomplete="nickname">
+      <p class="hint-text">Shown instead of your username. Leave empty to use <b>{{ profile.username }}</b>. Your username is what you log in with; you can change it below.</p>
+    </div>
+
+    <div class="field">
+      <label for="bio">Bio</label>
+      <textarea id="bio" name="bio" maxlength="500" rows="4" placeholder="A line or two about you as a player or DM">{{ form.bio or '' }}</textarea>
+    </div>
+  </div>
+
+  {% if px.ready %}
+  <div class="form-section" data-section="privacy">
+    <p class="form-section-title">Who can see your profile</p>
+    <div class="access-options" role="radiogroup" aria-label="Profile visibility">
+      {% for key, opt in profile_visibility_options.items() %}
+      <label class="access-option">
+        <input type="radio" name="profile_visibility" value="{{ key }}" {{ 'checked' if px.visibility == key else '' }}>
+        <span class="access-option-card"><b>{{ opt[0] }}</b><span>{{ opt[1] }}</span></span>
+      </label>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="form-section" id="showcase" data-section="privacy">
+    <p class="form-section-title">Characters on your profile</p>
+    <input type="hidden" name="showcase_present" value="1">
+    {% if px.showcase_options %}
+    <p class="hint-text" style="margin:0 0 12px;">Pick up to {{ showcase_max }} of your player characters. Visitors see the name, class, level and portrait only, never the campaign or the stats.</p>
+    <ul class="showcase-picker" data-max="{{ showcase_max }}">
+      {% for c in px.showcase_options %}
+      <li>
+        <label class="showcase-option">
+          <input type="checkbox" name="showcase" value="{{ c.id }}" {{ 'checked' if c.id in px.showcase_ids else '' }}>
+          <span class="showcase-option-card">
+            {% if c.avatar_path %}<img src="{{ url_for('uploaded_file', filename=c.avatar_path) }}" alt="" loading="lazy">{% else %}<span class="showcase-option-ph">{{ icon('user') }}</span>{% endif %}
+            <span class="showcase-option-text"><b>{{ c.name }}</b><span>{{ c.class_label or 'No class' }} · level {{ c.level }}{% if c.campaign_name %} · {{ c.campaign_name }}{% else %} · Your characters{% endif %}</span></span>
+          </span>
+        </label>
+      </li>
+      {% endfor %}
+    </ul>
+    <p class="hint-text showcase-count" aria-live="polite"></p>
+    {% else %}
+    <p class="hint-text" style="margin:0;">You have no player characters yet. Characters you create, or that a DM attaches to you, show up here.</p>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <div class="form-actions" data-section="profile privacy">
+    <button type="submit" class="btn btn-primary">{{ icon('check') }} Save profile</button>
+  </div>
+</form>
+
+{% if profile.email_ready %}
+<div class="form-panel account-form" id="email-panel" data-section="security">
+  <div class="form-section">
+    <p class="form-section-title">Email</p>
+    {% if profile.email %}
+    <p class="email-state">
+      <b>{{ profile.email }}</b>
+      {% if profile.email_verified_at %}<span class="role-badge role-badge-owner">Confirmed</span>{% else %}<span class="role-badge role-badge-player">Not confirmed</span>{% endif %}
+    </p>
+    {% else %}
+    <p class="hint-text" style="margin:0 0 12px;">No email on this account yet. Every account needs one: it lets us confirm it is you and reset a forgotten password.</p>
+    {% endif %}
+    {% if not profile.mail_enabled %}
+    <p class="hint-text" style="margin:0 0 12px;">Email sending is not set up on this server yet, so addresses cannot be confirmed.</p>
+    {% endif %}
+    <form method="POST" action="{{ url_for('account_email') }}" id="email-form">{{ csrf_field() }}
+      <div class="field" style="margin-bottom:14px;">
+        <label for="email">{{ 'Change email address' if profile.email else 'Email address' }}</label>
+        <input type="email" id="email" name="email" maxlength="254" required autocomplete="email" placeholder="you@example.com">
+      </div>
+      <button type="submit" class="btn btn-primary" {{ '' if profile.mail_enabled else 'disabled' }}>{{ icon('mail') }} Send confirmation link</button>
+    </form>
+    {% if profile.email %}
+    <div class="email-actions">
+      {% if not profile.email_verified_at %}
+      <form method="POST" action="{{ url_for('account_email_resend') }}">{{ csrf_field() }}<button type="submit" class="btn btn-ghost btn-sm" {{ '' if profile.mail_enabled else 'disabled' }}>Send the link again</button></form>
+      {% endif %}
+      <form method="POST" action="{{ url_for('account_email_remove') }}" data-confirm="Remove the email address from your account?">{{ csrf_field() }}<button type="submit" class="btn btn-ghost btn-sm">{{ icon('trash-2') }} Remove email</button></form>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+<form class="form-panel account-form" method="POST" action="{{ url_for('account_username') }}" id="username-form" data-section="security">{{ csrf_field() }}
+  <div class="form-section">
+    <p class="form-section-title">Username</p>
+    <p class="hint-text" style="margin:0 0 12px;">Your username is what you log in with and what other people use to invite you. You are <b>{{ profile.username }}</b> now. Your password stays the same, and you stay signed in.</p>
+    <div class="field-row-2">
+      <div class="field">
+        <label for="new_username">New username</label>
+        <input type="text" id="new_username" name="username" value="{{ new_username or '' }}" required minlength="3" maxlength="32" autocomplete="off" autocapitalize="none" spellcheck="false">
+      </div>
+      {% if px.has_password %}
+      <div class="field">
+        <label for="username_current_password">Current password</label>
+        <input type="password" id="username_current_password" name="current_password" required maxlength="128" autocomplete="current-password">
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  <div class="form-actions">
+    <button type="submit" class="btn btn-primary">{{ icon('check') }} Change username</button>
+  </div>
+</form>
+
+<form class="form-panel account-form" method="POST" action="{{ url_for('account_password') }}" id="password-form" data-section="security">{{ csrf_field() }}
+  <div class="form-section">
+    <p class="form-section-title">{{ 'Password' if px.has_password else 'Add a password' }}</p>
+    {% if px.has_password %}
+    <div class="field" style="margin-bottom:14px;">
+      <label for="current_password">Current password</label>
+      <input type="password" id="current_password" name="current_password" required autocomplete="current-password">
+    </div>
+    {% else %}
+    <p class="hint-text" style="margin:0 0 12px;">You signed up with Google, so there is no password yet. Add one if you also want to log in with your username.</p>
+    {% endif %}
+    <div class="field" style="margin-bottom:14px;">
+      <label for="new_password">New password</label>
+      <input type="password" id="new_password" name="new_password" required minlength="8" maxlength="128" autocomplete="new-password">
+      <p class="hint-text">At least 8 characters.</p>
+    </div>
+    <div class="field">
+      <label for="confirm_password">Repeat new password</label>
+      <input type="password" id="confirm_password" name="confirm_password" required minlength="8" maxlength="128" autocomplete="new-password">
+    </div>
+  </div>
+  <div class="form-actions">
+    <button type="submit" class="btn btn-primary">{{ icon('lock') }} {{ 'Change password' if px.has_password else 'Add password' }}</button>
+  </div>
+</form>
+
+<form class="form-panel account-form" method="POST" action="{{ url_for('account_logout_all') }}" id="sessions-form" data-section="security" data-confirm="Sign out every other browser and device? This one stays signed in.">{{ csrf_field() }}
+  <div class="form-section">
+    <p class="form-section-title">Sessions</p>
+    <p class="hint-text" style="margin:0 0 12px;">Lost a phone or used a shared computer? This signs you out everywhere except here. Changing your password does the same.</p>
+    <button type="submit" class="btn btn-ghost">{{ icon('log-out') }} Sign out everywhere else</button>
+  </div>
+</form>
+
+<div class="form-panel account-form" id="appearance-panel" data-section="appearance">
+  <div class="form-section">
+    <p class="form-section-title">Appearance</p>
+    <p class="hint-text" style="margin:0 0 12px;">Saved on this device. The moon and sun button in the menu changes it too.</p>
+    <div class="access-options" role="radiogroup" aria-label="Theme">
+      <label class="access-option"><input type="radio" name="theme_pref" value="dark"><span class="access-option-card"><b>Dark</b><span>Easy on the eyes at a dim table.</span></span></label>
+      <label class="access-option"><input type="radio" name="theme_pref" value="light"><span class="access-option-card"><b>Light</b><span>Parchment colours for bright rooms.</span></span></label>
+      <label class="access-option"><input type="radio" name="theme_pref" value="system"><span class="access-option-card"><b>Match my device</b><span>Follows your phone or computer setting.</span></span></label>
+    </div>
+  </div>
+</div>
+
+<form class="form-panel account-form" method="POST" action="{{ url_for('account_export') }}" id="export-form" data-section="data">{{ csrf_field() }}
+  <div class="form-section">
+    <p class="form-section-title">Your data</p>
+    <p class="hint-text" style="margin:0 0 12px;">Download a copy of what Campaign Ledger holds about you: your account details, the campaigns you belong to, and the characters, factions, maps and dice rolls you made. It never includes your password. Read what we keep and why in the <a href="{{ url_for('privacy') }}">privacy page</a>.</p>
+    <button type="submit" class="btn btn-ghost">{{ icon('download') }} Download my data</button>
+  </div>
+</form>
+
+{% set owned = owned_campaigns() %}
+<form class="form-panel account-form danger-panel" method="POST" action="{{ url_for('account_delete') }}" id="delete-form" data-section="data" data-confirm="Delete your account for good? Campaigns you own and did not hand to someone else are deleted with it and cannot be recovered.">{{ csrf_field() }}
+  <div class="form-section">
+    <p class="form-section-title">Delete account</p>
+    <p class="hint-text" style="margin:0 0 12px;">This removes your account, profile and memberships for good. Characters, factions and maps you made in other people's campaigns stay there, without your name on them.</p>
+    {% for c in owned %}
+    <div class="field delete-campaign" style="margin-bottom:14px;">
+      {% if c.has_other_owner %}
+      <p class="delete-campaign-name"><b>{{ c.name }}</b></p>
+      <p class="hint-text" style="margin:0;">Has another owner, so it carries on without you.</p>
+      {% else %}
+      <label for="transfer_{{ c.id }}">{{ c.name }}</label>
+      <select id="transfer_{{ c.id }}" name="transfer_{{ c.id }}">
+        <option value="">Delete this campaign (cannot be recovered)</option>
+        {% for m in c.members %}<option value="{{ m.id }}">Hand it to {{ m.display_name or m.username }}{% if m.display_name %} ({{ m.username }}){% endif %}</option>{% endfor %}
+      </select>
+      {% if not c.members %}<p class="hint-text">Nobody else is in this campaign, so it will be deleted.</p>{% endif %}
+      {% endif %}
+    </div>
+    {% endfor %}
+    {% if owned and owned|selectattr('has_other_owner', 'false')|list %}
+    <p class="delete-warning" role="note">Campaigns you do not hand to another member are deleted with their characters, maps and images. This cannot be undone.</p>
+    {% endif %}
+    {% if px.has_password %}
+    <div class="field" style="margin-bottom:14px;">
+      <label for="delete_password">Current password</label>
+      <input type="password" id="delete_password" name="current_password" required autocomplete="current-password">
+    </div>
+    {% endif %}
+    <div class="field">
+      <label for="confirm_delete">Type DELETE to confirm</label>
+      <input type="text" id="confirm_delete" name="confirm_delete" required autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="DELETE">
+    </div>
+  </div>
+  <div class="form-actions">
+    <button type="submit" class="btn btn-danger">{{ icon('trash-2') }} Delete my account</button>
+  </div>
+</form>
+</div>
+</div>
+{% endblock %}
+{% block extra_scripts %}<script src="{{ url_for('static', filename='js/showcase.js') }}"></script>
+<script src="{{ url_for('static', filename='js/account.js') }}"></script>{% endblock %}

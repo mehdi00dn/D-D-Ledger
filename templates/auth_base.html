@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="csrf-token" content="{{ csrf_token() }}">
+<title>{% block title %}Campaign Ledger{% endblock %}</title>
+<script nonce="{{ csp_nonce() }}">
+  (function () {
+    var saved = localStorage.getItem('ledger-theme');
+    if (saved === 'system') saved = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+    if (saved === 'light' || saved === 'dark') {
+      document.documentElement.setAttribute('data-theme', saved);
+    }
+  })();
+</script>
+<link rel="icon" href="{{ url_for('static', filename='logo/favicon.ico') }}" sizes="any">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/auth.css') }}">
+</head>
+<body class="auth-body">
+<div class="auth-shell">
+  <aside class="auth-aside">
+    <div class="auth-brand">
+      <span class="brand-mark"><img src="{{ url_for('static', filename='logo/logo-128.png') }}" alt=""></span>
+      <span class="brand-text">
+        <span class="brand-title">Campaign</span>
+        <span class="brand-subtitle">Ledger</span>
+      </span>
+    </div>
+    <div class="auth-aside-body">
+      <h2 class="auth-hero">{% block hero %}{% endblock %}</h2>
+      <ol class="auth-ledger" aria-label="A few lines from a session log">
+        <li><span class="auth-ledger-when">Round 1</span><span>Initiative rolled for six combatants.</span></li>
+        <li><span class="auth-ledger-when">Round 2</span><span>Mira takes 9 slashing damage and drops to 4 HP.</span></li>
+        <li><span class="auth-ledger-when">Round 3</span><span>Thorin is down. Death save: success.</span></li>
+        <li><span class="auth-ledger-when">Map</span><span>The bridge is 35 ft away. Two moves.</span></li>
+      </ol>
+    </div>
+  </aside>
+
+  <main class="auth-main">
+    <div class="form-panel auth-card">
+      <div class="auth-brand auth-brand-compact">
+        <span class="brand-mark"><img src="{{ url_for('static', filename='logo/logo-128.png') }}" alt=""></span>
+        <span class="brand-text"><span class="brand-title">Campaign</span><span class="brand-subtitle">Ledger</span></span>
+      </div>
+      {% block card %}{% endblock %}
+    </div>
+  </main>
+</div>
+<script src="{{ url_for('static', filename='js/auth.js') }}"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

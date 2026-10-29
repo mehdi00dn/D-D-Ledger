@@ -1,0 +1,36 @@
+{% extends "auth_base.html" %}
+{% block title %}Cookies — Campaign Ledger{% endblock %}
+{% block hero %}One cookie. That is all.{% endblock %}
+{% block card %}
+<article class="legal">
+{% include "_legal_nav.html" %}
+<h1 class="auth-title">Cookies</h1>
+<p class="auth-sub">What Campaign Ledger stores in your browser, and why. It is only what the site needs to work.</p>
+
+<h2>The session cookie</h2>
+<p>When you log in, the site sets one cookie that keeps you signed in and protects your forms from being submitted by other sites. It is sent only to Campaign Ledger, cannot be read by scripts on the page, and is marked secure on https.</p>
+<ul>
+  <li><b>Name:</b> <code>__Host-ledger</code></li>
+  <li><b>Lasts:</b> up to 30 days if "Remember me" is ticked; otherwise until you close the browser.</li>
+  <li><b>Ends sooner when:</b> you log out, or use "Sign out everywhere" in Account settings.</li>
+</ul>
+
+<h2>Settings kept on your device</h2>
+<p>Your browser's local storage remembers a few choices so the page looks the way you left it. They never leave your device.</p>
+<ul>
+  <li>Light or dark theme.</li>
+  <li>Whether the sidebar is collapsed.</li>
+  <li>Whether the map tool dock is tucked away.</li>
+  <li>Which map tips you have already seen.</li>
+</ul>
+
+<h2>What we do not use</h2>
+<p>No analytics cookies, no advertising cookies, no cross-site tracking, and no third-party embeds. If that ever changes, this page and the privacy page will say so first, and we will ask before setting anything optional.</p>
+
+<h2>Clearing them</h2>
+<p>You can delete the cookie and stored settings in your browser at any time. You will be logged out and the site will forget your theme.</p>
+{% if contact %}<h2>Questions</h2>
+<p>Write to <a href="mailto:{{ contact }}">{{ contact }}</a>.</p>{% endif %}
+<p class="auth-switch"><a href="{{ url_for('login') }}">Back to log in</a></p>
+</article>
+{% endblock %}

@@ -141,7 +141,7 @@ def init_app(app):
         if sentry_on:
             _report(exc, rid)
         if request.is_json or '/api/' in request.path:
-            resp = jsonify({'error': 'something went wrong on our side', 'request_id': rid})
+            resp = jsonify({'error': 'Something went wrong on our side.', 'code': 'server_error', 'request_id': rid})
             resp.status_code = 500
             return resp
         return Response(f'Something went wrong on our side. Please try again in a moment.\n'

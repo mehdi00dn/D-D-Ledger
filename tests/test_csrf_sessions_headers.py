@@ -17,13 +17,29 @@ def token_of(client, path='/login'):
 
 
 # ------------------------------------------------------------------ CSRF
+def test_resubmitted_login_form_after_signing_in_is_not_an_error(appmod, user):
+    # The first submit signed the person in and rotated the token; a second submit still carries the old one.
+    c = user.c; c.csrf_enabled = False
+    r = c.post('/login', data={'username': user.name, 'password': user.password, 'csrf_token': 'old-token'})
+    assert r.status_code == 302 and r.headers['Location'].endswith('/campaigns')
+    anon = appmod.app.test_client(); anon.csrf_enabled = False
+    assert anon.post('/login', data={'username': 'x', 'password': 'y', 'csrf_token': 'old-token'}).status_code == 403   # signed-out still refused
+
+
+def test_logout_always_signs_out_even_with_a_stale_token_or_odd_origin(appmod, user):
+    # A failed security check must never leave someone signed in behind an error page (phone "Log out" bug).
+    c = user.c; c.csrf_enabled = False
+    r = c.post('/logout', data={'csrf_token': 'stale'}, headers={'Origin': 'null'})
+    assert r.status_code == 302 and r.headers['Location'].endswith('/login')
+    assert c.get('/campaigns').status_code == 302
+
+
 def test_state_changing_requests_without_a_token_are_rejected(appmod, user):
     cid = user.new_campaign(); ch = user.new_character(cid)
     c = user.c; c.csrf_enabled = False
     assert c.post(f'/campaigns/{cid}/characters/{ch}/delete').status_code == 403
     assert c.post(f'/campaigns/{cid}/api/battle/add', json={'character_id': ch}).status_code == 403
     assert c.post(f'/campaigns/{cid}/delete').status_code == 403
-    assert c.post('/logout').status_code == 403
     assert c.post('/uploads/sign', json={'purpose': 'avatar', 'size': 5}).status_code == 403
     assert q('SELECT COUNT(*) AS n FROM characters WHERE id = ?', ch)[0]['n'] == 1 and c.get('/campaigns').status_code == 200   # nothing happened, still logged in
 
@@ -31,7 +47,7 @@ def test_state_changing_requests_without_a_token_are_rejected(appmod, user):
 def test_login_and_register_need_a_token_too(appmod):
     c = raw(appmod)
     assert c.post('/login', data={'username': 'x', 'password': 'y'}).status_code == 403
-    assert c.post('/register', data={'username': 'newperson', 'password': 'longenough1', 'confirm': 'longenough1'}).status_code == 403
+    assert c.post('/register', data={'username': 'newperson', 'password': 'longenough1', 'email': 'player@example.com', 'confirm': 'longenough1'}).status_code == 403
 
 
 def test_wrong_and_foreign_tokens_are_rejected(appmod, make_user):
@@ -128,7 +144,7 @@ def test_session_cookie_flags_when_secure(appmod, make_user):
     with mock.patch.dict(appmod.app.config, {'SESSION_COOKIE_SECURE': True}):
         c = raw(appmod); tok = token_of(c)
         name = 'cookieuser' + os.urandom(3).hex()
-        c.post('/register', data={'username': name, 'password': 'secret12', 'confirm': 'secret12', 'csrf_token': tok})
+        c.post('/register', data={'username': name, 'password': 'secret12', 'email': 'player@example.com', 'confirm': 'secret12', 'csrf_token': tok})
         r = c.post('/logout', data={'csrf_token': token_of(c, '/campaigns')})
         # 'remember' is checked by default on the real login page -- a real browser sends it unless unchecked.
         r = c.post('/login', data={'username': name, 'password': 'secret12', 'remember': 'on', 'csrf_token': token_of(c)})
@@ -148,6 +164,16 @@ def test_security_headers_on_pages_and_api(appmod, user):
         assert 'unsafe-eval' not in csp
         script_src = [d for d in csp.split('; ') if d.startswith('script-src')][0]
         assert "'unsafe-inline'" not in script_src                      # DL-123: injected scripts must not run
+        style_src = [d for d in csp.split('; ') if d.startswith('style-src ')][0]
+        assert "'unsafe-inline'" not in style_src and "style-src-attr 'unsafe-inline'" in csp      # DL-140: no injected <style> blocks; style="" attributes stay
+        assert h['Cross-Origin-Resource-Policy'] == 'same-origin' and 'report-uri /csp-report' in csp
+
+
+def test_csp_report_endpoint_takes_a_browser_report_without_sign_in_or_token(appmod):
+    c = appmod.app.test_client()
+    body = '{"csp-report": {"violated-directive": "style-src-elem", "blocked-uri": "inline", "document-uri": "https://x/y"}}'
+    assert c.post('/csp-report', data=body, content_type='application/csp-report').status_code == 204
+    assert c.post('/csp-report', data='not json', content_type='application/csp-report').status_code == 204
 
 
 def test_csp_allows_only_our_own_storage_host_for_direct_uploads(appmod):
@@ -178,9 +204,15 @@ def test_login_never_redirects_off_site(appmod, make_user, nxt):
 
 
 def test_login_still_honours_safe_next_paths(appmod, make_user):
-    u = make_user(); u.post('/logout')
+    u = make_user(); u.post('/welcome', data={'action': 'skip'}); u.post('/logout')
     r = u.post('/login', data={'username': u.name, 'password': u.password, 'next': '/campaigns?x=1'})
     assert r.headers['Location'] == '/campaigns?x=1'
+
+
+def test_login_of_an_account_without_a_finished_profile_goes_through_welcome_and_keeps_next(appmod, make_user):
+    u = make_user(); u.post('/logout')
+    r = u.post('/login', data={'username': u.name, 'password': u.password, 'next': '/campaigns?x=1'})
+    assert r.headers['Location'] == '/welcome?next=/campaigns?x%3D1'
 
 
 # ------------------------------------------------------------------ sessions / passwords
@@ -212,13 +244,13 @@ def test_unchecking_remember_makes_a_session_only_cookie(appmod, make_user):
     ('bad\x07name', 'longenough1', 'Username must be'), ('', 'longenough1', 'required'), ('okname', '', 'required')])
 def test_registration_rules(appmod, username, password, fragment):
     c = appmod.app.test_client()
-    r = c.post('/register', data={'username': username, 'password': password, 'confirm': password})
+    r = c.post('/register', data={'username': username, 'password': password, 'email': 'player@example.com', 'confirm': password})
     assert r.status_code == 200 and fragment in r.get_data(as_text=True), fragment
 
 
 def test_persian_usernames_and_passwords_are_fine(appmod):
     c = appmod.app.test_client(); name = 'مهدی' + os.urandom(2).hex()
-    assert c.post('/register', data={'username': name, 'password': 'رمز-عبور-طولانی', 'confirm': 'رمز-عبور-طولانی'}).status_code == 302
+    assert c.post('/register', data={'username': name, 'password': 'رمز-عبور-طولانی', 'email': 'player@example.com', 'confirm': 'رمز-عبور-طولانی'}).status_code == 302
     c.post('/logout')
     assert c.post('/login', data={'username': name, 'password': 'رمز-عبور-طولانی'}).status_code == 302
     assert c.get('/campaigns').status_code == 200

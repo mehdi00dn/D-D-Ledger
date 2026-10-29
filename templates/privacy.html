@@ -1,0 +1,47 @@
+{% extends "auth_base.html" %}
+{% block title %}Privacy — Campaign Ledger{% endblock %}
+{% block hero %}Your table's business, not ours.{% endblock %}
+{% block card %}
+<article class="legal">
+{% include "_legal_nav.html" %}
+<h1 class="auth-title">Privacy</h1>
+<p class="auth-sub">What Campaign Ledger keeps about you, why, and what you can do about it. Plain words, no tracking.</p>
+
+<h2>What we keep</h2>
+<ul>
+  <li><b>Your account:</b> username, email address, and a scrambled (hashed) password. If you use Google sign-in, Google's id for you instead of a password.</li>
+  <li><b>Your profile, if you fill it in:</b> display name, bio, photo, and who may see your profile. You choose each of these.</li>
+  <li><b>What you make:</b> campaigns, characters, maps, notes, treasury entries, dice rolls and uploaded images. Other people at your table can see what you put in a shared campaign.</li>
+</ul>
+<p>We never ask for your real name, phone number, birth date or address.</p>
+
+<h2>Who sees it</h2>
+<p>Your email address is only ever shown to you. Your profile follows the visibility you picked: everyone signed in, people you play with, or only you. Nothing is public to people who are not signed in.</p>
+
+<h2>What we do not do</h2>
+<p>No analytics, no advertising, no tracking scripts, no third-party fonts. We do not sell or share your data.</p>
+
+<h2>IP addresses</h2>
+<p>We do not store them. To slow down password guessing, the server keeps a scrambled (hashed) form of an address for 24 hours, then deletes it.</p>
+
+<h2>Cookies and storage</h2>
+<p>One session cookie keeps you signed in (up to 30 days with "Remember me", otherwise until you close the browser). Your browser also remembers a few settings on your own device, such as theme and whether a tip was shown. Neither is used to follow you.</p>
+
+<h2>Services that handle your data for us</h2>
+<ul>
+  <li>Supabase stores the database and uploaded files.</li>
+  <li>Vercel runs the site and keeps its request logs.</li>
+  <li>Google, only if you choose Google sign-in.</li>
+  <li>An email service sends confirmation and password-reset mail.</li>
+</ul>
+
+<h2>Your choices</h2>
+<ul>
+  <li>Download everything we hold about you, and change your profile and visibility, in Account settings.</li>
+  <li>Delete your account there. It removes your account and the characters you keep in Your characters. A campaign you alone own is handed to another member or deleted, as you choose.</li>
+</ul>
+{% if contact %}<h2>Questions</h2>
+<p>Write to <a href="mailto:{{ contact }}">{{ contact }}</a>.</p>{% endif %}
+<p class="auth-switch"><a href="{{ url_for('login') }}">Back to log in</a></p>
+</article>
+{% endblock %}

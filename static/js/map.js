@@ -2,11 +2,26 @@
   const initData = JSON.parse(document.getElementById('map-init-data').textContent);
   const mapId = initData.id;
 
+  // A map change that was refused (no permission, locked object, session ended, no connection) must say so:
+  // the change is on screen but not on the server, and the next sync would silently undo it.
+  async function mapWrite(url, init) {
+    try {
+      const res = await fetch(url, init);
+      if (!res.ok) await LedgerApi.fail(res, "That change wasn't saved.");
+      return res;
+    } catch (err) {
+      LedgerApi.notify(LedgerApi.networkMessage);
+      throw err;
+    }
+  }
+
   const stageWrap = document.getElementById('map-stage-wrap');
   const stageInner = document.getElementById('map-stage-inner');
   const canvas = document.getElementById('map-canvas');
   const ctx = canvas.getContext('2d');
   const pinLayer = document.getElementById('map-pin-layer');
+  const rulerCanvas = document.getElementById('ruler-canvas');
+  const rctx = rulerCanvas.getContext('2d');
 
   const pinBubble = document.getElementById('pin-action-bubble');
   const pinViewBtn = document.getElementById('pin-view-btn');
@@ -18,6 +33,9 @@
   const pinDeleteBtn = document.getElementById('pin-delete-btn');
   const pinOwnerBtn = document.getElementById('pin-owner-btn');
   const pinOwnerMenu = document.getElementById('pin-owner-menu');
+  const pinShapesWrap = document.getElementById('pin-shapes-wrap');
+  const pinShapesBtn = document.getElementById('pin-shapes-btn');
+  const pinShapesMenu = document.getElementById('pin-shapes-menu');
   const pinRenameBox = document.getElementById('pin-rename-box');
   const pinRenameInput = document.getElementById('pin-rename-input');
 
@@ -26,6 +44,8 @@
   const shapeRotateToggle = document.getElementById('shape-rotate-toggle');
   const shapeAngleToggle = document.getElementById('shape-angle-toggle');
   const shapeLockBtn = document.getElementById('shape-lock-btn');
+  const shapeAttachBtn = document.getElementById('shape-attach-btn');
+  const attachHint = document.getElementById('map-attach-hint');
   const shapeHideBtn = document.getElementById('shape-hide-btn');   // DM only: hide the selected shape from players
   const pinHideBtn = document.getElementById('pin-hide-btn');       // DM only: hide the selected token from players
   const newHiddenBtn = document.getElementById('new-hidden-toggle'); // DM only: everything new starts hidden
@@ -42,6 +62,7 @@
   let gridOffsetY = initData.grid_offset_y || 0;
   let gridColor = initData.grid_color || 'gray';
   let gridVisible = initData.grid_visible == null ? true : !!initData.grid_visible;
+  let feetPerSquare = initData.feet_per_square || 5;     // how far one square is, for the ruler
   // While the mandatory first-time setup wizard is open, the grid must not
   // appear on the real (blurred) canvas behind it — only in the wizard's
   // own preview — regardless of the persisted/default grid_visible value.
@@ -57,9 +78,11 @@
 
   let bgImage = new Image();
   let bgLoaded = false;
+  let attachMode = false;   // true while the next token click attaches the selected shapes to it (DL-159)
   let drawings = [];   // shape objects: {id, kind, cx, cy, w, h, rotation, color, fill, fill_opacity, data, locked}
   let pins = [];        // {id, pin_type, x, y, scale, rotation, locked, ...}
   let currentTool = 'select';
+  let ruler = null;           // {a, b, dragging}: the measuring line, in natural image pixels; each person's own, never saved or shared
   let selectedShapeId = null;      // the single selected shape, only meaningful when selectedShapeIds.size === 1
   let selectedShapeIds = new Set(); // multi-select (Ctrl/Cmd+click)
   let selectedPinId = null;
@@ -95,6 +118,8 @@
   // ---------------------------------------------------------------------
   canvas.width = naturalWidth;
   canvas.height = naturalHeight;
+  rulerCanvas.width = naturalWidth;
+  rulerCanvas.height = naturalHeight;
   bgImage.onload = () => { bgLoaded = true; redraw(); };
   // The picture comes from the fog-aware route (a Player's copy has fogged areas painted out).
   const mapImageUrl = (v) => initData.image_url + (v ? '?v=' + v : '');
@@ -396,6 +421,68 @@
     drawGridOnto(ctx, canvas.width, canvas.height, gridSize, gridOffsetX, gridOffsetY, gridColor, gridVisible);
   }
 
+  // The ruler counts squares the 5e way (a diagonal step is one square, like a straight one) and turns them into feet.
+  function rulerReading() {
+    const dx = Math.abs(ruler.b.x - ruler.a.x), dy = Math.abs(ruler.b.y - ruler.a.y);
+    const squares = gridSize > 0 ? Math.round(Math.max(dx, dy) / gridSize) : 0;
+    return { squares, feet: squares * feetPerSquare, text: `${squares} ${squares === 1 ? 'square' : 'squares'} \u00b7 ${squares * feetPerSquare} ft` };
+  }
+
+  // The ruler has a canvas of its own above the tokens, the fog and the shapes, so nothing can cover the line or its label.
+  // That canvas is as sharp as the screen (not as the map picture) and the ruler is drawn in screen pixels, so it keeps the
+  // same small size at any zoom or map size.
+  function drawRuler() {
+    const readout = document.getElementById('ruler-readout');
+    const rect = rulerCanvas.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    const px = Math.max(1, Math.round(rect.width * dpr)), py = Math.max(1, Math.round(rect.height * dpr));
+    if (rulerCanvas.width !== px || rulerCanvas.height !== py) { rulerCanvas.width = px; rulerCanvas.height = py; }
+    rctx.setTransform(1, 0, 0, 1, 0, 0);
+    rctx.clearRect(0, 0, rulerCanvas.width, rulerCanvas.height);
+    if (!ruler) { if (readout) readout.textContent = ''; return; }
+    const { text, squares } = rulerReading();
+    if (readout) readout.textContent = text;
+    const k = px / naturalWidth;                                   // natural map pixels -> canvas pixels
+    const unit = rect.width > 0 ? naturalWidth / rect.width : 1;   // one unit = one screen pixel, in map pixels
+    rctx.setTransform(k, 0, 0, k, 0, 0);
+    const a = ruler.a, b = ruler.b;
+    const len = Math.hypot(b.x - a.x, b.y - a.y);
+    rctx.save();
+    rctx.lineCap = 'round';
+    rctx.shadowColor = 'rgba(0,0,0,0.55)'; rctx.shadowBlur = 4 * unit;
+    rctx.beginPath(); rctx.moveTo(a.x, a.y); rctx.lineTo(b.x, b.y);
+    rctx.strokeStyle = 'rgba(14,16,24,0.7)'; rctx.lineWidth = 4 * unit; rctx.stroke();       // a dark edge keeps it readable on a pale map
+    rctx.shadowBlur = 0;
+    rctx.strokeStyle = '#f0d58a'; rctx.lineWidth = 2 * unit; rctx.stroke();
+    if (len > 0 && squares > 1 && squares <= 60) {                 // a small tick at every square
+      const nx = -(b.y - a.y) / len, ny = (b.x - a.x) / len;
+      rctx.lineWidth = 1.25 * unit;
+      for (let i = 1; i < squares; i++) {
+        const t = i / squares, tx = a.x + (b.x - a.x) * t, ty = a.y + (b.y - a.y) * t, h = 3.5 * unit;
+        rctx.beginPath(); rctx.moveTo(tx - nx * h, ty - ny * h); rctx.lineTo(tx + nx * h, ty + ny * h); rctx.stroke();
+      }
+    }
+    [a, b].forEach((p) => {                                        // hollow end rings
+      rctx.beginPath(); rctx.arc(p.x, p.y, 4.5 * unit, 0, Math.PI * 2);
+      rctx.fillStyle = 'rgba(14,16,24,0.88)'; rctx.fill();
+      rctx.strokeStyle = '#f0d58a'; rctx.lineWidth = 2 * unit; rctx.stroke();
+    });
+    if (len > 14 * unit) {
+      const size = 12 * unit;
+      rctx.font = `600 ${size}px Inter, system-ui, sans-serif`;
+      rctx.textAlign = 'center'; rctx.textBaseline = 'middle';
+      const w = rctx.measureText(text).width + 16 * unit, h = size + 10 * unit;
+      const mx = Math.min(Math.max((a.x + b.x) / 2, w / 2 + 2 * unit), naturalWidth - w / 2 - 2 * unit);
+      const my = Math.min(Math.max((a.y + b.y) / 2 - 18 * unit, h / 2 + 2 * unit), naturalHeight - h / 2 - 2 * unit);
+      rctx.beginPath();
+      if (rctx.roundRect) rctx.roundRect(mx - w / 2, my - h / 2, w, h, h / 2); else rctx.rect(mx - w / 2, my - h / 2, w, h);
+      rctx.fillStyle = 'rgba(14,16,24,0.92)'; rctx.fill();
+      rctx.strokeStyle = 'rgba(240,213,138,0.75)'; rctx.lineWidth = 1 * unit; rctx.stroke();
+      rctx.fillStyle = '#f6efdc'; rctx.fillText(text, mx, my + 0.5 * unit);
+    }
+    rctx.restore();
+  }
+
   function drawShape(d) {
     ctx.save();
     ctx.translate(d.cx, d.cy);
@@ -470,6 +557,17 @@
       if (!d) return;
       const corners = drawShapeOutline(d);
       if (id === selectedShapeId) primaryCorners = { d, corners };
+    });
+    ctx.setLineDash([]);
+
+    // A dotted line from each selected shape to the token it follows.
+    ctx.strokeStyle = '#d4a847';
+    ctx.setLineDash([canvas.width / 400, canvas.width / 300]);
+    selectedShapeIds.forEach((id) => {
+      const d = drawings.find((s) => s.id === id);
+      const pin = d && d.attached_pin_id ? pins.find((q) => q.id === d.attached_pin_id) : null;
+      if (!pin) return;
+      ctx.beginPath(); ctx.moveTo(d.cx, d.cy); ctx.lineTo(pin.x, pin.y); ctx.stroke();
     });
     ctx.setLineDash([]);
 
@@ -559,6 +657,7 @@
     drawSelectionOverlay();
     drawLockHoverIcon();
     renderAngleLabels();
+    drawRuler();
   }
 
   // ---------------------------------------------------------------------
@@ -688,6 +787,12 @@
     } else {
       [pinResizeBtn, pinRotateBtn, pinLockBtn].forEach((b) => { b.style.display = ''; });
     }
+    if (pinShapesWrap) {
+      const n = drawings.filter((d) => d.attached_pin_id === pin.id).length;
+      pinShapesWrap.style.display = (n && canMovePin(pin) && !readOnly()) ? '' : 'none';
+      pinShapesBtn.title = n === 1 ? '1 shape is attached to this token' : `${n} shapes are attached to this token`;
+      closeShapesMenu();
+    }
     if (pinOwnerBtn) {
       pinOwnerBtn.classList.toggle('has-owner', pin.owner_user_id != null);
       pinOwnerBtn.title = pin.owner_name ? `Assigned to ${pin.owner_name}` : 'Assign to a player';
@@ -774,25 +879,27 @@
 
   // Open the owner list above the button when it fits inside the map, otherwise below it (or whichever side
   // has more room), and slide it sideways if it would poke out of the map.
-  function placeOwnerMenu() {
+  function placeMenu(btnEl, menu) {
     const stage = stageWrap.getBoundingClientRect();
-    const btn = pinOwnerBtn.getBoundingClientRect();
+    const btn = btnEl.getBoundingClientRect();
     const top = Math.max(stage.top, 0), bottom = Math.min(stage.bottom, window.innerHeight);
     const left = Math.max(stage.left, 0), right = Math.min(stage.right, window.innerWidth);
-    pinOwnerMenu.style.maxHeight = '';
-    pinOwnerMenu.style.setProperty('--shift', '0px');
-    const need = pinOwnerMenu.offsetHeight + 12;
+    menu.style.maxHeight = '';
+    menu.style.setProperty('--shift', '0px');
+    const need = menu.offsetHeight + 12;
     const roomAbove = btn.top - top, roomBelow = bottom - btn.bottom;
     const up = roomAbove >= need || (roomBelow < need && roomAbove >= roomBelow);
-    pinOwnerMenu.dataset.dir = up ? 'up' : 'down';
+    menu.dataset.dir = up ? 'up' : 'down';
     const room = (up ? roomAbove : roomBelow) - 12;
-    if (room < pinOwnerMenu.offsetHeight) pinOwnerMenu.style.maxHeight = `${Math.max(80, room)}px`;
-    const m = pinOwnerMenu.getBoundingClientRect();
+    if (room < menu.offsetHeight) menu.style.maxHeight = `${Math.max(80, room)}px`;
+    const m = menu.getBoundingClientRect();
     let shift = 0;
     if (m.left < left + 6) shift = left + 6 - m.left;
     else if (m.right > right - 6) shift = right - 6 - m.right;
-    pinOwnerMenu.style.setProperty('--shift', `${shift}px`);
+    menu.style.setProperty('--shift', `${shift}px`);
   }
+
+  function placeOwnerMenu() { placeMenu(pinOwnerBtn, pinOwnerMenu); }
 
   function closeOwnerMenu() {
     if (!pinOwnerMenu) return;
@@ -872,6 +979,7 @@
     const d = drawings.find((s) => s.id === selectedShapeId);
     if (!d) { shapeBubble.hidden = true; return; }
     syncHideButton(shapeHideBtn, selectedShapeIds.size > 1 ? [...selectedShapeIds].every((id) => (drawings.find((x) => x.id === id) || {}).dm_only) : d.dm_only);
+    syncAttachButton();
     applyBubbleScale();
     if (shapeBubble.classList.contains('is-docked')) { shapeBubble.hidden = false; return; }
     const wrapRect = stageWrap.getBoundingClientRect();
@@ -919,6 +1027,7 @@
   }
 
   function selectShape(id) {
+    exitAttachMode();
     selectedShapeIds = new Set([id]);
     selectedShapeId = id;
     shapeHandleMode = null;
@@ -931,6 +1040,7 @@
     updateStylePanelVisibility();
   }
   function deselectShape() {
+    exitAttachMode();
     if (selectedShapeIds.size === 0) return;
     selectedShapeIds = new Set();
     selectedShapeId = null;
@@ -1077,10 +1187,10 @@
   // Persistence + undo/redo command factories
   // ---------------------------------------------------------------------
   function serializeShapeForCreate(d) {
-    return { kind: d.kind, data: d.data, cx: d.cx, cy: d.cy, w: d.w, h: d.h, rotation: d.rotation, color: d.color, fill: d.fill, fill_opacity: d.fill_opacity, locked: !!d.locked, dm_only: !!d.dm_only };
+    return { kind: d.kind, data: d.data, cx: d.cx, cy: d.cy, w: d.w, h: d.h, rotation: d.rotation, color: d.color, fill: d.fill, fill_opacity: d.fill_opacity, locked: !!d.locked, dm_only: !!d.dm_only, attached_pin_id: d.attached_pin_id || null };
   }
   async function persistShapeFields(d, fields) {
-    await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/drawings/${d.id}/update`, {
+    await mapWrite(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/drawings/${d.id}/update`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(fields),
     });
   }
@@ -1116,7 +1226,7 @@
     return {
       label: 'add-shape',
       undo: async () => {
-        await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/drawings/${d.id}/delete`, { method: 'POST' });
+        await mapWrite(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/drawings/${d.id}/delete`, { method: 'POST' });
         const idx = drawings.findIndex((s) => s.id === d.id);
         if (idx >= 0) drawings.splice(idx, 1);
         if (selectedShapeId === d.id) deselectShape();
@@ -1146,7 +1256,7 @@
         redraw();
       },
       redo: async () => {
-        await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/drawings/${d.id}/delete`, { method: 'POST' });
+        await mapWrite(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/drawings/${d.id}/delete`, { method: 'POST' });
         const idx = drawings.findIndex((s) => s.id === d.id);
         if (idx >= 0) drawings.splice(idx, 1);
         if (selectedShapeId === d.id) deselectShape();
@@ -1156,7 +1266,7 @@
   }
   async function deleteShape(d) {
     const index = drawings.findIndex((s) => s.id === d.id);
-    await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/drawings/${d.id}/delete`, { method: 'POST' });
+    await mapWrite(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/drawings/${d.id}/delete`, { method: 'POST' });
     drawings.splice(index, 1);
     if (selectedShapeId === d.id) deselectShape();
     redraw();
@@ -1167,22 +1277,22 @@
     return { pin_type: p.pin_type, icon_key: p.icon_key, character_id: p.character_id || null, custom_name: p.pin_type === 'prop' ? (p.custom_name || null) : null, x: p.x, y: p.y, scale: p.scale || 1, rotation: p.rotation || 0, locked: !!p.locked, dm_only: !!p.dm_only };
   }
   async function persistPinFields(p, fields) {
-    await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/pins/${p.id}/update`, {
+    await mapWrite(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/pins/${p.id}/update`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(fields),
     });
   }
   function makePinTransformCommand(p, before, after) {
     return {
       label: 'transform-pin',
-      undo: async () => { Object.assign(p, before); renderPins(); await persistPinFields(p, before); },
-      redo: async () => { Object.assign(p, after); renderPins(); await persistPinFields(p, after); },
+      undo: async () => { const ox = p.x, oy = p.y; Object.assign(p, before); shiftAttached(p.id, p.x - ox, p.y - oy); renderPins(); await persistPinFields(p, before); },
+      redo: async () => { const ox = p.x, oy = p.y; Object.assign(p, after); shiftAttached(p.id, p.x - ox, p.y - oy); renderPins(); await persistPinFields(p, after); },
     };
   }
   function makeAddPinCommand(p) {
     return {
       label: 'add-pin',
       undo: async () => {
-        await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/pins/${p.id}/delete`, { method: 'POST' });
+        await mapWrite(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/pins/${p.id}/delete`, { method: 'POST' });
         const idx = pins.findIndex((x) => x.id === p.id);
         if (idx >= 0) pins.splice(idx, 1);
         if (selectedPinId === p.id) deselectPin();
@@ -1212,7 +1322,7 @@
         renderPins();
       },
       redo: async () => {
-        await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/pins/${p.id}/delete`, { method: 'POST' });
+        await mapWrite(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/pins/${p.id}/delete`, { method: 'POST' });
         const idx = pins.findIndex((x) => x.id === p.id);
         if (idx >= 0) pins.splice(idx, 1);
         if (selectedPinId === p.id) deselectPin();
@@ -1229,7 +1339,7 @@
       }
     }
     const index = pins.findIndex((p) => p.id === pin.id);
-    await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/pins/${pin.id}/delete`, { method: 'POST' });
+    await mapWrite(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/pins/${pin.id}/delete`, { method: 'POST' });
     pins.splice(index, 1);
     if (selectedPinId === pin.id) deselectPin();
     renderPins();
@@ -1316,6 +1426,66 @@
     });
   }
 
+  // ---- Attach a shape to a token (DL-159): no alignment, the shape keeps its place and then follows the token ----
+  function selectedShapes() {
+    const ids = selectedShapeIds.size ? [...selectedShapeIds] : (selectedShapeId != null ? [selectedShapeId] : []);
+    return ids.map((id) => drawings.find((s) => s.id === id)).filter(Boolean);
+  }
+  function shiftAttached(pinId, dx, dy) {
+    if (!dx && !dy) return;
+    let any = false;
+    drawings.forEach((d) => { if (d.attached_pin_id === pinId) { d.cx += dx; d.cy += dy; any = true; } });
+    if (any) { redraw(); positionShapeBubble(); }
+  }
+  function syncAttachButton() {
+    if (!shapeAttachBtn) return;
+    const picked = selectedShapes();
+    const on = picked.length > 0 && picked.every((d) => d.attached_pin_id);
+    shapeAttachBtn.classList.toggle('is-on', on || attachMode);
+    shapeAttachBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    shapeAttachBtn.title = attachMode ? 'Cancel: click a token, or press Esc' : on ? 'Detach from the token' : 'Attach to a token: the shape then moves with it';
+  }
+  function exitAttachMode() {
+    if (!attachMode) return;
+    attachMode = false;
+    document.body.classList.remove('is-attaching');
+    if (attachHint) attachHint.hidden = true;
+    syncAttachButton();
+  }
+  async function setAttached(list, pinId) {
+    const before = list.map((d) => ({ d, id: d.attached_pin_id || null }));
+    for (const d of list) { d.attached_pin_id = pinId; await persistShapeFields(d, { attached_pin_id: pinId }); }
+    pushCommand({
+      label: 'attach-shape',
+      undo: async () => { for (const b of before) { b.d.attached_pin_id = b.id; await persistShapeFields(b.d, { attached_pin_id: b.id }); } redraw(); syncAttachButton(); },
+      redo: async () => { for (const b of before) { b.d.attached_pin_id = pinId; await persistShapeFields(b.d, { attached_pin_id: pinId }); } redraw(); syncAttachButton(); },
+    });
+    redraw();
+  }
+  async function attachSelectedTo(pin) {
+    const list = selectedShapes();
+    exitAttachMode();
+    if (!list.length) return;
+    try { await setAttached(list, pin.id); } catch (err) { for (const d of list) d.attached_pin_id = null; redraw(); }
+    syncAttachButton();
+  }
+  if (shapeAttachBtn) shapeAttachBtn.addEventListener('click', async () => {
+    if (readOnly()) return;
+    const list = selectedShapes();
+    if (!list.length) return;
+    if (attachMode) { exitAttachMode(); return; }
+    if (list.every((d) => d.attached_pin_id)) {                      // already attached: this click lets go
+      await setAttached(list, null);
+      syncAttachButton();
+      return;
+    }
+    attachMode = true;
+    document.body.classList.add('is-attaching');
+    if (attachHint) attachHint.hidden = false;
+    syncAttachButton();
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && attachMode) { e.preventDefault(); exitAttachMode(); } });
+
   pinLayer.addEventListener('mousedown', (e) => {
     const unlockBtn = e.target.closest('.pin-unlock-icon');
     if (unlockBtn) {
@@ -1331,6 +1501,7 @@
     if (!el) return;
     const pin = pins.find((p) => String(p.id) === el.dataset.pinId);
     if (!pin) return;
+    if (attachMode) { e.preventDefault(); e.stopPropagation(); attachSelectedTo(pin); return; }
     // A Player on a locked map can still click a pin to view it (subject
     // to the server's own NPC-detail redaction) -- just not drag/erase it.
     if (readOnly() || !canMovePin(pin)) { e.preventDefault(); selectPin(pin.id); return; }
@@ -1338,7 +1509,7 @@
     if (currentTool === 'eraser') { e.preventDefault(); deletePinObj(pin); return; }
     if (currentTool !== 'select') return;
     const pos = eventPos(e);
-    activeDrag = { type: 'move-pin', pin, el, startPos: pos, startX: pin.x, startY: pin.y, moved: false };
+    activeDrag = { type: 'move-pin', pin, el, startPos: pos, startX: pin.x, startY: pin.y, lastX: pin.x, lastY: pin.y, moved: false };
     e.preventDefault();
   });
 
@@ -1469,7 +1640,7 @@
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ owner_user_id: ownerId }),
       });
-      if (!res.ok) return;
+      if (!res.ok) { LedgerApi.fail(res, "Couldn't change who controls that token."); return; }
       pin.owner_user_id = ownerId;
       const m = members.find((x) => Number(x.id) === ownerId);
       pin.owner_name = m ? m.username : null;
@@ -1481,12 +1652,55 @@
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeOwnerMenu(); });
   }
 
+  // Shapes attached to the selected token: a shape whose centre sits behind its token cannot be clicked on the map, so this
+  // menu is where it is unlocked, locked, selected (to resize or restyle it) or let go of.
+  const SHAPE_NAMES = { rect: 'Rectangle', oval: 'Oval', circle: 'Circle', line: 'Line', angle: 'Cone', polygon: 'Polygon' };
+  function closeShapesMenu() {
+    if (!pinShapesMenu) return;
+    pinShapesMenu.hidden = true;
+    pinShapesBtn.setAttribute('aria-expanded', 'false');
+  }
+  if (pinShapesBtn) {
+    function renderShapesMenu() {
+      const list = drawings.filter((d) => d.attached_pin_id === selectedPinId);
+      pinShapesMenu.innerHTML = list.length ? list.map((d, i) =>
+        `<div class="pin-shape-row" data-shape="${d.id}"><span class="pin-shape-name">${escapeHtml(SHAPE_NAMES[d.kind] || 'Shape')} ${i + 1}${d.locked ? ' (locked)' : ''}</span>` +
+        `<button type="button" class="pin-owner-opt" data-act="lock">${d.locked ? 'Unlock' : 'Lock'}</button>` +
+        (d.locked ? '' : '<button type="button" class="pin-owner-opt" data-act="select">Select</button>') +
+        '<button type="button" class="pin-owner-opt" data-act="detach">Detach</button></div>').join('')
+        : '<span class="pin-shape-name">No shapes attached.</span>';
+    }
+    pinShapesBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (!pinShapesMenu.hidden) { closeShapesMenu(); return; }
+      renderShapesMenu();
+      pinShapesMenu.hidden = false;
+      placeMenu(pinShapesBtn, pinShapesMenu);
+      pinShapesBtn.setAttribute('aria-expanded', 'true');
+    });
+    pinShapesMenu.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const btn = e.target.closest('[data-act]');
+      const row = e.target.closest('[data-shape]');
+      if (!btn || !row) return;
+      const d = drawings.find((s) => s.id === Number(row.dataset.shape));
+      if (!d) return;
+      const pinId = selectedPinId;
+      if (btn.dataset.act === 'lock') { if (d.locked) await unlockShape(d); else await lockShape(d); redraw(); }
+      else if (btn.dataset.act === 'detach') { await setAttached([d], null); syncAttachButton(); }
+      else if (btn.dataset.act === 'select') { closeShapesMenu(); selectShape(d.id); return; }
+      if (selectedPinId === pinId) { positionPinBubble(pinId); renderShapesMenu(); pinShapesMenu.hidden = !drawings.some((s) => s.attached_pin_id === pinId); if (!pinShapesMenu.hidden) { placeMenu(pinShapesBtn, pinShapesMenu); } }
+    });
+    document.addEventListener('click', (e) => { if (!e.target.closest('#pin-shapes-wrap')) closeShapesMenu(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeShapesMenu(); });
+  }
+
   if (pinPcNpcToggle) {
     pinPcNpcToggle.addEventListener('click', async () => {
       const pin = pins.find((p) => p.id === selectedPinId);
       if (!pin) return;
       const nextIsNpc = !pin.is_npc;
-      await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/pins/${pin.id}/update`, {
+      await mapWrite(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/pins/${pin.id}/update`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ is_npc: nextIsNpc }),
       });
@@ -1588,7 +1802,8 @@
       deselectPin();
       deselectShape();
       canvas.classList.toggle('tool-eraser', currentTool === 'eraser');
-      pinLayer.classList.toggle('draw-mode', SHAPE_TOOLS.includes(currentTool) || isFogTool(currentTool));
+      pinLayer.classList.toggle('draw-mode', SHAPE_TOOLS.includes(currentTool) || currentTool === 'ruler' || isFogTool(currentTool));
+      if (currentTool !== 'ruler' && ruler) { ruler = null; redraw(); }
       if (fogOptions) fogOptions.hidden = !isFogTool(currentTool);
       canvas.classList.toggle('tool-fog', isFogTool(currentTool));
       if (fog && isFogTool(currentTool)) fog.setMode(currentTool === 'fog-erase' ? 'erase' : 'paint');
@@ -1651,7 +1866,7 @@
     const ok = window.confirmAction ? await window.confirmAction('Clear all drawings on this map?') : confirm('Clear all drawings on this map?');
     if (!ok) return;
     const snapshot = drawings.map((d) => ({ ...d }));
-    await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/drawings/clear`, { method: 'POST' });
+    await mapWrite(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/drawings/clear`, { method: 'POST' });
     drawings = [];
     deselectShape();
     redraw();
@@ -1670,7 +1885,7 @@
         redraw();
       },
       redo: async () => {
-        await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/drawings/clear`, { method: 'POST' });
+        await mapWrite(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/drawings/clear`, { method: 'POST' });
         drawings = [];
         deselectShape();
         redraw();
@@ -1682,7 +1897,7 @@
   if (linkBattleCheckbox) {
     linkBattleCheckbox.addEventListener('change', async (e) => {
       linkedToBattle = e.target.checked;
-      await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/settings`, {
+      await mapWrite(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/settings`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ linked_to_battle: linkedToBattle }),
       });
@@ -1695,7 +1910,7 @@
   if (lockMapCheckbox) {
     lockMapCheckbox.addEventListener('change', async (e) => {
       lockedForPlayers = e.target.checked;
-      await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/settings`, {
+      await mapWrite(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/settings`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ locked_for_players: lockedForPlayers }),
       });
@@ -1744,6 +1959,7 @@
     if (s.grid_offset_x !== gridOffsetX) { gridOffsetX = s.grid_offset_x; gridChanged = true; }
     if (s.grid_offset_y !== gridOffsetY) { gridOffsetY = s.grid_offset_y; gridChanged = true; }
     if (!!s.snap_to_grid !== snapToGrid) { snapToGrid = !!s.snap_to_grid; }
+    if (s.feet_per_square && s.feet_per_square !== feetPerSquare) { feetPerSquare = s.feet_per_square; gridChanged = true; }
     if (gridChanged) { renderPins(); redraw(); }
   }
 
@@ -1778,6 +1994,7 @@
       live = window.MapLive.create({
         mapId, fog,
         pins: () => pins, drawings: () => drawings,
+        attachedShapes: (pinId) => drawings.filter((d) => d.attached_pin_id === pinId && !d.dm_only),
         pinEl: (id) => pinLayer.querySelector(`[data-pin-id="${Number(id)}"]`),
         stylePin: (id, el, p) => {
           applyPinStyle(p, el);
@@ -1864,11 +2081,22 @@
   // ---------------------------------------------------------------------
   // Canvas interactions
   // ---------------------------------------------------------------------
+  window.addEventListener('mouseup', () => { if (ruler && ruler.dragging) ruler.dragging = false; });   // the line stays up until the next drag, Esc or another tool
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && ruler && !e.target.closest('input, textarea, select')) { ruler = null; redraw(); }
+  });
   let drawState = null;   // creating a brand-new shape, or moving the grid
   let angleDrawState = null; // {vertex} while placing an angle/cone shape (click, then click again)
   let activeDrag = null;  // manipulating an existing shape or pin
 
   canvas.addEventListener('mousedown', (e) => {
+    if (currentTool === 'ruler') {                       // measuring changes nothing, so it works on a locked map too
+      if (e.button !== 0) return;
+      const p = eventPos(e);
+      ruler = { a: p, b: p, dragging: true };
+      redraw();
+      return;
+    }
     if (readOnly()) return;
     if (isFogTool(currentTool)) { if (fog && window.IS_DM && e.button === 0) fog.begin(e); return; }
     const pos = eventPos(e);
@@ -1996,6 +2224,10 @@
   }
 
   canvas.addEventListener('mousemove', (e) => {
+    if (currentTool === 'ruler') {
+      if (ruler && ruler.dragging) { ruler.b = eventPos(e); redraw(); }
+      return;
+    }
     if (isFogTool(currentTool)) { if (fog && window.IS_DM) fog.move(e); return; }
     // Hover detection for the "click to unlock" icon (select tool only).
     if (currentTool === 'select' && !drawState && !activeDrag) {
@@ -2149,6 +2381,8 @@
       pin.y = snapped.y;
       applyPinStyle(pin, activeDrag.el);
       if (selectedPinId === pin.id) positionPinBubble(pin.id);
+      shiftAttached(pin.id, pin.x - activeDrag.lastX, pin.y - activeDrag.lastY);          // attached shapes travel with the token
+      activeDrag.lastX = pin.x; activeDrag.lastY = pin.y;
       return;
     }
     if (activeDrag.type === 'resize-pin') {
@@ -2342,7 +2576,7 @@
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ pin_type: 'character', character_id: character.id, x: snapped.x, y: snapped.y, scale: 1.0, rotation: 0, dm_only: window.IS_DM && newObjectsHidden }),
     });
-    if (!res.ok) { flashPlaceHint("Couldn't place that character. Please try again."); return; }
+    if (!res.ok) { flashPlaceHint(await LedgerApi.message(res, "Couldn't place that character. Please try again.")); return; }
     const json = await res.json();
     await loadPins();                                         // the server numbers duplicates and links the battle row
     const pin = pins.find((p) => p.id === json.id);
@@ -2454,6 +2688,7 @@
   const setupTitle = document.getElementById('setup-title');
   const previewCanvas = document.getElementById('setup-preview-canvas');
   const previewCtx = previewCanvas.getContext('2d');
+  const setupFeetInput = document.getElementById('setup-feet-per-square');
   let snapToGrid = !!initData.snap_to_grid;
   let gridSettingsBefore = null; // snapshot for cancel/revert when reopened
 
@@ -2464,6 +2699,7 @@
     setupSizeSlider.disabled = !gridVisible;
     setupVisibleCheckbox.checked = gridVisible;
     setupSnapCheckbox.checked = snapToGrid;
+    if (setupFeetInput) setupFeetInput.value = feetPerSquare;
     document.querySelectorAll('.grid-color-swatch').forEach((sw) => {
       sw.classList.toggle('active', sw.dataset.gridColor === gridColor);
     });
@@ -2485,7 +2721,7 @@
   }
 
   function openGridSettings(mandatory) {
-    gridSettingsBefore = { gridSize, gridColor, gridVisible, gridOffsetX, gridOffsetY, snapToGrid };
+    gridSettingsBefore = { gridSize, gridColor, gridVisible, gridOffsetX, gridOffsetY, snapToGrid, feetPerSquare };
     setupOverlay.hidden = false;
     if (fog && fogToggle) fogToggle.checked = fog.hasFog();
     contentArea.classList.add('blurred');
@@ -2505,6 +2741,7 @@
       gridOffsetX = gridSettingsBefore.gridOffsetX;
       gridOffsetY = gridSettingsBefore.gridOffsetY;
       snapToGrid = gridSettingsBefore.snapToGrid;
+      feetPerSquare = gridSettingsBefore.feetPerSquare;
     }
     suppressMainGrid = false;
     setupOverlay.hidden = true;
@@ -2528,6 +2765,10 @@
   setupSnapCheckbox.addEventListener('change', () => {
     snapToGrid = setupSnapCheckbox.checked;
   });
+  if (setupFeetInput) setupFeetInput.addEventListener('input', () => {
+    const v = parseInt(setupFeetInput.value, 10);
+    if (v >= 1 && v <= 100) { feetPerSquare = v; redraw(); }
+  });
   document.querySelectorAll('.grid-color-swatch').forEach((sw) => {
     sw.addEventListener('click', () => {
       gridColor = sw.dataset.gridColor;
@@ -2541,22 +2782,31 @@
   // Hold and drag on the preview to move the grid without leaving the
   // lightbox — dragging in preview-pixel space is converted back to
   // natural-image pixels since the preview is downscaled.
+  // Pointer events so a finger works as well as a mouse; the canvas is letterboxed
+  // (object-fit: contain) on phones, so the drag scale uses the drawn image width, not the element's.
   let previewDrag = null;
-  previewCanvas.addEventListener('mousedown', (e) => {
-    previewDrag = { startX: e.clientX, startY: e.clientY, origOffsetX: gridOffsetX, origOffsetY: gridOffsetY };
-  });
-  window.addEventListener('mousemove', (e) => {
-    if (!previewDrag) return;
+  function previewDrawnWidth() {
     const rect = previewCanvas.getBoundingClientRect();
-    const scale = naturalWidth / rect.width;
+    const ratio = previewCanvas.width / previewCanvas.height;
+    return Math.max(1, Math.min(rect.width, rect.height * ratio));
+  }
+  previewCanvas.addEventListener('pointerdown', (e) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    previewDrag = { id: e.pointerId, startX: e.clientX, startY: e.clientY, origOffsetX: gridOffsetX, origOffsetY: gridOffsetY };
+    try { previewCanvas.setPointerCapture(e.pointerId); } catch (_) { /* not capturable: window listeners still work */ }
+    e.preventDefault();
+  });
+  window.addEventListener('pointermove', (e) => {
+    if (!previewDrag || e.pointerId !== previewDrag.id) return;
+    const scale = naturalWidth / previewDrawnWidth();
     gridOffsetX = previewDrag.origOffsetX + (e.clientX - previewDrag.startX) * scale;
     gridOffsetY = previewDrag.origOffsetY + (e.clientY - previewDrag.startY) * scale;
     drawSetupPreview();
     redraw();
   });
-  window.addEventListener('mouseup', () => {
-    previewDrag = null;
-  });
+  const endPreviewDrag = (e) => { if (previewDrag && e.pointerId === previewDrag.id) previewDrag = null; };
+  window.addEventListener('pointerup', endPreviewDrag);
+  window.addEventListener('pointercancel', endPreviewDrag);
 
   // The image may still be loading when the overlay first appears.
   const prevOnLoad = bgImage.onload;
@@ -2565,11 +2815,12 @@
   setupCloseBtn.addEventListener('click', () => closeGridSettings(true));
 
   setupConfirmBtn.addEventListener('click', async () => {
-    await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/settings`, {
+    await mapWrite(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/settings`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         grid_size: gridSize, grid_color: gridColor, grid_visible: gridVisible, grid_setup_done: true,
         grid_offset_x: Math.round(gridOffsetX), grid_offset_y: Math.round(gridOffsetY), snap_to_grid: snapToGrid,
+        feet_per_square: feetPerSquare,
       }),
     });
     closeGridSettings(false);
@@ -2597,6 +2848,7 @@
     stageInner.style.transform = `translate(${panX}px, ${panY}px) scale(${zoomLevel})`;
     stageInner.style.setProperty('--ledger-zoom-inv', String(1 / zoomLevel));
     if (zoomLevelLabel) zoomLevelLabel.textContent = `${Math.round(zoomLevel * 100)}%`;
+    if (ruler) drawRuler();                                        // its size follows the zoom
     applyBubbleScale();
     if (selectedPinId != null) positionPinBubble(selectedPinId);
     if (selectedShapeId != null) positionShapeBubble();

@@ -2,7 +2,7 @@
 #    uv pip compile requirements.in --python-version 3.12 --universal -o requirements.txt
 blinker==1.9.0
     # via flask
-certifi==2026.7.22
+certifi==2026.10.23
     # via requests
 charset-normalizer==3.5.2
     # via requests
@@ -25,7 +25,7 @@ nh3==0.3.7
     # via -r requirements.in
 numpy==2.5.4
     # via -r requirements.in
-pillow==12.3.0
+pillow==13.0.0
     # via -r requirements.in
 psycopg==3.3.6
     # via -r requirements.in

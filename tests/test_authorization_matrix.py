@@ -10,7 +10,7 @@ import io, re
 import pytest
 from conftest import q, png_bytes
 
-SCOPED = {'map_id', 'char_id', 'group_id', 'pid', 'drawing_id', 'pin_id', 'sheet_id'}
+SCOPED = {'map_id', 'char_id', 'group_id', 'pid', 'drawing_id', 'pin_id', 'sheet_id', 'quest_id', 'entry_id'}
 
 
 def build_world(u):
@@ -23,8 +23,12 @@ def build_world(u):
     did = u.json(f'/campaigns/{cid}/api/maps/{mid}/drawings', {'kind': 'rect', 'data': {}, 'cx': 1, 'cy': 1, 'w': 5, 'h': 5}).get_json()['id']
     pin = u.json(f'/campaigns/{cid}/api/maps/{mid}/pins', {'pin_type': 'prop', 'icon_key': 'skull', 'x': 1, 'y': 1}).get_json()['id']
     pid = u.add_to_battle(cid, ch)
+    u.post(f'/campaigns/{cid}/quests/add', data={'title': 'World quest'})
+    qid = q('SELECT id FROM quests WHERE campaign_id = ?', cid)[0]['id']
+    u.post(f'/campaigns/{cid}/treasury/add', data={'kind': 'income', 'gp': '5', 'note': 'World coins'})
+    eid = q('SELECT id FROM treasury_entries WHERE campaign_id = ?', cid)[0]['id']
     uid = q('SELECT id FROM users WHERE username = ?', u.name)[0]['id']
-    return dict(cid=cid, group_id=gid, char_id=ch, sheet_id=sheet, map_id=mid, drawing_id=did, pin_id=pin, pid=pid, user_id=uid)
+    return dict(cid=cid, quest_id=qid, entry_id=eid, group_id=gid, char_id=ch, sheet_id=sheet, map_id=mid, drawing_id=did, pin_id=pin, pid=pid, user_id=uid)
 
 
 def snapshot(cid):
@@ -36,6 +40,8 @@ def snapshot(cid):
         'sheets': q('SELECT cs.* FROM character_sheets cs JOIN characters c ON c.id = cs.character_id WHERE c.campaign_id = ? ORDER BY cs.id', cid),
         'draw': q('SELECT d.* FROM map_drawings d JOIN maps m ON m.id = d.map_id WHERE m.campaign_id = ? ORDER BY d.id', cid),
         'pins': q('SELECT p.* FROM map_pins p JOIN maps m ON m.id = p.map_id WHERE m.campaign_id = ? ORDER BY p.id', cid),
+        'quests': q('SELECT * FROM quests WHERE campaign_id = ? ORDER BY id', cid),
+        'treasury': q('SELECT * FROM treasury_entries WHERE campaign_id = ? ORDER BY id', cid),
         'battle': q('SELECT bp.* FROM battle_participants bp JOIN characters c ON c.id = bp.character_id WHERE c.campaign_id = ? ORDER BY bp.id', cid),
     }
 

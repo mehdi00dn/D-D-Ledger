@@ -209,8 +209,23 @@
         if (!e) e = { cur: { x: pin.x, y: pin.y, s: pin.scale || 1, r: pin.rotation || 0 }, tgt: tgt, at: t, ending: false };
         e.tgt = tgt; e.at = t; e.ending = !!msg.end;
         livePins.set(id, e); any = true;
+        followWithShapes(id, pin, tgt, t, !!msg.end);
       });
       if (any) ensureTick();
+    }
+
+    // Shapes attached to a token travel with it: each keeps the offset it had before the gesture began.
+    function followWithShapes(pinId, pin, tgt, t, ending) {
+      if (!host.attachedShapes) return;
+      host.attachedShapes(pinId).forEach(function (d) {
+        if (host.draggingShape(d.id)) return;
+        var e = liveShapes.get(d.id);
+        if (!e) e = { cur: { cx: d.cx, cy: d.cy, w: d.w, h: d.h, r: d.rotation || 0 }, tgt: null, off: { x: d.cx - pin.x, y: d.cy - pin.y }, data: null, at: t, ending: false };
+        if (!e.off) e.off = { x: d.cx - pin.x, y: d.cy - pin.y };
+        e.tgt = { cx: tgt.x + e.off.x, cy: tgt.y + e.off.y, w: d.w, h: d.h, r: d.rotation || 0 };
+        e.at = t; e.ending = ending;
+        liveShapes.set(d.id, e);
+      });
     }
 
     function receiveShapes(msg) {

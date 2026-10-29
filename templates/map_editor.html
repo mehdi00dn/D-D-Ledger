@@ -141,6 +141,7 @@
   </div>
 
   <div class="map-tool-group map-tool-group-persistent">
+    <button type="button" class="map-tool-btn" data-tool="ruler" title="Ruler: drag to measure in squares and feet (Esc clears it)" aria-label="Ruler">{{ icon('ruler') }}</button>
     <button type="button" class="btn btn-ghost btn-sm" id="zoom-reset-btn" title="Reset zoom to 100%">Reset Zoom</button>
     <span class="map-setup-value" id="zoom-level-label">100%</span>
     <span class="hint-text" id="hold-space-hint" style="margin:0;">Hold Space to pan</span>
@@ -156,6 +157,7 @@
     <div id="map-pin-layer"></div>
     {% if g.is_dm %}<div id="fog-brush-ring" class="fog-brush-ring" hidden></div>{% endif %}
     <div id="angle-labels-layer"></div>
+    <canvas id="ruler-canvas" aria-hidden="true"></canvas>
     <!-- Pin action bubble shown when a pin is selected -->
     <div class="pin-rename-box" id="pin-rename-box" hidden>
       <input type="text" id="pin-rename-input" maxlength="40" placeholder="Name this marker">
@@ -170,6 +172,10 @@
       </div>
       <button type="button" class="pin-radial-btn pin-pc-npc-toggle" id="pin-pc-npc-toggle" title="Toggle between PC and NPC">PC</button>
       {% endif %}
+      <div class="pin-owner-wrap" id="pin-shapes-wrap" style="display:none">
+        <button type="button" class="pin-radial-btn" id="pin-shapes-btn" title="Shapes attached to this token" aria-haspopup="true" aria-expanded="false">{{ icon('link') }}</button>
+        <div class="pin-owner-menu pin-shapes-menu" id="pin-shapes-menu" role="menu" hidden></div>
+      </div>
       <button type="button" class="pin-radial-btn" id="pin-rename-btn" title="Rename">{{ icon('pencil') }}</button>
       <button type="button" class="pin-radial-btn" id="pin-resize-btn" title="Hold and drag to resize">{{ icon('resize') }}</button>
       <button type="button" class="pin-radial-btn" id="pin-rotate-btn" title="Hold and drag to rotate">{{ icon('rotate') }}</button>
@@ -178,12 +184,15 @@
       <button type="button" class="pin-radial-btn pin-radial-danger" id="pin-delete-btn" title="Delete">{{ icon('trash-2') }}</button>
     </div>
 
+    <p class="map-attach-hint" id="map-attach-hint" role="status" hidden>Click the token to attach the shape to. Esc cancels.</p>
+
     <!-- Shape action bubble shown when a drawn shape is selected -->
     <div class="pin-action-bubble" id="shape-action-bubble" hidden>
       <button type="button" class="btn-icon" id="shape-resize-toggle" title="Toggle resize handles">{{ icon('resize') }}</button>
       <button type="button" class="btn-icon" id="shape-rotate-toggle" title="Toggle rotate handle">{{ icon('rotate') }}</button>
       <button type="button" class="btn-icon" id="shape-angle-toggle" title="Toggle angle handles (widen/narrow the cone)" hidden>{{ icon('angle-tool') }}</button>
       {% if g.is_dm %}<button type="button" class="btn-icon shape-hide-btn" id="shape-hide-btn" title="Hide from players" aria-pressed="false">{{ icon('eye-off') }}</button>{% endif %}
+      <button type="button" class="btn-icon" id="shape-attach-btn" title="Attach to a token: the shape then moves with it" aria-pressed="false">{{ icon('link') }}</button>
       <button type="button" class="btn-icon" id="shape-lock-btn" title="Lock in place">{{ icon('lock') }}</button>
       <button type="button" class="btn-icon btn-icon-danger" id="shape-delete-btn" title="Delete">{{ icon('trash-2') }}</button>
     </div>
@@ -213,7 +222,7 @@
       <button type="button" class="btn-icon map-setup-close-btn" id="setup-close-btn" title="Close without saving" hidden>{{ icon('x') }}</button>
       <canvas id="setup-preview-canvas"></canvas>
     </div>
-    <p class="map-setup-drag-hint">Click and drag the preview to move the grid</p>
+    <p class="map-setup-drag-hint">Drag the preview to move the grid</p>
     <div class="map-setup-bar">
       <div class="map-setup-title" id="setup-title">Set up your grid</div>
       <label class="field-checkbox">
@@ -230,6 +239,10 @@
         <button type="button" class="grid-color-swatch active" data-grid-color="gray" title="Gray" aria-label="Grid colour gray"></button>
         <button type="button" class="grid-color-swatch" data-grid-color="white" title="White" aria-label="Grid colour white"></button>
         <button type="button" class="grid-color-swatch" data-grid-color="black" title="Black" aria-label="Grid colour black"></button>
+      </div>
+      <div class="map-setup-slider-group">
+        <label class="grid-size-label" for="setup-feet-per-square">Feet per square</label>
+        <input type="number" id="setup-feet-per-square" class="map-setup-number" min="1" max="100" step="1" value="{{ map.feet_per_square or 5 }}">
       </div>
       <label class="field-checkbox">
         <input type="checkbox" id="setup-snap-grid" {{ 'checked' if map.snap_to_grid else '' }}>
@@ -257,6 +270,7 @@
   </div>
 </div>
 
+<p class="ruler-readout" id="ruler-readout" role="status" aria-live="polite"></p>
 <script id="map-init-data" type="application/json">{{ map | tojson }}</script>
 {% endblock %}
 
