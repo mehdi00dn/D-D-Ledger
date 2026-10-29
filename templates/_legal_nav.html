@@ -1,4 +1,6 @@
-<nav class="legal-nav" aria-label="Legal pages">
+<nav class="legal-nav" aria-label="About and legal pages">
+  <a href="{{ url_for('about') }}"{% if request.endpoint == 'about' %} aria-current="page"{% endif %}>About</a>
+  <a href="{{ url_for('contact') }}"{% if request.endpoint == 'contact' %} aria-current="page"{% endif %}>Contact</a>
   <a href="{{ url_for('privacy') }}"{% if request.endpoint == 'privacy' %} aria-current="page"{% endif %}>Privacy</a>
   <a href="{{ url_for('terms') }}"{% if request.endpoint == 'terms' %} aria-current="page"{% endif %}>Terms</a>
   <a href="{{ url_for('cookies') }}"{% if request.endpoint == 'cookies' %} aria-current="page"{% endif %}>Cookies</a>

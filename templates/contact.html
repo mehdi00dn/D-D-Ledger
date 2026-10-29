@@ -1,0 +1,22 @@
+{% extends "auth_base.html" %}
+{% block title %}Contact — Campaign Ledger{% endblock %}
+{% block hero %}Say hello.{% endblock %}
+{% block card %}
+<article class="legal">
+{% include "_legal_nav.html" %}
+<h1 class="auth-title">Contact</h1>
+<p class="auth-sub">Questions, bug reports, ideas, or a request about your data.</p>
+{% if contact %}
+<h2>Email</h2>
+<p><a href="mailto:{{ contact }}">{{ contact }}</a></p>
+{% else %}
+<p>Contact details are being set up and will appear here soon.</p>
+{% endif %}
+<h2>Good to include</h2>
+<ul>
+  <li>For a bug: what you did, what you expected, and what happened. The reference number shown on an error page helps a lot.</li>
+  <li>For a data request: the username of the account it is about. You can also download or delete your data yourself in Account settings.</li>
+</ul>
+<p class="auth-switch"><a href="{{ url_for('login') }}">Back to log in</a></p>
+</article>
+{% endblock %}

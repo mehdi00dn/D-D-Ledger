@@ -118,7 +118,7 @@ def _campaign_access_field(form):
 # Full accounts: anyone can self-register, and every route requires a
 # logged-in session except the handful that must stay reachable to get one.
 
-PUBLIC_ENDPOINTS = {'login', 'register', 'static', 'healthz', 'forgot_password', 'reset_password', 'robots_txt', 'security_txt', 'csp_report', 'google_start', 'google_callback', 'privacy', 'terms', 'cookies'}
+PUBLIC_ENDPOINTS = {'login', 'register', 'static', 'healthz', 'forgot_password', 'reset_password', 'robots_txt', 'security_txt', 'csp_report', 'google_start', 'google_callback', 'privacy', 'terms', 'cookies', 'about', 'contact'}
 
 
 # Which classification of connection failure gets which fixed, secret-free hint.
@@ -1062,6 +1062,18 @@ def _legal_page(template):
 def privacy():
     """DL-69: the privacy policy, public.  It restates docs/DATA_WE_COLLECT.md in plain words."""
     return _legal_page('privacy.html')
+
+
+@app.route('/about')
+def about():
+    """DL-25: what Campaign Ledger is, public."""
+    return _legal_page('about.html')
+
+
+@app.route('/contact')
+def contact():
+    """DL-25: how to reach the people behind the site, public.  Shows PRIVACY_CONTACT once it is set."""
+    return _legal_page('contact.html')
 
 
 @app.route('/terms')

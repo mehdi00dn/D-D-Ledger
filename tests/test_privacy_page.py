@@ -43,3 +43,14 @@ def test_signing_up_records_the_agreement_and_the_forms_show_the_notice(appmod):
                headers={'X-Test-IP': '10.8.8.8'})
     assert r.status_code == 302
     assert q('SELECT terms_accepted_at FROM users WHERE username = ?', 'agreer_one')[0]['terms_accepted_at'] is not None
+
+
+def test_about_and_contact_are_public_and_contact_waits_for_an_address(appmod, monkeypatch):
+    c = appmod.app.test_client()
+    monkeypatch.delenv('PRIVACY_CONTACT', raising=False)
+    about = c.get('/about'); contact = c.get('/contact')
+    assert about.status_code == 200 and 'About Campaign Ledger' in about.get_data(as_text=True)
+    assert contact.status_code == 200 and 'being set up' in contact.get_data(as_text=True) and 'mailto:' not in contact.get_data(as_text=True)
+    monkeypatch.setenv('PRIVACY_CONTACT', 'hello@example.com')
+    assert 'mailto:hello@example.com' in c.get('/contact').get_data(as_text=True)
+    assert 'href="/about"' in c.get('/privacy').get_data(as_text=True)
