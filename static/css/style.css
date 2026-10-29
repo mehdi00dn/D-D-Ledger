@@ -5101,75 +5101,7 @@ input[type="range"]:disabled { opacity: 0.5; cursor: not-allowed; }
   .coin-row, .coin-inputs { gap: 6px; }
 }
 
-/* Encounter builder (DL-147) */
 .sr-only { position: absolute; inline-size: 1px; block-size: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
-.enc-new { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-.enc-new-box { display: flex; align-items: center; gap: 4px; padding: 4px 4px 4px 14px; border: 1px solid var(--hairline); border-radius: 999px; background: var(--bg-panel); transition: border-color .15s ease, box-shadow .15s ease; }
-.enc-new-box:focus-within { border-color: var(--brass); box-shadow: 0 0 0 3px color-mix(in srgb, var(--brass) 22%, transparent); }
-.enc-new-box input { min-inline-size: 14rem; border: 0; background: transparent; box-shadow: none; padding-inline: 0; color: inherit; outline: none; }
-.enc-new-box .btn { border-radius: 999px; }
-.enc-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
-.enc-card { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
-.enc-card-main { flex: 1 1 16rem; min-width: 0; }
-.enc-card-name { margin: 0; font-size: 16px; }
-.enc-card-name a { color: inherit; text-decoration: none; }
-.enc-card-name a:hover { text-decoration: underline; }
-.enc-card-lines { margin: 3px 0 0; font-size: 13px; color: var(--parchment-dim); overflow-wrap: anywhere; }
-.enc-card-side { display: grid; justify-items: end; gap: 3px; }
-.enc-card-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.enc-tier { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; border: 1px solid var(--hairline); }
-.enc-tier-low { color: var(--moss-ink); }
-.enc-tier-moderate { color: var(--brass-ink); }
-.enc-tier-high, .enc-tier-over { color: var(--blood-ink); }
-.enc-xp { font-family: var(--font-mono); font-size: 13px; font-variant-numeric: tabular-nums; color: var(--parchment-dim); }
-.enc-back { margin: 0 0 4px; font-size: 13px; }
-.enc-name-label { display: block; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--parchment-dim); margin-block-end: 4px; }
-.enc-name-box, .enc-rename-box { display: flex; align-items: center; gap: 8px; border: 1px solid var(--hairline); border-radius: 10px; background: var(--bg-panel); padding-inline: 10px; transition: border-color .15s ease, box-shadow .15s ease; }
-.enc-name-box { inline-size: min(100%, 30rem); }
-.enc-name-box:focus-within, .enc-rename-box:focus-within { border-color: var(--brass); box-shadow: 0 0 0 3px color-mix(in srgb, var(--brass) 22%, transparent); }
-.enc-name-box .icon, .enc-rename-box .icon { flex: none; inline-size: 15px; block-size: 15px; color: var(--parchment-dim); }
-.enc-name, .enc-rename { flex: 1 1 auto; min-inline-size: 0; font: inherit; color: inherit; background: transparent; border: 0; outline: none; box-shadow: none; padding-block: 7px; padding-inline: 0; }
-.enc-name { font-family: var(--font-display, inherit); font-size: 22px; font-weight: 600; }
-.enc-rename { font-size: 16px; font-weight: 600; padding-block: 5px; }
-.enc-rename-box { border-color: transparent; background: transparent; }
-.enc-rename-box:hover { border-color: var(--hairline); }
-.enc-run { display: inline-flex; align-items: center; gap: 6px; }
-.enc-run .enc-hp { inline-size: 8.5rem; }
-.enc-run select { padding-block: 5px; font-size: 13px; }
-.enc-hp { inline-size: 9.5rem; }
-.enc-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-.enc-status { min-block-size: 1.3em; margin: 0 0 8px; font-size: 13px; color: var(--parchment-dim); }
-.enc-status.is-error, .hint-text.is-error { color: var(--blood-ink); }
-.enc-grid { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: 16px; align-items: start; }
-.enc-results { max-block-size: 28rem; overflow: auto; }
-.enc-result { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-block: 6px; border-block-end: 1px solid var(--hairline); }
-.enc-result-name { min-width: 0; overflow-wrap: anywhere; }
-.enc-lines { list-style: none; margin: 0; padding: 0; display: grid; }
-.enc-line { display: flex; align-items: center; gap: 8px 12px; padding-block: 8px; border-block-end: 1px solid var(--hairline); }
-.enc-line-main { flex: 1 1 auto; min-width: 0; display: grid; }
-.enc-line-name { font-weight: 600; overflow-wrap: anywhere; }
-.enc-line-meta { font-size: 12.5px; color: var(--parchment-dim); }
-.enc-step { display: flex; align-items: center; gap: 6px; }
-.enc-count { min-inline-size: 1.6em; text-align: center; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
-.enc-meter-wrap { margin-block: 14px; display: grid; gap: 8px; }
-.enc-summary { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.enc-meter { position: relative; block-size: 12px; border-radius: 999px; background: color-mix(in srgb, var(--parchment-dim) 18%, transparent); overflow: visible; }
-.enc-meter-fill { block-size: 100%; inline-size: var(--w, 0%); border-radius: 999px; background: var(--moss-ink); transition: inline-size .25s ease, background-color .25s ease; }
-.enc-meter-fill[data-tier="moderate"] { background: var(--brass-ink); }
-.enc-meter-fill[data-tier="high"], .enc-meter-fill[data-tier="over"] { background: var(--blood-ink); }
-.enc-mark { position: absolute; inset-block: -3px; inset-inline-start: var(--at, 0%); inline-size: 2px; background: var(--parchment); opacity: .55; }
-.enc-budget { display: flex; justify-content: space-between; gap: 8px; margin: 0; font-size: 12.5px; }
-.enc-budget div { display: grid; gap: 1px; }
-.enc-budget dt { color: var(--parchment-dim); }
-.enc-budget dd { margin: 0; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
-.enc-party { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 0 0 8px; padding: 0; border: 0; font-size: 14px; }
-.enc-party legend { padding: 0; margin-block-end: 6px; font-size: 13px; color: var(--parchment-dim); }
-.enc-party label { display: inline-flex; align-items: center; gap: 6px; }
-.enc-lvl { font-family: var(--font-mono); font-size: 12px; color: var(--parchment-dim); }
-.enc-manual { display: flex; gap: 12px; }
-.enc-manual .field { inline-size: 6.5rem; }
-@media (max-width: 860px) { .enc-grid { grid-template-columns: minmax(0, 1fr); } .enc-card-side { justify-items: start; } }
-@media (prefers-reduced-motion: reduce) { .enc-meter-fill { transition: none; } }
 
 /* Attach a shape to a token (DL-159) */
 .map-attach-hint { position: fixed; inset-block-start: 14px; inset-inline: 0; margin-inline: auto; inline-size: max-content; max-inline-size: 92vw; z-index: 1000; margin-block: 0;

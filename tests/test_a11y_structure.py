@@ -26,22 +26,12 @@ def _check(html, where):
 def test_pages_have_one_h1_and_headings_in_order_when_empty(make_user):
     dm = make_user(); cid = dm.new_campaign()
     base = f'/campaigns/{cid}'
-    for path in ('/home', '/characters', '/factions', '/maps', '/battle', '/dice', '/activity', '/treasury', '/encounters', '/reference', '/edit'):
+    for path in ('/home', '/characters', '/factions', '/maps', '/battle', '/dice', '/activity', '/treasury', '/reference', '/edit'):
         r = dm.get(base + path)
         assert r.status_code == 200, path
         _check(r.data.decode(), path or '/')
     for path in ('/campaigns', '/notifications', '/account'):
         _check(dm.get(path).data.decode(), path)
-
-
-def test_the_encounter_builder_has_a_heading_and_the_sidebar_a_name(make_user):
-    dm = make_user(); cid = dm.new_campaign()
-    dm.post(f'/campaigns/{cid}/encounters/new', data={'name': 'x'})
-    from conftest import q
-    eid = q('SELECT id FROM encounters WHERE campaign_id = ?', cid)[0]['id']
-    html = dm.get(f'/campaigns/{cid}/encounters/{eid}').data.decode()
-    _check(html, 'encounter builder')
-    assert 'id="sidebar" aria-label="Menu"' in html
 
 
 def test_pages_with_a_second_aside_name_both_landmarks(make_user):

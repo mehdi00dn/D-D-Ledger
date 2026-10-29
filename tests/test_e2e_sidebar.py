@@ -28,7 +28,7 @@ def test_settings_link_and_hide_npcs_switch(shared_server, pw):
     errors = []
     page.on('pageerror', lambda x: errors.append(str(x)))
     page.goto(f'{base}/campaigns/{cid}/characters')
-    assert page.locator('.sidebar-nav .nav-group').all_text_contents() == ['Table', 'Encounters', 'Lore', 'Campaign']
+    assert page.locator('.sidebar-nav .nav-group').all_text_contents() == ['Table', 'Play', 'Lore', 'Campaign']
     page.get_by_role('link', name='Settings').first.click()
     page.wait_for_url(f'**/campaigns/{cid}/edit')
     assert page.locator('.sidebar-nav a.nav-tab.active').inner_text().strip() == 'Settings'
