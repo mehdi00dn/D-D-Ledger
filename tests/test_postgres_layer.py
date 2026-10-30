@@ -93,7 +93,7 @@ def test_simultaneous_registration_of_one_username_never_500s(appmod):
     name = f'race{uuid.uuid4().hex[:8]}'; barrier = threading.Barrier(6); codes = []
     def go():
         c = appmod.app.test_client(); barrier.wait()
-        codes.append(c.post('/register', data={'username': name, 'password': 'secret12', 'email': 'player@example.com', 'confirm': 'secret12'}).status_code)
+        codes.append(c.post('/register', data={'username': name, 'password': 'secret12', 'email': 'player@example.com', 'confirm': 'secret12', 'accept_terms': '1', 'accept_cookies': '1'}).status_code)
     ts = [threading.Thread(target=go) for _ in range(6)]; [t.start() for t in ts]; [t.join() for t in ts]
     assert sorted(codes) == [200] * 5 + [302], codes
     assert len(q('SELECT id FROM users WHERE username = ?', name)) == 1

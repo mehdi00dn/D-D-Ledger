@@ -57,3 +57,29 @@ def test_campaign_image_is_capped_at_1200_and_the_preview_says_so(shared_server,
     text = page.inner_text('#lightbox-size')
     assert 'largest allowed edge 1200 px' in text and ' × ' in text
     ctx.close()
+
+
+def test_landscape_battle_log_follows_the_bars(shared_server, pw):
+    """DL-166: hiding the menu bar lets the battle log drop down with the dice button, showing it lifts it again."""
+    base = shared_server.url
+    dm = Api(base)
+    cid = dm.campaign()
+    hero = dm.character(cid, 'Mira', level=3)
+    dm.s.post(f'{base}/campaigns/{cid}/api/battle/add', json={'character_id': hero})
+    ctx = dm.context(pw, base)
+    page = ctx.new_page(); page.set_viewport_size({'width': 844, 'height': 390})          # a phone held sideways
+    page.goto(f'{base}/campaigns/{cid}/battle')
+    page.wait_for_selector('#battle-log:not([hidden])')
+    gap = lambda: 390 - page.locator('#battle-log-toggle').bounding_box()['y'] - page.locator('#battle-log-toggle').bounding_box()['height']
+    before = gap()
+    page.click('.js-nav-toggle')
+    page.wait_for_function("() => document.documentElement.classList.contains('bars-hidden')")
+    page.wait_for_timeout(500)
+    hidden = gap()
+    assert hidden < before - 20, (before, hidden)                                          # it moved down with the bars
+    fab = page.locator('.dice-fab').bounding_box()
+    log = page.locator('#battle-log-toggle').bounding_box()
+    assert abs((fab['y'] + fab['height'] / 2) - (log['y'] + log['height'] / 2)) < 6        # still level with the dice button
+    page.click('.js-nav-toggle'); page.wait_for_timeout(500)
+    assert abs(gap() - before) < 3
+    ctx.close()

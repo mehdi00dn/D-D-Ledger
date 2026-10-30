@@ -23,7 +23,7 @@ def test_register_login_logout_and_gate(appmod, make_user):
 def test_duplicate_username_rejected(appmod, make_user):
     u = make_user()
     c = appmod.app.test_client()
-    r = c.post('/register', data={'username': u.name, 'password': 'secret12', 'email': 'player@example.com', 'confirm': 'secret12'})
+    r = c.post('/register', data={'username': u.name, 'password': 'secret12', 'email': 'player@example.com', 'confirm': 'secret12', 'accept_terms': '1', 'accept_cookies': '1'})
     assert r.status_code == 200          # form re-rendered with an error, no crash
 
 
@@ -31,7 +31,7 @@ def test_duplicate_username_rejected_case_insensitively(appmod, make_user):
     u = make_user()
     c = appmod.app.test_client()
     variant = u.name.upper() if u.name != u.name.upper() else u.name.lower()
-    r = c.post('/register', data={'username': variant, 'password': 'secret12', 'email': 'player@example.com', 'confirm': 'secret12'})
+    r = c.post('/register', data={'username': variant, 'password': 'secret12', 'email': 'player@example.com', 'confirm': 'secret12', 'accept_terms': '1', 'accept_cookies': '1'})
     assert r.status_code == 200 and 'already taken' in r.get_data(as_text=True)
 
 

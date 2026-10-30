@@ -5383,3 +5383,8 @@ a.pager-link:hover { border-color: var(--brass); }
 .lightbox-size { margin: 12px 0 0; font: 500 12px var(--font-mono); color: var(--parchment-dim); text-align: center; }
 .lightbox-size[hidden] { display: none; }
 .file-drop-note { display: block; margin-block-start: 2px; font-size: 11.5px; color: var(--parchment-dim); }
+
+/* ---- DL-166: the battle log rides with the bars like the dice button and the dock: when the bars slide away it drops with them ---- */
+.battle-log { transition: bottom 0.28s var(--ease-drawer, cubic-bezier(0.32, 0.72, 0, 1)); }
+.bars-hidden .battle-log { --bar-h: 0px; }                                   /* the same offsets as above, with no bar to clear */
+@media (prefers-reduced-motion: reduce) { .battle-log { transition-duration: 0.01ms; } }

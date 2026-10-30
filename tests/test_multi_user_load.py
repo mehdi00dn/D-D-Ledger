@@ -10,7 +10,7 @@ pytestmark = pytest.mark.skipif(BACKEND != 'postgres', reason='needs a shared da
 
 def _user(inst_a):
     s = CsrfSession(inst_a.url); name = f'l{uuid.uuid4().hex[:9]}'
-    assert s.post(inst_a.url + '/register', data={'username': name, 'password': 'secret12', 'email': 'player@example.com', 'confirm': 'secret12'}, allow_redirects=False).status_code == 302
+    assert s.post(inst_a.url + '/register', data={'username': name, 'password': 'secret12', 'email': 'player@example.com', 'confirm': 'secret12', 'accept_terms': '1', 'accept_cookies': '1'}, allow_redirects=False).status_code == 302
     return s, name
 
 

@@ -468,6 +468,10 @@ def register():
             error = 'Password must be at least 8 characters.'
         elif len(password) > 128:
             error = 'Password must be at most 128 characters.'
+        elif not request.form.get('accept_terms'):
+            error = 'Tick the box to agree to the Terms and the Privacy page.'
+        elif not request.form.get('accept_cookies'):
+            error = 'Tick the box to accept the cookies. The site needs its one sign-in cookie to work.'
 
         if error is None and db.execute('SELECT id FROM users WHERE lower(username) = lower(?)', (username,)).fetchone():
             error = 'That username is already taken.'
@@ -475,14 +479,16 @@ def register():
             error = 'An account already uses that email address. Log in instead, or continue with Google.'
         if error:
             db.close()
-            return render_template('register.html', error=error, username=username, email=email, next=request.form.get('next', ''))
+            return render_template('register.html', error=error, username=username, email=email, next=request.form.get('next', ''),
+                                   accepted=bool(request.form.get('accept_terms') and request.form.get('accept_cookies')))
 
-        must_confirm = mailer.enabled()                      # with no way to send mail nobody can be asked to confirm
+        must_confirm = mailer.enabled() and os.environ.get('EMAIL_CONFIRM_REQUIRED', '1') != '0'      # no way to send mail, or the switch off: nobody is locked
         try:
             try:
-                cur = db.execute('INSERT INTO users (username, password_hash, email, terms_accepted_at, email_confirm_required) VALUES (?, ?, ?, ' + _UTC_NOW + ', ?)',
+                cur = db.execute('INSERT INTO users (username, password_hash, email, terms_accepted_at, cookies_accepted_at, email_confirm_required) '
+                                 'VALUES (?, ?, ?, ' + _UTC_NOW + ', ' + _UTC_NOW + ', ?)',
                                   (username, generate_password_hash(password), email, must_confirm))
-            except pgerr.UndefinedColumn:                    # migration 0049 not applied yet: sign up as before
+            except pgerr.UndefinedColumn:                    # migration 0049 or 0050 not applied yet: sign up as before
                 db.rollback()
                 must_confirm = False
                 cur = db.execute('INSERT INTO users (username, password_hash, email, terms_accepted_at) VALUES (?, ?, ?, ' + _UTC_NOW + ')',
@@ -506,7 +512,7 @@ def register():
         if must_confirm:                                      # DL-165: ask for the confirmation right away
             return redirect(url_for('confirm_email', next=nxt) if nxt else url_for('confirm_email'))
         return redirect(_after_sign_in_url(user_id, nxt))
-    return render_template('register.html', error=None, username='', email='', next=request.args.get('next', ''))
+    return render_template('register.html', error=None, username='', email='', next=request.args.get('next', ''), accepted=False)
 
 
 def _user_by_email(db, address):
@@ -579,6 +585,7 @@ GOOGLE_MESSAGES = {
     'conflict': 'That email belongs to an account linked to a different Google account.',
     'busy': 'Too many accounts were created from this connection. Wait a bit and try again.',
     'off': 'Google sign-in is not set up on this server yet.',
+    'consent': 'To create an account with Google, tick the Terms and cookies boxes below first, then choose Sign up with Google.',
 }
 
 
@@ -618,7 +625,8 @@ def google_start():
         return redirect(url_for('login', google='off'))
     state, verifier = secrets.token_urlsafe(24), secrets.token_urlsafe(48)
     challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b'=').decode()
-    session['g_oauth'] = {'s': state, 'v': verifier, 'n': _safe_next(request.args.get('next')) or ''}
+    session['g_oauth'] = {'s': state, 'v': verifier, 'n': _safe_next(request.args.get('next')) or '',
+                          'a': request.args.get('accept') == '1'}            # the sign-up page sends 1 once the Terms and cookies boxes are ticked
     params = {'client_id': os.environ['GOOGLE_CLIENT_ID'], 'redirect_uri': _google_redirect_uri(), 'response_type': 'code',
               'scope': 'openid email profile', 'state': state, 'code_challenge': challenge, 'code_challenge_method': 'S256',
               'prompt': 'select_account'}
@@ -667,6 +675,8 @@ def google_callback():
                     return back('conflict')
                 db.execute('UPDATE users SET google_sub = ? WHERE id = ?', (sub, user['id']))        # same confirmed email: link
         if user is None:
+            if not pending.get('a'):                                  # a new account needs the Terms and cookies boxes ticked first
+                return redirect(url_for('register', google='consent'))
             ip = client_ip()
             if security.register_blocked_for(db, app.secret_key, ip):
                 return back('busy')
@@ -675,8 +685,13 @@ def google_callback():
             display = name if name and not _profile_error(name, '') else None
             username = _free_username(db, email.split('@')[0])
             try:
-                cur = db.execute('INSERT INTO users (username, password_hash, email, email_verified_at, google_sub, display_name, terms_accepted_at) '
-                                 'VALUES (?, NULL, ?, ' + _UTC_NOW + ', ?, ?, ' + _UTC_NOW + ')', (username, email, sub, display))
+                try:
+                    cur = db.execute('INSERT INTO users (username, password_hash, email, email_verified_at, google_sub, display_name, terms_accepted_at, cookies_accepted_at) '
+                                     'VALUES (?, NULL, ?, ' + _UTC_NOW + ', ?, ?, ' + _UTC_NOW + ', ' + _UTC_NOW + ')', (username, email, sub, display))
+                except pgerr.UndefinedColumn:                       # migration 0050 not applied yet
+                    db.rollback()
+                    cur = db.execute('INSERT INTO users (username, password_hash, email, email_verified_at, google_sub, display_name, terms_accepted_at) '
+                                     'VALUES (?, NULL, ?, ' + _UTC_NOW + ', ?, ?, ' + _UTC_NOW + ')', (username, email, sub, display))
             except UniqueViolation:
                 db.rollback()
                 return back('failed')

@@ -38,11 +38,12 @@ def test_signing_up_records_the_agreement_and_the_forms_show_the_notice(appmod):
     from conftest import q
     c = appmod.app.test_client()
     text = c.get('/register').get_data(as_text=True)
-    assert 'By creating an account you agree to' in text
-    r = c.post('/register', data={'username': 'agreer_one', 'email': 'agree@example.com', 'password': 'correct horse 1', 'confirm': 'correct horse 1'},
+    assert 'name="accept_terms"' in text and 'name="accept_cookies"' in text           # DL-167: tick boxes, not just a notice
+    r = c.post('/register', data={'username': 'agreer_one', 'email': 'agree@example.com', 'password': 'correct horse 1', 'confirm': 'correct horse 1', 'accept_terms': '1', 'accept_cookies': '1'},
                headers={'X-Test-IP': '10.8.8.8'})
     assert r.status_code == 302
-    assert q('SELECT terms_accepted_at FROM users WHERE username = ?', 'agreer_one')[0]['terms_accepted_at'] is not None
+    row = q('SELECT terms_accepted_at, cookies_accepted_at FROM users WHERE username = ?', 'agreer_one')[0]
+    assert row['terms_accepted_at'] is not None and row['cookies_accepted_at'] is not None
 
 
 def test_about_and_contact_are_public_and_contact_waits_for_an_address(appmod, monkeypatch):
@@ -54,3 +55,11 @@ def test_about_and_contact_are_public_and_contact_waits_for_an_address(appmod, m
     monkeypatch.setenv('PRIVACY_CONTACT', 'hello@example.com')
     assert 'mailto:hello@example.com' in c.get('/contact').get_data(as_text=True)
     assert 'href="/about"' in c.get('/privacy').get_data(as_text=True)
+
+
+def test_public_pages_make_no_backup_promise_until_backups_exist(appmod):
+    """DL-86: the Terms said "we keep backups" before any backup or restore drill existed.  Re-add the sentence only with the backup task (DL-52)."""
+    c = appmod.app.test_client()
+    for path in ('/terms', '/privacy', '/about', '/cookies'):
+        assert 'backup' not in c.get(path).get_data(as_text=True).lower(), path
+

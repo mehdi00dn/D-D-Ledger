@@ -75,7 +75,8 @@ class Player:
 
     def register(self):
         self.get('/register')
-        r = self.form('/register', {'username': self.name, 'email': self.name + '@example.com', 'password': 'LiveCheck-pass-1', 'confirm': 'LiveCheck-pass-1'})
+        r = self.form('/register', {'username': self.name, 'email': self.name + '@example.com', 'password': 'LiveCheck-pass-1', 'confirm': 'LiveCheck-pass-1',
+                                    'accept_terms': '1', 'accept_cookies': '1'})
         self.get('/campaigns')                               # the session token rotates at login
         return r
 
@@ -122,6 +123,9 @@ def main():
     r, ms = a.timed(a.form, '/campaigns/new', {'name': 'Live Check'})
     cid = cid_from(r); campaigns.append((a, cid)); check('A creates a campaign', bool(cid), str(r.status_code), ms)
     if not cid:
+        if 'confirm-email' in r.headers.get('Location', ''):
+            print('    The site asks new accounts to confirm their email before creating a campaign (DL-165).\n'
+                  '    For this check, set EMAIL_CONFIRM_REQUIRED=0 on the site, run the check, then remove it again.')
         return 1
     r = a.form(f'/campaigns/{cid}/characters/new', {'name': 'Small Avatar Hero', 'max_hp': '30'},
                files={'avatar': ('a.png', png(120, 120), 'image/png')})
