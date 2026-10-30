@@ -55,3 +55,11 @@ def test_about_and_contact_are_public_and_contact_waits_for_an_address(appmod, m
     monkeypatch.setenv('PRIVACY_CONTACT', 'hello@example.com')
     assert 'mailto:hello@example.com' in c.get('/contact').get_data(as_text=True)
     assert 'href="/about"' in c.get('/privacy').get_data(as_text=True)
+
+
+def test_public_pages_make_no_backup_promise_until_backups_exist(appmod):
+    """DL-86: the Terms said "we keep backups" before any backup or restore drill existed.  Re-add the sentence only with the backup task (DL-52)."""
+    c = appmod.app.test_client()
+    for path in ('/terms', '/privacy', '/about', '/cookies'):
+        assert 'backup' not in c.get(path).get_data(as_text=True).lower(), path
+

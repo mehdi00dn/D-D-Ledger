@@ -320,3 +320,7 @@ About and Contact pages (DL-25): `/about` (what the app does, in plain words) an
 
 ### Battle log follows the bars (DL-166)
 The battle log strip now drops with the menu bar like the dice button and the dock: when the bars are hidden (the round toggle in landscape or on a phone) its offset no longer includes the bar height, and the move is animated (`.bars-hidden .battle-log { --bar-h: 0px }` plus a `bottom` transition). Test: `tests/test_e2e_battle_menus.py`.
+
+### Unsupported claims (DL-73, DL-86)
+Audit of the public pages (about, contact, login, sign-up, privacy, terms, cookies): there are no reviews or testimonials anywhere (DL-73, nothing to remove). One claim had no basis: the Terms said "we keep backups", but no backup or restore drill exists yet, so it now says the data cannot be promised never to be lost and points to the download in Account settings. A test keeps the word "backup" off the public pages until the backup task is done; then restore the sentence and drop the test. Test: `tests/test_privacy_page.py`.
+
