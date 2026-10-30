@@ -154,7 +154,7 @@ class User:
         self.c = self.app.test_client()
         # every test user 'connects' from its own address, so per-IP throttles never couple tests together
         self.ip = '10.%d.%d.%d' % tuple(os.urandom(3))
-        r = self.c.post('/register', data={'username': self.name, 'password': password, 'email': 'player@example.com', 'confirm': password}, headers={'X-Test-IP': self.ip})
+        r = self.c.post('/register', data={'username': self.name, 'password': password, 'email': 'player@example.com', 'confirm': password, 'accept_terms': '1', 'accept_cookies': '1'}, headers={'X-Test-IP': self.ip})
         assert r.status_code == 302, f'register failed: {r.status_code}'
         if not keep_email:
             # Sign-up now requires an email.  Most tests are about something else and start from an account without one
@@ -250,7 +250,7 @@ def _free_port():
 class Server:
     def __init__(self, env_extra):
         self.port = _free_port()
-        env = dict(os.environ, **env_extra, PYTHONPATH=APP_DIR, LEDGER_PORT=str(self.port))
+        env = dict(os.environ, EMAIL_CONFIRM_REQUIRED='0', **env_extra, PYTHONPATH=APP_DIR, LEDGER_PORT=str(self.port))     # DL-165: test servers do not lock new accounts
         # Output goes to a file, NOT a pipe: nothing ever reads a pipe, and once ~64 KB of request-log
         # lines pile up in it the server blocks on its next write and every later request hangs.
         self.log_path = os.path.join(_TMP, f'server-{self.port}.log')

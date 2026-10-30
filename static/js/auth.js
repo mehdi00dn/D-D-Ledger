@@ -66,8 +66,36 @@
     });
   }
 
+  // DL-167: the Terms and cookies boxes gate both the sign-up button and the Google button on the sign-up page.
+  var acceptBoxes = Array.prototype.slice.call(document.querySelectorAll('[data-accept-box]'));
+  var acceptError = document.querySelector('[data-accept-error]');
+  function firstUnticked() { return acceptBoxes.filter(function (b) { return !b.checked; })[0] || null; }
+  function showAcceptError(box) {
+    if (acceptError) { acceptError.hidden = false; }
+    if (box) box.focus();
+  }
+  acceptBoxes.forEach(function (b) {
+    b.addEventListener('change', function () { if (acceptError && !firstUnticked()) acceptError.hidden = true; });
+  });
+  var googleBtn = document.querySelector('.google-btn[data-needs-accept]');
+  if (googleBtn) {
+    googleBtn.addEventListener('click', function (e) {
+      var missing = firstUnticked();
+      if (missing) { e.preventDefault(); showAcceptError(missing); return; }
+      var url = new URL(googleBtn.href, window.location.href);
+      url.searchParams.set('accept', '1');
+      e.preventDefault();
+      window.location.href = url.toString();
+    });
+  }
+
   document.addEventListener('submit', function (e) {
     var form = e.target;
+    if (form.hasAttribute && form.hasAttribute('data-signup') && acceptBoxes.length && firstUnticked()) {
+      e.preventDefault();
+      showAcceptError(firstUnticked());
+      return;
+    }
     if (!(form instanceof HTMLFormElement) || !form.hasAttribute('data-once') || e.defaultPrevented) return;
     if (form.hasAttribute('data-signup') && pwInput && confirmInput && pwInput.value !== confirmInput.value) {
       e.preventDefault();

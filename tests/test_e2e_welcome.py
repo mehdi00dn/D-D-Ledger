@@ -19,6 +19,13 @@ def test_sign_up_then_fill_in_the_profile(pw, shared_server):
     page.goto(f'{base}/register')
     page.fill('#username', 'welcome_walker'); page.fill('#email', 'walker@example.com')
     page.fill('#password', 'correct horse 1'); page.fill('#confirm', 'correct horse 1')
+    page.click('.auth-submit')                                                # DL-167: stopped until both boxes are ticked
+    assert page.url.endswith('/register')
+    with ctx.expect_page() as other:                                          # the links open a new tab: the typed form stays
+        page.click('.auth-accept a >> nth=0')
+    other.value.close()
+    assert page.input_value('#username') == 'welcome_walker'
+    page.check('[name=accept_terms]'); page.check('[name=accept_cookies]')
     page.click('.auth-submit')
     page.wait_for_url('**/confirm-email**')                                   # DL-165: ask for the email confirmation first
     expect(page.locator('h1')).to_have_text('Check your inbox')

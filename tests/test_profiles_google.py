@@ -14,7 +14,7 @@ def urow(name):
 
 def register(appmod, name, email='', password='secret12'):
     c = appmod.app.test_client()
-    return c, c.post('/register', data={'username': name, 'email': email, 'password': password, 'confirm': password})
+    return c, c.post('/register', data={'username': name, 'email': email, 'password': password, 'confirm': password, 'accept_terms': '1', 'accept_cookies': '1'})
 
 
 # ---------- sign-up needs an email ----------
@@ -105,9 +105,9 @@ def google(appmod, monkeypatch):
     return box
 
 
-def google_login(appmod, client=None):
+def google_login(appmod, client=None, accept=True):
     c = client or appmod.app.test_client()
-    r = c.get('/auth/google?next=/campaigns')
+    r = c.get('/auth/google?next=/campaigns' + ('&accept=1' if accept else ''))
     assert r.status_code == 302 and r.headers['Location'].startswith('https://accounts.google.com/')
     state = re.search(r'state=([^&]+)', r.headers['Location']).group(1)
     return c, c.get('/auth/google/callback?code=abc&state=' + state)
@@ -288,3 +288,14 @@ def test_missing_email_banner_for_older_accounts(appmod, make_user):
     old, fresh = make_user(), make_user(keep_email=True)
     assert 'Add an email address to your account' in old.get('/campaigns').get_data(as_text=True)
     assert 'Add an email address to your account' not in fresh.get('/campaigns').get_data(as_text=True)
+
+
+def test_google_needs_the_signup_boxes_for_a_new_account_only(appmod, google):
+    """DL-167: a brand-new Google account is only made after the Terms and cookies boxes were ticked; existing accounts sign in freely."""
+    c, r = google_login(appmod, accept=False)
+    assert r.status_code == 302 and '/register?google=consent' in r.headers['Location']
+    assert not q('SELECT 1 FROM users WHERE google_sub = ?', google['sub'])
+    c, r = google_login(appmod, accept=True)
+    assert r.status_code == 302 and q('SELECT cookies_accepted_at FROM users WHERE google_sub = ?', google['sub'])[0]['cookies_accepted_at'] is not None
+    c2, r2 = google_login(appmod, accept=False)
+    assert r2.status_code == 302 and 'google=consent' not in r2.headers['Location']
