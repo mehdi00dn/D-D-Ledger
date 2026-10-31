@@ -5388,3 +5388,107 @@ a.pager-link:hover { border-color: var(--brass); }
 .battle-log { transition: bottom 0.28s var(--ease-drawer, cubic-bezier(0.32, 0.72, 0, 1)); }
 .bars-hidden .battle-log { --bar-h: 0px; }                                   /* the same offsets as above, with no bar to clear */
 @media (prefers-reduced-motion: reduce) { .battle-log { transition-duration: 0.01ms; } }
+
+/* ==========================================================================
+   DL-169: battle rows on phones and tablets
+   Smaller INIT and AC, and the conditions on the bottom row (under the HP buttons) instead of squeezed under the name.
+   The name block and the line under the name use display: contents so the name, the faction line and the condition chips
+   become cells of the row's own grid and can be placed on separate lines without changing the markup.
+   ========================================================================== */
+@media (max-width: 1060px) {
+  .battle-row { display: grid; align-items: center; row-gap: 0; }
+  .battle-row > * { min-width: 0; }
+  .battle-name-block, .battle-sub { display: contents; }
+  .battle-row .battle-name { grid-area: name; align-self: end; overflow-wrap: anywhere; }
+  .battle-row .battle-meta { grid-area: meta; align-self: start; margin-top: 1px; }
+  .battle-row .cond-row { grid-area: conds; margin-top: 0; gap: 4px; align-self: center; }
+  .battle-row .battle-stats .stat-chip { flex-direction: column; gap: 1px; }
+  .battle-row .battle-stats .stat-chip label { font-size: 8px; line-height: 1; letter-spacing: 0.08em; }
+  .battle-row .battle-stats .stat-chip-input { width: 38px; min-height: 26px; height: 26px; padding: 0 2px; font-size: 13px; }
+  .battle-row .hp-readout { flex: none; font-size: 12px; }
+  .battle-row > .death-saves { grid-area: saves; order: 0; }
+}
+
+/* tablets and a phone held sideways: two lines.  Line one is who and the numbers; line two is the conditions and the HP buttons. */
+@media (min-width: 761px) and (max-width: 1060px) {
+  .battle-row {
+    grid-template-columns: auto 40px minmax(0, 1fr) auto auto minmax(110px, 220px) auto;
+    grid-template-areas:
+      "rank av name  init ac hp end"
+      "rank av meta  init ac hp end"
+      ".    conds conds conds ctl ctl ctl"
+      "saves saves saves saves saves saves saves";
+    column-gap: 10px; padding: 8px 10px 8px 12px;
+  }
+  .battle-row .battle-rank { grid-area: rank; }
+  .battle-row .battle-avatar { grid-area: av; }
+  .battle-row .battle-stats { display: contents; }
+  .battle-row .battle-stats > :nth-child(1) { grid-area: init; }
+  .battle-row .battle-stats > :nth-child(2) { grid-area: ac; }
+  .battle-row .battle-stats > :nth-child(3) { grid-area: hp; }
+  .battle-row .battle-stats.stats-fog-wrap { display: flex; grid-area: init / init / hp / hp; gap: 10px; }
+  .battle-row .hp-block { min-width: 0; gap: 8px; }
+  .battle-row .hp-bar-track { flex: 1 1 0; width: auto; min-width: 48px; }
+  .battle-row .stats-hidden-badge { grid-area: init / init / hp / hp; }
+  .battle-row .hp-controls { grid-area: ctl; justify-self: end; margin-top: 6px; }
+  .battle-row .cond-row { margin-top: 6px; }
+  .battle-row .battle-end { grid-area: end; align-self: start; margin: 0; }
+  .battle-row > .death-saves { margin-top: 6px; }
+  .battle-row > .stat-chip { grid-column: 1 / -1; }                      /* a familiar's MAX HP box */
+  /* the buttons keep a finger-sized target on a touch screen */
+  .battle-row .hp-amount-input, .battle-row .hp-btn { height: 34px; min-height: 34px; }
+  .battle-row .hp-btn { width: 34px; }
+}
+@media (min-width: 761px) and (max-width: 1060px) and (pointer: coarse) {
+  .battle-row .hp-amount-input, .battle-row .hp-btn { height: 40px; min-height: 40px; }
+  .battle-row .hp-btn { width: 40px; }
+  .battle-row .hp-amount-input { width: 46px; }
+  .battle-end .btn-icon { width: 36px; height: 36px; min-width: 36px; min-height: 36px; }
+}
+
+/* phone held upright: the name and faction on top, the numbers, the HP buttons, then the conditions on the bottom row */
+@media (max-width: 760px) {
+  .battle-row {
+    grid-template-columns: 40px minmax(0, 1fr) auto;
+    grid-template-areas:
+      "av name end"
+      "av meta end"
+      "stats stats stats"
+      "ctl ctl ctl"
+      "conds conds conds"
+      "saves saves saves";
+    column-gap: 10px; padding: 8px;
+  }
+  .battle-row .battle-avatar { grid-area: av; align-self: center; }
+  .battle-row .battle-end { grid-area: end; align-self: start; }
+  .battle-row .battle-stats { grid-area: stats; margin-top: 7px; padding: 3px 8px; gap: 10px; }
+  .battle-row .battle-stats .stat-chip { flex-direction: row; align-items: center; gap: 4px; }
+  .battle-row .battle-stats .stat-chip label { font-size: 9px; }
+  .battle-row .battle-stats .stat-chip-input { width: 36px; min-height: 28px; height: 28px; font-size: 13px; }
+  .battle-row .hp-controls { grid-area: ctl; margin-top: 6px; }
+  .battle-row .cond-row { margin-top: 8px; padding-top: 7px; border-top: 1px dotted var(--hairline); }
+  .battle-row > .death-saves { margin-top: 7px; }
+  .battle-row > .stats-hidden-badge, .battle-row > .stat-chip, .battle-row > .battle-extra { margin-top: 7px; }
+}
+
+/* ---- DL-169: the rest of the phone and tablet pass ---- */
+/* Rules Reference: four tabs share the width instead of running off a 360px screen */
+.ref-tabs { display: flex; max-inline-size: 100%; box-sizing: border-box; }
+.ref-tab { flex: 1 1 auto; min-inline-size: 0; }
+@media (max-width: 420px) { .ref-tab { padding-inline: 8px; } }
+/* Home: a long character name wraps to two lines in the party card instead of being cut off */
+@media (max-width: 640px) {
+  .home-pc-name { white-space: normal; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.25; }
+}
+/* fingers: small links, steppers and the condition buttons get a 32px+ target without changing how they look */
+@media (pointer: coarse) {
+  .back-link, .home-more, .home-member-link, .user-name { display: inline-flex; align-items: center; min-block-size: 32px; }
+  .dice-stepper-btn { min-inline-size: 36px; }
+  .status-select { min-block-size: 36px; }
+  .cond-add { min-inline-size: 30px; block-size: 30px; }
+  .cond-chip { block-size: 28px; }
+  .cond-x { position: relative; }
+  .cond-x::after { content: ''; position: absolute; inset: -8px; }          /* the 14px "x" keeps its look; its tap area grows to 30px */
+  .battle-name.is-link { padding-block: 4px; }
+  .search-bar-icon { min-inline-size: 32px; min-block-size: 32px; }
+}

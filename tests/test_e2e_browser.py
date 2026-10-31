@@ -580,6 +580,7 @@ def test_custom_conditions_are_typed_in_place_and_capped_at_three(pw, shared_ser
     dpage.click('#close-conditions-modal')
     assert sorted(dpage.locator('.battle-row .cond-chip.cond-custom').all_text_contents()) == ['<b onclick=alert(1)>x', 'On fire']
     ppage.wait_for_selector('.battle-row .cond-chip.cond-custom', timeout=15000)           # the party sees it on a PC row
+    ppage.wait_for_function("() => document.querySelectorAll('.battle-row .cond-chip.cond-custom').length === 2", timeout=15000)   # the live update can lag one beat behind the first chip
     assert ppage.locator('.battle-row .cond-chip.cond-custom').count() == 2
     assert dpage.locator('.battle-row .cond-chip.cond-custom svg').count() == 0 and dpage.locator('.battle-row .cond-chip.cond-custom b').count() == 0 and dialogs == []   # markup stays text
     assert not derrs
