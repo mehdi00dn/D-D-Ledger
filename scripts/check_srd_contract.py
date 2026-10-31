@@ -22,7 +22,12 @@ SAMPLES = {
                                              'speed': dict, 'strength': int, 'dexterity': int, 'constitution': int,
                                              'intelligence': int, 'wisdom': int, 'charisma': int,
                                              'challenge_rating': (int, float), 'proficiency_bonus': int}),
-    'items:equipment': ('equipment/longsword', {'name': str, 'cost': dict, 'equipment_categories': list}),
+    # Gear carries rules prose in "description" ...
+    'items:equipment': ('equipment/backpack', {'name': str, 'cost': dict, 'equipment_categories': list}),
+    # ... but the 2024 SRD gives weapons (and armor, tools, ammunition) stat blocks only: the API returns "description": [].
+    # So this sample must still have the stat fields srd.py turns into facts, but not any prose.  (Third item: text required?)
+    'items:weapon': ('equipment/longsword', {'name': str, 'cost': dict, 'equipment_categories': list, 'damage': dict,
+                                             'properties': list, 'mastery': dict}, False),
     'items:magic': ('magic-items/bag-of-holding', {'name': str, 'rarity': dict, 'equipment_category': dict}),
 }
 LISTS = ('spells', 'monsters', 'equipment', 'magic-items')
@@ -42,8 +47,9 @@ def check(get=None):
         if not rows or not all(isinstance(r, dict) and r.get('index') and r.get('name') for r in rows[:50]):
             problems.append(f'/{coll}: list is empty or rows lack index/name')
 
-    for label, (ref, fields) in SAMPLES.items():
+    for label, (ref, fields, *opt) in SAMPLES.items():
         kind = label.split(':')[0]
+        needs_text = opt[0] if opt else True
         try:
             raw = get('/' + ref)
         except srd.SrdError as e:
@@ -54,7 +60,7 @@ def check(get=None):
                 problems.append(f'/{ref}: field "{field}" is missing')
             elif not isinstance(raw[field], typ) or isinstance(raw[field], bool):
                 problems.append(f'/{ref}: field "{field}" is now {type(raw[field]).__name__}')
-        if not (raw.get('description') or raw.get('desc')) and kind != 'monsters':
+        if needs_text and not (raw.get('description') or raw.get('desc')) and kind != 'monsters':
             problems.append(f'/{ref}: neither "description" nor "desc" has text')
         if kind == 'monsters':
             ac = raw.get('armor_class')
@@ -71,7 +77,7 @@ def check(get=None):
             p = out.get('prefill') or {}
             if p.get('armor_class') == 10 and p.get('max_hp') == 1:
                 problems.append(f'detail({ref!r}): prefill fell back to defaults (AC 10 / 1 HP)')
-        elif not out.get('facts') or not out.get('body'):
+        elif not out.get('facts') or (needs_text and not out.get('body')):
             problems.append(f'detail({ref!r}): facts or body came out empty')
     return problems
 

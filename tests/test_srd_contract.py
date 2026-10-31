@@ -20,8 +20,12 @@ GOOD = {
     '/monsters/goblin-warrior': {'name': 'Goblin Warrior', 'size': 'Small', 'type': 'humanoid', 'armor_class': [{'value': 15}],
                                  'hit_points': 10, 'speed': {'walk': '30 ft.'}, 'strength': 8, 'dexterity': 15, 'constitution': 10,
                                  'intelligence': 10, 'wisdom': 8, 'charisma': 8, 'challenge_rating': 0.25, 'proficiency_bonus': 2},
+    # Real 2024 shape: weapons have stats but no prose ("description" is an empty list).
     '/equipment/longsword': {'name': 'Longsword', 'cost': {'quantity': 15, 'unit': 'gp'}, 'equipment_categories': [{'name': 'Weapons'}],
-                             'desc': ['A blade.']},
+                             'damage': {'damage_dice': '1d8', 'damage_type': {'name': 'Slashing'}}, 'properties': [{'name': 'Versatile'}],
+                             'mastery': {'name': 'Sap'}, 'description': []},
+    '/equipment/backpack': {'name': 'Backpack', 'cost': {'quantity': 2, 'unit': 'gp'}, 'weight': 5,
+                            'equipment_categories': [{'name': 'Adventuring Gear'}], 'description': ['Holds up to 30 pounds.']},
     '/magic-items/bag-of-holding': {'name': 'Bag of Holding', 'rarity': {'name': 'Uncommon'}, 'equipment_category': {'name': 'Wondrous Items'},
                                     'desc': ['Wondrous Item', 'Bigger inside.']},
 }
@@ -55,8 +59,17 @@ def test_changed_type_is_reported(api):
 
 
 def test_missing_description_is_reported(api):
-    del api['/equipment/longsword']['desc']
-    assert any('longsword' in p for p in contract.check())
+    api['/equipment/backpack']['description'] = []
+    assert any('backpack' in p for p in contract.check())
+
+
+def test_weapon_without_prose_is_fine_but_without_stats_is_not(api):
+    assert contract.check() == []          # longsword has "description": [] and that is the real 2024 shape
+    del api['/equipment/longsword']['mastery']
+    assert any('longsword' in p and 'mastery' in p for p in contract.check())
+    api['/equipment/longsword']['mastery'] = {'name': 'Sap'}
+    api['/equipment/longsword']['damage'] = '1d8'
+    assert any('longsword' in p and 'damage' in p for p in contract.check())
 
 
 def test_unreachable_endpoint_is_reported(api):
