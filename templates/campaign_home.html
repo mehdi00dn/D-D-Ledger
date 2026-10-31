@@ -14,7 +14,7 @@
   <header class="home-hero{{ ' has-banner' if g.campaign.avatar_path else '' }}">
     {% if g.campaign.avatar_path %}
     <div class="home-banner"><img src="{{ url_for('uploaded_file', filename=g.campaign.avatar_path) }}" alt=""></div>
-    <button type="button" class="btn-icon home-banner-view" data-lightbox-src="{{ url_for('uploaded_file', filename=g.campaign.avatar_path) }}" data-lightbox-max="1200" title="View the campaign image" aria-label="View the campaign image full size">{{ icon('maximize') }}</button>
+    <button type="button" class="btn-icon home-banner-view" data-lightbox-src="{{ url_for('uploaded_file', filename=g.campaign.avatar_path) }}" title="View the campaign image" aria-label="View the campaign image full size">{{ icon('maximize') }}</button>
     {% endif %}
     <div class="home-hero-text">
       <h1 class="home-name">{{ g.campaign.name }}</h1>

@@ -5383,9 +5383,6 @@ a.pager-link:hover { border-color: var(--brass); }
   .battle-actions .roll-menu > .btn > svg:last-child { display: none; }
 }
 
-/* ---- DL-164: image size notes ---- */
-.lightbox-size { margin: 12px 0 0; font: 500 12px var(--font-mono); color: var(--parchment-dim); text-align: center; }
-.lightbox-size[hidden] { display: none; }
 .file-drop-note { display: block; margin-block-start: 2px; font-size: 11.5px; color: var(--parchment-dim); }
 
 /* ---- DL-166: the battle log rides with the bars like the dice button and the dock: when the bars slide away it drops with them ---- */

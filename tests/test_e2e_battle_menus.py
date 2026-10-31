@@ -39,7 +39,7 @@ def test_rest_menu_hover_carets_and_short_rest_fields(shared_server, pw):
     assert not errors, errors
 
 
-def test_campaign_image_is_capped_at_1200_and_the_preview_says_so(shared_server, pw):
+def test_campaign_image_is_capped_at_1200_and_the_preview_shows_no_size_note(shared_server, pw):
     base = shared_server.url
     dm = Api(base)
     r = dm.post('/campaigns/new', data={'name': 'Wide', 'description': json.dumps([])},
@@ -53,9 +53,9 @@ def test_campaign_image_is_capped_at_1200_and_the_preview_says_so(shared_server,
     page = ctx.new_page(); page.set_viewport_size({'width': 1280, 'height': 800})
     page.goto(f'{base}/campaigns/{cid}/home')
     page.click('.home-banner-view')
-    page.wait_for_selector('#lightbox-size', state='visible')
-    text = page.inner_text('#lightbox-size')
-    assert 'largest allowed edge 1200 px' in text and ' × ' in text
+    page.wait_for_selector('#lightbox:not([hidden]) img, .lightbox-overlay:not([hidden]) img', state='visible')
+    assert 'largest allowed edge' not in page.content()
+    assert page.locator('#lightbox-size').count() == 0
     ctx.close()
 
 
