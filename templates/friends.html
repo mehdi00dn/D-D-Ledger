@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% set active_page = 'account' %}
+{% block title %}Friends — Campaign Ledger{% endblock %}
+
+{% macro person(p) %}
+<span class="friend-who">
+  <span class="friend-avatar">{% if p.avatar_path %}<img src="{{ url_for('uploaded_file', filename=p.avatar_path) }}" alt="">{% else %}{{ icon('user') }}{% endif %}</span>
+  <a href="{{ url_for('profile_view', username=p.username) }}">{{ p.display_name or p.username }}</a>
+  {% if p.display_name %}<span class="hint-text">@{{ p.username }}</span>{% endif %}
+</span>
+{% endmacro %}
+
+{% macro act(p, action, label, cls='btn btn-ghost btn-sm', confirm='') %}
+<form method="POST" action="{{ url_for('friend_action', username=p.username, action=action) }}"{% if confirm %} data-confirm="{{ confirm }}"{% endif %}>{{ csrf_field() }}<button type="submit" class="{{ cls }}">{{ label }}</button></form>
+{% endmacro %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <a href="{{ url_for('account') }}" class="back-link">{{ icon('arrow-left') }} Account</a>
+    <h1>Friends</h1>
+    <p class="page-sub">People you know from the table. You never need to be friends to play in the same campaign.</p>
+  </div>
+</div>
+
+{% set notes = {'sent': 'If that person can be reached, they have been sent a request.', 'friends': 'You are friends now.', 'removed': 'Done.',
+                'blocked': 'Blocked. Neither of you can open the other\'s profile.', 'unblocked': 'Unblocked.',
+                'unblock-first': 'Unblock this person first.', 'too-many': 'You have too many requests waiting. Cancel some first.'} %}
+{% if message and notes.get(message) %}<p class="banner-notice" role="status">{{ notes[message] }}</p>{% endif %}
+
+<div class="friends-stack">
+<section class="cf-card" aria-label="Add a friend">
+  <h2 class="cf-title">Add a friend</h2>
+  <form class="friend-add" method="POST" action="{{ url_for('friend_add') }}">
+    {{ csrf_field() }}
+    <div class="field"><label for="friend-username">Their username</label><input type="text" id="friend-username" name="username" maxlength="64" autocomplete="off" placeholder="username" required></div>
+    <button type="submit" class="btn btn-primary">{{ icon('plus') }} Send request</button>
+  </form>
+</section>
+
+{% if lists.incoming %}
+<section class="cf-card" aria-label="Requests waiting for you">
+  <h2 class="cf-title">Waiting for you <span class="cf-count">{{ lists.incoming|length }}</span></h2>
+  <ul class="friend-list">{% for p in lists.incoming %}<li>{{ person(p) }}<span class="friend-actions">{{ act(p, 'accept', 'Accept', 'btn btn-primary btn-sm') }}{{ act(p, 'decline', 'Decline') }}</span></li>{% endfor %}</ul>
+</section>
+{% endif %}
+
+<section class="cf-card" aria-label="Your friends">
+  <h2 class="cf-title">Your friends <span class="cf-count">{{ lists.friends|length }}</span></h2>
+  {% if lists.friends %}
+  <ul class="friend-list">{% for p in lists.friends %}<li>{{ person(p) }}<span class="friend-actions">{{ act(p, 'remove', 'Remove', confirm='Remove ' ~ (p.display_name or p.username) ~ ' from your friends?') }}{{ act(p, 'block', 'Block', 'btn btn-ghost btn-sm', 'Block ' ~ (p.display_name or p.username) ~ '? Neither of you will be able to open the other\'s profile.') }}</span></li>{% endfor %}</ul>
+  {% else %}<p class="hint-text">No friends yet. Open someone's profile and choose Add friend, or send a request by username above.</p>{% endif %}
+</section>
+
+{% if lists.outgoing %}
+<section class="cf-card" aria-label="Requests you sent">
+  <h2 class="cf-title">Sent by you <span class="cf-count">{{ lists.outgoing|length }}</span></h2>
+  <ul class="friend-list">{% for p in lists.outgoing %}<li>{{ person(p) }}<span class="friend-actions">{{ act(p, 'cancel', 'Cancel request') }}</span></li>{% endfor %}</ul>
+</section>
+{% endif %}
+
+{% if lists.blocked %}
+<section class="cf-card" aria-label="People you blocked">
+  <h2 class="cf-title">Blocked <span class="cf-count">{{ lists.blocked|length }}</span></h2>
+  <ul class="friend-list">{% for p in lists.blocked %}<li>{{ person(p) }}<span class="friend-actions">{{ act(p, 'unblock', 'Unblock') }}</span></li>{% endfor %}</ul>
+</section>
+{% endif %}
+</div>
+{% endblock %}

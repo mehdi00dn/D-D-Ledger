@@ -14,6 +14,23 @@
       <p class="profile-handle">{% if owner.display_name %}@{{ owner.username }} · {% endif %}Playing since {{ member_since }}</p>
       {% if owner.bio %}<p class="profile-bio">{{ owner.bio }}</p>{% endif %}
     </div>
+    {% if not is_me %}
+    <div class="profile-actions">
+      {% if friend_state == 'friends' %}
+      <span class="hint-text">{{ icon('check') }} Friends</span>
+      <form method="POST" action="{{ url_for('friend_action', username=owner.username, action='remove') }}" data-confirm="Remove {{ owner.display_name or owner.username }} from your friends?">{{ csrf_field() }}<input type="hidden" name="back" value="profile"><button type="submit" class="btn btn-ghost btn-sm">Remove friend</button></form>
+      {% elif friend_state == 'pending_out' %}
+      <span class="hint-text">Friend request sent</span>
+      <form method="POST" action="{{ url_for('friend_action', username=owner.username, action='cancel') }}">{{ csrf_field() }}<input type="hidden" name="back" value="profile"><button type="submit" class="btn btn-ghost btn-sm">Cancel request</button></form>
+      {% elif friend_state == 'pending_in' %}
+      <form method="POST" action="{{ url_for('friend_action', username=owner.username, action='accept') }}">{{ csrf_field() }}<input type="hidden" name="back" value="profile"><button type="submit" class="btn btn-primary btn-sm">{{ icon('check') }} Accept friend request</button></form>
+      <form method="POST" action="{{ url_for('friend_action', username=owner.username, action='decline') }}">{{ csrf_field() }}<input type="hidden" name="back" value="profile"><button type="submit" class="btn btn-ghost btn-sm">Decline</button></form>
+      {% else %}
+      <form method="POST" action="{{ url_for('friend_action', username=owner.username, action='request') }}">{{ csrf_field() }}<input type="hidden" name="back" value="profile"><button type="submit" class="btn btn-ghost btn-sm">{{ icon('plus') }} Add friend</button></form>
+      {% endif %}
+      <form method="POST" action="{{ url_for('friend_action', username=owner.username, action='block') }}" data-confirm="Block {{ owner.display_name or owner.username }}? Neither of you will be able to open the other's profile.">{{ csrf_field() }}<button type="submit" class="btn-icon btn-icon-danger" title="Block" aria-label="Block {{ owner.display_name or owner.username }}">{{ icon('lock') }}</button></form>
+    </div>
+    {% endif %}
     {% if is_me %}
     <div class="profile-actions">
       <a class="btn btn-ghost" href="{{ url_for('account') }}">{{ icon('pencil') }} Edit profile</a>
@@ -22,6 +39,7 @@
     {% endif %}
   </header>
 
+  {% if show_chars %}
   <section class="profile-section" aria-labelledby="profile-chars">
     <h2 class="profile-section-title" id="profile-chars">Characters</h2>
     {% if showcase %}
@@ -44,5 +62,6 @@
     <p class="profile-empty">{{ owner.display_name or owner.username }} has not featured any characters yet.</p>
     {% endif %}
   </section>
+  {% endif %}
 </article>
 {% endblock %}

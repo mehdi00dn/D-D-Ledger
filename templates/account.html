@@ -92,6 +92,22 @@
     </div>
   </div>
 
+  <div class="form-section" data-section="privacy">
+    <p class="form-section-title">What the page shows</p>
+    <p class="hint-text u-m0-12">Your bio and your featured characters can be narrower than the page itself. People who cannot see a part simply do not see it.</p>
+    <div class="form-row">
+      <div class="field">
+        <label for="bio_visibility">Bio</label>
+        <select id="bio_visibility" name="bio_visibility">{% for key, label in element_visibility_options.items() %}<option value="{{ key }}" {{ 'selected' if px.bio_visibility == key else '' }}>{{ label }}</option>{% endfor %}</select>
+      </div>
+      <div class="field">
+        <label for="showcase_visibility">Featured characters</label>
+        <select id="showcase_visibility" name="showcase_visibility">{% for key, label in element_visibility_options.items() %}<option value="{{ key }}" {{ 'selected' if px.showcase_visibility == key else '' }}>{{ label }}</option>{% endfor %}</select>
+      </div>
+    </div>
+    <p class="hint-text"><a href="{{ url_for('friends_page') }}">Friends{% if px.friend_requests %} ({{ px.friend_requests }} waiting){% endif %}</a>: ask, accept, remove or block people.</p>
+  </div>
+
   <div class="form-section" id="showcase" data-section="privacy">
     <p class="form-section-title">Characters on your profile</p>
     <input type="hidden" name="showcase_present" value="1">

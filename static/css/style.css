@@ -5555,3 +5555,19 @@ a.pager-link:hover { border-color: var(--brass); }
   --hairline: rgba(201, 162, 75, 0.22); --hairline-strong: rgba(201, 162, 75, 0.4);
   color: var(--parchment);
 }
+
+/* DL-98: friends */
+.friend-add { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 12px; }
+.friend-add .field { flex: 1 1 220px; margin: 0; }
+.friend-list { list-style: none; margin: 0; padding: 0; display: grid; }
+.friend-list li { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; padding: 10px 0; border-block-end: 1px solid var(--hairline); }
+.friend-list li:last-child { border-block-end: 0; }
+.friend-who { display: inline-flex; align-items: center; gap: 10px; min-inline-size: 0; overflow-wrap: anywhere; }
+.friend-who a { font-weight: 600; color: var(--parchment); text-decoration: none; }
+.friend-who a:hover { color: var(--brass-bright-ink); }
+.friend-avatar { inline-size: 36px; block-size: 36px; flex: 0 0 auto; border-radius: 50%; overflow: hidden; display: inline-flex; align-items: center; justify-content: center; background: var(--bg-panel-inset); border: 1px solid var(--hairline-strong); color: var(--parchment-dim); }
+.friend-avatar img { inline-size: 100%; block-size: 100%; object-fit: cover; }
+.friend-avatar svg { inline-size: 18px; block-size: 18px; }
+.friend-actions { display: inline-flex; gap: 8px; flex-wrap: wrap; }
+.profile-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.friends-stack { display: grid; gap: 18px; max-inline-size: 760px; }

@@ -356,7 +356,8 @@ _SCOPE_PARENT_SQL = {            # arg -> (SQL returning the parent id, name of 
 # invitation_id / notification_id are not campaign-scoped: each is checked against the logged-in user in its route
 # (an invitation is only ever visible to the person invited; a notification only to its recipient).
 # username (/u/<username>) is not campaign-scoped either: profile_view checks the owner's visibility setting against the viewer.
-SCOPED_URL_ARGS = {'campaign_id', 'user_id', 'filename', 'token', 'invitation_id', 'notification_id', 'username'} | set(_SCOPE_OWNER_SQL) | set(_SCOPE_PARENT_SQL)
+# action (/friends/<username>/<action>) is a verb, not a resource: friend_action rejects anything outside _FRIEND_ACTIONS.
+SCOPED_URL_ARGS = {'campaign_id', 'user_id', 'filename', 'token', 'invitation_id', 'notification_id', 'username', 'action'} | set(_SCOPE_OWNER_SQL) | set(_SCOPE_PARENT_SQL)
 
 
 @app.before_request
@@ -1268,9 +1269,12 @@ def account():
         if visibility in PROFILE_VISIBILITY:
             try:
                 db.execute('UPDATE users SET profile_visibility = ? WHERE id = ?', (visibility, user['id']))
+                for col in ('bio_visibility', 'showcase_visibility'):
+                    if request.form.get(col) in ELEMENT_VISIBILITY:
+                        db.execute(f'UPDATE users SET {col} = ? WHERE id = ?', (request.form[col], user['id']))
             except pgerr.UndefinedColumn:
                 db.rollback()
-                return api_error('Profile visibility needs a database update that has not been applied yet (migration 0039).', 503, code='migration_pending')
+                return api_error('Profile visibility needs a database update that has not been applied yet (migration 0052).', 503, code='migration_pending')
         if request.form.get('showcase_present') == '1':
             error = _save_showcase(db, user['id'], request.form.getlist('showcase'))
             if error:
@@ -1288,8 +1292,15 @@ def account():
 # showcased character are shown: never the campaign it belongs to, its stats or its notes.
 PROFILE_VISIBILITY = {
     'members': ('Everyone signed in', 'Any signed-in Campaign Ledger user can open your profile.'),
-    'shared': ('People I play with', 'Only people who share a campaign with you.'),
+    'shared': ('People I play with', 'Only people who share a campaign with you, and your friends.'),
+    'friends': ('Friends only', 'Only people on your friends list.'),
     'private': ('Only me', 'Nobody else can open it.'),
+}
+# The bio and the featured characters can be narrower than the page itself (DL-98).
+ELEMENT_VISIBILITY = {
+    'profile': 'Same as my profile',
+    'friends': 'Friends only',
+    'private': 'Only me',
 }
 SHOWCASE_MAX = 6
 _SHOWCASE_ELIGIBLE = ('(c.created_by = ? OR c.player_id = ?) AND COALESCE(c.is_npc, 0) = 0 AND COALESCE(c.is_temp_familiar, 0) = 0')
@@ -1302,12 +1313,50 @@ def _class_label(key):
     return None
 
 
+def _pair(a, b):
+    return (a, b) if a < b else (b, a)
+
+
+def _friend_state(db, me, other):
+    """How `me` stands with `other`: None, 'pending_out' (I asked), 'pending_in' (they asked), 'friends',
+    'blocked_by_me' or 'blocked_me'."""
+    if me == other:
+        return None
+    lo, hi = _pair(me, other)
+    row = db.execute('SELECT status, requested_by FROM friendships WHERE user_low = ? AND user_high = ?', (lo, hi)).fetchone()
+    if row is None:
+        return None
+    if row['status'] == 'accepted':
+        return 'friends'
+    mine = row['requested_by'] == me
+    if row['status'] == 'blocked':
+        return 'blocked_by_me' if mine else 'blocked_me'
+    return 'pending_out' if mine else 'pending_in'
+
+
 def _can_view_profile(db, owner, viewer_id):
-    if owner['id'] == viewer_id or owner['profile_visibility'] == 'members':
+    if owner['id'] == viewer_id:
         return True
-    if owner['profile_visibility'] == 'shared':
+    state = _friend_state(db, viewer_id, owner['id'])
+    if state in ('blocked_by_me', 'blocked_me'):                  # a block hides the profile both ways, as if it did not exist
+        return False
+    level = owner['profile_visibility']
+    if level == 'members':
+        return True
+    if state == 'friends':
+        return level in ('shared', 'friends')
+    if level == 'shared':
         return db.execute('SELECT 1 FROM campaign_members a JOIN campaign_members b ON b.campaign_id = a.campaign_id '
                           'WHERE a.user_id = ? AND b.user_id = ? LIMIT 1', (viewer_id, owner['id'])).fetchone() is not None
+    return False
+
+
+def _element_visible(db, owner, viewer_id, level):
+    """May the viewer (who can already open the profile) see one part of it?  'profile' = as visible as the page."""
+    if owner['id'] == viewer_id or level == 'profile':
+        return True
+    if level == 'friends':
+        return _friend_state(db, viewer_id, owner['id']) == 'friends'
     return False
 
 
@@ -1341,12 +1390,16 @@ def profile_extra():
     """What the account page needs beyond the basic row: visibility, password state, the showcase picker."""
     if '_profile_extra' not in g:
         uid = session.get('user_id')
-        extra = {'visibility': 'shared', 'has_password': True, 'showcase_ids': [], 'showcase_options': [], 'ready': False}
+        extra = {'visibility': 'shared', 'bio_visibility': 'profile', 'showcase_visibility': 'profile', 'friend_requests': 0, 'has_password': True, 'showcase_ids': [], 'showcase_options': [], 'ready': False}
         if uid:
             db = get_db()
             try:
-                row = db.execute('SELECT profile_visibility, password_hash FROM users WHERE id = ?', (uid,)).fetchone()
-                extra.update(visibility=row['profile_visibility'], has_password=bool(row['password_hash']), ready=True)
+                row = db.execute('SELECT profile_visibility, bio_visibility, showcase_visibility, password_hash FROM users WHERE id = ?', (uid,)).fetchone()
+                extra.update(visibility=row['profile_visibility'], bio_visibility=row['bio_visibility'], showcase_visibility=row['showcase_visibility'],
+                             has_password=bool(row['password_hash']), ready=True)
+                extra['friend_requests'] = db.execute(
+                    "SELECT COUNT(*) AS n FROM friendships WHERE status = 'pending' AND requested_by <> ? AND (user_low = ? OR user_high = ?)",
+                    (uid, uid, uid)).fetchone()['n']
                 extra['showcase_ids'] = [r['character_id'] for r in db.execute(
                     'SELECT character_id FROM profile_showcase WHERE user_id = ? ORDER BY position', (uid,)).fetchall()]
                 extra['showcase_options'] = [dict(r, class_label=_class_label(r['class_key'])) for r in db.execute(
@@ -1366,24 +1419,131 @@ def profile_extra():
 app.jinja_env.globals['profile_extra'] = profile_extra
 app.jinja_env.globals['profile_visibility_options'] = PROFILE_VISIBILITY
 app.jinja_env.globals['showcase_max'] = SHOWCASE_MAX
+app.jinja_env.globals['element_visibility_options'] = ELEMENT_VISIBILITY
 
 
 @app.route('/u/<username>')
 def profile_view(username):
     db = get_db()
     try:
-        owner = db.execute('SELECT id, username, display_name, avatar_path, bio, created_at, profile_visibility FROM users '
-                           'WHERE lower(username) = lower(?)', (username,)).fetchone()
+        owner = db.execute('SELECT id, username, display_name, avatar_path, bio, created_at, profile_visibility, bio_visibility, showcase_visibility '
+                           'FROM users WHERE lower(username) = lower(?)', (username,)).fetchone()
     except pgerr.UndefinedColumn:
         db.rollback()
-        return api_error('Profiles need a database update that has not been applied yet (migration 0039).', 503, code='migration_pending')
-    if owner is None or not _can_view_profile(db, owner, session['user_id']):
+        return api_error('Profiles need a database update that has not been applied yet (migration 0052).', 503, code='migration_pending')
+    viewer = session['user_id']
+    if owner is None or not _can_view_profile(db, owner, viewer):
         abort(404)
     created = owner['created_at']
     if isinstance(created, str):
         created = datetime.fromisoformat(created[:10])
-    return render_template('profile_view.html', owner=owner, is_me=owner['id'] == session['user_id'],
-                           member_since=created.strftime('%B %Y'), showcase=_showcase_characters(db, owner['id']))
+    show_bio = _element_visible(db, owner, viewer, owner['bio_visibility'])
+    show_chars = _element_visible(db, owner, viewer, owner['showcase_visibility'])
+    return render_template('profile_view.html', owner=dict(owner, bio=owner['bio'] if show_bio else None), is_me=owner['id'] == viewer,
+                           member_since=created.strftime('%B %Y'), show_chars=show_chars,
+                           showcase=_showcase_characters(db, owner['id']) if show_chars else [],
+                           friend_state=_friend_state(db, viewer, owner['id']), element_visibility_options=ELEMENT_VISIBILITY)
+
+
+# ---- friends (DL-98) ----
+# A light friends list: ask, accept, decline, remove and block.  Friendship is never needed to join a campaign.  Asking is
+# idempotent (asking twice, or asking someone who already asked you, never makes a second row), nobody can befriend
+# themselves, and a block hides both profiles from each other.  Answers about people the viewer cannot reach are always
+# the same wording, so the form cannot be used to find out who has an account.
+FRIENDS_PENDING_MAX = 50
+_FRIEND_ACTIONS = ('request', 'accept', 'decline', 'cancel', 'remove', 'block', 'unblock')
+
+
+def _friend_list(db, me):
+    rows = db.execute("""
+        SELECT f.status, f.requested_by, u.id, u.username, u.display_name, u.avatar_path
+        FROM friendships f JOIN users u ON u.id = CASE WHEN f.user_low = ? THEN f.user_high ELSE f.user_low END
+        WHERE f.user_low = ? OR f.user_high = ?
+        ORDER BY lower(COALESCE(NULLIF(u.display_name, ''), u.username))
+    """, (me, me, me)).fetchall()
+    out = {'friends': [], 'incoming': [], 'outgoing': [], 'blocked': []}
+    for r in rows:
+        r = dict(r)
+        if r['status'] == 'accepted':
+            out['friends'].append(r)
+        elif r['status'] == 'pending':
+            out['outgoing' if r['requested_by'] == me else 'incoming'].append(r)
+        elif r['requested_by'] == me:                              # only the person who blocked sees the block
+            out['blocked'].append(r)
+    return out
+
+
+@app.route('/friends')
+def friends_page():
+    db = get_db()
+    try:
+        lists = _friend_list(db, session['user_id'])
+    except pgerr.UndefinedTable:
+        db.rollback(); db.close()
+        return api_error('Friends need a database update that has not been applied yet (migration 0052).', 503, code='migration_pending')
+    db.close()
+    return render_template('friends.html', lists=lists, message=request.args.get('m', ''))
+
+
+@app.route('/friends/add', methods=['POST'])
+def friend_add():
+    username = request.form.get('username', '').strip()[:64]
+    if not username:
+        return redirect(url_for('friends_page'))
+    return friend_action(username, 'request')
+
+
+@app.route('/friends/<username>/<action>', methods=['POST'])
+def friend_action(username, action):
+    if action not in _FRIEND_ACTIONS:
+        abort(404)
+    me = session['user_id']
+    db = get_db()
+    other = db.execute('SELECT id, username, display_name FROM users WHERE lower(username) = lower(?)', (username.strip(),)).fetchone()
+    back = url_for('profile_view', username=other['username']) if (other and request.form.get('back') == 'profile') else url_for('friends_page')
+
+    def done(message):
+        db.commit(); db.close()
+        return redirect(back + ('&' if '?' in back else '?') + 'm=' + message) if back.startswith('/friends') else redirect(back)
+
+    if other is None or other['id'] == me:
+        db.close()
+        if action == 'request':                                    # the same answer for "nobody by that name", "yourself" and "cannot be reached"
+            return redirect(url_for('friends_page', m='sent'))
+        abort(404)
+    lo, hi = _pair(me, other['id'])
+    state = _friend_state(db, me, other['id'])
+    name = db.execute('SELECT COALESCE(NULLIF(display_name, \'\'), username) AS n FROM users WHERE id = ?', (me,)).fetchone()['n']
+    if action == 'request':
+        if state in ('blocked_me', 'friends', 'pending_out'):
+            return done('sent')                                    # nothing to do, and nothing revealed
+        if state == 'blocked_by_me':
+            return done('unblock-first')
+        if state == 'pending_in':                                  # they already asked: asking back is accepting
+            db.execute("UPDATE friendships SET status = 'accepted', updated_at = (CURRENT_TIMESTAMP AT TIME ZONE 'UTC') WHERE user_low = ? AND user_high = ?", (lo, hi))
+            notify(db, other['id'], 'friend_accepted', f'{name} accepted your friend request', link=url_for('friends_page'))
+            return done('friends')
+        if db.execute("SELECT COUNT(*) AS n FROM friendships WHERE requested_by = ? AND status = 'pending'", (me,)).fetchone()['n'] >= FRIENDS_PENDING_MAX:
+            return done('too-many')
+        db.execute("INSERT INTO friendships (user_low, user_high, requested_by, status) VALUES (?, ?, ?, 'pending') ON CONFLICT (user_low, user_high) DO NOTHING RETURNING id", (lo, hi, me))
+        notify(db, other['id'], 'friend_request', f'{name} wants to be friends', link=url_for('friends_page'))
+        return done('sent')
+    if action == 'accept' and state == 'pending_in':
+        db.execute("UPDATE friendships SET status = 'accepted', updated_at = (CURRENT_TIMESTAMP AT TIME ZONE 'UTC') WHERE user_low = ? AND user_high = ?", (lo, hi))
+        notify(db, other['id'], 'friend_accepted', f'{name} accepted your friend request', link=url_for('friends_page'))
+        return done('friends')
+    if action in ('decline', 'cancel', 'remove') and state in ('pending_in', 'pending_out', 'friends'):
+        db.execute('DELETE FROM friendships WHERE user_low = ? AND user_high = ?', (lo, hi))
+        return done('removed')
+    if action == 'block' and state != 'blocked_me':
+        db.execute("INSERT INTO friendships (user_low, user_high, requested_by, status) VALUES (?, ?, ?, 'blocked') "
+                   "ON CONFLICT (user_low, user_high) DO UPDATE SET status = 'blocked', requested_by = EXCLUDED.requested_by, "
+                   "updated_at = (CURRENT_TIMESTAMP AT TIME ZONE 'UTC') RETURNING id", (lo, hi, me))
+        return done('blocked')
+    if action == 'unblock' and state == 'blocked_by_me':
+        db.execute('DELETE FROM friendships WHERE user_low = ? AND user_high = ?', (lo, hi))
+        return done('unblocked')
+    return done('')                                                # anything else (a stale button) changes nothing
 
 
 @app.route('/account/username', methods=['POST'])
