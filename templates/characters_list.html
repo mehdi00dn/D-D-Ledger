@@ -88,7 +88,7 @@
   {% if groups %}
   {% for g in groups %}
   <button class="chip" data-filter="{{ g.id }}">
-    <span class="group-dot" style="background:{{ g.color }}"></span>{{ g.name }}
+    <span class="group-dot" data-bg="{{ g.color }}"></span>{{ g.name }}
   </button>
   {% endfor %}
   {% endif %}
@@ -130,7 +130,7 @@
         <div class="dossier-meta">
           Lvl {{ c.level }}
           {% for f in c.factions %}
-            <span class="group-dot" style="background:{{ f.color }}"></span>{{ f.name }}{{ ',' if not loop.last }}
+            <span class="group-dot" data-bg="{{ f.color }}"></span>{{ f.name }}{{ ',' if not loop.last }}
           {% endfor %}
         </div>
       </div>

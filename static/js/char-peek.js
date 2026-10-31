@@ -36,7 +36,7 @@
       '<span class="cd-chip cd-chip--' + (c.is_npc ? 'npc' : 'pc') + '">' + (c.is_npc ? (c.is_ally ? 'NPC · Ally' : 'NPC') : 'PC') + '</span>';
     var fs = c.factions && c.factions.length ? c.factions : (c.group_name ? [{ name: c.group_name, color: c.group_color }] : []);
     fs.forEach(function (f) {
-      out += '<span class="cd-chip cd-chip--faction"><span class="group-dot" style="background:' + safeColor(f.color, '#c9a24b') + '"></span>' + esc(f.name) + '</span>';
+      out += '<span class="cd-chip cd-chip--faction"><span class="group-dot" data-bg="' + safeColor(f.color, '#c9a24b') + '"></span>' + esc(f.name) + '</span>';
     });
     return out;
   }

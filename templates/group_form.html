@@ -15,7 +15,7 @@
 
   <div class="form-section">
     <p class="form-section-title">Identity</p>
-    <div class="field" style="margin-bottom:14px;">
+    <div class="field u-mb14">
       <label for="name">Name</label>
       <input type="text" id="name" name="name" value="{{ group.name if group else '' }}" placeholder="e.g. The Ashfall Company" required>
     </div>
@@ -28,14 +28,14 @@
             {% if group and group.avatar_path %}
               <img id="group-avatar-preview" src="{{ url_for('uploaded_file', filename=group.avatar_path) }}" alt="avatar preview">
             {% else %}
-              <img id="group-avatar-preview" style="display:none;" alt="avatar preview">
+              <img id="group-avatar-preview" hidden alt="avatar preview">
               {{ icon('faction', 'avatar-placeholder-icon') }}
             {% endif %}
           </div>
           <button type="button" class="avatar-remove-btn" id="group-avatar-remove-btn" title="Remove avatar" {{ '' if group and group.avatar_path else 'hidden' }}>{{ icon('x') }}</button>
           <div class="upload-progress upload-progress-circle" hidden></div>
         </div>
-        <div class="file-drop" style="flex:1;">
+        <div class="file-drop u-flex1">
           {{ icon('upload') }}
           <div>Click or drop an image</div>
           <span class="file-name"></span>
@@ -52,7 +52,7 @@
       <label>Used to mark this faction's side in battle</label>
       <div class="color-swatch-row" data-color-group="#color_input">
         {% for c in ['#c9a24b', '#b3453f', '#5f9174', '#4d7ea8', '#8e6bb0', '#c76f3f', '#607080', '#a3a3a3'] %}
-        <button type="button" class="color-swatch" data-color="{{ c }}" aria-label="Colour {{ c }}" style="background:{{ c }};"></button>
+        <button type="button" class="color-swatch" data-color="{{ c }}" aria-label="Colour {{ c }}" data-bg="{{ c }}"></button>
         {% endfor %}
         <span class="color-swatch-custom-wrap" title="Custom color">
           <input type="color" class="color-swatch-custom" aria-label="Custom colour" value="{{ group.color if group else '#c9a24b' }}">

@@ -107,7 +107,7 @@
     return (str == null ? '' : String(str)).replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
   }
 
-  // Colours end up inside style="..." attributes: only hex colours and var(--token) get through.
+  // Colours end up inside data-bg / data-bc attributes (applied by dyn-style.js): only hex colours and var(--token) get through.
   function safeColor(value, fallback) {
     return typeof value === 'string' && (/^#[0-9a-fA-F]{3,8}$/.test(value) || /^var\(--[a-z-]+\)$/.test(value)) ? value : fallback;
   }
@@ -643,7 +643,7 @@
       const labelPos = localOffsetToNatural(d, d.w * 0.45, 0);
       const leftPct = (labelPos.x / naturalWidth) * 100;
       const topPct = (labelPos.y / naturalHeight) * 100;
-      return `<div class="angle-degree-label" style="left:${leftPct}%; top:${topPct}%;">${sweepDeg}\u00b0</div>`;
+      return `<div class="angle-degree-label" data-left="${leftPct.toFixed(3)}" data-top="${topPct.toFixed(3)}">${sweepDeg}\u00b0</div>`;
     }).join('');
   }
 
@@ -700,8 +700,8 @@
     return `
       <div class="map-pin${mine ? '' : ' pin-not-yours'}${p.dm_only ? ' is-dm-only' : ''}" data-pin-id="${p.id}" data-pin-type="${escapeHtml(p.pin_type)}" data-locked="${!!p.locked}" title="${escapeHtml(ownerTip)}"
            data-character-id="${escapeHtml(p.character_id || '')}" data-x="${p.x}" data-y="${p.y}"
-           style="left:${leftPct}%; top:${topPct}%; width:${wPct}%; height:${hPct}%;">
-        <div class="map-pin-visual ${dead ? 'is-dead' : ''}" style="border-color:${borderColor}; transform: rotate(${p.rotation || 0}deg);">
+           data-left="${Number(leftPct).toFixed(3)}" data-top="${Number(topPct).toFixed(3)}" data-width="${Number(wPct).toFixed(3)}" data-height="${Number(hPct).toFixed(3)}">
+        <div class="map-pin-visual ${dead ? 'is-dead' : ''}" data-bc="${borderColor}" data-rot="${Number(p.rotation || 0).toFixed(2)}">
           <div class="map-pin-avatar">${avatarInner}</div>
         </div>
         <span class="map-pin-label">${label}${p.owner_name && window.IS_DM ? `<small class="pin-owner-chip">${escapeHtml(p.owner_name)}</small>` : ''}</span>
@@ -711,6 +711,7 @@
 
   function renderPins() {
     pinLayer.innerHTML = pins.map(pinMarkup).join('');
+    if (window.ledgerApplyDataStyles) window.ledgerApplyDataStyles(pinLayer);
     if (typeof renderRoster === 'function') renderRoster();
     markFoggedPins();
     if (selectedPinId) positionPinBubble(selectedPinId);
@@ -789,7 +790,7 @@
     }
     if (pinShapesWrap) {
       const n = drawings.filter((d) => d.attached_pin_id === pin.id).length;
-      pinShapesWrap.style.display = (n && canMovePin(pin) && !readOnly()) ? '' : 'none';
+      pinShapesWrap.hidden = !(n && canMovePin(pin) && !readOnly());
       pinShapesBtn.title = n === 1 ? '1 shape is attached to this token' : `${n} shapes are attached to this token`;
       closeShapesMenu();
     }
@@ -830,7 +831,7 @@
 
   function layoutPinRadial(cx, cy, halfPx, stageW, stageH, k = 1) {
     const vis = visibleStageBox(stageW, stageH);
-    const items = Array.from(pinBubble.children).filter((c) => c.style.display !== 'none');
+    const items = Array.from(pinBubble.children).filter((c) => c.style.display !== 'none' && !c.hidden);
     const n = items.length;
     if (!n) return;
     const BTN = 36 * k, GAP = 6 * k, PAD = BTN / 2 + 4;
@@ -2521,7 +2522,7 @@
     if (!shown.length) { rosterList.innerHTML = '<p class="roster-empty">No character matches that name.</p>'; return; }
     rosterList.innerHTML = shown.map((c) => `
       <button type="button" draggable="true" class="roster-item${placingChar && placingChar.id === c.id ? ' is-picked' : ''}" data-roster-id="${Number(c.id)}">
-        <span class="roster-avatar" style="border-color:${safeColor(c.group_color, 'var(--hairline-strong)')}">${c.avatar_path ? `<img src="/uploads/${escapeHtml(c.avatar_path)}" alt="">` : USER_FALLBACK_ICON}</span>
+        <span class="roster-avatar" data-bc="${safeColor(c.group_color, 'var(--hairline-strong)')}">${c.avatar_path ? `<img src="/uploads/${escapeHtml(c.avatar_path)}" alt="">` : USER_FALLBACK_ICON}</span>
         <span class="roster-name">${classIconHtml(c.class_key)}${escapeHtml(c.name)}</span>
         <span class="roster-meta">${c.is_npc ? '<span class="roster-tag">NPC</span>' : ''}${onMap[c.id] ? `<span class="roster-count" title="Already on this map">&times;${onMap[c.id]}</span>` : ''}</span>
       </button>`).join('');

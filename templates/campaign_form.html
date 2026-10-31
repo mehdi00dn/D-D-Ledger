@@ -19,12 +19,12 @@
 <form class="form-panel" method="POST" enctype="multipart/form-data" id="campaign-form">{{ csrf_field() }}
   <div class="form-section">
     <p class="form-section-title">Campaign Identity</p>
-    <div class="field" style="margin-bottom:14px;">
+    <div class="field u-mb14">
       <label for="name">Name</label>
       <input type="text" id="name" name="name" value="{{ campaign.name if campaign else '' }}" placeholder="e.g. The Ashfall Chronicles" required {{ 'disabled' if not is_owner }}>
     </div>
 
-    <div class="field" style="margin-bottom:14px;">
+    <div class="field u-mb14">
       <label>Campaign Image</label>
       <div class="avatar-preview-row">
         <div class="avatar-frame-wrap">
@@ -32,7 +32,7 @@
             {% if campaign and campaign.avatar_path %}
               <img id="campaign-avatar-preview" src="{{ url_for('uploaded_file', filename=campaign.avatar_path) }}" alt="avatar preview">
             {% else %}
-              <img id="campaign-avatar-preview" style="display:none;" alt="avatar preview">
+              <img id="campaign-avatar-preview" hidden alt="avatar preview">
               {{ icon('scroll', 'avatar-placeholder-icon') }}
             {% endif %}
           </div>
@@ -68,7 +68,7 @@
   {% if is_owner and campaign %}
   <div class="form-section">
     <p class="form-section-title">Campaign notes</p>
-    <p class="field-hint" style="margin:0 0 10px;">Shown on the campaign's Home page. Mark a note as hidden to keep it to yourself and the other DMs.</p>
+    <p class="field-hint u-m0-10">Shown on the campaign's Home page. Mark a note as hidden to keep it to yourself and the other DMs.</p>
     <div class="note-blocks" id="campnotes-blocks">
       {% for e in notes_entries %}{{ note_block(e.t, e.h, 'notes', 'Plot threads, house rules, what the party knows...') }}{% endfor %}
     </div>
@@ -91,7 +91,7 @@
           <option value="__custom__" {{ 'selected' if setting_preset == '__custom__' else '' }}>Custom&hellip;</option>
         </select>
         <input type="text" id="setting-custom" name="setting_custom" value="{{ setting_custom }}"
-               placeholder="Name your setting..." style="margin-top:8px;{{ '' if setting_preset == '__custom__' else ' display:none;' }}"
+               placeholder="Name your setting..." class="u-mt8"{{ '' if setting_preset == '__custom__' else ' hidden' }}
                {{ 'disabled' if not is_owner }}>
       </div>
 
@@ -150,7 +150,7 @@
 {% set can_leave_freely = not is_owner or owner_count > 1 %}
 {% if g.real_is_dm or is_owner %}
 <div class="form-panel">
-  <div class="form-section" style="margin-bottom:0;">
+  <div class="form-section u-mb0">
     <p class="form-section-title">Players &amp; NPCs</p>
     <form method="POST" action="{{ url_for('campaign_npc_visibility', campaign_id=campaign.id) }}" id="npc-visibility-form">{{ csrf_field() }}
       <label class="toggle-switch">
@@ -164,7 +164,7 @@
 </div>
 {% endif %}
 <div class="form-panel members-panel">
-  <div class="form-section" style="margin-bottom:0;">
+  <div class="form-section u-mb0">
     <p class="form-section-title">Members</p>
     <div class="member-list" id="member-list">
       {% for m in members %}
@@ -202,7 +202,7 @@
         <details class="member-chars">
           <summary>{{ icon('user') }} {% if mine %}Plays {{ mine|map(attribute='name')|join(', ') }}{% else %}Attach characters{% endif %}</summary>
           <form method="POST" action="{{ url_for('campaign_member_characters', campaign_id=campaign.id, user_id=m.id) }}">{{ csrf_field() }}
-            <p class="field-hint" style="margin:4px 0 8px;">{{ m.username }} can edit these characters and move their tokens on the maps.</p>
+            <p class="field-hint u-m4-8">{{ m.username }} can edit these characters and move their tokens on the maps.</p>
             <ul class="member-chars-list">
               {% for c in assignable %}
               <li><label><input type="checkbox" name="character_ids" value="{{ c.id }}" {{ 'checked' if c.player_id == m.id else '' }}>
@@ -393,7 +393,7 @@
   var customInput = document.getElementById('setting-custom');
   if (presetSelect && customInput) {
     presetSelect.addEventListener('change', function () {
-      customInput.style.display = presetSelect.value === '__custom__' ? '' : 'none';
+      customInput.hidden = presetSelect.value !== '__custom__';
     });
   }
   var statusSelect = document.getElementById('status');

@@ -115,18 +115,18 @@
   <div class="map-tool-group" id="shape-style-group" hidden>
     <div class="tool-flyout" id="colors-flyout" data-flyout-group="colors">
       <button type="button" class="map-tool-btn flyout-trigger" id="colors-flyout-trigger" data-flyout-trigger title="Shape color">
-        <span class="color-flyout-swatch" id="colors-flyout-swatch" style="background:#c9a24b;"></span>
+        <span class="color-flyout-swatch" id="colors-flyout-swatch" data-bg="#c9a24b"></span>
       </button>
       <div class="tool-flyout-menu"><div class="tool-flyout-menu-inner">
-        <div class="color-swatch-row" data-color-group="#map-color-input" style="gap:6px;">
+        <div class="color-swatch-row u-gap6" data-color-group="#map-color-input">
           {% for c in ['#c9a24b', '#e63946', '#5f9174', '#4d7ea8', '#8e6bb0', '#8a5a34', '#f2f2f2', '#1a1a1a'] %}
-          <button type="button" class="color-swatch {{ 'selected' if loop.first }}" data-color="{{ c }}" aria-label="Colour {{ c }}" style="background:{{ c }}; width:22px; height:22px;"></button>
+          <button type="button" class="color-swatch color-swatch-sm {{ 'selected' if loop.first }}" data-color="{{ c }}" aria-label="Colour {{ c }}" data-bg="{{ c }}"></button>
           {% endfor %}
         </div>
       </div></div>
     </div>
     <input type="hidden" id="map-color-input" value="#c9a24b">
-    <span class="hint-text" style="margin:0 2px;">|</span>
+    <span class="hint-text u-mx2">|</span>
     <label class="grid-size-label">Fill</label>
     <input type="range" id="fill-opacity" min="0" max="95" value="25" title="Fill opacity (0 = no fill)">
   </div>
@@ -144,11 +144,11 @@
     <button type="button" class="map-tool-btn" data-tool="ruler" title="Ruler: drag to measure in squares and feet (Esc clears it)" aria-label="Ruler">{{ icon('ruler') }}</button>
     <button type="button" class="btn btn-ghost btn-sm" id="zoom-reset-btn" title="Reset zoom to 100%">Reset Zoom</button>
     <span class="map-setup-value" id="zoom-level-label">100%</span>
-    <span class="hint-text" id="hold-space-hint" style="margin:0;">Hold Space to pan</span>
+    <span class="hint-text u-m0" id="hold-space-hint">Hold Space to pan</span>
   </div>
 </div>
 
-<div class="map-stage-wrap" id="map-stage-wrap" data-natural-width="{{ map.image_width }}" data-natural-height="{{ map.image_height }}" style="aspect-ratio: {{ map.image_width or 16 }} / {{ map.image_height or 9 }};">
+<div class="map-stage-wrap" id="map-stage-wrap" data-natural-width="{{ map.image_width }}" data-natural-height="{{ map.image_height }}" data-aspect="{{ map.image_width or 16 }}/{{ map.image_height or 9 }}">
   <div class="map-stage-inner" id="map-stage-inner">
     <canvas id="map-canvas"></canvas>
     <div id="map-fog-layer" class="map-fog-layer" hidden
@@ -172,7 +172,7 @@
       </div>
       <button type="button" class="pin-radial-btn pin-pc-npc-toggle" id="pin-pc-npc-toggle" title="Toggle between PC and NPC">PC</button>
       {% endif %}
-      <div class="pin-owner-wrap" id="pin-shapes-wrap" style="display:none">
+      <div class="pin-owner-wrap" id="pin-shapes-wrap" hidden>
         <button type="button" class="pin-radial-btn" id="pin-shapes-btn" title="Shapes attached to this token" aria-haspopup="true" aria-expanded="false">{{ icon('link') }}</button>
         <div class="pin-owner-menu pin-shapes-menu" id="pin-shapes-menu" role="menu" hidden></div>
       </div>

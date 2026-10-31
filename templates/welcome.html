@@ -16,7 +16,7 @@
           {% if profile.avatar_path %}
             <img id="welcome-avatar-preview" src="{{ url_for('uploaded_file', filename=profile.avatar_path) }}" alt="Your photo">
           {% else %}
-            <img id="welcome-avatar-preview" style="display:none;" alt="Photo preview">
+            <img id="welcome-avatar-preview" hidden alt="Photo preview">
             {{ icon('user', 'avatar-placeholder-icon') }}
           {% endif %}
         </div>

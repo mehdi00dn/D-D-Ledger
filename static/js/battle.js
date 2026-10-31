@@ -38,7 +38,7 @@
     return (str == null ? '' : String(str)).replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
   }
 
-  // Colours end up inside style="..." attributes: only hex colours and var(--token) get through.
+  // Colours end up inside data-bg / data-bc attributes (applied by dyn-style.js): only hex colours and var(--token) get through.
   function safeColor(value, fallback) {
     return typeof value === 'string' && (/^#[0-9a-fA-F]{3,8}$/.test(value) || /^var\(--[a-z-]+\)$/.test(value)) ? value : fallback;
   }
@@ -167,7 +167,7 @@
     const pct = hidden ? 0 : hpPercent(p);
     const dead = !!p.is_dead;
     const showDiedBtn = isDM && !hidden && p.current_hp <= 0 && !dead;
-    const groupDot = p.group_color ? `<span class="group-dot" style="background:${safeColor(p.group_color, '#c9a24b')}"></span>` : '';
+    const groupDot = p.group_color ? `<span class="group-dot" data-bg="${safeColor(p.group_color, '#c9a24b')}"></span>` : '';
     const tempHp = p.temp_hp || 0;
     const tempPct = p.char_max_hp ? (tempHp / p.char_max_hp) * 100 : 0;
     const tempBarWidth = Math.max(0, Math.min(100 - pct, tempPct));
@@ -200,7 +200,7 @@
         <div class="stat-chip stats-fogged" aria-hidden="true"><label>INIT</label><input type="number" class="stat-chip-input" value="00" disabled tabindex="-1"></div>
         <div class="stat-chip stats-fogged" aria-hidden="true"><label>AC</label><input type="number" class="stat-chip-input" value="00" disabled tabindex="-1"></div>
         <div class="hp-block stats-fogged" aria-hidden="true">
-          <div class="hp-bar-track hp-bar-track-static"><div class="hp-bar-fill ${hpColorClass(70)}" style="--p:0.7"></div></div>
+          <div class="hp-bar-track hp-bar-track-static"><div class="hp-bar-fill ${hpColorClass(70)}" data-p="0.7"></div></div>
           <span class="hp-readout">00 / 00</span>
         </div>
       </div>`;
@@ -217,8 +217,8 @@
       </div>
       <div class="hp-block">
         <div class="hp-bar-track${isDM ? '' : ' hp-bar-track-static'}" ${isDM ? `data-hp-scrub="${p.id}"` : ''} data-max="${p.char_max_hp}" title="${isDM ? 'Hold and drag to set HP' : ''}">
-          <div class="hp-bar-fill ${hpColorClass(pct)}" style="--p:${pct / 100}"></div>
-          ${tempBarWidth > 0 ? `<div class="hp-bar-temp" style="left:${pct}%; width:${tempBarWidth}%;"></div>` : ''}
+          <div class="hp-bar-fill ${hpColorClass(pct)}" data-p="${(pct / 100).toFixed(4)}"></div>
+          ${tempBarWidth > 0 ? `<div class="hp-bar-temp" data-left="${pct.toFixed(2)}" data-width="${tempBarWidth.toFixed(2)}"></div>` : ''}
         </div>
         <span class="hp-readout">${p.current_hp} / ${p.char_max_hp}${tempHp > 0 ? ` <span class="temp-hp-badge">+${tempHp}</span>` : ''}</span>
       </div>
@@ -246,7 +246,7 @@
     return `
     <div class="battle-row ${dead ? 'is-dead' : ''} ${p.is_active ? 'is-active' : ''}" data-pid="${p.id}"${hidden ? '' : ` data-hp="${p.current_hp}"`}${p.is_active ? ' aria-current="true"' : ''}>
       ${rank ? `<span class="battle-rank" aria-hidden="true">${rank}</span>` : ''}
-      <div class="battle-avatar${openAttrs ? ' is-link' : ''}"${openAttrs} aria-label="${escapeHtml(p.display_name)}: details" style="border-color:${safeColor(p.group_color, 'var(--brass)')};">${avatarMarkup(p)}</div>
+      <div class="battle-avatar${openAttrs ? ' is-link' : ''}"${openAttrs} aria-label="${escapeHtml(p.display_name)}: details" data-bc="${safeColor(p.group_color, 'var(--brass)')}">${avatarMarkup(p)}</div>
 
       <div class="battle-name-block">
         <div class="battle-name${openAttrs ? ' is-link' : ''}"${openAttrs}>${classIconHtml(p.class_key)}${escapeHtml(p.display_name)}</div>
@@ -312,12 +312,13 @@
     let html = '';
     sections.forEach((section) => {
       if (section.heading) {
-        html += `<div class="group-heading"><span class="group-dot" style="background:${safeColor(section.heading.color, '#c9a24b')}"></span>${escapeHtml(section.heading.name)}</div>`;
+        html += `<div class="group-heading"><span class="group-dot" data-bg="${safeColor(section.heading.color, '#c9a24b')}"></span>${escapeHtml(section.heading.name)}</div>`;
       }
       html += '<div class="battle-list">' + section.items.map((p, i) => rowMarkup(p, isDM && sortMode === 'initiative' ? i + 1 : 0)).join('') + '</div>';
     });
     const before = snapshotRows();
     root.innerHTML = html;
+    if (window.ledgerApplyDataStyles) window.ledgerApplyDataStyles(root);      // colours and bar fills come as data-* (dyn-style.js); apply before anything measures the rows
     condSeen = condNow; condNow = new Set();
     animateRows(before);
   }
@@ -715,11 +716,11 @@
       return;
     }
     addModalGroups.innerHTML = `
-      <p class="hint-text" style="margin:0 0 8px;">Add a whole faction at once</p>
+      <p class="hint-text u-m0-8">Add a whole faction at once</p>
       <div class="add-modal-groups-row">
         ${groups.map((g) => `
-          <button type="button" class="chip add-whole-group-chip" data-add-group="${g.id}" style="border-color:${safeColor(g.color, '#c9a24b')};">
-            <span class="group-dot" style="background:${safeColor(g.color, '#c9a24b')}"></span>${escapeHtml(g.name)}
+          <button type="button" class="chip add-whole-group-chip" data-add-group="${g.id}" data-bc="${safeColor(g.color, '#c9a24b')}">
+            <span class="group-dot" data-bg="${safeColor(g.color, '#c9a24b')}"></span>${escapeHtml(g.name)}
           </button>
         `).join('')}
       </div>
@@ -743,9 +744,9 @@
     }
     addModalList.innerHTML = filtered.map((c) => `
       <div class="add-character-item">
-        <div class="battle-avatar" style="width:36px;height:36px;border-color:${safeColor(c.group_color, 'var(--brass)')};">${c.avatar_path ? `<img src="/uploads/${escapeHtml(c.avatar_path)}" alt="">` : ICONS.user}</div>
+        <div class="battle-avatar battle-avatar-sm" data-bc="${safeColor(c.group_color, 'var(--brass)')}">${c.avatar_path ? `<img src="/uploads/${escapeHtml(c.avatar_path)}" alt="">` : ICONS.user}</div>
         <div class="battle-name-block">
-          <div class="battle-name" style="font-size:14px;">${classIconHtml(c.class_key)}${escapeHtml(c.name)}</div>
+          <div class="battle-name battle-name-sm">${classIconHtml(c.class_key)}${escapeHtml(c.name)}</div>
           <div class="battle-meta">${(c.factions || []).length ? escapeHtml(c.factions.map((f) => f.name).join(', ')) : 'No Faction'}</div>
         </div>
         <button type="button" class="btn btn-primary btn-sm" data-add-char="${c.id}">Add</button>

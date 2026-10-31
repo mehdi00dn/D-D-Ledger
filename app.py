@@ -2742,8 +2742,7 @@ def _csp(nonce=None):
         "default-src 'self'",
         "img-src 'self' data: blob:",
         "media-src 'self' data: blob:",
-        "style-src 'self'",                                                # no inline <style> blocks: there are none, so none may run
-        "style-src-attr 'unsafe-inline'",                                  # style="..." attributes are still used all over the templates
+        "style-src 'self'",                                                # no inline <style> blocks and (DL-172) no style="..." attributes: there are none, so none may run
         "font-src 'self' data:",
         "script-src 'self'" + (" 'nonce-%s'" % nonce if nonce else ''),   # inline scripts run only with this page's one-time token
         "connect-src " + ' '.join(connect),

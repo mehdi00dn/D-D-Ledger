@@ -51,7 +51,7 @@
       <button type="button" class="btn-icon" id="close-new-map-modal" aria-label="Close">{{ icon('x') }}</button>
     </div>
     <form class="modal-body" method="POST" action="{{ url_for('map_new') }}" enctype="multipart/form-data">{{ csrf_field() }}
-      <div class="form-row cols-2" style="margin-bottom:14px; align-items: end;">
+      <div class="form-row cols-2 u-form-row-end">
         <div class="field">
           <label for="map-name">Map name</label>
           <input type="text" id="map-name" name="name" placeholder="e.g. The Sunken Crypt" required>
@@ -74,12 +74,12 @@
           <input type="file" name="image" id="map-image-input" accept="image/*" data-multi-input aria-label="Choose a map image">
           <div class="upload-progress upload-progress-circle" hidden></div>
         </div>
-        <div id="map-image-preview-wrap" hidden style="margin-top:12px;">
-          <canvas id="map-image-preview-canvas" style="max-width:100%; max-height:220px; display:block; margin:0 auto; border-radius:var(--radius-s); border:1px solid var(--hairline);"></canvas>
-          <div style="display:flex; gap:8px; justify-content:center; margin-top:10px;">
+        <div class="u-mt12" id="map-image-preview-wrap" hidden>
+          <canvas class="map-preview-canvas" id="map-image-preview-canvas"></canvas>
+          <div class="u-actions-center">
             <button type="button" class="btn btn-ghost btn-sm" id="map-image-rotate-btn">{{ icon('rotate') }} Rotate 90&deg;</button>
           </div>
-          <p class="hint-text" style="text-align:center; margin-top:6px;">The canvas will match the image's size automatically.</p>
+          <p class="hint-text u-center-mt6">The canvas will match the image's size automatically.</p>
         </div>
       </div>
 

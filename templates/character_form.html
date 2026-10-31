@@ -104,11 +104,11 @@
         {% if groups %}
         <div class="faction-picks">
           {% for g in groups %}
-          <label class="faction-pick"><input type="checkbox" name="group_ids" value="{{ g.id }}" {{ 'checked' if g.id in (character_faction_ids or []) else '' }}><span class="group-dot" style="background:{{ g.color }}"></span>{{ g.name }}</label>
+          <label class="faction-pick"><input type="checkbox" name="group_ids" value="{{ g.id }}" {{ 'checked' if g.id in (character_faction_ids or []) else '' }}><span class="group-dot" data-bg="{{ g.color }}"></span>{{ g.name }}</label>
           {% endfor %}
         </div>
         {% else %}
-        <p class="hint-text" style="margin:0;">No factions yet.</p>
+        <p class="hint-text u-m0">No factions yet.</p>
         {% endif %}
       </div>
       {% endif %}
@@ -195,14 +195,14 @@
               {% if character and character.avatar_path %}
                 <img id="avatar-preview-img" src="{{ url_for('uploaded_file', filename=character.avatar_path) }}" alt="avatar preview">
               {% else %}
-                <img id="avatar-preview-img" style="display:none;" alt="avatar preview">
+                <img id="avatar-preview-img" hidden alt="avatar preview">
                 {{ icon('user', 'avatar-placeholder-icon') }}
               {% endif %}
             </div>
             <button type="button" class="avatar-remove-btn" id="avatar-remove-btn" title="Remove avatar" {{ '' if character and character.avatar_path else 'hidden' }}>{{ icon('x') }}</button>
             <div class="upload-progress upload-progress-circle" hidden></div>
           </div>
-          <div class="file-drop" style="flex:1;">
+          <div class="file-drop u-flex1">
             {{ icon('upload') }}
             <div>Click or drop an image</div>
             <span class="file-name"></span>

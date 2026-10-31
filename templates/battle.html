@@ -50,13 +50,13 @@
     <span class="turn-now" id="turn-now" hidden aria-live="polite"></span>
   </div>
   {% if g.is_dm %}
-  <span class="hint-text" style="margin:0;">Sort by</span>
+  <span class="hint-text u-m0">Sort by</span>
   <div class="sort-toggle" id="sort-toggle">
     <button type="button" class="sort-option active" data-sort="initiative">Initiative</button>
     <button type="button" class="sort-option" data-sort="group">Faction</button>
   </div>
   {% else %}
-  <span class="hint-text" style="margin:0;">Sorted by faction</span>
+  <span class="hint-text u-m0">Sorted by faction</span>
   {% endif %}
 </div>
 
@@ -92,7 +92,7 @@
       <button type="button" class="btn-icon" id="close-add-modal" aria-label="Close">{{ icon('x') }}</button>
     </div>
     <div class="modal-body">
-      <div class="field" style="margin-bottom:14px;">
+      <div class="field u-mb14">
         <input type="text" id="add-modal-search" placeholder="Search characters…" autocomplete="off">
       </div>
       {% if g.is_dm %}

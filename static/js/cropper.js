@@ -156,6 +156,7 @@
       const previewUrl = URL.createObjectURL(blob);
       if (preview) {
         preview.src = previewUrl;
+        preview.hidden = false;
         preview.style.display = 'block';
         const placeholder = preview.parentElement.querySelector('.avatar-placeholder-icon');
         if (placeholder) placeholder.style.display = 'none';
@@ -193,6 +194,7 @@
           input.value = '';
           const preview = document.querySelector(input.dataset.avatarInput);
           if (preview) {
+            preview.hidden = true;
             preview.style.display = 'none';
             preview.src = '';
             const placeholder = preview.parentElement.querySelector('.avatar-placeholder-icon');

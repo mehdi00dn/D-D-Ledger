@@ -98,10 +98,18 @@ never limited and signing out always works. Override with `WRITE_LIMIT_USER`, `D
 `X-Robots-Tag: noindex`. `/.well-known/security.txt` (RFC 9116) is published once you set `SECURITY_CONTACT` to a
 `mailto:` or `https://` address; until then it returns 404.
 
-Security headers round 2 (DL-140): the Content-Security-Policy no longer allows inline `<style>` blocks (`style-src 'self'`; `style="..."`
-attributes stay allowed through `style-src-attr`), responses carry `Cross-Origin-Resource-Policy: same-origin`, and the policy has
-`report-uri /csp-report`: a browser that blocks something posts there and the app logs one `csp violation: ...` warning line (nothing is
-stored; the endpoint needs no sign-in). HSTS `preload` waits for the final domain (DL-134), and inline style attributes are a later step.
+Security headers round 2 (DL-140, finished with DL-172): the Content-Security-Policy allows no inline styles at all: no `<style>` blocks and
+no `style="..."` attributes (`style-src 'self'`, no `style-src-attr`). Fixed styles are classes in `static/css/style.css` (the `u-*` helpers
+and a few named classes). A style that depends on data (a faction colour, the HP bar fill, where a map pin sits) is written as a `data-*`
+attribute instead (`data-bg`, `data-bc`, `data-grad`, `data-p`, `data-left`, `data-top`, `data-width`, `data-height`, `data-rot`,
+`data-hue`, `data-aspect`) and applied by `static/js/dyn-style.js` through the style object, which the policy allows. The script checks every
+value first (hex or `var(--token)` colours, plain numbers), so text that slips into a page can never turn into arbitrary CSS, and it
+handles new nodes as the battle and map screens redraw. `tests/test_no_inline_styles.py` fails if a template or script writes a
+`style=` attribute; `tests/test_e2e_csp_styles.py` opens the main screens in a browser and fails on any policy violation. Elements that
+start hidden use the `hidden` attribute (the scripts that show them set `.hidden`, not `style.display`). Responses also carry
+`Cross-Origin-Resource-Policy: same-origin`, and the policy has `report-uri /csp-report`: a browser that blocks something posts there and
+the app logs one `csp violation: ...` warning line (nothing is stored; the endpoint needs no sign-in). HSTS `preload` still waits for the
+final domain (DL-134).
 
 ## Database housekeeping
 

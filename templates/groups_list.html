@@ -10,7 +10,7 @@
     <h1 class="page-title">Factions</h1>
     <p class="page-sub">{{ groups|length }} {{ 'faction' if groups|length == 1 else 'factions' }} defined. Used to sort battles and mark sides.</p>
   </div>
-  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+  <div class="u-row-wrap">
     <a href="{{ url_for('export_data') }}" class="btn btn-ghost">{{ icon('upload') }} Export</a>
     <form method="POST" action="{{ url_for('import_data') }}" enctype="multipart/form-data" class="import-form">{{ csrf_field() }}
       <label class="btn btn-ghost import-label">
@@ -43,7 +43,7 @@
 <div class="group-grid" id="group-grid">
   {% for g in groups %}
   <div class="group-card" data-name="{{ g.name|lower }}">
-    <div class="group-image-block" style="{{ '' if g.avatar_path else 'background: linear-gradient(135deg, ' ~ g.color ~ ', var(--bg-panel-inset));' }}">
+    <div class="group-image-block" {% if not g.avatar_path %}data-grad="{{ g.color }}"{% endif %}>
       {% if g.avatar_path %}
         <img src="{{ url_for('uploaded_file', filename=g.avatar_path) }}" alt="{{ g.name }} avatar">
       {% else %}
@@ -51,7 +51,7 @@
       {% endif %}
     </div>
     <div class="group-body">
-      <h2 class="group-name"><span class="group-dot" style="background:{{ g.color }}"></span>{{ g.name }}</h2>
+      <h2 class="group-name"><span class="group-dot" data-bg="{{ g.color }}"></span>{{ g.name }}</h2>
       <p class="group-count">{{ g.member_count }} member{{ '' if g.member_count == 1 else 's' }}</p>
       <p class="group-bio">{{ g.bio | preview_lines }}</p>
       <div class="group-actions">

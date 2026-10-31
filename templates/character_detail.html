@@ -55,7 +55,7 @@
         <span class="cd-chip">Lvl {{ character.level }}</span>
         <span class="cd-chip cd-chip--{{ 'npc' if character.is_npc else 'pc' }}">{{ ('NPC · Ally' if character.is_ally else 'NPC') if character.is_npc else 'PC' }}</span>
         {% if character.added_from %}<span class="cd-chip cd-chip--source">Added from {{ character.added_from }}</span>{% endif %}
-        {% for f in factions %}<span class="cd-chip cd-chip--faction"><span class="group-dot" style="background:{{ f.color }}"></span>{{ f.name }}</span>{% endfor %}
+        {% for f in factions %}<span class="cd-chip cd-chip--faction"><span class="group-dot" data-bg="{{ f.color }}"></span>{{ f.name }}</span>{% endfor %}
         {% if not factions %}<span class="cd-chip cd-chip--faint">Ungrouped</span>{% endif %}
       </div>
       <div class="made-by">Made by {{ character.made_by or 'a former member' }}</div>

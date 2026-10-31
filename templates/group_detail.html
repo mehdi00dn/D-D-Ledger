@@ -6,10 +6,10 @@
 {% block content %}
 <div class="page-header">
   <div>
-    <h1 class="page-title"><span class="group-dot" style="background:{{ group.color }}"></span>{{ group.name }}</h1>
+    <h1 class="page-title"><span class="group-dot" data-bg="{{ group.color }}"></span>{{ group.name }}</h1>
     <p class="page-sub">{{ members|length }} member{{ '' if members|length == 1 else 's' }} &middot; Made by {{ group.made_by or 'a former member' }}</p>
   </div>
-  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+  <div class="u-row-wrap">
     {% if g.is_dm %}
     <a href="{{ url_for('faction_edit', group_id=group.id) }}" class="btn btn-primary">{{ icon('pencil') }} Edit</a>
     {% endif %}
@@ -19,7 +19,7 @@
 
 <div class="form-panel">
   <div class="faction-detail-head">
-    <div class="group-image-block faction-detail-banner" style="{{ '' if group.avatar_path else 'background: linear-gradient(135deg, ' ~ group.color ~ ', var(--bg-panel-inset));' }}">
+    <div class="group-image-block faction-detail-banner" {% if not group.avatar_path %}data-grad="{{ group.color }}"{% endif %}>
       {% if group.avatar_path %}
         <img src="{{ url_for('uploaded_file', filename=group.avatar_path) }}" alt="{{ group.name }} avatar">
       {% else %}
@@ -29,7 +29,7 @@
     <p class="faction-detail-bio">{% if group.bio %}{{ group.bio }}{% else %}<em>No notes recorded.</em>{% endif %}</p>
   </div>
 
-  <div class="form-section-title" style="margin-top:22px;">Members</div>
+  <div class="form-section-title u-mt22">Members</div>
   {% if members %}
   <div class="faction-members">
     {% for m in members %}

@@ -165,7 +165,7 @@ def test_security_headers_on_pages_and_api(appmod, user):
         script_src = [d for d in csp.split('; ') if d.startswith('script-src')][0]
         assert "'unsafe-inline'" not in script_src                      # DL-123: injected scripts must not run
         style_src = [d for d in csp.split('; ') if d.startswith('style-src ')][0]
-        assert "'unsafe-inline'" not in style_src and "style-src-attr 'unsafe-inline'" in csp      # DL-140: no injected <style> blocks; style="" attributes stay
+        assert "'unsafe-inline'" not in csp and 'style-src-attr' not in csp      # DL-140 / DL-172: no injected <style> blocks and no style="" attributes
         assert h['Cross-Origin-Resource-Policy'] == 'same-origin' and 'report-uri /csp-report' in csp
 
 

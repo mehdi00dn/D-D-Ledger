@@ -5496,3 +5496,28 @@ a.pager-link:hover { border-color: var(--brass); }
 /* ---- DL-171: the SRD credit under the Rules Reference ---- */
 .ref-credit { margin: 14px 0 0; font-size: 12px; line-height: 1.5; color: var(--parchment-faint); }
 .ref-credit a { color: var(--parchment-dim); text-decoration: underline; text-underline-offset: 2px; }
+
+/* ---- DL-172: styles that used to sit in style="..." attributes (the page's policy no longer allows them) ---- */
+.u-mb14 { margin-bottom: 14px !important; }
+.u-mb0 { margin-bottom: 0 !important; }
+.u-m0 { margin: 0 !important; }
+.u-m0-8 { margin: 0 0 8px !important; }
+.u-m0-10 { margin: 0 0 10px !important; }
+.u-m0-12 { margin: 0 0 12px !important; }
+.u-m0-14 { margin: 0 0 14px !important; }
+.u-m4-8 { margin: 4px 0 8px !important; }
+.u-mx2 { margin: 0 2px !important; }
+.u-mt8 { margin-top: 8px !important; }
+.u-mt12 { margin-top: 12px !important; }
+.u-mt22 { margin-top: 22px !important; }
+.u-flex1 { flex: 1 !important; }
+.u-gap6 { gap: 6px !important; }
+.u-row-wrap { display: flex; gap: 10px; flex-wrap: wrap; }
+.u-center-mt6 { text-align: center; margin-top: 6px; }
+.u-center-mt10 { text-align: center; margin-top: 10px; }
+.u-actions-center { display: flex; gap: 8px; justify-content: center; margin-top: 10px; }
+.u-form-row-end { margin-bottom: 14px; align-items: end; }
+.map-preview-canvas { max-width: 100%; max-height: 220px; display: block; margin: 0 auto; border-radius: var(--radius-s); border: 1px solid var(--hairline); }
+.color-swatch.color-swatch-sm { width: 22px; height: 22px; }
+.battle-avatar.battle-avatar-sm { width: 36px; height: 36px; }
+.battle-name.battle-name-sm { font-size: 14px; }
