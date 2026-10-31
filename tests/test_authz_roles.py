@@ -64,7 +64,7 @@ POLICY = {
         'api_battle_restart_turns', 'api_battle_remove', 'api_battle_clear')},
     # --- maps (Players may edit a map the DM has not locked; see test_locked_map_* below) ---
     'maps_list': MEMBER, 'map_new': MEMBER, 'map_editor': MEMBER, 'map_delete': OWNER,
-    'api_map_state': MEMBER, 'map_image': MEMBER, 'api_map_fog_get': MEMBER, 'api_map_fog_set': DM,
+    'api_map_state': MEMBER, 'api_map_measure': MEMBER, 'api_map_measure_clear': MEMBER, 'map_image': MEMBER, 'api_map_fog_get': MEMBER, 'api_map_fog_set': DM,
     'api_map_settings': MEMBER, 'api_map_drawings_list': MEMBER, 'api_map_drawings_add': MEMBER,
     'api_map_drawing_update': MEMBER, 'api_map_drawing_delete': MEMBER, 'api_map_drawings_clear': MEMBER,
     'api_map_pins_list': MEMBER, 'api_map_sync': MEMBER, 'api_map_pins_add': MEMBER,

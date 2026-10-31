@@ -64,7 +64,7 @@ def test_campaign_home_page(shared_server, pw):
     assert page.locator('.home-pc').count() == 3
     assert page.locator('.home-banner img').count() == 1 and 'Ember King' in page.locator('.home-bio').inner_text()
     assert page.locator('.home-member-list li').count() == 1
-    assert page.locator('.sidebar-nav a.nav-tab.active').inner_text().strip() == 'Home'
+    assert page.locator('.sidebar-nav a.nav-tab.active').inner_text().strip() == 'Overview'
     _shot(page, 'home-desktop')
     page.set_viewport_size({'width': 390, 'height': 780})
     _shot(page, 'home-phone')

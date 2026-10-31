@@ -163,13 +163,13 @@ feedback, and larger targets on touch screens. Controls that already have their 
 faction chips, skill tri-state, saving-throw pip, dice roll-mode) are excluded in that block's selectors; a new custom
 control that hides its `<input>` needs adding to the same `:not(:is(...))` list.
 
-Each campaign opens on a Home page (DL-144, `campaign_home`): the campaign image and bio, count tiles, the player list (DM or Player), the party, the running battle, the latest dice rolls
+Each campaign opens on an Overview page (DL-144, `campaign_home`): the campaign image and bio, count tiles, the player list (DM or Player), the party, the running battle, the latest dice rolls
 and recent activity. It reuses the Battle, dice and Activity queries, so NPC hiding and enemy redaction apply to it unchanged. A
 "next session" card is left for DL-152.
 
 The campaign bio is stored in the same format as character notes (a JSON list of sanitised bold/italic/bullet HTML boxes in
 `campaigns.description`; old plain-text bios still read fine) and the campaign notes in `campaigns.notes` (migration 0034). Long text on
-Home folds behind "Read more" (`static/js/home.js`). A character can be attached to a member (`characters.player_id`, set by the DM or an
+Overview folds behind "Read more" (`static/js/home.js`). A character can be attached to a member (`characters.player_id`, set by the DM or an
 owner from Settings > Members): `owns_character()` then lets that member edit it, read its hidden notes and make death saves, and map
 tokens of that character are theirs to move (`_may_move_pin`). Deleting stays with the creator and the owners.
 
@@ -177,11 +177,11 @@ Print sheet (character page, DL-157): a button that opens the browser's print wi
 leaves out the menus, buttons, dice, roll controls and the sheet viewer, drops the cards onto white, and the page switches to the light theme
 for the print only. A character whose stats are hidden from the viewer has no button.
 
-Quests (DL-151, migration 0038): a card on the campaign Home page. The DM adds a quest (title, what the players know, optionally hidden),
+Quests (DL-151, migration 0038): a card on the campaign Overview page. The DM adds a quest (title, what the players know, optionally hidden),
 marks it done or reopens it, hides it from or shows it to Players, or deletes it; Players read the quests that are not hidden. Up to 60
 per campaign. Adding or finishing a visible quest shows up in the activity feed. Not built: objectives inside a quest, quest export.
 
-Session scheduling (DL-152, migration 0035): the DM or an owner sets one "next session" per campaign from Home (`campaigns.next_session_at`
+Session scheduling (DL-152, migration 0035): the DM or an owner sets one "next session" per campaign from the Overview (`campaigns.next_session_at`
 in UTC plus a short note). The browser shows it in each viewer's own time zone (`static/js/home.js`); members answer Going / Maybe /
 Can't (`session_rsvps`); a new time clears the answers and sends members a notification and an activity entry; `/session.ics` gives a
 calendar file. A session more than six hours past is treated as none. A timed reminder is not built (needs a scheduler).
@@ -335,7 +335,7 @@ The battle log strip now drops with the menu bar like the dice button and the do
 ### Unsupported claims (DL-73, DL-86)
 Copyright check (DL-76, DL-171): the rules reference shows SRD 5.2.1 text, which is CC BY 4.0 and needs a credit. The full notice (plus the fog animation, fonts and lottie-web) is on `/about#credits` and a short credit sits under the Rules Reference. The icon sources are still open: see the 31 Oct 2026 update in `THIRD_PARTY.md`. `tests/test_third_party_audit.py` lets only the About and Rules Reference pages link out.
 
-Cookie consent review (DL-82, DL-170): the app sets one cookie (the session, `__Host-ledger` on https) and keeps eight small settings in the browser's local or session storage (theme, sidebar, map dock, three map tips, open Account section, full screen). All are either strictly necessary or set only when you change that setting, nothing is loaded from another site, and there is no analytics, so no consent banner is needed; the sign-up tick box (DL-167) records that the person was told. This is a reading of the code, not legal advice: DL-80 still covers the local rules. The Cookies page now lists the two session-storage items and explains that Google sets its own cookies on its own page when you choose Google sign-in. Three tests in `tests/test_privacy_page.py` keep that true: every storage key the scripts use must be listed on `/cookies` (add new ones to `STORAGE_KEYS` there), no script may write `document.cookie`, no page may load from another site, and a logged-in session may set only the session cookie.
+Cookie consent review (DL-82, DL-170): the app sets one cookie (the session, `__Host-ledger` on https) and keeps nine small settings in the browser's local or session storage (theme, sidebar, map dock, three map tips, map "Show to table", open Account section, full screen). All are either strictly necessary or set only when you change that setting, nothing is loaded from another site, and there is no analytics, so no consent banner is needed; the sign-up tick box (DL-167) records that the person was told. This is a reading of the code, not legal advice: DL-80 still covers the local rules. The Cookies page now lists the two session-storage items and explains that Google sets its own cookies on its own page when you choose Google sign-in. Three tests in `tests/test_privacy_page.py` keep that true: every storage key the scripts use must be listed on `/cookies` (add new ones to `STORAGE_KEYS` there), no script may write `document.cookie`, no page may load from another site, and a logged-in session may set only the session cookie.
 
 Audit of the public pages (about, contact, login, sign-up, privacy, terms, cookies): there are no reviews or testimonials anywhere (DL-73, nothing to remove). One claim had no basis: the Terms said "we keep backups", but no backup or restore drill exists yet, so it now says the data cannot be promised never to be lost and points to the download in Account settings. A test keeps the word "backup" off the public pages until the backup task is done; then restore the sentence and drop the test. Test: `tests/test_privacy_page.py`.
 
@@ -356,3 +356,6 @@ On desktop the character page now fills both columns: the right column holds the
 The Ruler tool is now a **Measure** tool. With it selected, a small row offers Ruler, Cone, Sphere, Line and Cube, and a **Show to table** box (on by default, remembered per browser). Squares and feet work as before (a diagonal step is one square, feet per square is the map's setting). A cone is as wide at its far end as it is long; a sphere is measured from its centre out to the radius; a line is one square wide; a cube grows from its corner towards where you drag. Anyone who can open the map can measure and show it, also Players on a locked map, because measuring changes nothing.
 
 What others see: your line or template in light blue with your name. It travels two ways. While you drag, small messages go over the live channel (`map-live.js`, kind `measure`, like token and shape movement) so it follows you smoothly when Realtime is on. It is also saved for a few seconds through `POST .../api/maps/<id>/measure` (one row per person per map in `map_measures`, replaced as you move, ignored after 5 s while dragging and 8 s after you let go), and every map refresh returns the other people's rows as `measures`; that is the safety net, so it also works without Realtime, a little less smoothly (about every 3 seconds). A ruler stays up until Esc, another tool or the next drag (the page re-sends it every 6 s); templates fade away by themselves about 8 seconds after you let go, for you and for everyone else. Esc, changing tool or switching **Show to table** off removes yours from everyone's screen (`POST .../measure/clear`). The server accepts only the five kinds and bounded numbers, and live messages are checked like all the others. Added to `docs/DATA_WE_COLLECT.md`. Tests: `tests/test_map_measures.py` (API), `tests/test_map_ruler.py` (two browsers: a template shown to a player and fading, a private ruler, Esc).
+
+### Overview instead of Home, and the cover in light mode (DL-70)
+The first item in a campaign's menu (sidebar and phone More sheet) is now called **Overview** and uses the scroll icon, because "Home" should be kept for the website's own front page, which does not exist yet. The address (`campaign_home`, `/campaigns/<id>/home`) and the code names are unchanged. In light mode the campaign cover on the Overview page showed dark text on the dark picture; inside the cover the text and accent colours now keep the dark theme's light values (`.home-hero.has-banner` in `static/css/style.css`).

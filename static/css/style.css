@@ -5544,3 +5544,14 @@ a.pager-link:hover { border-color: var(--brass); }
 .measure-kind[aria-pressed="true"] { background: var(--brass); color: var(--on-brass); border-color: var(--brass); }
 .measure-kind:focus-visible { outline: 2px solid var(--brass-bright); outline-offset: 1px; }
 .measure-share { display: inline-flex; align-items: center; gap: 6px; margin-inline-start: 6px; font-size: 12px; color: var(--parchment-dim); cursor: pointer; }
+
+/* DL-70: the campaign cover is always dark under its text (the picture is dimmed and a dark fade sits on it), so inside it
+   the text and accent colours stay the dark theme's light ones when the page is in light mode. */
+:root[data-theme="light"] .home-hero.has-banner {
+  --bg-panel: #1a1e2b; --bg-panel-raised: #232840; --bg-panel-inset: #161a26;
+  --parchment: #ece3c9; --parchment-dim: #c9c0aa; --parchment-faint: #b3ad9c;
+  --brass: #c9a24b; --brass-bright: #e7c874; --brass-dim: #8a713b;
+  --on-brass: #10121a; --brass-ink: #d9b862; --brass-bright-ink: #e7c874; --brass-dim-ink: #ab8c49;
+  --hairline: rgba(201, 162, 75, 0.22); --hairline-strong: rgba(201, 162, 75, 0.4);
+  color: var(--parchment);
+}

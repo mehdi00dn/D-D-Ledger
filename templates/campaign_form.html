@@ -68,7 +68,7 @@
   {% if is_owner and campaign %}
   <div class="form-section">
     <p class="form-section-title">Campaign notes</p>
-    <p class="field-hint u-m0-10">Shown on the campaign's Home page. Mark a note as hidden to keep it to yourself and the other DMs.</p>
+    <p class="field-hint u-m0-10">Shown on the campaign's Overview page. Mark a note as hidden to keep it to yourself and the other DMs.</p>
     <div class="note-blocks" id="campnotes-blocks">
       {% for e in notes_entries %}{{ note_block(e.t, e.h, 'notes', 'Plot threads, house rules, what the party knows...') }}{% endfor %}
     </div>

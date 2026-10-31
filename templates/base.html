@@ -58,8 +58,8 @@
         </span>
         <span class="cs-swap" aria-hidden="true">{{ icon('swap') }}</span>
       </a>
-      <a href="{{ url_for('campaign_home') }}" data-more class="nav-tab {{ 'active' if active_page == 'home' else '' }}" title="Campaign home">
-        {{ icon('home') }}<span>Home</span>
+      <a href="{{ url_for('campaign_home') }}" data-more class="nav-tab {{ 'active' if active_page == 'home' else '' }}" title="Campaign overview">
+        {{ icon('scroll') }}<span>Overview</span>
       </a>
       <span class="nav-group">Table</span>
       <a href="{{ url_for('characters_list') }}" class="nav-tab {{ 'active' if active_page == 'characters' else '' }}" title="Characters">
@@ -196,7 +196,7 @@
   <div class="more-grip" id="more-grip"><span class="more-grabber"></span></div>
   {% if g.campaign_id %}
   <div class="more-links">
-    <a href="{{ url_for('campaign_home') }}" class="more-link {{ 'active' if active_page == 'home' else '' }}">{{ icon('home') }}<span>Home</span></a>
+    <a href="{{ url_for('campaign_home') }}" class="more-link {{ 'active' if active_page == 'home' else '' }}">{{ icon('scroll') }}<span>Overview</span></a>
     <a href="{{ url_for('factions_list') }}" class="more-link {{ 'active' if active_page == 'factions' else '' }}">{{ icon('faction') }}<span>Factions</span></a>
     <a href="{{ url_for('treasury_view') }}" class="more-link {{ 'active' if active_page == 'treasury' else '' }}">{{ icon('coins') }}<span>Treasury</span></a>
     <a href="{{ url_for('reference_view') }}" class="more-link {{ 'active' if active_page == 'reference' else '' }}">{{ icon('book-open') }}<span>Reference</span></a>

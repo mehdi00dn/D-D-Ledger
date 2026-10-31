@@ -78,6 +78,7 @@ STORAGE_KEYS = {
     'ledger-map-modifier-hint-dismissed': 'map tips',
     'ledger-map-nav-hint-dismissed': 'map tips',
     'ledger-map-space-hint-dismissed': 'map tips',
+    'ledger-map-share-measure': 'Show to table',
     'account-section': 'section of Account settings',
     'ledger-fullscreen': 'full screen',
 }

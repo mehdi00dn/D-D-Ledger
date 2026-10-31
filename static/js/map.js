@@ -87,7 +87,7 @@
   const measurePicker = document.getElementById('measure-picker');
   const measureShareBox = document.getElementById('measure-share');
   let rulerKind = 'ruler';
-  try { if (measureShareBox && localStorage.getItem('ledger.map.shareMeasure') === '0') measureShareBox.checked = false; } catch (e) { /* storage is optional */ }
+  try { if (measureShareBox && localStorage.getItem('ledger-map-share-measure') === '0') measureShareBox.checked = false; } catch (e) { /* storage is optional */ }
   let selectedShapeId = null;      // the single selected shape, only meaningful when selectedShapeIds.size === 1
   let selectedShapeIds = new Set(); // multi-select (Ctrl/Cmd+click)
   let selectedPinId = null;
@@ -2246,7 +2246,7 @@
   }
   if (measureShareBox) {
     measureShareBox.addEventListener('change', () => {
-      try { localStorage.setItem('ledger.map.shareMeasure', measureShareBox.checked ? '1' : '0'); } catch (e) { /* storage is optional */ }
+      try { localStorage.setItem('ledger-map-share-measure', measureShareBox.checked ? '1' : '0'); } catch (e) { /* storage is optional */ }
       if (!measureShareBox.checked) {                                                                // switching sharing off takes your line off everyone else's screen
         const mine = ruler; ruler = null;
         fetch(`${measureApi}/clear`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).catch(() => {});
