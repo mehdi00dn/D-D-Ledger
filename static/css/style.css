@@ -39,6 +39,8 @@
   --brass-dim-ink: #ab8c49;
   --moss-ink: #79b28e;
   --blood-ink: #da716c;
+  --blood-ink-sm: #ee9a95;
+  --blue-ink: #7ec8ff;
 
   --hairline: rgba(201, 162, 75, 0.22);
   --hairline-strong: rgba(201, 162, 75, 0.4);
@@ -79,6 +81,8 @@
   --brass-dim-ink: #7d6530;
   --moss-ink: #3e6c51;
   --blood-ink: #ab3f37;
+  --blood-ink-sm: #92302a;
+  --blue-ink: #1f5f8f;
 
   --hairline: rgba(90, 65, 20, 0.16);
   --hairline-strong: rgba(90, 65, 20, 0.3);
@@ -1670,7 +1674,7 @@ body.page-leaving .content {
   text-align: start;
   font-variant-numeric: tabular-nums;
 }
-.temp-hp-badge { color: #7ec8ff; font-weight: 600; }
+.temp-hp-badge { color: var(--blue-ink); font-weight: 600; }
 
 /* Concealed NPC stats for a Player (server never sends the real numbers).
    One compact "hidden" badge instead of disabled-looking inputs/bars — it
@@ -1771,7 +1775,7 @@ body.page-leaving .content {
 .hp-btn:disabled { opacity: 0.35; cursor: default; }
 .heal-btn { background: rgba(95, 145, 116, 0.2); color: var(--moss-ink); }
 .damage-btn { background: rgba(196, 84, 84, 0.2); color: var(--blood-ink); }
-.temphp-btn { background: rgba(107, 167, 207, 0.2); color: #7ec8ff; }
+.temphp-btn { background: rgba(107, 167, 207, 0.2); color: var(--blue-ink); }
 .hp-btn:focus-visible { outline: 2px solid var(--brass-bright); outline-offset: 1px; }
 @media (hover: hover) and (pointer: fine) {
   .heal-btn:hover:not(:disabled) { background: var(--moss); color: var(--on-solid); }
@@ -5521,3 +5525,9 @@ a.pager-link:hover { border-color: var(--brass); }
 .color-swatch.color-swatch-sm { width: 22px; height: 22px; }
 .battle-avatar.battle-avatar-sm { width: 36px; height: 36px; }
 .battle-name.battle-name-sm { font-size: 14px; }
+
+/* DL-173: small damage-button label reaches 4.5:1 on both themes */
+.damage-btn .hp-btn-label { color: var(--blood-ink-sm); }
+@media (hover: hover) and (pointer: fine) {
+  .damage-btn:hover:not(:disabled) .hp-btn-label { color: inherit; }
+}

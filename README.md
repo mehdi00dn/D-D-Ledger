@@ -339,3 +339,7 @@ Cookie consent review (DL-82, DL-170): the app sets one cookie (the session, `__
 
 Audit of the public pages (about, contact, login, sign-up, privacy, terms, cookies): there are no reviews or testimonials anywhere (DL-73, nothing to remove). One claim had no basis: the Terms said "we keep backups", but no backup or restore drill exists yet, so it now says the data cannot be promised never to be lost and points to the download in Account settings. A test keeps the word "backup" off the public pages until the backup task is done; then restore the sentence and drop the test. Test: `tests/test_privacy_page.py`.
 
+
+### Light mode review, first pass (DL-70, DL-173)
+
+An automated accessibility run (axe-core, both themes, 1280 and 390 px wide, every main page) now comes back with no colour-contrast failures. It found two real problems on the battle row, both fixed with theme tokens instead of fixed colours: the small "Damage" label on phones was a little under 4.5:1 (new `--blood-ink-sm`), and the temporary-HP button and badge used a hard-coded light blue that was almost invisible in light mode, 1.43:1 (new `--blue-ink`, dark blue in light mode). `tests/test_theme_contrast.py` keeps both tokens above 4.5:1 and stops the old fixed colour from coming back. A visual page-by-page look at light mode (borders, shadows, images) is still open, so DL-70 stays in progress.
