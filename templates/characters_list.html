@@ -181,7 +181,7 @@
       {% endif %}
       {% if c.id in deletable %}
       <form method="POST" action="{{ url_for('character_delete', char_id=c.id) }}" data-confirm="Remove {{ c.name }} from the ledger permanently?">{{ csrf_field() }}
-        <button type="submit" class="btn btn-danger btn-sm">{{ icon('trash-2') }} Delete</button>
+        <button type="submit" class="btn-icon btn-icon-danger" title="Delete {{ c.name }}" aria-label="Delete {{ c.name }}">{{ icon('trash-2') }}</button>
       </form>
       {% endif %}
     </div>

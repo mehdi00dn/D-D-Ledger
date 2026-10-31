@@ -784,7 +784,7 @@ body.page-leaving .content {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.dossier-notes:empty::before { content: "No notes recorded."; font-style: italic; opacity: 0.6; }
+.dossier-notes:empty { display: none; }
 
 /* Rendered notes (character detail popups in battle/map) */
 .detail-notes { font-size: 13px; color: var(--parchment-dim); line-height: 1.6; margin-top: 14px; }
@@ -5528,3 +5528,9 @@ a.pager-link:hover { border-color: var(--brass); }
 @media (hover: hover) and (pointer: fine) {
   .damage-btn:hover:not(:disabled) .hp-btn-label { color: inherit; }
 }
+
+/* DL-128: character page, purse and notes sit in the right column under the sheet viewer */
+.cd-side { display: grid; gap: 24px; align-items: start; min-width: 0; }
+.cd-side .sheet-viewer-panel { position: static; }
+.btn-icon-danger { color: var(--blood-ink); }
+@media (hover: hover) and (pointer: fine) { .btn-icon-danger:hover { background: rgba(196, 84, 84, 0.16); border-color: var(--blood); color: var(--blood-ink); } }
