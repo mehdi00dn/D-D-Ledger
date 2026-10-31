@@ -63,3 +63,79 @@ def test_public_pages_make_no_backup_promise_until_backups_exist(appmod):
     for path in ('/terms', '/privacy', '/about', '/cookies'):
         assert 'backup' not in c.get(path).get_data(as_text=True).lower(), path
 
+
+
+# ---- DL-170: the Cookies page is checked against what the code really stores ----
+import os  # noqa: E402
+import re  # noqa: E402
+
+_ROOT = os.path.join(os.path.dirname(__file__), '..')
+# every key the scripts keep in the browser -> a phrase the Cookies page must use to describe it
+STORAGE_KEYS = {
+    'ledger-theme': 'Light or dark theme',
+    'ledger-sidebar-collapsed': 'sidebar is collapsed',
+    'ledger-map-dock-tucked': 'map tool dock',
+    'ledger-map-modifier-hint-dismissed': 'map tips',
+    'ledger-map-nav-hint-dismissed': 'map tips',
+    'ledger-map-space-hint-dismissed': 'map tips',
+    'account-section': 'section of Account settings',
+    'ledger-fullscreen': 'full screen',
+}
+
+
+def _source_files():
+    for sub, exts in (('static/js', ('.js',)), ('templates', ('.html',))):
+        for base, _dirs, files in os.walk(os.path.join(_ROOT, sub)):
+            for f in files:
+                if f.endswith(exts):
+                    yield os.path.join(base, f)
+
+
+def _storage_keys_in_code():
+    found = set()
+    call = re.compile(r"(?:localStorage|sessionStorage)\.(?:get|set|remove)Item\(\s*([A-Za-z_][A-Za-z0-9_]*|'[^']+'|\"[^\"]+\")")
+    for path in _source_files():
+        text = open(path, encoding='utf-8').read()
+        consts = dict(re.findall(r"(?:const|let|var)\s+([A-Z_][A-Z0-9_]*)\s*=\s*'([^']+)'", text))
+        for arg in call.findall(text):
+            if arg[0] in ('"', "'"):
+                found.add(arg[1:-1])
+            else:
+                assert arg in consts, f'{os.path.basename(path)}: storage key {arg} is not a plain string constant, so it cannot be checked'
+                found.add(consts[arg])
+    return found
+
+
+def test_cookies_page_describes_every_key_the_scripts_store(appmod):
+    keys = _storage_keys_in_code()
+    unknown = keys - set(STORAGE_KEYS)
+    assert not unknown, f'new browser-storage keys {sorted(unknown)}: describe them on templates/cookies.html and add them to STORAGE_KEYS here'
+    page = appmod.app.test_client().get('/cookies').get_data(as_text=True)
+    for key, phrase in STORAGE_KEYS.items():
+        assert phrase in page, f'/cookies does not mention "{phrase}" (key {key})'
+
+
+def test_no_script_writes_a_cookie_and_nothing_loads_from_another_site():
+    for path in _source_files():
+        text = open(path, encoding='utf-8').read()
+        assert 'document.cookie' not in text, f'{os.path.basename(path)} writes a cookie by script: add it to the Cookies page first'
+    hosts = set()
+    for sub in ('templates', 'static/css', 'static/js'):
+        for base, _dirs, files in os.walk(os.path.join(_ROOT, sub)):
+            for f in files:
+                if f.endswith(('.html', '.css', '.js')):
+                    hosts |= set(re.findall(r'(?:src|href|url\()\s*=?\s*[\'"(]?(https?://[a-z0-9.-]+)', open(os.path.join(base, f), encoding='utf-8').read(), re.I))
+    assert not hosts, f'the pages load from other sites {sorted(hosts)}: the Cookies and Privacy pages promise there are none'
+
+
+def test_signing_in_and_browsing_sets_exactly_one_cookie(make_user):
+    u = make_user()
+    names = set()
+    for path in ('/campaigns', '/account', '/privacy', '/cookies', '/terms'):
+        r = u.c.get(path)
+        names |= {h.split('=', 1)[0] for h in r.headers.getlist('Set-Cookie')}
+    jar = {c.key for c in u.c._cookies.values()} if hasattr(u.c, '_cookies') else {k for k in u.c.cookie_jar} if hasattr(u.c, 'cookie_jar') else None
+    session_name = u.app.config['SESSION_COOKIE_NAME']
+    assert names <= {session_name}, f'extra cookies set: {names}'          # the Cookies page says there is one
+    if jar is not None:
+        assert jar == {session_name}, jar
