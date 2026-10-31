@@ -6705,8 +6705,81 @@ def api_map_sync(map_id):
         abort(404)
     drawings = _map_drawings_payload(db, map_id)
     pins = _map_pins_payload(db, map_id)
+    measures = _map_measures_payload(db, map_id)
     db.close()
-    return jsonify({'state': state, 'drawings': drawings, 'pins': pins})
+    return jsonify({'state': state, 'drawings': drawings, 'pins': pins, 'measures': measures})
+
+
+# ---- Shared measurements (DL-153) ----
+# The ruler and the cone / sphere / line / cube templates a person is showing the table.  One short-lived row per person
+# per map: it is replaced on every update, ignored once it has expired, and never saved as map data.  Anyone who can open
+# the map may show one (measuring changes nothing, so a locked map does not stop it).
+MEASURE_KINDS = ('ruler', 'cone', 'sphere', 'line', 'cube')
+MEASURE_LIVE_SECONDS = 5          # while the person is still dragging (the page re-sends to keep it alive)
+MEASURE_HELD_SECONDS = 8          # after they let go, before it fades away for everyone else
+MEASURE_COORD_MAX = 1_000_000
+
+
+def _map_measures_payload(db, map_id):
+    """Other people's live measurements on this map (never your own), with how many milliseconds each has left."""
+    rows = db.execute(f'''
+        SELECT m.user_id, m.kind, m.ax, m.ay, m.bx, m.by,
+               COALESCE(NULLIF(u.display_name, ''), u.username) AS name,
+               CAST(EXTRACT(EPOCH FROM (m.expires_at - {_UTC_NOW})) * 1000 AS INTEGER) AS ttl_ms
+        FROM map_measures m JOIN users u ON u.id = m.user_id
+        WHERE m.map_id = ? AND m.user_id != ? AND m.expires_at > {_UTC_NOW}
+        ORDER BY m.user_id
+    ''', (map_id, session['user_id'])).fetchall()
+    return [dict(r) for r in rows]
+
+
+def _measure_point(raw):
+    if not isinstance(raw, dict):
+        raise ValueError('point')
+    x, y = float(raw.get('x')), float(raw.get('y'))
+    if not (abs(x) <= MEASURE_COORD_MAX and abs(y) <= MEASURE_COORD_MAX):       # also rejects NaN and infinity
+        raise ValueError('point')
+    return x, y
+
+
+@app.route('/campaigns/<int:campaign_id>/api/maps/<int:map_id>/measure', methods=['POST'])
+@campaign_access_required
+def api_map_measure(map_id):
+    data = request.get_json(silent=True) or {}
+    kind = data.get('kind')
+    try:
+        if kind not in MEASURE_KINDS:
+            raise ValueError('kind')
+        ax, ay = _measure_point(data.get('a'))
+        bx, by = _measure_point(data.get('b'))
+    except (ValueError, TypeError):
+        return jsonify({'error': 'Send a kind (ruler, cone, sphere, line or cube) and two points.'}), 400
+    seconds = MEASURE_HELD_SECONDS if data.get('done') else MEASURE_LIVE_SECONDS
+    db = get_db()
+    if db.execute('SELECT 1 FROM maps WHERE id = ? AND campaign_id = ?', (map_id, g.campaign_id)).fetchone() is None:
+        db.close()
+        abort(404)
+    db.execute(f'DELETE FROM map_measures WHERE map_id = ? AND expires_at < {_UTC_NOW} - INTERVAL \'1 minute\'', (map_id,))
+    db.execute(f"""
+        INSERT INTO map_measures (map_id, user_id, kind, ax, ay, bx, by, expires_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, {_UTC_NOW} + (? * INTERVAL '1 second'))
+        ON CONFLICT (map_id, user_id) DO UPDATE SET kind = EXCLUDED.kind, ax = EXCLUDED.ax, ay = EXCLUDED.ay,
+            bx = EXCLUDED.bx, by = EXCLUDED.by, expires_at = EXCLUDED.expires_at
+        RETURNING user_id
+    """, (map_id, session['user_id'], kind, ax, ay, bx, by, seconds))
+    db.commit()
+    db.close()
+    return jsonify({'ok': True})
+
+
+@app.route('/campaigns/<int:campaign_id>/api/maps/<int:map_id>/measure/clear', methods=['POST'])
+@campaign_access_required
+def api_map_measure_clear(map_id):
+    db = get_db()
+    db.execute('DELETE FROM map_measures WHERE map_id = ? AND user_id = ?', (map_id, session['user_id']))
+    db.commit()
+    db.close()
+    return jsonify({'ok': True})
 
 
 # Pins can be added by any Player while a map is unlocked, so everything they store must be a known value or plain

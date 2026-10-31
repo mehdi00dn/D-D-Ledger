@@ -70,7 +70,7 @@ def scope_for(path):
         return 'battle'
     if '/api/dice' in path:
         return 'dice'
-    if '/api/maps/' in path and ('/drawings' in path or '/fog' in path):
+    if '/api/maps/' in path and ('/drawings' in path or '/fog' in path or '/measure' in path):
         return 'map'
     return 'both'
 

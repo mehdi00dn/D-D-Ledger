@@ -82,7 +82,12 @@
   let drawings = [];   // shape objects: {id, kind, cx, cy, w, h, rotation, color, fill, fill_opacity, data, locked}
   let pins = [];        // {id, pin_type, x, y, scale, rotation, locked, ...}
   let currentTool = 'select';
-  let ruler = null;           // {a, b, dragging}: the measuring line, in natural image pixels; each person's own, never saved or shared
+  let ruler = null;           // {kind, a, b, dragging, until}: your own measurement, in natural image pixels
+  const remoteMeasures = new Map();   // other people's measurements: user id -> {kind, a, b, until, name, liveAt}
+  const measurePicker = document.getElementById('measure-picker');
+  const measureShareBox = document.getElementById('measure-share');
+  let rulerKind = 'ruler';
+  try { if (measureShareBox && localStorage.getItem('ledger.map.shareMeasure') === '0') measureShareBox.checked = false; } catch (e) { /* storage is optional */ }
   let selectedShapeId = null;      // the single selected shape, only meaningful when selectedShapeIds.size === 1
   let selectedShapeIds = new Set(); // multi-select (Ctrl/Cmd+click)
   let selectedPinId = null;
@@ -421,16 +426,111 @@
     drawGridOnto(ctx, canvas.width, canvas.height, gridSize, gridOffsetX, gridOffsetY, gridColor, gridVisible);
   }
 
+  // ---- Measuring: the ruler and the cone / sphere / line / cube templates (DL-153) ----
   // The ruler counts squares the 5e way (a diagonal step is one square, like a straight one) and turns them into feet.
-  function rulerReading() {
-    const dx = Math.abs(ruler.b.x - ruler.a.x), dy = Math.abs(ruler.b.y - ruler.a.y);
-    const squares = gridSize > 0 ? Math.round(Math.max(dx, dy) / gridSize) : 0;
-    return { squares, feet: squares * feetPerSquare, text: `${squares} ${squares === 1 ? 'square' : 'squares'} \u00b7 ${squares * feetPerSquare} ft` };
+  // Templates use the same square-to-feet maths: a cone is as wide at its far end as it is long, a sphere is measured from
+  // its centre, a line is one square wide, and a cube grows from its corner towards where you drag.
+  const MEASURE_NAMES = { cone: 'Cone', sphere: 'Sphere', line: 'Line', cube: 'Cube' };
+  const MEASURE_HOLD_MS = 8000, MEASURE_FADE_MS = 1500;
+  const MEASURE_OWN = '#f0d58a', MEASURE_OTHERS = '#8ec9ff';
+  function measureInfo(kind, a, b) {
+    const dx = Math.abs(b.x - a.x), dy = Math.abs(b.y - a.y), len = Math.hypot(dx, dy);
+    const sq = (px) => (gridSize > 0 ? Math.round(px / gridSize) : 0);
+    if (kind === 'ruler') {
+      const n = sq(Math.max(dx, dy));
+      return { squares: n, text: `${n} ${n === 1 ? 'square' : 'squares'} · ${n * feetPerSquare} ft` };
+    }
+    const n = kind === 'cube' ? sq(Math.max(dx, dy)) : sq(len), ft = n * feetPerSquare;
+    const text = kind === 'sphere' ? `Sphere · ${ft} ft radius`
+      : kind === 'line' ? `Line · ${ft} ft × ${feetPerSquare} ft`
+      : `${MEASURE_NAMES[kind] || 'Measure'} · ${ft} ft`;
+    return { squares: n, text };
+  }
+  function rulerReading() { return measureInfo(ruler.kind || 'ruler', ruler.a, ruler.b); }
+
+  // Builds the outline of a template in map pixels, and returns where its label should hang.
+  function measurePath(c, kind, a, b) {
+    const dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy) || 1e-6;
+    const nx = -dy / len, ny = dx / len;
+    c.beginPath();
+    if (kind === 'cone') {
+      const h = len / 2;
+      c.moveTo(a.x, a.y); c.lineTo(b.x + nx * h, b.y + ny * h); c.lineTo(b.x - nx * h, b.y - ny * h); c.closePath();
+      return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    }
+    if (kind === 'sphere') { c.arc(a.x, a.y, len, 0, Math.PI * 2); return { x: a.x, y: a.y }; }
+    if (kind === 'line') {
+      const h = (gridSize > 0 ? gridSize : 20) / 2;
+      c.moveTo(a.x + nx * h, a.y + ny * h); c.lineTo(b.x + nx * h, b.y + ny * h);
+      c.lineTo(b.x - nx * h, b.y - ny * h); c.lineTo(a.x - nx * h, a.y - ny * h); c.closePath();
+      return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    }
+    const side = Math.max(Math.abs(dx), Math.abs(dy));          // cube
+    const x0 = dx >= 0 ? a.x : a.x - side, y0 = dy >= 0 ? a.y : a.y - side;
+    c.rect(x0, y0, side, side);
+    return { x: x0 + side / 2, y: y0 + side / 2 };
   }
 
-  // The ruler has a canvas of its own above the tokens, the fog and the shapes, so nothing can cover the line or its label.
-  // That canvas is as sharp as the screen (not as the map picture) and the ruler is drawn in screen pixels, so it keeps the
-  // same small size at any zoom or map size.
+  // One measurement, drawn in screen-sized units (`unit` = one screen pixel in map pixels) so it stays small and sharp at any zoom.
+  function drawMeasure(m, colour, alpha, unit, label) {
+    const a = m.a, b = m.b, kind = m.kind || 'ruler';
+    const { text, squares } = measureInfo(kind, a, b);
+    const len = Math.hypot(b.x - a.x, b.y - a.y);
+    rctx.save();
+    rctx.globalAlpha = alpha;
+    rctx.lineCap = 'round'; rctx.lineJoin = 'round';
+    let anchor = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    if (kind !== 'ruler') {
+      anchor = measurePath(rctx, kind, a, b);
+      rctx.globalAlpha = alpha * 0.22; rctx.fillStyle = colour; rctx.fill();
+      rctx.globalAlpha = alpha;
+      rctx.strokeStyle = 'rgba(14,16,24,0.7)'; rctx.lineWidth = 4 * unit; rctx.stroke();
+      rctx.strokeStyle = colour; rctx.lineWidth = 2 * unit; rctx.stroke();
+    } else {
+      rctx.shadowColor = 'rgba(0,0,0,0.55)'; rctx.shadowBlur = 4 * unit;
+      rctx.beginPath(); rctx.moveTo(a.x, a.y); rctx.lineTo(b.x, b.y);
+      rctx.strokeStyle = 'rgba(14,16,24,0.7)'; rctx.lineWidth = 4 * unit; rctx.stroke();       // a dark edge keeps it readable on a pale map
+      rctx.shadowBlur = 0;
+      rctx.strokeStyle = colour; rctx.lineWidth = 2 * unit; rctx.stroke();
+      if (len > 0 && squares > 1 && squares <= 60) {                 // a small tick at every square
+        const nx = -(b.y - a.y) / len, ny = (b.x - a.x) / len;
+        rctx.lineWidth = 1.25 * unit;
+        for (let i = 1; i < squares; i++) {
+          const t = i / squares, tx = a.x + (b.x - a.x) * t, ty = a.y + (b.y - a.y) * t, h = 3.5 * unit;
+          rctx.beginPath(); rctx.moveTo(tx - nx * h, ty - ny * h); rctx.lineTo(tx + nx * h, ty + ny * h); rctx.stroke();
+        }
+      }
+    }
+    [a, b].forEach((p, i) => {                                      // hollow end rings (a template only marks where it starts)
+      if (kind !== 'ruler' && i === 1) return;
+      rctx.beginPath(); rctx.arc(p.x, p.y, 4.5 * unit, 0, Math.PI * 2);
+      rctx.fillStyle = 'rgba(14,16,24,0.88)'; rctx.fill();
+      rctx.strokeStyle = colour; rctx.lineWidth = 2 * unit; rctx.stroke();
+    });
+    if (len > 14 * unit) {
+      const full = label ? `${label} · ${text}` : text;
+      const size = 12 * unit;
+      rctx.font = `600 ${size}px Inter, system-ui, sans-serif`;
+      rctx.textAlign = 'center'; rctx.textBaseline = 'middle';
+      const w = rctx.measureText(full).width + 16 * unit, h = size + 10 * unit;
+      const mx = Math.min(Math.max(anchor.x, w / 2 + 2 * unit), naturalWidth - w / 2 - 2 * unit);
+      const my = Math.min(Math.max(anchor.y - 18 * unit, h / 2 + 2 * unit), naturalHeight - h / 2 - 2 * unit);
+      rctx.beginPath();
+      if (rctx.roundRect) rctx.roundRect(mx - w / 2, my - h / 2, w, h, h / 2); else rctx.rect(mx - w / 2, my - h / 2, w, h);
+      rctx.fillStyle = 'rgba(14,16,24,0.92)'; rctx.fill();
+      rctx.strokeStyle = colour; rctx.lineWidth = 1 * unit; rctx.stroke();
+      rctx.fillStyle = '#f6efdc'; rctx.fillText(full, mx, my + 0.5 * unit);
+    }
+    rctx.restore();
+  }
+
+  function fadeAlpha(until) {                                       // 1 while held, then a short fade, then 0
+    const left = until - Date.now();
+    return left >= MEASURE_FADE_MS ? 1 : Math.max(0, left / MEASURE_FADE_MS);
+  }
+
+  // The measuring canvas sits above the tokens, the fog and the shapes, so nothing can cover a line or its label.
+  // It is as sharp as the screen (not as the map picture).
   function drawRuler() {
     const readout = document.getElementById('ruler-readout');
     const rect = rulerCanvas.getBoundingClientRect();
@@ -439,48 +539,88 @@
     if (rulerCanvas.width !== px || rulerCanvas.height !== py) { rulerCanvas.width = px; rulerCanvas.height = py; }
     rctx.setTransform(1, 0, 0, 1, 0, 0);
     rctx.clearRect(0, 0, rulerCanvas.width, rulerCanvas.height);
-    if (!ruler) { if (readout) readout.textContent = ''; return; }
-    const { text, squares } = rulerReading();
-    if (readout) readout.textContent = text;
+    if (ruler && ruler.until && Date.now() >= ruler.until) ruler = null;      // a finished template has faded away
+    if (readout) readout.textContent = ruler ? rulerReading().text : '';
+    if (!ruler && !remoteMeasures.size) return;
     const k = px / naturalWidth;                                   // natural map pixels -> canvas pixels
     const unit = rect.width > 0 ? naturalWidth / rect.width : 1;   // one unit = one screen pixel, in map pixels
     rctx.setTransform(k, 0, 0, k, 0, 0);
-    const a = ruler.a, b = ruler.b;
-    const len = Math.hypot(b.x - a.x, b.y - a.y);
-    rctx.save();
-    rctx.lineCap = 'round';
-    rctx.shadowColor = 'rgba(0,0,0,0.55)'; rctx.shadowBlur = 4 * unit;
-    rctx.beginPath(); rctx.moveTo(a.x, a.y); rctx.lineTo(b.x, b.y);
-    rctx.strokeStyle = 'rgba(14,16,24,0.7)'; rctx.lineWidth = 4 * unit; rctx.stroke();       // a dark edge keeps it readable on a pale map
-    rctx.shadowBlur = 0;
-    rctx.strokeStyle = '#f0d58a'; rctx.lineWidth = 2 * unit; rctx.stroke();
-    if (len > 0 && squares > 1 && squares <= 60) {                 // a small tick at every square
-      const nx = -(b.y - a.y) / len, ny = (b.x - a.x) / len;
-      rctx.lineWidth = 1.25 * unit;
-      for (let i = 1; i < squares; i++) {
-        const t = i / squares, tx = a.x + (b.x - a.x) * t, ty = a.y + (b.y - a.y) * t, h = 3.5 * unit;
-        rctx.beginPath(); rctx.moveTo(tx - nx * h, ty - ny * h); rctx.lineTo(tx + nx * h, ty + ny * h); rctx.stroke();
-      }
-    }
-    [a, b].forEach((p) => {                                        // hollow end rings
-      rctx.beginPath(); rctx.arc(p.x, p.y, 4.5 * unit, 0, Math.PI * 2);
-      rctx.fillStyle = 'rgba(14,16,24,0.88)'; rctx.fill();
-      rctx.strokeStyle = '#f0d58a'; rctx.lineWidth = 2 * unit; rctx.stroke();
+    remoteMeasures.forEach((m) => { const al = fadeAlpha(m.until); if (al > 0) drawMeasure(m, MEASURE_OTHERS, al, unit, m.name); });
+    if (ruler) drawMeasure(ruler, MEASURE_OWN, ruler.until ? fadeAlpha(ruler.until) : 1, unit, '');
+  }
+
+  // Other people's measurements: from the live channel (smooth) or from the saved refresh (the safety net).
+  let measureTimer = 0;
+  function pruneRemoteMeasures() {
+    const t = Date.now();
+    remoteMeasures.forEach((m, id) => { if (m.until <= t) remoteMeasures.delete(id); });
+  }
+  function keepMeasuresFading() {
+    if (measureTimer) return;
+    measureTimer = setInterval(() => {
+      pruneRemoteMeasures();
+      drawRuler();
+      if (!remoteMeasures.size && !(ruler && ruler.until)) { clearInterval(measureTimer); measureTimer = 0; }
+    }, 100);
+  }
+  function numOr(v, d) { v = Number(v); return Number.isFinite(v) ? v : d; }
+  function setRemoteMeasure(userId, kind, a, b, ttlMs, name, viaLive) {
+    if (!['ruler', 'cone', 'sphere', 'line', 'cube'].includes(kind)) return;
+    const id = String(userId);
+    if (id === String(window.USER_ID)) return;
+    const old = remoteMeasures.get(id);
+    if (!viaLive && old && old.liveAt && Date.now() - old.liveAt < 2500) { old.name = name || old.name; return; }   // live is fresher than the saved copy
+    remoteMeasures.set(id, {
+      kind, a: { x: numOr(a.x, 0), y: numOr(a.y, 0) }, b: { x: numOr(b.x, 0), y: numOr(b.y, 0) },
+      until: Date.now() + Math.max(0, Math.min(MEASURE_HOLD_MS + 2000, numOr(ttlMs, 0))),
+      name: name || (old && old.name) || '', liveAt: viaLive ? Date.now() : (old ? old.liveAt : 0),
     });
-    if (len > 14 * unit) {
-      const size = 12 * unit;
-      rctx.font = `600 ${size}px Inter, system-ui, sans-serif`;
-      rctx.textAlign = 'center'; rctx.textBaseline = 'middle';
-      const w = rctx.measureText(text).width + 16 * unit, h = size + 10 * unit;
-      const mx = Math.min(Math.max((a.x + b.x) / 2, w / 2 + 2 * unit), naturalWidth - w / 2 - 2 * unit);
-      const my = Math.min(Math.max((a.y + b.y) / 2 - 18 * unit, h / 2 + 2 * unit), naturalHeight - h / 2 - 2 * unit);
-      rctx.beginPath();
-      if (rctx.roundRect) rctx.roundRect(mx - w / 2, my - h / 2, w, h, h / 2); else rctx.rect(mx - w / 2, my - h / 2, w, h);
-      rctx.fillStyle = 'rgba(14,16,24,0.92)'; rctx.fill();
-      rctx.strokeStyle = 'rgba(240,213,138,0.75)'; rctx.lineWidth = 1 * unit; rctx.stroke();
-      rctx.fillStyle = '#f6efdc'; rctx.fillText(text, mx, my + 0.5 * unit);
+    keepMeasuresFading(); drawRuler();
+  }
+  function applyServerMeasures(list) {
+    const seen = new Set();
+    (Array.isArray(list) ? list : []).forEach((m) => {
+      seen.add(String(m.user_id));
+      setRemoteMeasure(m.user_id, m.kind, { x: m.ax, y: m.ay }, { x: m.bx, y: m.by }, m.ttl_ms, String(m.name || '').slice(0, 40), false);
+    });
+    remoteMeasures.forEach((m, id) => { if (!seen.has(id) && !(m.liveAt && Date.now() - m.liveAt < 2500)) remoteMeasures.delete(id); });
+    drawRuler();
+  }
+
+  // Sharing what you measure: a few small messages a second while you drag, and one when you let go.
+  const measureApi = `/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/measure`;
+  let measureSentAt = 0, measureSaveTimer = 0, measureBeat = 0;
+  function sharedOn() { return !!(measureShareBox && measureShareBox.checked); }
+  function postMeasure(done) {
+    if (!ruler || !sharedOn()) return;
+    fetch(measureApi, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ kind: ruler.kind || 'ruler', a: ruler.a, b: ruler.b, done: !!done }) }).catch(() => {});
+  }
+  function shareMeasureMoving() {
+    if (!ruler || !sharedOn()) return;
+    if (live) live.measure({ kind: ruler.kind || 'ruler', a: ruler.a, b: ruler.b, end: 0 });
+    const wait = 400 - (Date.now() - measureSentAt);
+    if (wait <= 0) { measureSentAt = Date.now(); postMeasure(false); }
+    else if (!measureSaveTimer) measureSaveTimer = setTimeout(() => { measureSaveTimer = 0; measureSentAt = Date.now(); postMeasure(false); }, wait);
+  }
+  function shareMeasureDone() {
+    clearTimeout(measureSaveTimer); measureSaveTimer = 0;
+    if (!ruler || !sharedOn()) return;
+    if (live) live.measure({ kind: ruler.kind || 'ruler', a: ruler.a, b: ruler.b, end: 1 });
+    postMeasure(true);
+    clearInterval(measureBeat); measureBeat = 0;
+    if ((ruler.kind || 'ruler') === 'ruler') measureBeat = setInterval(() => { if (ruler && !ruler.dragging) postMeasure(true); else { clearInterval(measureBeat); measureBeat = 0; } }, 6000);   // a held ruler stays up for the table
+  }
+  function clearOwnMeasure() {
+    const had = !!ruler;
+    ruler = null;
+    clearTimeout(measureSaveTimer); measureSaveTimer = 0;
+    clearInterval(measureBeat); measureBeat = 0;
+    if (had && sharedOn()) {
+      fetch(`${measureApi}/clear`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).catch(() => {});
+      if (live) live.measure({ end: 2 });
     }
-    rctx.restore();
+    redraw();
   }
 
   function drawShape(d) {
@@ -1804,7 +1944,8 @@
       deselectShape();
       canvas.classList.toggle('tool-eraser', currentTool === 'eraser');
       pinLayer.classList.toggle('draw-mode', SHAPE_TOOLS.includes(currentTool) || currentTool === 'ruler' || isFogTool(currentTool));
-      if (currentTool !== 'ruler' && ruler) { ruler = null; redraw(); }
+      if (measurePicker) measurePicker.hidden = currentTool !== 'ruler';
+      if (currentTool !== 'ruler' && ruler) clearOwnMeasure();
       if (fogOptions) fogOptions.hidden = !isFogTool(currentTool);
       canvas.classList.toggle('tool-fog', isFogTool(currentTool));
       if (fog && isFogTool(currentTool)) fog.setMode(currentTool === 'fog-erase' ? 'erase' : 'paint');
@@ -1975,6 +2116,7 @@
     lastSyncSig = sig;
 
     applyMapState(d.state);
+    applyServerMeasures(d.measures);
 
     if (!(activeDrag || previewShape) && JSON.stringify(d.drawings) !== JSON.stringify(drawings)) {
       drawings = d.drawings;
@@ -1993,7 +2135,7 @@
   if (window.LEDGER_REALTIME && window.LedgerRealtime) {
     if (window.MapLive) {
       live = window.MapLive.create({
-        mapId, fog,
+        mapId, fog, userId: window.USER_ID,
         pins: () => pins, drawings: () => drawings,
         attachedShapes: (pinId) => drawings.filter((d) => d.attached_pin_id === pinId && !d.dm_only),
         pinEl: (id) => pinLayer.querySelector(`[data-pin-id="${Number(id)}"]`),
@@ -2006,6 +2148,11 @@
         draggingPin: (id) => !!(activeDrag && activeDrag.pin && activeDrag.pin.id === id),
         draggingShape: (id) => !!(activeDrag && ((activeDrag.d && activeDrag.d.id === id) || (activeDrag.ids && activeDrag.ids.includes(id)))),
         safeColor, finalizePenShape,
+        measure: (msg) => {
+          if (msg.end === 2) { remoteMeasures.delete(String(msg.w)); drawRuler(); return; }
+          if (!msg.a || !msg.b) return;
+          setRemoteMeasure(msg.w, msg.kind, msg.a, msg.b, msg.end ? MEASURE_HOLD_MS : 5000, '', true);
+        },
         redraw: () => redraw(),
       });
     }
@@ -2082,9 +2229,34 @@
   // ---------------------------------------------------------------------
   // Canvas interactions
   // ---------------------------------------------------------------------
-  window.addEventListener('mouseup', () => { if (ruler && ruler.dragging) ruler.dragging = false; });   // the line stays up until the next drag, Esc or another tool
+  window.addEventListener('mouseup', () => {                                                        // a ruler stays up until the next drag, Esc or another tool; a template fades by itself
+    if (!(ruler && ruler.dragging)) return;
+    ruler.dragging = false;
+    if (ruler.kind !== 'ruler') { ruler.until = Date.now() + MEASURE_HOLD_MS; keepMeasuresFading(); }
+    shareMeasureDone();
+  });
+  if (measurePicker) {
+    measurePicker.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-measure-kind]');
+      if (!btn) return;
+      rulerKind = btn.dataset.measureKind;
+      measurePicker.querySelectorAll('[data-measure-kind]').forEach((b) => b.setAttribute('aria-pressed', b === btn ? 'true' : 'false'));
+      if (ruler) clearOwnMeasure();
+    });
+  }
+  if (measureShareBox) {
+    measureShareBox.addEventListener('change', () => {
+      try { localStorage.setItem('ledger.map.shareMeasure', measureShareBox.checked ? '1' : '0'); } catch (e) { /* storage is optional */ }
+      if (!measureShareBox.checked) {                                                                // switching sharing off takes your line off everyone else's screen
+        const mine = ruler; ruler = null;
+        fetch(`${measureApi}/clear`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).catch(() => {});
+        if (live) live.measure({ end: 2 });
+        ruler = mine; redraw();
+      }
+    });
+  }
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && ruler && !e.target.closest('input, textarea, select')) { ruler = null; redraw(); }
+    if (e.key === 'Escape' && ruler && !e.target.closest('input, textarea, select')) clearOwnMeasure();
   });
   let drawState = null;   // creating a brand-new shape, or moving the grid
   let angleDrawState = null; // {vertex} while placing an angle/cone shape (click, then click again)
@@ -2094,7 +2266,9 @@
     if (currentTool === 'ruler') {                       // measuring changes nothing, so it works on a locked map too
       if (e.button !== 0) return;
       const p = eventPos(e);
-      ruler = { a: p, b: p, dragging: true };
+      if (ruler) clearOwnMeasure();
+      ruler = { kind: rulerKind, a: p, b: p, dragging: true };
+      shareMeasureMoving();
       redraw();
       return;
     }
@@ -2226,7 +2400,7 @@
 
   canvas.addEventListener('mousemove', (e) => {
     if (currentTool === 'ruler') {
-      if (ruler && ruler.dragging) { ruler.b = eventPos(e); redraw(); }
+      if (ruler && ruler.dragging) { ruler.b = eventPos(e); shareMeasureMoving(); redraw(); }
       return;
     }
     if (isFogTool(currentTool)) { if (fog && window.IS_DM) fog.move(e); return; }

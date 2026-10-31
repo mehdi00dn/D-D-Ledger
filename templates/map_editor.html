@@ -141,7 +141,15 @@
   </div>
 
   <div class="map-tool-group map-tool-group-persistent">
-    <button type="button" class="map-tool-btn" data-tool="ruler" title="Ruler: drag to measure in squares and feet (Esc clears it)" aria-label="Ruler">{{ icon('ruler') }}</button>
+    <button type="button" class="map-tool-btn" data-tool="ruler" title="Measure: drag for a ruler, cone, sphere, line or cube, in squares and feet (Esc clears it)" aria-label="Measure">{{ icon('ruler') }}</button>
+    <div class="measure-picker" id="measure-picker" hidden role="group" aria-label="What to measure">
+      <button type="button" class="measure-kind" data-measure-kind="ruler" aria-pressed="true" title="Ruler: a straight distance">Ruler</button>
+      <button type="button" class="measure-kind" data-measure-kind="cone" aria-pressed="false" title="Cone: as wide at the end as it is long">Cone</button>
+      <button type="button" class="measure-kind" data-measure-kind="sphere" aria-pressed="false" title="Sphere: drag out from the centre to the radius">Sphere</button>
+      <button type="button" class="measure-kind" data-measure-kind="line" aria-pressed="false" title="Line: one square wide">Line</button>
+      <button type="button" class="measure-kind" data-measure-kind="cube" aria-pressed="false" title="Cube: grows from its corner">Cube</button>
+      <label class="measure-share" title="Everyone looking at this map sees what you measure; templates fade after a few seconds"><input type="checkbox" id="measure-share" checked> Show to table</label>
+    </div>
     <button type="button" class="btn btn-ghost btn-sm" id="zoom-reset-btn" title="Reset zoom to 100%">Reset Zoom</button>
     <span class="map-setup-value" id="zoom-level-label">100%</span>
     <span class="hint-text u-m0" id="hold-space-hint">Hold Space to pan</span>

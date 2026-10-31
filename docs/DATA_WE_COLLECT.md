@@ -21,6 +21,8 @@ This is the working inventory behind "only collect what is necessary" (DL-84). I
 ## Things people create
 Campaigns, characters, maps, notes, treasury entries, dice rolls and uploaded images belong to the campaign or to the person who made them. A person can download all of it from Account settings (JSON) and delete the account. Deleting removes the account and the characters they keep in Your characters; a campaign they alone own is either handed to another member (their choice) or deleted with it.
 
+One short-lived exception: while someone shows a ruler or a cone, sphere, line or cube on a map (`map_measures`, DL-153), the two points and the shape are kept for a few seconds so other people at the table can see them. There is one row per person per map, it is replaced as they move and ignored once it expires (about 5 to 8 seconds after the last update), and it is removed with the map or the account. It is never exported because it is not map content.
+
 ## What is deliberately not collected
 No analytics, advertising or tracking scripts, and no third-party fonts or embeds (the Content-Security-Policy only allows the app's own files). No phone number, real name, birth date or address is asked for.
 

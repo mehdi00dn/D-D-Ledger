@@ -114,6 +114,15 @@
       raw({ k: 'draft', end: 1 });
     }
 
+    // ---- the ruler or a template being shown to the table (end: 0 moving, 1 let go, 2 taken away)
+    function measure(m) {
+      if (!rt) return;
+      if (m.end === 2) { flush('measure'); raw({ k: 'measure', w: host.userId, end: 2 }); return; }
+      var build = function () { return { k: 'measure', w: host.userId, kind: m.kind, a: { x: Math.round(m.a.x), y: Math.round(m.a.y) }, b: { x: Math.round(m.b.x), y: Math.round(m.b.y) }, end: m.end ? 1 : 0 }; };
+      if (m.end) { flush('measure'); raw(build()); return; }
+      throttled('measure', build);
+    }
+
     // ---- fog being painted or erased
     var fogBuf = [], fogOpts = null, fogOn = false;
     function fogMoved(mode, brush, x, y) {
@@ -290,6 +299,11 @@
           if (msg.end) host.fog.liveEnd(from);
           else host.fog.liveStroke(from, msg.mode === 'erase' ? 'erase' : 'paint', num(msg.brush, 100), Array.isArray(msg.pts) ? msg.pts.slice(0, MAX_POINTS) : []);
           break;
+        case 'measure':
+          if (host.measure) host.measure({ w: String(msg.w || ''), kind: String(msg.kind || ''), end: num(msg.end, 0),
+            a: msg.a && typeof msg.a === 'object' ? { x: num(msg.a.x, 0), y: num(msg.a.y, 0) } : null,
+            b: msg.b && typeof msg.b === 'object' ? { x: num(msg.b.x, 0), y: num(msg.b.y, 0) } : null });
+          break;
         default: break;
       }
     }
@@ -300,6 +314,7 @@
       dragMoved: dragMoved, dragEnded: dragEnded,
       draftMoved: draftMoved, draftEnded: draftEnded,
       fogMoved: fogMoved, fogEnded: fogEnded,
+      measure: measure,
       // Used by the canvas redraw: the shape as it should look right now (mid-glide), plus other people's unfinished drawings.
       shapeView: function (d) {
         var e = liveShapes.size ? liveShapes.get(d.id) : null;
