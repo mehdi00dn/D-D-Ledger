@@ -5492,3 +5492,7 @@ a.pager-link:hover { border-color: var(--brass); }
   .battle-name.is-link { padding-block: 4px; }
   .search-bar-icon { min-inline-size: 32px; min-block-size: 32px; }
 }
+
+/* ---- DL-171: the SRD credit under the Rules Reference ---- */
+.ref-credit { margin: 14px 0 0; font-size: 12px; line-height: 1.5; color: var(--parchment-faint); }
+.ref-credit a { color: var(--parchment-dim); text-decoration: underline; text-underline-offset: 2px; }

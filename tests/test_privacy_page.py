@@ -115,17 +115,11 @@ def test_cookies_page_describes_every_key_the_scripts_store(appmod):
         assert phrase in page, f'/cookies does not mention "{phrase}" (key {key})'
 
 
-def test_no_script_writes_a_cookie_and_nothing_loads_from_another_site():
+def test_no_script_writes_a_cookie():
     for path in _source_files():
         text = open(path, encoding='utf-8').read()
         assert 'document.cookie' not in text, f'{os.path.basename(path)} writes a cookie by script: add it to the Cookies page first'
-    hosts = set()
-    for sub in ('templates', 'static/css', 'static/js'):
-        for base, _dirs, files in os.walk(os.path.join(_ROOT, sub)):
-            for f in files:
-                if f.endswith(('.html', '.css', '.js')):
-                    hosts |= set(re.findall(r'(?:src|href|url\()\s*=?\s*[\'"(]?(https?://[a-z0-9.-]+)', open(os.path.join(base, f), encoding='utf-8').read(), re.I))
-    assert not hosts, f'the pages load from other sites {sorted(hosts)}: the Cookies and Privacy pages promise there are none'
+        # nothing loading from another site is guarded by tests/test_third_party_audit.py
 
 
 def test_signing_in_and_browsing_sets_exactly_one_cookie(make_user):
@@ -139,3 +133,15 @@ def test_signing_in_and_browsing_sets_exactly_one_cookie(make_user):
     assert names <= {session_name}, f'extra cookies set: {names}'          # the Cookies page says there is one
     if jar is not None:
         assert jar == {session_name}, jar
+
+
+def test_srd_credit_is_on_the_about_and_reference_pages(make_user):
+    """DL-171: the SRD is under CC BY 4.0, which asks for the credit wherever its text is used."""
+    about = make_user().c.get('/about').get_data(as_text=True)
+    assert 'id="credits"' in about
+    assert 'System Reference Document 5.2.1' in about and 'Wizards of the Coast LLC' in about
+    assert 'creativecommons.org/licenses/by/4.0/legalcode' in about and 'Ladon Sklyarov' in about
+    u = make_user()
+    cid = u.new_campaign()
+    ref = u.get(f'/campaigns/{cid}/reference').get_data(as_text=True)
+    assert 'ref-credit' in ref and 'Creative Commons Attribution 4.0' in ref and '/about#credits' in ref

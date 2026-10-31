@@ -70,3 +70,22 @@ belongs to DL-80 (applicable local laws) and DL-82.
 - **Icons drawn by Claude** need no credit.
 
 Record the answers in the table above. Until the Flaticon and SVG Repo licences are checked, treat DL-76 as open.
+
+### Update of 31 Oct 2026 (DL-171)
+
+- **SRD credit (new finding, now fixed).** The rules reference shows text from the D&D System Reference Document 5.2.1, which
+  Wizards of the Coast released under Creative Commons Attribution 4.0 (CC BY 4.0). That licence asks for the credit
+  wherever the text is used, and the About page only said "open SRD". Added: the full notice on `/about#credits` and a
+  short credit with a link under the Rules Reference. The wording is the one I know from the SRD's legal page; compare it
+  with the first pages of the SRD 5.2.1 PDF (dndbeyond.com/srd) before launch. A test checks both are present.
+- **Fog animation, fonts, lottie-web** are credited on `/about#credits`.
+- **Icons.** I compared the paths of the class icons, condition icons and pin icons with the public icon sets Phosphor,
+  Lucide, Tabler and Font Awesome Free (current npm releases): none match, so they were not copied unchanged from
+  those sets. That leaves SVG Repo and Flaticon, as the owner said, and the files carry no author. The only clue is the
+  SVG Repo title in the skull pin (`monster-skull`); the sword, hand and paw pins have none. **Only the owner can close
+  this**: search those titles on svgrepo.com (or check the Flaticon download history), note the author and licence, and
+  add a credit line under "Credits and licences" for every CC BY icon. If an icon's licence cannot be found, redraw it
+  (DL-90).
+- Links out (licences, sources) are allowed on the About and Rules Reference pages only, as plain links that load nothing
+  until clicked; `tests/test_third_party_audit.py` still fails on any external script, style, font, image or embed.
+

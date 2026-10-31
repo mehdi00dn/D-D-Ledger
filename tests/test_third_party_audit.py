@@ -6,6 +6,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 ALLOWED_HOSTS = ('www.w3.org',)       # XML namespace URIs in SVG, not network requests
+# DL-171: these two pages may link OUT to a licence or a source (a plain <a>, only followed when the visitor clicks it);
+# nothing on them may load from another site.
+LINK_OUT_PAGES = ('about.html', 'reference.html')
+ANCHOR = re.compile(r'<a\b[^>]*>.*?</a>', re.S)
 URL = re.compile(r'https?://[^\s"\'<>)\\]+')
 
 
@@ -14,7 +18,10 @@ def test_no_external_url_in_templates_styles_scripts_or_svg():
     files = list((ROOT / 'templates').glob('*.html')) + [p for p in (ROOT / 'static').rglob('*')
                                                           if p.suffix in ('.html', '.js', '.css', '.svg') and p.is_file()]
     for f in files:
-        for m in URL.finditer(f.read_text(errors='ignore')):
+        text = f.read_text(errors='ignore')
+        if f.name in LINK_OUT_PAGES and f.parent.name == 'templates':
+            text = ANCHOR.sub('', text)
+        for m in URL.finditer(text):
             if not any(h in m.group(0) for h in ALLOWED_HOSTS):
                 bad.append(f'{f.relative_to(ROOT)}: {m.group(0)[:80]}')
     assert not bad, 'External URL found (update THIRD_PARTY.md and the privacy pages first):\n' + '\n'.join(bad)
