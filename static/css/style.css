@@ -5583,6 +5583,11 @@ a.pager-link:hover { border-color: var(--brass); }
 .friend-avatar { inline-size: 36px; block-size: 36px; flex: 0 0 auto; border-radius: 50%; overflow: hidden; display: inline-flex; align-items: center; justify-content: center; background: var(--bg-panel-inset); border: 1px solid var(--hairline-strong); color: var(--parchment-dim); }
 .friend-avatar img { inline-size: 100%; block-size: 100%; object-fit: cover; }
 .friend-avatar svg { inline-size: 18px; block-size: 18px; }
+.profile-friends { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }
+.profile-friend { display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: var(--bg-panel); border: 1px solid var(--hairline); border-radius: var(--radius-m); color: var(--parchment); text-decoration: none; min-inline-size: 0; transition: border-color 0.18s ease; }
+.profile-friends + .profile-empty { margin-block-start: 12px; }
+.profile-friend:hover { border-color: var(--brass); }
+.profile-friend-name { font-weight: 600; font-size: 14.5px; overflow-wrap: anywhere; }
 .friend-actions { display: inline-flex; gap: 8px; flex-wrap: wrap; }
 .profile-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .friends-stack { display: grid; gap: 18px; max-inline-size: 760px; }

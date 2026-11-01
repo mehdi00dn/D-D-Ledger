@@ -112,7 +112,7 @@ def test_account_page_saves_the_element_choices_and_pending_requests_show(make_u
     row = q('SELECT profile_visibility, bio_visibility, showcase_visibility FROM users WHERE id = ?', _id(a))[0]
     assert (row['profile_visibility'], row['bio_visibility'], row['showcase_visibility']) == ('friends', 'private', 'friends')
     _act(b, _name(a), 'request')
-    assert '1 waiting' in a.get('/account').data.decode()
+    assert '<span class="cf-count">1</span>' in a.get('/account').data.decode()      # the badge on the Friends tab
     assert _name(b) in a.get('/friends').data.decode()
 
 
@@ -120,3 +120,50 @@ def test_friendship_is_never_needed_to_join_a_campaign(make_user):
     dm, pl = make_user(), make_user()
     cid = dm.new_campaign(); dm.add_member(cid, pl)
     assert pl.get(f'/campaigns/{cid}/home').status_code == 200
+
+
+# ---- friends list on the profile and in Account settings (DL-98 follow-up) ----
+def _befriend(a, b):
+    _act(a, _name(b), 'request'); _act(b, _name(a), 'accept')
+
+
+def test_friends_list_shows_on_the_profile_to_friends_only_by_default(make_user):
+    owner, f1, f2, stranger = make_user(), make_user(), make_user(), make_user()
+    for u in (owner, f1, f2, stranger): _set(u, profile_visibility='members')
+    _befriend(owner, f1); _befriend(owner, f2)
+    page = f1.get(f'/u/{_name(owner)}').get_data(as_text=True)
+    assert 'id="profile-friends"' in page and f'/u/{_name(f2)}' in page
+    assert 'id="profile-friends"' not in stranger.get(f'/u/{_name(owner)}').get_data(as_text=True)   # default: friends only
+
+
+def test_friends_visibility_levels_are_enforced(make_user):
+    owner, friend, stranger = make_user(), make_user(), make_user()
+    for u in (owner, friend, stranger): _set(u, profile_visibility='members')
+    _befriend(owner, friend)
+    _set(owner, friends_visibility='profile')
+    assert f'/u/{_name(friend)}' in stranger.get(f'/u/{_name(owner)}').get_data(as_text=True)
+    _set(owner, friends_visibility='private')
+    assert 'id="profile-friends"' not in friend.get(f'/u/{_name(owner)}').get_data(as_text=True)
+    assert 'id="profile-friends"' in owner.get(f'/u/{_name(owner)}').get_data(as_text=True)         # the owner always sees the section
+
+
+def test_a_friend_with_a_private_profile_is_left_out_of_the_list(make_user):
+    owner, hidden, other, viewer = make_user(), make_user(), make_user(), make_user()
+    for u in (owner, other, viewer): _set(u, profile_visibility='members')
+    _befriend(owner, hidden); _befriend(owner, other)
+    _set(owner, friends_visibility='profile')
+    _set(hidden, profile_visibility='private')
+    page = viewer.get(f'/u/{_name(owner)}').get_data(as_text=True)
+    assert f'/u/{_name(other)}' in page and f'/u/{_name(hidden)}' not in page
+    assert f'/u/{_name(hidden)}' in owner.get(f'/u/{_name(owner)}').get_data(as_text=True)          # the owner sees all of their own friends
+
+
+def test_account_friends_panel_and_the_visibility_choice(make_user):
+    a, b = make_user(), make_user()
+    _act(b, _name(a), 'request')
+    page = a.get('/account').get_data(as_text=True)
+    assert 'id="friends-panel"' in page and f'/u/{_name(b)}' in page
+    assert a.post('/account', data={'display_name': '', 'bio': '', 'profile_visibility': 'members', 'friends_visibility': 'private'}).status_code == 302
+    assert q('SELECT friends_visibility FROM users WHERE id = ?', _id(a))[0]['friends_visibility'] == 'private'
+    assert a.post('/account', data={'display_name': '', 'bio': '', 'profile_visibility': 'members', 'friends_visibility': 'everyone'}).status_code == 302
+    assert q('SELECT friends_visibility FROM users WHERE id = ?', _id(a))[0]['friends_visibility'] == 'private'   # a bad value is ignored

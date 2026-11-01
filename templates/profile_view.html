@@ -52,6 +52,23 @@
   </section>
   {% endif %}
 
+  {% if friends is not none and (friends or is_me) %}
+  <section class="profile-section" aria-labelledby="profile-friends">
+    <h2 class="profile-section-title" id="profile-friends">Friends{% if friends %} <span class="cf-count">{{ friends|length }}</span>{% endif %}</h2>
+    {% if friends %}
+    <ul class="profile-friends">
+      {% for p in friends %}
+      <li><a href="{{ url_for('profile_view', username=p.username) }}" class="profile-friend">
+        <span class="friend-avatar">{% if p.avatar_path %}<img src="{{ url_for('uploaded_file', filename=p.avatar_path) }}" alt="" loading="lazy">{% else %}{{ icon('user') }}{% endif %}</span>
+        <span class="profile-friend-name">{{ p.display_name or p.username }}</span>
+      </a></li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+    {% if is_me %}<p class="profile-empty">{% if not friends %}No friends yet. {% endif %}<a href="{{ url_for('account') }}#friends">Manage your friends</a> · Shown to: {{ element_visibility_options[profile_extra().friends_visibility] }}</p>{% endif %}
+  </section>
+  {% endif %}
+
   {% if show_chars %}
   <section class="profile-section" aria-labelledby="profile-chars">
     <h2 class="profile-section-title" id="profile-chars">Characters</h2>

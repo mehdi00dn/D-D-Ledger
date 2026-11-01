@@ -1269,12 +1269,12 @@ def account():
         if visibility in PROFILE_VISIBILITY:
             try:
                 db.execute('UPDATE users SET profile_visibility = ? WHERE id = ?', (visibility, user['id']))
-                for col in ('bio_visibility', 'showcase_visibility'):
+                for col in ('bio_visibility', 'showcase_visibility', 'friends_visibility'):
                     if request.form.get(col) in ELEMENT_VISIBILITY:
                         db.execute(f'UPDATE users SET {col} = ? WHERE id = ?', (request.form[col], user['id']))
             except pgerr.UndefinedColumn:
                 db.rollback()
-                return api_error('Profile visibility needs a database update that has not been applied yet (migration 0052).', 503, code='migration_pending')
+                return api_error('Profile visibility needs a database update that has not been applied yet (migrations 0052 and 0054).', 503, code='migration_pending')
         if request.form.get('details_present') == '1':
             details, error = _clean_details(request.form)
             if error:
@@ -1438,7 +1438,7 @@ def profile_extra():
     """What the account page needs beyond the basic row: visibility, password state, the showcase picker."""
     if '_profile_extra' not in g:
         uid = session.get('user_id')
-        extra = {'visibility': 'shared', 'bio_visibility': 'profile', 'showcase_visibility': 'profile', 'details_visibility': 'profile', 'details': {}, 'friend_requests': 0, 'has_password': True, 'showcase_ids': [], 'showcase_options': [], 'ready': False}
+        extra = {'visibility': 'shared', 'bio_visibility': 'profile', 'showcase_visibility': 'profile', 'details_visibility': 'profile', 'friends_visibility': 'friends', 'details': {}, 'friend_requests': 0, 'has_password': True, 'showcase_ids': [], 'showcase_options': [], 'ready': False}
         if uid:
             db = get_db()
             try:
@@ -1446,8 +1446,9 @@ def profile_extra():
                 extra.update(visibility=row['profile_visibility'], bio_visibility=row['bio_visibility'], showcase_visibility=row['showcase_visibility'],
                              has_password=bool(row['password_hash']), ready=True)
                 try:
-                    d = db.execute('SELECT details_visibility, favourite_classes, play_style, timezone FROM users WHERE id = ?', (uid,)).fetchone()
+                    d = db.execute('SELECT details_visibility, friends_visibility, favourite_classes, play_style, timezone FROM users WHERE id = ?', (uid,)).fetchone()
                     extra['details_visibility'] = d['details_visibility']
+                    extra['friends_visibility'] = d['friends_visibility']
                     extra['details'] = {'classes': [k for k in (d['favourite_classes'] or '').split(',') if k], 'style': d['play_style'], 'timezone': d['timezone']}
                     extra['details_ready'] = True
                 except pgerr.UndefinedColumn:                  # migration 0053 not applied yet
@@ -1506,10 +1507,41 @@ def profile_view(username):
                        'style': PLAY_STYLES.get(d['play_style']), 'timezone': d['timezone'], 'stats': _player_stats(db, owner['id'])}
     except pgerr.UndefinedColumn:                           # migration 0053 not applied yet: the page just has no details block
         db.rollback()
-    return render_template('profile_view.html', owner=dict(owner, bio=owner['bio'] if show_bio else None), is_me=owner['id'] == viewer, details=details,
+    friends = None                                          # None = the section is not shown at all
+    try:
+        if _element_visible(db, owner, viewer, db.execute('SELECT friends_visibility FROM users WHERE id = ?', (owner['id'],)).fetchone()['friends_visibility']):
+            friends = _profile_friends(db, owner['id'], viewer)
+    except (pgerr.UndefinedColumn, pgerr.UndefinedTable):   # migrations 0052 / 0054 not applied yet
+        db.rollback()
+    return render_template('profile_view.html', owner=dict(owner, bio=owner['bio'] if show_bio else None), is_me=owner['id'] == viewer, details=details, friends=friends,
                            member_since=created.strftime('%B %Y'), show_chars=show_chars,
                            showcase=_showcase_characters(db, owner['id']) if show_chars else [],
                            friend_state=_friend_state(db, viewer, owner['id']), element_visibility_options=ELEMENT_VISIBILITY)
+
+
+def _profile_friends(db, owner_id, viewer_id):
+    """The owner's accepted friends, minus anyone whose own profile the viewer may not open (so the list can never be
+    used to learn a name that the person keeps private), and minus anyone the viewer has blocked or been blocked by."""
+    rows = db.execute("""
+        SELECT u.id, u.username, u.display_name, u.avatar_path, u.profile_visibility
+        FROM friendships f JOIN users u ON u.id = CASE WHEN f.user_low = ? THEN f.user_high ELSE f.user_low END
+        WHERE f.status = 'accepted' AND (f.user_low = ? OR f.user_high = ?)
+        ORDER BY lower(COALESCE(NULLIF(u.display_name, ''), u.username))
+    """, (owner_id, owner_id, owner_id)).fetchall()
+    if owner_id == viewer_id:
+        return [dict(r) for r in rows]
+    return [dict(r) for r in rows if r['id'] == viewer_id or _can_view_profile(db, r, viewer_id)]
+
+
+@app.template_global()
+def account_friends():
+    """For the Friends panel in Account settings: the lists, or None until migration 0052 is applied."""
+    db = get_db()
+    try:
+        return _friend_list(db, session['user_id'])
+    except pgerr.UndefinedTable:
+        db.rollback()
+        return None
 
 
 # ---- friends (DL-98) ----

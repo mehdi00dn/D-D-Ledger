@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_friends.html" import person, act with context %}
 {% from "_icons.html" import icon %}
 {% set active_page = 'account' %}
 {% block title %}Account settings — Campaign Ledger{% endblock %}
@@ -31,6 +32,7 @@
 <div class="account-layout">
 <nav class="account-nav" aria-label="Account settings">
   <a href="#profile" data-section-link="profile">Profile</a>
+  <a href="#friends" data-section-link="friends">Friends{% if px.friend_requests %} <span class="cf-count">{{ px.friend_requests }}</span>{% endif %}</a>
   <a href="#privacy" data-section-link="privacy">Privacy</a>
   <a href="#security" data-section-link="security">Sign-in and security</a>
   <a href="#appearance" data-section-link="appearance">Appearance</a>
@@ -129,6 +131,10 @@
         <select id="bio_visibility" name="bio_visibility">{% for key, label in element_visibility_options.items() %}<option value="{{ key }}" {{ 'selected' if px.bio_visibility == key else '' }}>{{ label }}</option>{% endfor %}</select>
       </div>
       {% if px.details_ready %}<div class="field">
+        <label for="friends_visibility">Friends list</label>
+        <select id="friends_visibility" name="friends_visibility">{% for key, label in element_visibility_options.items() %}<option value="{{ key }}" {{ 'selected' if px.friends_visibility == key else '' }}>{{ label }}</option>{% endfor %}</select>
+      </div>
+      <div class="field">
         <label for="details_visibility">Player details</label>
         <select id="details_visibility" name="details_visibility">{% for key, label in element_visibility_options.items() %}<option value="{{ key }}" {{ 'selected' if px.details_visibility == key else '' }}>{{ label }}</option>{% endfor %}</select>
       </div>{% endif %}
@@ -137,7 +143,6 @@
         <select id="showcase_visibility" name="showcase_visibility">{% for key, label in element_visibility_options.items() %}<option value="{{ key }}" {{ 'selected' if px.showcase_visibility == key else '' }}>{{ label }}</option>{% endfor %}</select>
       </div>
     </div>
-    <p class="hint-text"><a href="{{ url_for('friends_page') }}">Friends{% if px.friend_requests %} ({{ px.friend_requests }} waiting){% endif %}</a>: ask, accept, remove or block people.</p>
   </div>
 
   <div class="form-section" id="showcase" data-section="privacy">
@@ -169,6 +174,33 @@
     <button type="submit" class="btn btn-primary">{{ icon('check') }} Save profile</button>
   </div>
 </form>
+
+{% set fl = account_friends() %}
+{% if fl is not none %}
+<div class="form-panel account-form" id="friends-panel" data-section="friends">
+  <div class="form-section">
+    <p class="form-section-title">Add a friend</p>
+    <form class="friend-add" method="POST" action="{{ url_for('friend_add') }}">
+      {{ csrf_field() }}
+      <div class="field"><label for="friend-username">Their username</label><input type="text" id="friend-username" name="username" maxlength="64" autocomplete="off" placeholder="username" required></div>
+      <button type="submit" class="btn btn-primary">{{ icon('plus') }} Send request</button>
+    </form>
+  </div>
+  {% if fl.incoming %}
+  <div class="form-section">
+    <p class="form-section-title">Waiting for you <span class="cf-count">{{ fl.incoming|length }}</span></p>
+    <ul class="friend-list">{% for p in fl.incoming %}<li>{{ person(p) }}<span class="friend-actions">{{ act(p, 'accept', 'Accept', 'btn btn-primary btn-sm') }}{{ act(p, 'decline', 'Decline') }}</span></li>{% endfor %}</ul>
+  </div>
+  {% endif %}
+  <div class="form-section">
+    <p class="form-section-title">Your friends <span class="cf-count">{{ fl.friends|length }}</span></p>
+    {% if fl.friends %}
+    <ul class="friend-list">{% for p in fl.friends %}<li>{{ person(p) }}<span class="friend-actions">{{ act(p, 'remove', 'Remove', confirm='Remove ' ~ (p.display_name or p.username) ~ ' from your friends?') }}</span></li>{% endfor %}</ul>
+    {% else %}<p class="hint-text">No friends yet. Open someone's profile and choose Add friend, or send a request by username above.</p>{% endif %}
+    <p class="hint-text">Who sees this list on your profile is set under <a href="#privacy" data-section-link="privacy">Privacy</a>. <a href="{{ url_for('friends_page') }}">Requests you sent and people you blocked</a>.</p>
+  </div>
+</div>
+{% endif %}
 
 {% if profile.email_ready %}
 <div class="form-panel account-form" id="email-panel" data-section="security">
