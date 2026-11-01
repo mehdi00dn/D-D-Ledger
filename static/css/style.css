@@ -177,6 +177,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
   display: flex;
   flex-direction: column;
   line-height: 1.1;
+  padding-block: 2px;                         /* overflow:hidden below would otherwise shave the subtitle's bottom edge */
   max-width: 160px;
   overflow: hidden;
   white-space: nowrap;
@@ -3880,6 +3881,7 @@ body.page-leaving .content {
 .page-sub { font-size: 13px; }
 .page-header { margin-bottom: 16px; gap: 14px 18px; align-items: center; }
 .page-actions, .map-head-actions { gap: 8px; }
+.map-head-actions { column-gap: 22px; }                 /* the two switches read as separate controls, not one run of text */
 @media (hover: none) {
   /* fingers: keep the look small, widen only the area that reacts */
   .turn-btn { position: relative; }
