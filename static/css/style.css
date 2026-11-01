@@ -5035,6 +5035,19 @@ input[type="range"]:disabled { opacity: 0.5; cursor: not-allowed; }
 .profile-char-info span { font-size: 12.5px; color: var(--parchment-dim); }
 .home-member-link { color: inherit; text-decoration: none; }
 .home-member-link:hover { color: var(--brass-bright-ink); text-decoration: underline; }
+/* DL-97: player details on the profile and the class chips on the account page */
+.profile-facts { margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; }
+.profile-facts > div { background: var(--bg-panel); border: 1px solid var(--hairline); border-radius: var(--radius-m); padding: 12px 14px; display: grid; gap: 2px; }
+.profile-facts dt { font-size: 12.5px; color: var(--parchment-dim); }
+.profile-facts dd { margin: 0; font-size: 15px; color: var(--parchment); overflow-wrap: anywhere; }
+.class-pick { border: 0; padding: 0; margin-inline: 0; min-inline-size: 0; }
+.class-pick legend { padding: 0; margin-block-end: 8px; font-size: 13.5px; color: var(--parchment); }
+.chip-pick { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip-option { position: relative; }
+.chip-option input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+.chip-option span { display: inline-block; padding: 6px 12px; border: 1px solid var(--hairline); border-radius: 999px; font-size: 13.5px; color: var(--parchment-dim); background: var(--bg-panel-inset); }
+.chip-option input:checked + span { border-color: var(--brass); color: var(--parchment); background: var(--bg-panel); }
+.chip-option input:focus-visible + span { outline: 2px solid var(--brass); outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) { .profile-char { transition: none; } .profile-char:hover { transform: none; } }
 @media (max-width: 640px) {
   .profile-head { grid-template-columns: auto 1fr; }

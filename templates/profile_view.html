@@ -39,6 +39,19 @@
     {% endif %}
   </header>
 
+  {% if details and (details.classes or details.style or details.timezone or details.stats.campaigns or details.stats.characters) %}
+  <section class="profile-section" aria-labelledby="profile-details">
+    <h2 class="profile-section-title" id="profile-details">As a player</h2>
+    <dl class="profile-facts">
+      {% if details.classes %}<div><dt>Favourite classes</dt><dd>{{ details.classes | join(', ') }}</dd></div>{% endif %}
+      {% if details.style %}<div><dt>Play style</dt><dd>{{ details.style }}</dd></div>{% endif %}
+      {% if details.timezone %}<div><dt>Timezone</dt><dd>{{ details.timezone }}</dd></div>{% endif %}
+      <div><dt>Campaigns</dt><dd>{{ details.stats.campaigns }}</dd></div>
+      <div><dt>Player characters</dt><dd>{{ details.stats.characters }}</dd></div>
+    </dl>
+  </section>
+  {% endif %}
+
   {% if show_chars %}
   <section class="profile-section" aria-labelledby="profile-chars">
     <h2 class="profile-section-title" id="profile-chars">Characters</h2>

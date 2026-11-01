@@ -12,6 +12,8 @@ This is the working inventory behind "only collect what is necessary" (DL-84). I
 | `display_name`, `bio`, `avatar_path` | Optional profile details the person chooses to add. | Follows `profile_visibility`; the bio can be narrower (`bio_visibility`). |
 | `profile_visibility` | Who may open the public profile: everyone signed in, people they play with, friends only, or only them. | The owner. |
 | `bio_visibility`, `showcase_visibility` | Whether the bio and the featured characters follow the profile, are for friends only, or only for the owner. | The owner. |
+| `favourite_classes`, `play_style`, `timezone` | Optional player details the person chooses to show on their profile (up to three class names, a play style, an IANA timezone such as Europe/London). | Follows `details_visibility`. Included in the person's own download. |
+| `details_visibility` | Whether those details, with the counts of campaigns joined and player characters kept, follow the profile, are for friends only, or only for the owner. | The owner. |
 | `profile_setup_at` | Remembers that the one-time profile page was saved or skipped. | Nobody. |
 | `email_confirm_required` | Whether this account still has to confirm its email before it can create or join a campaign. Set at sign-up, never changed by the person. | Nobody. |
 | `cookies_accepted_at` | When the "I accept the cookies" box was ticked at sign-up (the site only sets its one sign-in cookie). | Nobody. |

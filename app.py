@@ -1275,6 +1275,19 @@ def account():
             except pgerr.UndefinedColumn:
                 db.rollback()
                 return api_error('Profile visibility needs a database update that has not been applied yet (migration 0052).', 503, code='migration_pending')
+        if request.form.get('details_present') == '1':
+            details, error = _clean_details(request.form)
+            if error:
+                db.rollback()
+                return render_template('account.html', profile=user, form={'display_name': display_name, 'bio': bio}, error=error), 400
+            try:
+                db.execute('UPDATE users SET favourite_classes = ?, play_style = ?, timezone = ? WHERE id = ?',
+                           (details['favourite_classes'], details['play_style'], details['timezone'], user['id']))
+                if request.form.get('details_visibility') in ELEMENT_VISIBILITY:
+                    db.execute('UPDATE users SET details_visibility = ? WHERE id = ?', (request.form['details_visibility'], user['id']))
+            except pgerr.UndefinedColumn:
+                db.rollback()
+                return api_error('Player details need a database update that has not been applied yet (migration 0053).', 503, code='migration_pending')
         if request.form.get('showcase_present') == '1':
             error = _save_showcase(db, user['id'], request.form.getlist('showcase'))
             if error:
@@ -1303,6 +1316,41 @@ ELEMENT_VISIBILITY = {
     'private': 'Only me',
 }
 SHOWCASE_MAX = 6
+# Optional player details (DL-97): favourite classes, play style and timezone, with a visibility of their own.
+PLAY_STYLES = {'roleplay': 'Roleplay and story', 'combat': 'Combat and tactics', 'exploration': 'Exploration and puzzles', 'balanced': 'A bit of everything'}
+FAVOURITE_CLASSES_MAX = 3
+try:
+    from zoneinfo import available_timezones
+    _TIMEZONES = sorted(z for z in available_timezones() if '/' in z and not z.startswith(('Etc/', 'posix', 'right')))
+except Exception:                                           # no tz database on this host: accept a well-formed name instead
+    _TIMEZONES = []
+_TZ_SHAPE = re.compile(r'^[A-Za-z]+(?:/[A-Za-z0-9_+\-]+){1,2}$')
+
+
+def _clean_details(form):
+    """Validate the player-details part of the account form.  Returns (values, error)."""
+    classes = []
+    for key in form.getlist('favourite_classes'):
+        if key not in CLASS_KEYS:
+            return None, 'Pick favourite classes from the list.'
+        if key not in classes:
+            classes.append(key)
+    if len(classes) > FAVOURITE_CLASSES_MAX:
+        return None, f'Pick at most {FAVOURITE_CLASSES_MAX} favourite classes.'
+    style = form.get('play_style', '')
+    if style and style not in PLAY_STYLES:
+        return None, 'Pick a play style from the list.'
+    tz = form.get('timezone', '').strip()
+    if tz and not (tz in _TIMEZONES if _TIMEZONES else (len(tz) <= 40 and _TZ_SHAPE.match(tz))):
+        return None, 'Pick a timezone from the list, for example Europe/London.'
+    return {'favourite_classes': ','.join(classes) or None, 'play_style': style or None, 'timezone': tz or None}, None
+
+
+def _player_stats(db, user_id):
+    """Counts only, never names: campaigns joined and player characters kept."""
+    campaigns = db.execute('SELECT COUNT(*) AS n FROM campaign_members WHERE user_id = ?', (user_id,)).fetchone()['n']
+    chars = db.execute('SELECT COUNT(*) AS n FROM characters c WHERE ' + _SHOWCASE_ELIGIBLE, (user_id, user_id)).fetchone()['n']
+    return {'campaigns': campaigns, 'characters': chars}
 _SHOWCASE_ELIGIBLE = ('(c.created_by = ? OR c.player_id = ?) AND COALESCE(c.is_npc, 0) = 0 AND COALESCE(c.is_temp_familiar, 0) = 0')
 
 
@@ -1390,13 +1438,21 @@ def profile_extra():
     """What the account page needs beyond the basic row: visibility, password state, the showcase picker."""
     if '_profile_extra' not in g:
         uid = session.get('user_id')
-        extra = {'visibility': 'shared', 'bio_visibility': 'profile', 'showcase_visibility': 'profile', 'friend_requests': 0, 'has_password': True, 'showcase_ids': [], 'showcase_options': [], 'ready': False}
+        extra = {'visibility': 'shared', 'bio_visibility': 'profile', 'showcase_visibility': 'profile', 'details_visibility': 'profile', 'details': {}, 'friend_requests': 0, 'has_password': True, 'showcase_ids': [], 'showcase_options': [], 'ready': False}
         if uid:
             db = get_db()
             try:
                 row = db.execute('SELECT profile_visibility, bio_visibility, showcase_visibility, password_hash FROM users WHERE id = ?', (uid,)).fetchone()
                 extra.update(visibility=row['profile_visibility'], bio_visibility=row['bio_visibility'], showcase_visibility=row['showcase_visibility'],
                              has_password=bool(row['password_hash']), ready=True)
+                try:
+                    d = db.execute('SELECT details_visibility, favourite_classes, play_style, timezone FROM users WHERE id = ?', (uid,)).fetchone()
+                    extra['details_visibility'] = d['details_visibility']
+                    extra['details'] = {'classes': [k for k in (d['favourite_classes'] or '').split(',') if k], 'style': d['play_style'], 'timezone': d['timezone']}
+                    extra['details_ready'] = True
+                except pgerr.UndefinedColumn:                  # migration 0053 not applied yet
+                    db.rollback()
+                    extra['details_ready'] = False
                 extra['friend_requests'] = db.execute(
                     "SELECT COUNT(*) AS n FROM friendships WHERE status = 'pending' AND requested_by <> ? AND (user_low = ? OR user_high = ?)",
                     (uid, uid, uid)).fetchone()['n']
@@ -1420,6 +1476,9 @@ app.jinja_env.globals['profile_extra'] = profile_extra
 app.jinja_env.globals['profile_visibility_options'] = PROFILE_VISIBILITY
 app.jinja_env.globals['showcase_max'] = SHOWCASE_MAX
 app.jinja_env.globals['element_visibility_options'] = ELEMENT_VISIBILITY
+app.jinja_env.globals['play_styles'] = PLAY_STYLES
+app.jinja_env.globals['favourite_classes_max'] = FAVOURITE_CLASSES_MAX
+app.jinja_env.globals['timezone_options'] = _TIMEZONES
 
 
 @app.route('/u/<username>')
@@ -1439,7 +1498,15 @@ def profile_view(username):
         created = datetime.fromisoformat(created[:10])
     show_bio = _element_visible(db, owner, viewer, owner['bio_visibility'])
     show_chars = _element_visible(db, owner, viewer, owner['showcase_visibility'])
-    return render_template('profile_view.html', owner=dict(owner, bio=owner['bio'] if show_bio else None), is_me=owner['id'] == viewer,
+    details = None
+    try:
+        d = db.execute('SELECT details_visibility, favourite_classes, play_style, timezone FROM users WHERE id = ?', (owner['id'],)).fetchone()
+        if _element_visible(db, owner, viewer, d['details_visibility']):
+            details = {'classes': [_class_label(k) for k in (d['favourite_classes'] or '').split(',') if _class_label(k)],
+                       'style': PLAY_STYLES.get(d['play_style']), 'timezone': d['timezone'], 'stats': _player_stats(db, owner['id'])}
+    except pgerr.UndefinedColumn:                           # migration 0053 not applied yet: the page just has no details block
+        db.rollback()
+    return render_template('profile_view.html', owner=dict(owner, bio=owner['bio'] if show_bio else None), is_me=owner['id'] == viewer, details=details,
                            member_since=created.strftime('%B %Y'), show_chars=show_chars,
                            showcase=_showcase_characters(db, owner['id']) if show_chars else [],
                            friend_state=_friend_state(db, viewer, owner['id']), element_visibility_options=ELEMENT_VISIBILITY)
@@ -1668,7 +1735,7 @@ def account_export():
         'account': {
             'username': user['username'], 'display_name': user['display_name'], 'bio': user['bio'],
             'email': user.get('email'), 'email_verified': bool(user.get('email_verified_at')),
-            'created_at': joined,
+            'created_at': joined, 'player_details': profile_extra().get('details') or None,
         },
         'campaign_memberships': rows(
             'SELECT c.name AS campaign, cm.role, cm.status FROM campaign_members cm JOIN campaigns c ON c.id = cm.campaign_id '
