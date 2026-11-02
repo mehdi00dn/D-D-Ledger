@@ -116,7 +116,7 @@
   <div class="dossier-card" data-id="{{ c.id }}" data-level="{{ c.level }}" data-group="{{ c.factions|map(attribute='id')|join(' ') }}" data-name="{{ c.name|lower }}" data-type="{{ 'npc' if c.is_npc else 'pc' }}">
     <span class="dossier-tag {{ 'npc' if c.is_npc else '' }}">{{ ('NPC · Ally' if c.is_ally else 'NPC') if c.is_npc else 'PC' }}</span>
     <div class="dossier-head">
-      <div class="avatar-frame">
+      <div class="avatar-frame"{% if c.avatar_path %} data-lightbox-src="{{ url_for('uploaded_file', filename=c.avatar_path) }}" role="button" tabindex="0" aria-label="View {{ c.name }}'s avatar larger"{% endif %}>
         {% if c.avatar_path %}
           <img src="{{ url_for('uploaded_file', filename=c.avatar_path) }}" alt="{{ c.name }} avatar">
         {% elif c.class_key and c.class_key in class_labels and not npc_hidden %}

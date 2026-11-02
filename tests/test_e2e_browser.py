@@ -1982,3 +1982,32 @@ def test_character_sheet_prints_without_the_app_chrome(pw, shared_server):
     assert not page.locator('.sidebar').is_visible() and not page.locator('[data-print]').is_visible()      # menus and buttons stay off the paper
     assert page.locator('.cd-hero').is_visible()
     assert page.evaluate("getComputedStyle(document.body).backgroundColor") == 'rgb(255, 255, 255)'
+
+
+def test_clicking_an_avatar_previews_it_without_leaving_the_page(pw, shared_server):
+    """Avatars open the lightbox: on the character page, the Characters list and the Overview party (where the avatar sits
+    inside a link and must not follow it); Enter opens it by keyboard; Escape closes it."""
+    base = shared_server.url; api = Api(base); cid = api.campaign('Avatars')
+    api.post(f'/campaigns/{cid}/characters/new', data={'name': 'Pictured', 'max_hp': '5'}, files={'avatar': ('a.png', png_bytes(200, 200), 'image/png')})
+    char_id = next(c['id'] for c in api.get(f'/campaigns/{cid}/api/characters').json() if c['name'] == 'Pictured')
+    ctx = api.context(pw, base); page = ctx.new_page(); bad, errs = _collect(page)
+    # character page: click, then keyboard
+    page.goto(base + f'/campaigns/{cid}/characters/{char_id}'); page.wait_for_load_state('networkidle')
+    page.click('.cd-avatar[data-lightbox-src]')
+    page.wait_for_selector('#image-lightbox:not([hidden])')
+    assert '/uploads/' in page.get_attribute('#lightbox-img', 'src')
+    page.keyboard.press('Escape'); page.wait_for_selector('#image-lightbox', state='hidden')
+    page.focus('.cd-avatar[data-lightbox-src]'); page.keyboard.press('Enter')
+    page.wait_for_selector('#image-lightbox:not([hidden])')
+    page.keyboard.press('Escape'); page.wait_for_selector('#image-lightbox', state='hidden')
+    # list: the card stays on the list
+    page.goto(base + f'/campaigns/{cid}/characters'); page.wait_for_load_state('networkidle')
+    page.click('.dossier-card .avatar-frame[data-lightbox-src]')
+    page.wait_for_selector('#image-lightbox:not([hidden])')
+    page.keyboard.press('Escape'); page.wait_for_selector('#image-lightbox', state='hidden')
+    # Overview party: the avatar is inside the character's link, and previews instead of following it
+    page.goto(base + f'/campaigns/{cid}/home'); page.wait_for_load_state('networkidle')
+    page.click('.home-pc .home-pc-avatar[data-lightbox-src]')
+    page.wait_for_selector('#image-lightbox:not([hidden])')
+    assert page.url.endswith('/home'), page.url
+    assert not bad and not errs, (bad, errs)

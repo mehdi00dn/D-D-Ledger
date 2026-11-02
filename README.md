@@ -178,7 +178,7 @@ leaves out the menus, buttons, dice, roll controls and the sheet viewer, drops t
 for the print only. A character whose stats are hidden from the viewer has no button.
 
 Quests (DL-151, migration 0038): a card on the campaign Overview page. The DM adds a quest (title, what the players know, optionally hidden),
-marks it done or reopens it, hides it from or shows it to Players, or deletes it; Players read the quests that are not hidden. Up to 60
+marks it done or reopens it, edits its title and details (the same limits as adding, and editing never changes whether it is hidden), hides it from or shows it to Players, or deletes it; Players read the quests that are not hidden. Up to 60
 per campaign. Adding or finishing a visible quest shows up in the activity feed. Not built: objectives inside a quest, quest export.
 
 Session scheduling (DL-152, migration 0035): the DM or an owner sets one "next session" per campaign from the Overview (`campaigns.next_session_at`
@@ -373,3 +373,6 @@ A profile can show a **Friends** section (`friends_visibility`: **Same as my pro
 
 ### Session journal (DL-121; migration `0055_session_journal.sql`)
 **Journal** (`/campaigns/<id>/journal`, under Lore in the sidebar and in the phone More sheet) is a dated list of session recaps. The DM adds, edits and deletes (`journal_new`, `journal_edit`, `journal_delete`); every member reads (`journal_list`, `journal_view`). A recap is a title, the date it was played and a few note boxes in the same editor and storage as character and campaign notes (`session_journal.body`, sanitised by `sanitize_notes_payload`), so each box can be hidden from players. Rules: a player never receives a hidden box, and a recap whose boxes are all hidden answers 404 for players and is missing from their list (the DM sees it marked "DM only"); a new recap with at least one shared box adds a line to the Activity feed; up to 300 recaps per campaign, 120-character titles, 60,000 characters of notes. `journal_id` is in the resource-scope policy, so another campaign's recap is a 404. The author's own recaps are in their data download, and the table is described in `docs/DATA_WE_COLLECT.md`. Tests: `tests/test_journal.py`. Optional links from a recap to characters, factions and maps (in the Notion task) are not built yet.
+
+### Avatar preview (DL-168)
+Clicking a character avatar (the character page, the Characters list, the Overview party, the profile photo and showcase portraits, the character peek dialog) opens it in the shared lightbox (`static/js/lightbox.js`, zoom and pan, Esc closes). Mark an avatar with `data-lightbox-src="<url>"`; add `role="button" tabindex="0"` when it is not inside a link so Enter and Space open it too. An avatar inside a link (the Overview party) previews instead of following the link, because the lightbox calls `preventDefault` for triggers inside an `<a>`. No new image is exposed: it is the URL the page already showed. Battle rows keep their own behaviour (the avatar opens the character peek). Test: `tests/test_e2e_browser.py`.

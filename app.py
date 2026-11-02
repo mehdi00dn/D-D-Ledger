@@ -5423,9 +5423,9 @@ def quest_add():
 @campaign_access_required
 @dm_required
 def quest_change(quest_id):
-    """The form field `action`: done | reopen | hide | show | delete."""
+    """The form field `action`: done | reopen | hide | show | delete | edit (new `title` and `details`)."""
     action = request.form.get('action')
-    if action not in ('done', 'reopen', 'hide', 'show', 'delete'):
+    if action not in ('done', 'reopen', 'hide', 'show', 'delete', 'edit'):
         abort(400)
     db = get_db()
     q = db.execute('SELECT title, hidden FROM quests WHERE id = ? AND campaign_id = ?', (quest_id, g.campaign_id)).fetchone()
@@ -5434,6 +5434,13 @@ def quest_change(quest_id):
         abort(400)
     if action == 'delete':
         db.execute('DELETE FROM quests WHERE id = ? AND campaign_id = ?', (quest_id, g.campaign_id))
+    elif action == 'edit':
+        title = ' '.join((request.form.get('title') or '').split())[:QUEST_TITLE_MAX]
+        if not title:
+            db.close()
+            abort(400)
+        details = (request.form.get('details') or '').strip()[:QUEST_DETAILS_MAX]
+        db.execute('UPDATE quests SET title = ?, details = ? WHERE id = ? AND campaign_id = ?', (title, details or None, quest_id, g.campaign_id))
     else:
         col, val = {'done': ('done', True), 'reopen': ('done', False), 'hide': ('hidden', True), 'show': ('hidden', False)}[action]
         db.execute('UPDATE quests SET %s = ? WHERE id = ? AND campaign_id = ?' % col, (val, quest_id, g.campaign_id))

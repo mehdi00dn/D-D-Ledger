@@ -4964,6 +4964,7 @@ input[type="range"]:disabled { opacity: 0.5; cursor: not-allowed; }
 .quest-tag { display: inline-block; margin-inline-start: 6px; padding: 1px 7px; border-radius: 999px; font-size: 11.5px; font-weight: 600; text-decoration: none; color: var(--moss-ink); border: 1px solid var(--hairline); }
 .quest-tag-dm { color: var(--brass-ink); }
 .quest-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.quest-edit { flex: 1 1 100%; }
 .quest-delete { color: var(--blood-ink); }
 .quest-add textarea { width: 100%; resize: vertical; }
 .quest-hide { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--parchment-dim); }
@@ -5611,3 +5612,8 @@ a.pager-link:hover { border-color: var(--brass); }
 .journal-body { max-inline-size: 760px; display: grid; gap: 14px; font-size: 15.5px; line-height: 1.65; overflow-wrap: anywhere; }
 @media (max-width: 600px) { .journal-item { grid-template-columns: 1fr; } }
 @media (prefers-reduced-motion: reduce) { .journal-item { transition: none; } }
+
+
+/* Avatars that open the lightbox when clicked (character page, Characters list, Overview party, profile, peek) */
+.avatar-frame[data-lightbox-src], .profile-avatar[data-lightbox-src], .profile-char-art[data-lightbox-src] { cursor: zoom-in; }
+.avatar-frame[data-lightbox-src]:focus-visible, .profile-avatar[data-lightbox-src]:focus-visible, .profile-char-art[data-lightbox-src]:focus-visible { outline: 2px solid var(--brass); outline-offset: 3px; }

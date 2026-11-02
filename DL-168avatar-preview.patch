@@ -1,0 +1,193 @@
+From 14a4701580830adb3d0ce4a7938fcc40b5e7b5bb Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Mon, 2 Nov 2026 02:59:09 +0330
+Subject: [PATCH] DL-168 avatar-preview
+
+Open a character's avatar in the lightbox when it is clicked.
+
+Works on the character page, the Characters list, the Overview party,
+the profile photo and showcase portraits and the character peek dialog.
+An avatar inside a link (the Overview party) previews instead of
+following the link, and avatars that are buttons also open with Enter or
+Space. No new image is exposed. No migration.
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01DygiEHS4J96y8JVcnoDwgr
+---
+ README.md                       |  3 +++
+ static/css/style.css            |  5 +++++
+ static/js/char-peek.js          |  2 +-
+ static/js/lightbox.js           | 10 ++++++++++
+ templates/campaign_home.html    |  2 +-
+ templates/character_detail.html |  2 +-
+ templates/characters_list.html  |  2 +-
+ templates/profile_view.html     |  4 ++--
+ tests/test_e2e_browser.py       | 29 +++++++++++++++++++++++++++++
+ 9 files changed, 53 insertions(+), 6 deletions(-)
+
+diff --git a/README.md b/README.md
+index 8b87c8f..3183246 100644
+--- a/README.md
++++ b/README.md
+@@ -373,3 +373,6 @@ A profile can show a **Friends** section (`friends_visibility`: **Same as my pro
+ 
+ ### Session journal (DL-121; migration `0055_session_journal.sql`)
+ **Journal** (`/campaigns/<id>/journal`, under Lore in the sidebar and in the phone More sheet) is a dated list of session recaps. The DM adds, edits and deletes (`journal_new`, `journal_edit`, `journal_delete`); every member reads (`journal_list`, `journal_view`). A recap is a title, the date it was played and a few note boxes in the same editor and storage as character and campaign notes (`session_journal.body`, sanitised by `sanitize_notes_payload`), so each box can be hidden from players. Rules: a player never receives a hidden box, and a recap whose boxes are all hidden answers 404 for players and is missing from their list (the DM sees it marked "DM only"); a new recap with at least one shared box adds a line to the Activity feed; up to 300 recaps per campaign, 120-character titles, 60,000 characters of notes. `journal_id` is in the resource-scope policy, so another campaign's recap is a 404. The author's own recaps are in their data download, and the table is described in `docs/DATA_WE_COLLECT.md`. Tests: `tests/test_journal.py`. Optional links from a recap to characters, factions and maps (in the Notion task) are not built yet.
++
++### Avatar preview (DL-168)
++Clicking a character avatar (the character page, the Characters list, the Overview party, the profile photo and showcase portraits, the character peek dialog) opens it in the shared lightbox (`static/js/lightbox.js`, zoom and pan, Esc closes). Mark an avatar with `data-lightbox-src="<url>"`; add `role="button" tabindex="0"` when it is not inside a link so Enter and Space open it too. An avatar inside a link (the Overview party) previews instead of following the link, because the lightbox calls `preventDefault` for triggers inside an `<a>`. No new image is exposed: it is the URL the page already showed. Battle rows keep their own behaviour (the avatar opens the character peek). Test: `tests/test_e2e_browser.py`.
+diff --git a/static/css/style.css b/static/css/style.css
+index a821c34..4d2cce1 100644
+--- a/static/css/style.css
++++ b/static/css/style.css
+@@ -5612,3 +5612,8 @@ a.pager-link:hover { border-color: var(--brass); }
+ .journal-body { max-inline-size: 760px; display: grid; gap: 14px; font-size: 15.5px; line-height: 1.65; overflow-wrap: anywhere; }
+ @media (max-width: 600px) { .journal-item { grid-template-columns: 1fr; } }
+ @media (prefers-reduced-motion: reduce) { .journal-item { transition: none; } }
++
++
++/* Avatars that open the lightbox when clicked (character page, Characters list, Overview party, profile, peek) */
++.avatar-frame[data-lightbox-src], .profile-avatar[data-lightbox-src], .profile-char-art[data-lightbox-src] { cursor: zoom-in; }
++.avatar-frame[data-lightbox-src]:focus-visible, .profile-avatar[data-lightbox-src]:focus-visible, .profile-char-art[data-lightbox-src]:focus-visible { outline: 2px solid var(--brass); outline-offset: 3px; }
+diff --git a/static/js/char-peek.js b/static/js/char-peek.js
+index de5f10e..493ceba 100644
+--- a/static/js/char-peek.js
++++ b/static/js/char-peek.js
+@@ -50,7 +50,7 @@
+     var fogged = !!c.hidden_stats;
+     var s = c.sheet;
+     var html = '<div class="peek-top">' +
+-      '<div class="avatar-frame peek-avatar">' + (c.avatar_path ? '<img src="/uploads/' + esc(c.avatar_path) + '" alt="">' : '') + '</div>' +
++      '<div class="avatar-frame peek-avatar"' + (c.avatar_path ? ' data-lightbox-src="/uploads/' + esc(c.avatar_path) + '" role="button" tabindex="0" aria-label="View avatar larger"' : '') + '>' + (c.avatar_path ? '<img src="/uploads/' + esc(c.avatar_path) + '" alt="">' : '') + '</div>' +
+       '<div class="peek-id"><div class="peek-chips">' + chips(c) + '</div>' +
+       '<div class="made-by">Made by ' + esc(c.made_by || 'a former member') + '</div></div>' +
+       '<a class="btn-icon peek-open" href="/campaigns/' + window.CAMPAIGN_ID + '/characters/' + c.id + '" title="Open the full page" aria-label="Open the full page">&#8599;</a>' +
+diff --git a/static/js/lightbox.js b/static/js/lightbox.js
+index 5dc708c..59a46e1 100644
+--- a/static/js/lightbox.js
++++ b/static/js/lightbox.js
+@@ -147,6 +147,7 @@
+   document.addEventListener('click', (e) => {
+     const trigger = e.target.closest('[data-lightbox-src]');
+     if (!trigger) return;
++    if (trigger.closest('a')) { e.preventDefault(); e.stopPropagation(); }   // an avatar inside a link previews instead of following it
+     const group = trigger.closest('.sheet-thumbs');
+     const images = group
+       ? Array.from(group.querySelectorAll('[data-lightbox-src]')).map(el => ({
+@@ -157,6 +158,15 @@
+     open(trigger.dataset.lightboxSrc, trigger.dataset.deleteUrl, images);
+   });
+ 
++  // An avatar that is a button (role="button") opens with Enter or Space too.
++  document.addEventListener('keydown', (e) => {
++    if (e.key !== 'Enter' && e.key !== ' ') return;
++    const trigger = e.target.closest && e.target.closest('[data-lightbox-src][role="button"]');
++    if (!trigger || e.target !== trigger) return;
++    e.preventDefault();
++    trigger.click();
++  });
++
+   // ---- Click to zoom, drag to pan (unified via mousedown/move/up) ----
+   img.addEventListener('mousedown', (e) => {
+     dragging = true;
+diff --git a/templates/campaign_home.html b/templates/campaign_home.html
+index 7b330ef..8f7f6e9 100644
+--- a/templates/campaign_home.html
++++ b/templates/campaign_home.html
+@@ -39,7 +39,7 @@
+     <ul class="home-party-list">
+       {% for c in party[:12] %}
+       <li><a class="home-pc" href="{{ url_for('character_detail', char_id=c.id) }}">
+-        <span class="avatar-frame home-pc-avatar">{% if c.avatar_path %}<img src="{{ url_for('uploaded_file', filename=c.avatar_path) }}" alt="">{% else %}{{ icon('user') }}{% endif %}</span>
++        <span class="avatar-frame home-pc-avatar"{% if c.avatar_path %} data-lightbox-src="{{ url_for('uploaded_file', filename=c.avatar_path) }}"{% endif %}>{% if c.avatar_path %}<img src="{{ url_for('uploaded_file', filename=c.avatar_path) }}" alt="">{% else %}{{ icon('user') }}{% endif %}</span>
+         <span class="home-pc-name">{{ class_icon(c.class_key) }}<span>{{ c.name }}</span></span>
+         <span class="home-pc-stats"><span class="home-pc-lvl">Lvl {{ c.level }}</span><span>{{ c.max_hp }} HP</span><span>AC {{ c.armor_class }}</span></span>
+       </a></li>
+diff --git a/templates/character_detail.html b/templates/character_detail.html
+index 130f242..0292113 100644
+--- a/templates/character_detail.html
++++ b/templates/character_detail.html
+@@ -70,7 +70,7 @@
+     {% if character.class_key and not stats_hidden %}
+     <div class="class-badge">{{ class_icon(character.class_key) }}</div>
+     {% endif %}
+-    <div class="avatar-frame cd-avatar">
++    <div class="avatar-frame cd-avatar"{% if character.avatar_path %} data-lightbox-src="{{ url_for('uploaded_file', filename=character.avatar_path) }}" role="button" tabindex="0" aria-label="View {{ character.name }}'s avatar larger"{% endif %}>
+       {% if character.avatar_path %}
+         <img src="{{ url_for('uploaded_file', filename=character.avatar_path) }}" alt="{{ character.name }} avatar">
+       {% else %}
+diff --git a/templates/characters_list.html b/templates/characters_list.html
+index d3c9b40..bf4199e 100644
+--- a/templates/characters_list.html
++++ b/templates/characters_list.html
+@@ -116,7 +116,7 @@
+   <div class="dossier-card" data-id="{{ c.id }}" data-level="{{ c.level }}" data-group="{{ c.factions|map(attribute='id')|join(' ') }}" data-name="{{ c.name|lower }}" data-type="{{ 'npc' if c.is_npc else 'pc' }}">
+     <span class="dossier-tag {{ 'npc' if c.is_npc else '' }}">{{ ('NPC · Ally' if c.is_ally else 'NPC') if c.is_npc else 'PC' }}</span>
+     <div class="dossier-head">
+-      <div class="avatar-frame">
++      <div class="avatar-frame"{% if c.avatar_path %} data-lightbox-src="{{ url_for('uploaded_file', filename=c.avatar_path) }}" role="button" tabindex="0" aria-label="View {{ c.name }}'s avatar larger"{% endif %}>
+         {% if c.avatar_path %}
+           <img src="{{ url_for('uploaded_file', filename=c.avatar_path) }}" alt="{{ c.name }} avatar">
+         {% elif c.class_key and c.class_key in class_labels and not npc_hidden %}
+diff --git a/templates/profile_view.html b/templates/profile_view.html
+index 2f71d39..5f4894f 100644
+--- a/templates/profile_view.html
++++ b/templates/profile_view.html
+@@ -6,7 +6,7 @@
+ {% block content %}
+ <article class="profile-page">
+   <header class="profile-head">
+-    <div class="profile-avatar">
++    <div class="profile-avatar"{% if owner.avatar_path %} data-lightbox-src="{{ url_for('uploaded_file', filename=owner.avatar_path) }}" role="button" tabindex="0" aria-label="View {{ owner.display_name or owner.username }}'s photo larger"{% endif %}>
+       {% if owner.avatar_path %}<img src="{{ url_for('uploaded_file', filename=owner.avatar_path) }}" alt="">{% else %}{{ icon('user') }}{% endif %}
+     </div>
+     <div class="profile-id">
+@@ -76,7 +76,7 @@
+     <ul class="profile-chars">
+       {% for c in showcase %}
+       <li class="profile-char">
+-        <div class="profile-char-art">
++        <div class="profile-char-art"{% if c.avatar_path %} data-lightbox-src="{{ url_for('uploaded_file', filename=c.avatar_path) }}" role="button" tabindex="0" aria-label="View {{ c.name }}'s portrait larger"{% endif %}>
+           {% if c.avatar_path %}<img src="{{ url_for('uploaded_file', filename=c.avatar_path) }}" alt="" loading="lazy">{% else %}<span class="profile-char-ph">{{ class_icon(c.class_key) if c.class_key else icon('user') }}</span>{% endif %}
+         </div>
+         <div class="profile-char-info">
+diff --git a/tests/test_e2e_browser.py b/tests/test_e2e_browser.py
+index 1a01a4b..159fa03 100644
+--- a/tests/test_e2e_browser.py
++++ b/tests/test_e2e_browser.py
+@@ -1982,3 +1982,32 @@ def test_character_sheet_prints_without_the_app_chrome(pw, shared_server):
+     assert not page.locator('.sidebar').is_visible() and not page.locator('[data-print]').is_visible()      # menus and buttons stay off the paper
+     assert page.locator('.cd-hero').is_visible()
+     assert page.evaluate("getComputedStyle(document.body).backgroundColor") == 'rgb(255, 255, 255)'
++
++
++def test_clicking_an_avatar_previews_it_without_leaving_the_page(pw, shared_server):
++    """Avatars open the lightbox: on the character page, the Characters list and the Overview party (where the avatar sits
++    inside a link and must not follow it); Enter opens it by keyboard; Escape closes it."""
++    base = shared_server.url; api = Api(base); cid = api.campaign('Avatars')
++    api.post(f'/campaigns/{cid}/characters/new', data={'name': 'Pictured', 'max_hp': '5'}, files={'avatar': ('a.png', png_bytes(200, 200), 'image/png')})
++    char_id = next(c['id'] for c in api.get(f'/campaigns/{cid}/api/characters').json() if c['name'] == 'Pictured')
++    ctx = api.context(pw, base); page = ctx.new_page(); bad, errs = _collect(page)
++    # character page: click, then keyboard
++    page.goto(base + f'/campaigns/{cid}/characters/{char_id}'); page.wait_for_load_state('networkidle')
++    page.click('.cd-avatar[data-lightbox-src]')
++    page.wait_for_selector('#image-lightbox:not([hidden])')
++    assert '/uploads/' in page.get_attribute('#lightbox-img', 'src')
++    page.keyboard.press('Escape'); page.wait_for_selector('#image-lightbox', state='hidden')
++    page.focus('.cd-avatar[data-lightbox-src]'); page.keyboard.press('Enter')
++    page.wait_for_selector('#image-lightbox:not([hidden])')
++    page.keyboard.press('Escape'); page.wait_for_selector('#image-lightbox', state='hidden')
++    # list: the card stays on the list
++    page.goto(base + f'/campaigns/{cid}/characters'); page.wait_for_load_state('networkidle')
++    page.click('.dossier-card .avatar-frame[data-lightbox-src]')
++    page.wait_for_selector('#image-lightbox:not([hidden])')
++    page.keyboard.press('Escape'); page.wait_for_selector('#image-lightbox', state='hidden')
++    # Overview party: the avatar is inside the character's link, and previews instead of following it
++    page.goto(base + f'/campaigns/{cid}/home'); page.wait_for_load_state('networkidle')
++    page.click('.home-pc .home-pc-avatar[data-lightbox-src]')
++    page.wait_for_selector('#image-lightbox:not([hidden])')
++    assert page.url.endswith('/home'), page.url
++    assert not bad and not errs, (bad, errs)
+-- 
+2.43.0
+

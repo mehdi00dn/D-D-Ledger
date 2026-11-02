@@ -50,7 +50,7 @@
     var fogged = !!c.hidden_stats;
     var s = c.sheet;
     var html = '<div class="peek-top">' +
-      '<div class="avatar-frame peek-avatar">' + (c.avatar_path ? '<img src="/uploads/' + esc(c.avatar_path) + '" alt="">' : '') + '</div>' +
+      '<div class="avatar-frame peek-avatar"' + (c.avatar_path ? ' data-lightbox-src="/uploads/' + esc(c.avatar_path) + '" role="button" tabindex="0" aria-label="View avatar larger"' : '') + '>' + (c.avatar_path ? '<img src="/uploads/' + esc(c.avatar_path) + '" alt="">' : '') + '</div>' +
       '<div class="peek-id"><div class="peek-chips">' + chips(c) + '</div>' +
       '<div class="made-by">Made by ' + esc(c.made_by || 'a former member') + '</div></div>' +
       '<a class="btn-icon peek-open" href="/campaigns/' + window.CAMPAIGN_ID + '/characters/' + c.id + '" title="Open the full page" aria-label="Open the full page">&#8599;</a>' +

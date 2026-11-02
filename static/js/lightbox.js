@@ -147,6 +147,7 @@
   document.addEventListener('click', (e) => {
     const trigger = e.target.closest('[data-lightbox-src]');
     if (!trigger) return;
+    if (trigger.closest('a')) { e.preventDefault(); e.stopPropagation(); }   // an avatar inside a link previews instead of following it
     const group = trigger.closest('.sheet-thumbs');
     const images = group
       ? Array.from(group.querySelectorAll('[data-lightbox-src]')).map(el => ({
@@ -155,6 +156,15 @@
         }))
       : [{ src: trigger.dataset.lightboxSrc, deleteUrl: trigger.dataset.deleteUrl || null }];
     open(trigger.dataset.lightboxSrc, trigger.dataset.deleteUrl, images);
+  });
+
+  // An avatar that is a button (role="button") opens with Enter or Space too.
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const trigger = e.target.closest && e.target.closest('[data-lightbox-src][role="button"]');
+    if (!trigger || e.target !== trigger) return;
+    e.preventDefault();
+    trigger.click();
   });
 
   // ---- Click to zoom, drag to pan (unified via mousedown/move/up) ----

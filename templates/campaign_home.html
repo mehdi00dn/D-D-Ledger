@@ -39,7 +39,7 @@
     <ul class="home-party-list">
       {% for c in party[:12] %}
       <li><a class="home-pc" href="{{ url_for('character_detail', char_id=c.id) }}">
-        <span class="avatar-frame home-pc-avatar">{% if c.avatar_path %}<img src="{{ url_for('uploaded_file', filename=c.avatar_path) }}" alt="">{% else %}{{ icon('user') }}{% endif %}</span>
+        <span class="avatar-frame home-pc-avatar"{% if c.avatar_path %} data-lightbox-src="{{ url_for('uploaded_file', filename=c.avatar_path) }}"{% endif %}>{% if c.avatar_path %}<img src="{{ url_for('uploaded_file', filename=c.avatar_path) }}" alt="">{% else %}{{ icon('user') }}{% endif %}</span>
         <span class="home-pc-name">{{ class_icon(c.class_key) }}<span>{{ c.name }}</span></span>
         <span class="home-pc-stats"><span class="home-pc-lvl">Lvl {{ c.level }}</span><span>{{ c.max_hp }} HP</span><span>AC {{ c.armor_class }}</span></span>
       </a></li>
@@ -75,6 +75,20 @@
           <form method="POST" action="{{ url_for('quest_change', quest_id=q.id) }}">{{ csrf_field() }}<input type="hidden" name="action" value="{{ 'show' if q.hidden else 'hide' }}"><button type="submit" class="btn btn-ghost btn-sm">{{ 'Show to players' if q.hidden else 'Hide' }}</button></form>
           <form method="POST" action="{{ url_for('quest_change', quest_id=q.id) }}" data-confirm="Delete this quest?">{{ csrf_field() }}<input type="hidden" name="action" value="{{ 'delete' }}"><button type="submit" class="btn btn-ghost btn-sm quest-delete" aria-label="Delete the quest {{ q.title }}" title="Delete">{{ icon('trash-2') }}</button></form>
         </div>
+        <details class="session-edit quest-edit">
+          <summary class="btn btn-ghost btn-sm">{{ icon('pencil') }} Edit</summary>
+          <form method="POST" action="{{ url_for('quest_change', quest_id=q.id) }}">{{ csrf_field() }}<input type="hidden" name="action" value="edit">
+            <div class="field">
+              <label for="quest-title-{{ q.id }}">Quest</label>
+              <input type="text" id="quest-title-{{ q.id }}" name="title" maxlength="120" required value="{{ q.title }}">
+            </div>
+            <div class="field">
+              <label for="quest-details-{{ q.id }}">What the players know <span class="field-optional">optional</span></label>
+              <textarea id="quest-details-{{ q.id }}" name="details" rows="2" maxlength="600">{{ q.details or '' }}</textarea>
+            </div>
+            <div class="session-edit-actions"><button type="submit" class="btn btn-primary btn-sm">{{ icon('check') }} Save quest</button></div>
+          </form>
+        </details>
         {% endif %}
       </li>
       {% endfor %}

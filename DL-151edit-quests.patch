@@ -1,0 +1,138 @@
+From 76eadee28794daf5fe52c092aafcf33de9a94e73 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Mon, 2 Nov 2026 02:56:23 +0330
+Subject: [PATCH] DL-151 edit-quests
+
+Let the DM edit a quest's title and details.
+
+Each quest on the Overview page gets an Edit control for the DM with the
+same limits as adding (120-character title, 600 characters of details).
+Editing never changes whether the quest is hidden or done, players
+cannot edit, and another campaign's quest is a 404.
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01DygiEHS4J96y8JVcnoDwgr
+---
+ README.md                    |  2 +-
+ app.py                       | 11 +++++++++--
+ static/css/style.css         |  1 +
+ templates/campaign_home.html | 14 ++++++++++++++
+ tests/test_quests.py         | 25 +++++++++++++++++++++++++
+ 5 files changed, 50 insertions(+), 3 deletions(-)
+
+diff --git a/README.md b/README.md
+index 5f89c8f..8b87c8f 100644
+--- a/README.md
++++ b/README.md
+@@ -178,7 +178,7 @@ leaves out the menus, buttons, dice, roll controls and the sheet viewer, drops t
+ for the print only. A character whose stats are hidden from the viewer has no button.
+ 
+ Quests (DL-151, migration 0038): a card on the campaign Overview page. The DM adds a quest (title, what the players know, optionally hidden),
+-marks it done or reopens it, hides it from or shows it to Players, or deletes it; Players read the quests that are not hidden. Up to 60
++marks it done or reopens it, edits its title and details (the same limits as adding, and editing never changes whether it is hidden), hides it from or shows it to Players, or deletes it; Players read the quests that are not hidden. Up to 60
+ per campaign. Adding or finishing a visible quest shows up in the activity feed. Not built: objectives inside a quest, quest export.
+ 
+ Session scheduling (DL-152, migration 0035): the DM or an owner sets one "next session" per campaign from the Overview (`campaigns.next_session_at`
+diff --git a/app.py b/app.py
+index 8285934..aa5603f 100644
+--- a/app.py
++++ b/app.py
+@@ -5423,9 +5423,9 @@ def quest_add():
+ @campaign_access_required
+ @dm_required
+ def quest_change(quest_id):
+-    """The form field `action`: done | reopen | hide | show | delete."""
++    """The form field `action`: done | reopen | hide | show | delete | edit (new `title` and `details`)."""
+     action = request.form.get('action')
+-    if action not in ('done', 'reopen', 'hide', 'show', 'delete'):
++    if action not in ('done', 'reopen', 'hide', 'show', 'delete', 'edit'):
+         abort(400)
+     db = get_db()
+     q = db.execute('SELECT title, hidden FROM quests WHERE id = ? AND campaign_id = ?', (quest_id, g.campaign_id)).fetchone()
+@@ -5434,6 +5434,13 @@ def quest_change(quest_id):
+         abort(400)
+     if action == 'delete':
+         db.execute('DELETE FROM quests WHERE id = ? AND campaign_id = ?', (quest_id, g.campaign_id))
++    elif action == 'edit':
++        title = ' '.join((request.form.get('title') or '').split())[:QUEST_TITLE_MAX]
++        if not title:
++            db.close()
++            abort(400)
++        details = (request.form.get('details') or '').strip()[:QUEST_DETAILS_MAX]
++        db.execute('UPDATE quests SET title = ?, details = ? WHERE id = ? AND campaign_id = ?', (title, details or None, quest_id, g.campaign_id))
+     else:
+         col, val = {'done': ('done', True), 'reopen': ('done', False), 'hide': ('hidden', True), 'show': ('hidden', False)}[action]
+         db.execute('UPDATE quests SET %s = ? WHERE id = ? AND campaign_id = ?' % col, (val, quest_id, g.campaign_id))
+diff --git a/static/css/style.css b/static/css/style.css
+index 0b12a0b..a821c34 100644
+--- a/static/css/style.css
++++ b/static/css/style.css
+@@ -4964,6 +4964,7 @@ input[type="range"]:disabled { opacity: 0.5; cursor: not-allowed; }
+ .quest-tag { display: inline-block; margin-inline-start: 6px; padding: 1px 7px; border-radius: 999px; font-size: 11.5px; font-weight: 600; text-decoration: none; color: var(--moss-ink); border: 1px solid var(--hairline); }
+ .quest-tag-dm { color: var(--brass-ink); }
+ .quest-actions { display: flex; flex-wrap: wrap; gap: 6px; }
++.quest-edit { flex: 1 1 100%; }
+ .quest-delete { color: var(--blood-ink); }
+ .quest-add textarea { width: 100%; resize: vertical; }
+ .quest-hide { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--parchment-dim); }
+diff --git a/templates/campaign_home.html b/templates/campaign_home.html
+index e41ea81..7b330ef 100644
+--- a/templates/campaign_home.html
++++ b/templates/campaign_home.html
+@@ -75,6 +75,20 @@
+           <form method="POST" action="{{ url_for('quest_change', quest_id=q.id) }}">{{ csrf_field() }}<input type="hidden" name="action" value="{{ 'show' if q.hidden else 'hide' }}"><button type="submit" class="btn btn-ghost btn-sm">{{ 'Show to players' if q.hidden else 'Hide' }}</button></form>
+           <form method="POST" action="{{ url_for('quest_change', quest_id=q.id) }}" data-confirm="Delete this quest?">{{ csrf_field() }}<input type="hidden" name="action" value="{{ 'delete' }}"><button type="submit" class="btn btn-ghost btn-sm quest-delete" aria-label="Delete the quest {{ q.title }}" title="Delete">{{ icon('trash-2') }}</button></form>
+         </div>
++        <details class="session-edit quest-edit">
++          <summary class="btn btn-ghost btn-sm">{{ icon('pencil') }} Edit</summary>
++          <form method="POST" action="{{ url_for('quest_change', quest_id=q.id) }}">{{ csrf_field() }}<input type="hidden" name="action" value="edit">
++            <div class="field">
++              <label for="quest-title-{{ q.id }}">Quest</label>
++              <input type="text" id="quest-title-{{ q.id }}" name="title" maxlength="120" required value="{{ q.title }}">
++            </div>
++            <div class="field">
++              <label for="quest-details-{{ q.id }}">What the players know <span class="field-optional">optional</span></label>
++              <textarea id="quest-details-{{ q.id }}" name="details" rows="2" maxlength="600">{{ q.details or '' }}</textarea>
++            </div>
++            <div class="session-edit-actions"><button type="submit" class="btn btn-primary btn-sm">{{ icon('check') }} Save quest</button></div>
++          </form>
++        </details>
+         {% endif %}
+       </li>
+       {% endfor %}
+diff --git a/tests/test_quests.py b/tests/test_quests.py
+index 12fa841..adf6d91 100644
+--- a/tests/test_quests.py
++++ b/tests/test_quests.py
+@@ -44,3 +44,28 @@ def test_a_quest_of_another_campaign_cannot_be_touched(make_user):
+     qid = q('SELECT id FROM quests WHERE campaign_id = ?', other)[0]['id']
+     assert dm.post(f'/campaigns/{cid}/quests/{qid}', data={'action': 'delete'}).status_code == 404
+     assert len(q('SELECT id FROM quests WHERE id = ?', qid)) == 1
++
++
++def test_dm_edits_a_quest_and_players_cannot(make_user):
++    dm, pl, cid = _setup(make_user)
++    dm.post(f'/campaigns/{cid}/quests/add', data={'title': 'Find the caravan', 'details': 'Seen near the ford', 'hidden': '1'})
++    qid = q('SELECT id FROM quests WHERE campaign_id = ?', cid)[0]['id']
++    assert pl.post(f'/campaigns/{cid}/quests/{qid}', data={'action': 'edit', 'title': 'Hacked'}).status_code == 403
++    assert dm.post(f'/campaigns/{cid}/quests/{qid}', data={'action': 'edit', 'title': '   '}).status_code == 400
++    assert dm.post(f'/campaigns/{cid}/quests/{qid}', data={'action': 'edit', 'title': 'Find the  caravan  at dawn', 'details': ''}).status_code == 302
++    row = q('SELECT title, details, hidden FROM quests WHERE id = ?', qid)[0]
++    assert row['title'] == 'Find the caravan at dawn' and row['details'] is None and row['hidden'] is True   # editing never reveals a hidden quest
++    assert 'Find the caravan at dawn' not in _home(pl, cid)
++    dm.post(f'/campaigns/{cid}/quests/{qid}', data={'action': 'edit', 'title': 'x' * 300, 'details': 'y' * 900})
++    row = q('SELECT title, details FROM quests WHERE id = ?', qid)[0]
++    assert len(row['title']) == 120 and len(row['details']) == 600                                           # same limits as adding
++    assert f'name="title" maxlength="120" required value="' in _home(dm, cid)                               # the form is on the page for the DM
++
++
++def test_a_quest_of_another_campaign_cannot_be_edited(make_user):
++    dm, pl, cid = _setup(make_user)
++    other = make_user(); ocid = other.new_campaign()
++    other.post(f'/campaigns/{ocid}/quests/add', data={'title': 'Theirs'})
++    oqid = q('SELECT id FROM quests WHERE campaign_id = ?', ocid)[0]['id']
++    assert dm.post(f'/campaigns/{cid}/quests/{oqid}', data={'action': 'edit', 'title': 'Mine now'}).status_code == 404
++    assert q('SELECT title FROM quests WHERE id = ?', oqid)[0]['title'] == 'Theirs'
+-- 
+2.43.0
+

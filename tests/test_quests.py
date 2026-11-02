@@ -44,3 +44,28 @@ def test_a_quest_of_another_campaign_cannot_be_touched(make_user):
     qid = q('SELECT id FROM quests WHERE campaign_id = ?', other)[0]['id']
     assert dm.post(f'/campaigns/{cid}/quests/{qid}', data={'action': 'delete'}).status_code == 404
     assert len(q('SELECT id FROM quests WHERE id = ?', qid)) == 1
+
+
+def test_dm_edits_a_quest_and_players_cannot(make_user):
+    dm, pl, cid = _setup(make_user)
+    dm.post(f'/campaigns/{cid}/quests/add', data={'title': 'Find the caravan', 'details': 'Seen near the ford', 'hidden': '1'})
+    qid = q('SELECT id FROM quests WHERE campaign_id = ?', cid)[0]['id']
+    assert pl.post(f'/campaigns/{cid}/quests/{qid}', data={'action': 'edit', 'title': 'Hacked'}).status_code == 403
+    assert dm.post(f'/campaigns/{cid}/quests/{qid}', data={'action': 'edit', 'title': '   '}).status_code == 400
+    assert dm.post(f'/campaigns/{cid}/quests/{qid}', data={'action': 'edit', 'title': 'Find the  caravan  at dawn', 'details': ''}).status_code == 302
+    row = q('SELECT title, details, hidden FROM quests WHERE id = ?', qid)[0]
+    assert row['title'] == 'Find the caravan at dawn' and row['details'] is None and row['hidden'] is True   # editing never reveals a hidden quest
+    assert 'Find the caravan at dawn' not in _home(pl, cid)
+    dm.post(f'/campaigns/{cid}/quests/{qid}', data={'action': 'edit', 'title': 'x' * 300, 'details': 'y' * 900})
+    row = q('SELECT title, details FROM quests WHERE id = ?', qid)[0]
+    assert len(row['title']) == 120 and len(row['details']) == 600                                           # same limits as adding
+    assert f'name="title" maxlength="120" required value="' in _home(dm, cid)                               # the form is on the page for the DM
+
+
+def test_a_quest_of_another_campaign_cannot_be_edited(make_user):
+    dm, pl, cid = _setup(make_user)
+    other = make_user(); ocid = other.new_campaign()
+    other.post(f'/campaigns/{ocid}/quests/add', data={'title': 'Theirs'})
+    oqid = q('SELECT id FROM quests WHERE campaign_id = ?', ocid)[0]['id']
+    assert dm.post(f'/campaigns/{cid}/quests/{oqid}', data={'action': 'edit', 'title': 'Mine now'}).status_code == 404
+    assert q('SELECT title FROM quests WHERE id = ?', oqid)[0]['title'] == 'Theirs'

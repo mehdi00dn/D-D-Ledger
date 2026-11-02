@@ -6,7 +6,7 @@
 {% block content %}
 <article class="profile-page">
   <header class="profile-head">
-    <div class="profile-avatar">
+    <div class="profile-avatar"{% if owner.avatar_path %} data-lightbox-src="{{ url_for('uploaded_file', filename=owner.avatar_path) }}" role="button" tabindex="0" aria-label="View {{ owner.display_name or owner.username }}'s photo larger"{% endif %}>
       {% if owner.avatar_path %}<img src="{{ url_for('uploaded_file', filename=owner.avatar_path) }}" alt="">{% else %}{{ icon('user') }}{% endif %}
     </div>
     <div class="profile-id">
@@ -76,7 +76,7 @@
     <ul class="profile-chars">
       {% for c in showcase %}
       <li class="profile-char">
-        <div class="profile-char-art">
+        <div class="profile-char-art"{% if c.avatar_path %} data-lightbox-src="{{ url_for('uploaded_file', filename=c.avatar_path) }}" role="button" tabindex="0" aria-label="View {{ c.name }}'s portrait larger"{% endif %}>
           {% if c.avatar_path %}<img src="{{ url_for('uploaded_file', filename=c.avatar_path) }}" alt="" loading="lazy">{% else %}<span class="profile-char-ph">{{ class_icon(c.class_key) if c.class_key else icon('user') }}</span>{% endif %}
         </div>
         <div class="profile-char-info">

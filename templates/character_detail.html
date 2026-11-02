@@ -70,7 +70,7 @@
     {% if character.class_key and not stats_hidden %}
     <div class="class-badge">{{ class_icon(character.class_key) }}</div>
     {% endif %}
-    <div class="avatar-frame cd-avatar">
+    <div class="avatar-frame cd-avatar"{% if character.avatar_path %} data-lightbox-src="{{ url_for('uploaded_file', filename=character.avatar_path) }}" role="button" tabindex="0" aria-label="View {{ character.name }}'s avatar larger"{% endif %}>
       {% if character.avatar_path %}
         <img src="{{ url_for('uploaded_file', filename=character.avatar_path) }}" alt="{{ character.name }} avatar">
       {% else %}
