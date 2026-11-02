@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% set active_page = 'journal' %}
+{% block title %}Journal — Campaign Ledger{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Journal</h1>
+    <p class="page-sub">A recap of each session, newest first.{% if g.is_dm %} Mark a note as hidden to keep it to yourself and the other DMs.{% endif %}</p>
+  </div>
+  {% if g.is_dm %}
+  <div class="page-actions toolbar">
+    <a class="btn btn-primary" href="{{ url_for('journal_new') }}">{{ icon('plus') }} New session</a>
+  </div>
+  {% endif %}
+</div>
+
+{% if entries %}
+<ul class="journal-list">
+  {% for e in entries %}
+  <li>
+    <a class="journal-item" href="{{ url_for('journal_view', journal_id=e.id) }}">
+      <time class="journal-date" datetime="{{ e.played_on }}">{{ e.played_on.strftime('%d %b %Y') if e.played_on.strftime else e.played_on }}</time>
+      <span class="journal-main">
+        <b class="journal-title">{{ e.title }}{% if e.dm_only %} <span class="journal-tag">{{ icon('lock') }} DM only</span>{% endif %}</b>
+        {% if e.preview %}<span class="journal-preview">{{ e.preview }}</span>{% endif %}
+      </span>
+    </a>
+  </li>
+  {% endfor %}
+</ul>
+{% else %}
+<section class="cf-card journal-empty">
+  {% if g.is_dm %}
+  <p>No sessions written up yet. After your next game, add a short recap so the table remembers what happened.</p>
+  <a class="btn btn-primary" href="{{ url_for('journal_new') }}">{{ icon('plus') }} Write the first recap</a>
+  {% else %}
+  <p>No session recaps yet. Your DM can add one after a game.</p>
+  {% endif %}
+</section>
+{% endif %}
+{% endblock %}

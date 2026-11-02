@@ -343,6 +343,7 @@ _SCOPE_OWNER_SQL = {
     'char_id': 'SELECT campaign_id AS owner FROM characters WHERE id = ?',
     'group_id': 'SELECT campaign_id AS owner FROM groups WHERE id = ?',
     'quest_id': 'SELECT campaign_id AS owner FROM quests WHERE id = ?',
+    'journal_id': 'SELECT campaign_id AS owner FROM session_journal WHERE id = ?',
     'entry_id': 'SELECT campaign_id AS owner FROM treasury_entries WHERE id = ?',
     'pid': 'SELECT c.campaign_id AS owner FROM battle_participants bp JOIN characters c ON c.id = bp.character_id WHERE bp.id = ?',
 }
@@ -1780,6 +1781,9 @@ def account_export():
             'WHERE ch.owner_id = ? AND ch.campaign_id IS NULL ORDER BY ch.id', uid),
         'factions_you_made': rows(
             'SELECT c.name AS campaign, g.* FROM groups g JOIN campaigns c ON c.id = g.campaign_id WHERE g.created_by = ? ORDER BY g.id', uid),
+        'journal_entries_you_wrote': rows(
+            'SELECT c.name AS campaign, j.title, j.played_on, j.body, j.created_at FROM session_journal j JOIN campaigns c ON c.id = j.campaign_id '
+            'WHERE j.created_by = ? ORDER BY j.id', uid),
         'maps_you_made': rows(
             'SELECT c.name AS campaign, m.id, m.name, m.created_at FROM maps m JOIN campaigns c ON c.id = m.campaign_id WHERE m.created_by = ? ORDER BY m.id', uid),
         'dice_rolls': rows(
@@ -5437,6 +5441,128 @@ def quest_change(quest_id):
             log_activity(db, g.campaign_id, 'quest', 'completed the quest "%s"' % q['title'], url_for('campaign_home', campaign_id=g.campaign_id))
     db.commit(); db.close()
     return redirect(url_for('campaign_home'))
+
+
+# ---------------- SESSION JOURNAL (DL-121) ----------------
+# A dated list of session recaps.  The DM writes and edits; every member reads.  A recap is a few note boxes, each of which can be
+# hidden from players (the same editor and storage as character notes), so one entry can hold a shared recap and the DM's own
+# plans.  A player never sees an entry whose boxes are all hidden, and never receives a hidden box.
+JOURNAL_TITLE_MAX, JOURNAL_BODY_MAX, JOURNAL_LIMIT = 120, 60000, 300
+
+
+def _journal_visible(row, is_dm):
+    """May this viewer open this entry at all?  The DM always; a player only when at least one box is shared."""
+    return is_dm or any(not e['h'] for e in notes_parse_entries(row['body']))
+
+
+def _journal_form_values(form):
+    """Validate the journal form.  Returns (values, error)."""
+    title = ' '.join((form.get('title') or '').split())
+    if not title or len(title) > JOURNAL_TITLE_MAX or any(c in title for c in '<>'):
+        return None, f'Give the session a title of at most {JOURNAL_TITLE_MAX} characters, without < or >.'
+    try:
+        played_on = datetime.strptime((form.get('played_on') or '').strip(), '%Y-%m-%d').date()
+    except ValueError:
+        return None, 'Pick the date the session was played.'
+    raw = (form.get('body') or '')[:JOURNAL_BODY_MAX + 1]
+    if len(raw) > JOURNAL_BODY_MAX:
+        return None, 'That recap is too long. Split it into two sessions.'
+    body = sanitize_notes_payload(raw)
+    if body in ('', '[]'):
+        return None, 'Write at least one note for the session.'
+    return {'title': title, 'played_on': played_on, 'body': body}, None
+
+
+def _journal_missing(db):
+    db.rollback(); db.close()
+    return api_error('The journal needs a database update that has not been applied yet (migration 0055).', 503, code='migration_pending')
+
+
+@app.route('/campaigns/<int:campaign_id>/journal')
+@campaign_access_required
+def journal_list():
+    db = get_db()
+    try:
+        rows = db.execute('SELECT id, title, played_on, body FROM session_journal WHERE campaign_id = ? '
+                          'ORDER BY played_on DESC, id DESC LIMIT ?', (g.campaign_id, JOURNAL_LIMIT)).fetchall()
+    except pgerr.UndefinedTable:
+        return _journal_missing(db)
+    db.close()
+    entries = [dict(r, preview=notes_plain_preview(r['body'], show_hidden=g.is_dm),
+                    dm_only=all(e['h'] for e in notes_parse_entries(r['body']))) for r in rows if _journal_visible(r, g.is_dm)]
+    return render_template('journal.html', entries=entries)
+
+
+@app.route('/campaigns/<int:campaign_id>/journal/new', methods=['GET', 'POST'])
+@campaign_access_required
+@dm_required
+def journal_new():
+    form_values = {'title': '', 'played_on': datetime.now(timezone.utc).date().isoformat(), 'body': ''}
+    error = None
+    if request.method == 'POST':
+        values, error = _journal_form_values(request.form)
+        form_values = {'title': request.form.get('title', ''), 'played_on': request.form.get('played_on', ''), 'body': request.form.get('body', '')}
+        if values:
+            db = get_db()
+            try:
+                if db.execute('SELECT COUNT(*) AS n FROM session_journal WHERE campaign_id = ?', (g.campaign_id,)).fetchone()['n'] >= JOURNAL_LIMIT:
+                    db.close()
+                    abort(409)
+                cur = db.execute('INSERT INTO session_journal (campaign_id, title, played_on, body, created_by) VALUES (?, ?, ?, ?, ?)',
+                                 (g.campaign_id, values['title'], values['played_on'], values['body'], session['user_id']))
+                new_id = cur.lastrowid
+            except pgerr.UndefinedTable:
+                return _journal_missing(db)
+            if any(not e['h'] for e in notes_parse_entries(values['body'])):
+                log_activity(db, g.campaign_id, 'journal', 'wrote up the session "%s"' % values['title'], url_for('journal_view', campaign_id=g.campaign_id, journal_id=new_id))
+            db.commit(); db.close()
+            return redirect(url_for('journal_view', journal_id=new_id))
+    return render_template('journal_form.html', entry=None, values=form_values, notes_entries=notes_parse_entries(form_values['body']), error=error), (400 if error else 200)
+
+
+@app.route('/campaigns/<int:campaign_id>/journal/<int:journal_id>')
+@campaign_access_required
+def journal_view(journal_id):
+    db = get_db()
+    row = db.execute('SELECT id, title, played_on, body, created_at, updated_at FROM session_journal WHERE id = ? AND campaign_id = ?',
+                     (journal_id, g.campaign_id)).fetchone()
+    db.close()
+    if row is None or not _journal_visible(row, g.is_dm):
+        abort(404)                                          # a recap with only DM boxes does not exist for players
+    return render_template('journal_entry.html', entry=row, body_html=notes_to_html(row['body'], show_hidden=g.is_dm))
+
+
+@app.route('/campaigns/<int:campaign_id>/journal/<int:journal_id>/edit', methods=['GET', 'POST'])
+@campaign_access_required
+@dm_required
+def journal_edit(journal_id):
+    db = get_db()
+    row = db.execute('SELECT id, title, played_on, body FROM session_journal WHERE id = ? AND campaign_id = ?', (journal_id, g.campaign_id)).fetchone()
+    if row is None:
+        db.close()
+        abort(404)
+    form_values = {'title': row['title'], 'played_on': row['played_on'].isoformat() if hasattr(row['played_on'], 'isoformat') else str(row['played_on']), 'body': row['body']}
+    error = None
+    if request.method == 'POST':
+        values, error = _journal_form_values(request.form)
+        form_values = {'title': request.form.get('title', ''), 'played_on': request.form.get('played_on', ''), 'body': request.form.get('body', '')}
+        if values:
+            db.execute('UPDATE session_journal SET title = ?, played_on = ?, body = ?, updated_at = ' + _UTC_NOW + ' WHERE id = ? AND campaign_id = ?',
+                       (values['title'], values['played_on'], values['body'], journal_id, g.campaign_id))
+            db.commit(); db.close()
+            return redirect(url_for('journal_view', journal_id=journal_id))
+    db.close()
+    return render_template('journal_form.html', entry=row, values=form_values, notes_entries=notes_parse_entries(form_values['body']), error=error), (400 if error else 200)
+
+
+@app.route('/campaigns/<int:campaign_id>/journal/<int:journal_id>/delete', methods=['POST'])
+@campaign_access_required
+@dm_required
+def journal_delete(journal_id):
+    db = get_db()
+    db.execute('DELETE FROM session_journal WHERE id = ? AND campaign_id = ?', (journal_id, g.campaign_id))
+    db.commit(); db.close()
+    return redirect(url_for('journal_list'))
 
 
 # ---- Party treasury (DL-148) -------------------------------------------------------------------------------------

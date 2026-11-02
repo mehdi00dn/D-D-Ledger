@@ -10,7 +10,7 @@ import io, re
 import pytest
 from conftest import q, png_bytes
 
-SCOPED = {'map_id', 'char_id', 'group_id', 'pid', 'drawing_id', 'pin_id', 'sheet_id', 'quest_id', 'entry_id'}
+SCOPED = {'map_id', 'char_id', 'group_id', 'pid', 'drawing_id', 'pin_id', 'sheet_id', 'quest_id', 'entry_id', 'journal_id'}
 
 
 def build_world(u):
@@ -27,8 +27,10 @@ def build_world(u):
     qid = q('SELECT id FROM quests WHERE campaign_id = ?', cid)[0]['id']
     u.post(f'/campaigns/{cid}/treasury/add', data={'kind': 'income', 'gp': '5', 'note': 'World coins'})
     eid = q('SELECT id FROM treasury_entries WHERE campaign_id = ?', cid)[0]['id']
+    u.post(f'/campaigns/{cid}/journal/new', data={'title': 'World session', 'played_on': '2026-10-31', 'body': '["World recap"]'})
+    jid = q('SELECT id FROM session_journal WHERE campaign_id = ?', cid)[0]['id']
     uid = q('SELECT id FROM users WHERE username = ?', u.name)[0]['id']
-    return dict(cid=cid, quest_id=qid, entry_id=eid, group_id=gid, char_id=ch, sheet_id=sheet, map_id=mid, drawing_id=did, pin_id=pin, pid=pid, user_id=uid)
+    return dict(cid=cid, journal_id=jid, quest_id=qid, entry_id=eid, group_id=gid, char_id=ch, sheet_id=sheet, map_id=mid, drawing_id=did, pin_id=pin, pid=pid, user_id=uid)
 
 
 def snapshot(cid):

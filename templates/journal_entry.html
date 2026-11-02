@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% set active_page = 'journal' %}
+{% block title %}{{ entry.title }} — Campaign Ledger{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <a href="{{ url_for('journal_list') }}" class="back-link">{{ icon('arrow-left') }} Journal</a>
+    <h1 class="page-title">{{ entry.title }}</h1>
+    <p class="page-sub"><time datetime="{{ entry.played_on }}">Played {{ entry.played_on.strftime('%d %B %Y') if entry.played_on.strftime else entry.played_on }}</time></p>
+  </div>
+  {% if g.is_dm %}
+  <div class="page-actions toolbar">
+    <a class="btn btn-ghost" href="{{ url_for('journal_edit', journal_id=entry.id) }}">{{ icon('pencil') }} Edit</a>
+    <form method="POST" action="{{ url_for('journal_delete', journal_id=entry.id) }}" data-confirm="Delete this session recap for good?">{{ csrf_field() }}<button type="submit" class="btn btn-danger btn-sm">{{ icon('trash-2') }} Delete</button></form>
+  </div>
+  {% endif %}
+</div>
+
+<article class="cf-card journal-body">{{ body_html | safe }}</article>
+{% endblock %}

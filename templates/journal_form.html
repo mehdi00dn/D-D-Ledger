@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% from "_note_editor.html" import note_block %}
+{% set active_page = 'journal' %}
+{% block title %}{{ 'Edit session' if entry else 'New session' }} — Campaign Ledger{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <a href="{{ url_for('journal_view', journal_id=entry.id) if entry else url_for('journal_list') }}" class="back-link">{{ icon('arrow-left') }} {{ 'Recap' if entry else 'Journal' }}</a>
+    <h1 class="page-title">{{ 'Edit session' if entry else 'New session' }}</h1>
+  </div>
+</div>
+
+{% if error %}<div class="banner-notice banner-error" role="alert">{{ error }}</div>{% endif %}
+
+<form class="form-panel" method="POST" data-once>
+  {{ csrf_field() }}
+  <div class="form-section">
+    <div class="field-row-2">
+      <div class="field">
+        <label for="journal-title">Title</label>
+        <input type="text" id="journal-title" name="title" value="{{ values.title }}" maxlength="120" placeholder="The bridge at Ember Coast" required>
+      </div>
+      <div class="field">
+        <label for="journal-date">Played on</label>
+        <input type="date" id="journal-date" name="played_on" value="{{ values.played_on }}" required>
+      </div>
+    </div>
+  </div>
+  <div class="form-section">
+    <p class="form-section-title">What happened</p>
+    <p class="field-hint u-m0-10">Players see every note that is not marked hidden. A recap with only hidden notes is for you alone.</p>
+    <div class="note-blocks" id="campnotes-blocks">
+      {% for e in notes_entries %}{{ note_block(e.t, e.h, 'notes', 'The party reached the bridge, met...') }}{% endfor %}
+      {% if not notes_entries %}{{ note_block('', False, 'notes', 'The party reached the bridge, met...') }}{% endif %}
+    </div>
+    <button type="button" class="btn btn-ghost btn-sm btn-add-note" id="campnotes-add">{{ icon('plus') }} Add note</button>
+    <input type="hidden" name="body" id="campnotes-hidden">
+    <template id="campnotes-template">{{ note_block('', False, 'notes', 'Plans for next time, secrets, what the party missed...') }}</template>
+  </div>
+  <div class="form-actions">
+    <button type="submit" class="btn btn-primary">{{ icon('check') }} {{ 'Save changes' if entry else 'Save recap' }}</button>
+    <a class="btn btn-ghost" href="{{ url_for('journal_view', journal_id=entry.id) if entry else url_for('journal_list') }}">Cancel</a>
+  </div>
+</form>
+{% endblock %}
