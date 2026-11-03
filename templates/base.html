@@ -218,8 +218,8 @@
   <div class="more-quick">
     <button type="button" class="more-chip js-theme-toggle" title="Toggle light/dark mode"><span class="more-chip-ico"><span class="theme-icon theme-icon-sun">{{ icon('sun') }}</span><span class="theme-icon theme-icon-moon">{{ icon('moon') }}</span></span><span class="more-chip-label">Theme</span></button>
     <button type="button" class="more-chip js-fullscreen" title="Full screen" hidden><span class="fs-on">{{ icon('maximize') }}</span><span class="fs-off">{{ icon('minimize') }}</span><span class="more-chip-label">Full screen</span></button>
+    {% if not g.campaign_id %}<a href="{{ url_for('privacy') }}" class="more-chip"><span class="more-chip-ico">{{ icon('shield') }}</span><span class="more-chip-label">Privacy</span></a>{% endif %}
   </div>
-  {% if not g.campaign_id %}<div class="more-quick"><a href="{{ url_for('privacy') }}" class="more-chip"><span class="more-chip-ico">{{ icon('shield') }}</span><span class="more-chip-label">Privacy</span></a></div>{% endif %}
   {% if session.username %}
   <div class="more-user">
     {% set me = my_profile() %}

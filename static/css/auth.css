@@ -138,7 +138,7 @@
   @keyframes auth-card { from { opacity: 0; transform: translateY(10px); } }
 }
 
-@media (max-width: 880px) {
+@media (max-width: 1024px), (pointer: coarse) and (max-width: 1400px) {
   .auth-shell { grid-template-columns: 1fr; }
   .auth-aside { display: none; }
   .auth-brand-compact { display: flex; margin-block-end: 22px; }

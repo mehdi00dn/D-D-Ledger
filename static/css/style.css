@@ -2033,7 +2033,7 @@ body.page-leaving .content {
   accent-color: var(--brass);
 }
 
-@media (max-width: 880px) {
+@media (max-width: 1024px), (pointer: coarse) and (max-width: 1400px) {
   .app-shell { grid-template-columns: 1fr; }
   :root[data-sidebar="collapsed"] .app-shell { grid-template-columns: 1fr; }
   .sidebar { position: static; height: auto; flex-direction: row; align-items: center; padding: 14px 18px; overflow-x: auto; }
@@ -2168,7 +2168,7 @@ body.page-leaving .content {
 .die-tile.die-crit-low { color: var(--blood-ink); filter: drop-shadow(0 0 8px rgba(211, 86, 79, 0.4)); }
 .die-tile-label { font: 500 10px var(--font-mono); letter-spacing: 0.08em; color: var(--parchment-faint); text-transform: uppercase; }
 
-@media (max-width: 880px) {
+@media (max-width: 1024px), (pointer: coarse) and (max-width: 1400px) {
   .dice-layout { grid-template-columns: minmax(0, 1fr); gap: 16px; }
   .dice-tray { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
   .die-art { width: 44px; height: 44px; }
@@ -3513,7 +3513,7 @@ body.page-leaving .content {
 .content { min-width: 0; }
 .battle-toolbar { flex-wrap: wrap; }
 
-@media (max-width: 880px), (max-height: 500px) and (orientation: landscape) {
+@media (max-width: 1024px), (pointer: coarse) and (max-width: 1400px), (max-height: 500px) and (orientation: landscape) {
   .app-shell, :root[data-sidebar="collapsed"] .app-shell { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
   .sidebar, :root[data-sidebar="collapsed"] .sidebar { position: sticky; top: 0; z-index: 60; gap: 10px; padding: 10px 14px; overflow: visible; }
   .sidebar-brand { padding: 0; flex: 0 0 auto; }
@@ -3637,7 +3637,7 @@ body.page-leaving .content {
   .ref-list-card.is-open .ref-list { max-height: min(320px, 45vh); }
 }
 
-@media (max-width: 880px) {
+@media (max-width: 1024px), (pointer: coarse) and (max-width: 1400px) {
   .foot-fs-btn { display: flex; }
 
   /* map editor: a slim bar with a Tools menu instead of a wall of buttons */
@@ -3936,7 +3936,7 @@ body.page-leaving .content {
 /* ---- phone "More" sheet: hidden everywhere except the compact shell ---- */
 .more-sheet, .more-scrim, .nav-more-btn { display: none; }
 
-@media (max-width: 880px), (max-height: 500px) and (orientation: landscape) {
+@media (max-width: 1024px), (pointer: coarse) and (max-width: 1400px), (max-height: 500px) and (orientation: landscape) {
   :root { --bar-h: 54px; --ctl: 36px; --ctl-sm: 32px; }
 
   /* top bar: a material that content slides under -- mark, campaign, bell.  Nothing else. */
@@ -3956,7 +3956,8 @@ body.page-leaving .content {
   .brand-text { display: none; }
   .campaign-chip-top { padding: 0 10px; min-height: 30px; border-radius: 999px; background: var(--bg-panel-inset); border-color: transparent; font-size: 12.5px; }
   .campaign-chip-top span { max-width: 46vw; }
-  .sidebar-foot { gap: 6px; }
+  .sidebar-foot { gap: 6px; margin-block: 0; margin-inline-end: -9px; }       /* centred in the bar (the desktop margin-top: auto pushed it 6px low); the glyph, not its tap area, sits on the content gutter */
+  .sidebar-nav .nav-notifications { margin-top: 0; }                         /* the desktop gap above Notifications dropped that one tab lower than its neighbours */
   .sidebar-foot .user-row, .sidebar-foot .theme-toggle-btn, .sidebar-foot .foot-fs-btn { display: none; }
   .sidebar-foot .foot-actions { margin: 0; }
   .sidebar-foot .foot-bell { flex: 0 0 auto; width: 34px; height: 34px; border-radius: 999px; border-color: transparent; background: transparent; }
@@ -4107,7 +4108,7 @@ body:has(.pin-action-bubble.is-docked:not([hidden])) #nav-hint { opacity: 0; poi
 /* ---- phone map toolbar: a floating tool dock at the bottom, in reach of the thumb ----
    Portrait: a slim bar (Tools, undo/redo, zoom) with the full tool tray rising out of it.
    Sideways: every tool on one line, with a chevron that tucks the dock down to a single pill. */
-@media (max-width: 880px), (max-height: 500px) and (orientation: landscape) {
+@media (max-width: 1024px), (pointer: coarse) and (max-width: 1400px), (max-height: 500px) and (orientation: landscape) {
   :root { --dock-h: 46px; }
   .map-content-area { padding-bottom: calc(var(--dock-h) + 14px); }
   .map-toolbar {
@@ -4251,7 +4252,7 @@ body:has(.pin-action-bubble.is-docked:not([hidden])) #nav-hint { opacity: 0; poi
 /* neighbours: the roll toasts and map hints sit clear of the button */
 body.has-dice-fab .dice-toasts { margin-block-end: 58px; }
 body.has-dice-fab .modifier-hint { inset-inline-end: 80px; max-width: calc(100vw - 100px); }
-@media (max-width: 880px), (max-height: 500px) and (orientation: landscape) {
+@media (max-width: 1024px), (pointer: coarse) and (max-width: 1400px), (max-height: 500px) and (orientation: landscape) {
   .dice-fab { inset-inline-end: 12px; inset-block-end: calc(var(--bar-h, 0px) + 12px + env(safe-area-inset-bottom)); }
   .dice-widget { inset-inline-end: 12px; inset-block-end: calc(var(--bar-h, 0px) + 12px + 48px + 10px + env(safe-area-inset-bottom)); }
   body.dice-fab-above-dock .dice-fab { inset-block-end: calc(var(--bar-h, 0px) + var(--dock-h, 46px) + 22px + env(safe-area-inset-bottom)); }
@@ -4278,7 +4279,7 @@ body.has-dice-fab .modifier-hint { inset-inline-end: 80px; max-width: calc(100vw
 
 
 /* ---- phone map dock, round 2: centred, no stray gap, tray grouped as "tools" over "map" ---- */
-@media (max-width: 880px), (max-height: 500px) and (orientation: landscape) {
+@media (max-width: 1024px), (pointer: coarse) and (max-width: 1400px), (max-height: 500px) and (orientation: landscape) {
   .map-toolbar { width: fit-content; max-width: calc(100% - 16px); margin-inline: auto; justify-content: center; }
   .map-toolbar.is-open { width: auto; margin-inline: 8px; }                                     /* the open tray uses the whole width */
   .map-toolbar .map-tool-group-persistent, .map-toolbar .map-tool-group:last-child { margin-inline-start: 0; }
@@ -4301,7 +4302,7 @@ body.has-dice-fab .modifier-hint { inset-inline-end: 80px; max-width: calc(100vw
   .map-toolbar.is-open .map-tool-group--more:has(#clear-drawings-btn) { flex: 0 0 auto; }
   .map-toolbar.is-open #clear-drawings-btn { width: auto; }
 }
-@media (max-width: 880px) and (orientation: portrait), (max-width: 880px) and (min-height: 501px) {
+@media (max-width: 1024px) and (orientation: portrait), (pointer: coarse) and (max-width: 1400px) and (orientation: portrait), (max-width: 1024px) and (min-height: 501px), (pointer: coarse) and (max-width: 1400px) and (min-height: 501px) {
   .map-toolbar.is-open::before { content: ''; order: 1; flex: 0 0 100%; height: 0; }            /* the tray is its own block; the Tools / undo / zoom bar starts a new line */
 }
 
@@ -4322,7 +4323,7 @@ body.has-dice-fab .modifier-hint { inset-inline-end: 80px; max-width: calc(100vw
 
 /* ---- phone held sideways, map: two round buttons bottom-left, the Tools pill and the dice button bottom-right.
    All of them ride the same baseline and slide with the navigation bar (same 0.22s as the bar itself). ---- */
-@media (max-width: 880px), (max-height: 500px) and (orientation: landscape) {
+@media (max-width: 1024px), (pointer: coarse) and (max-width: 1400px), (max-height: 500px) and (orientation: landscape) {
   .map-toolbar .map-toolbar-toggle-icon { display: none; }                                      /* the Tools button carries no tool icon */
 }
 @media (orientation: landscape) and (max-height: 500px) {
@@ -4340,7 +4341,7 @@ body.has-dice-fab .modifier-hint { inset-inline-end: 80px; max-width: calc(100vw
 
 /* ---- phone held upright, map: the tools dock and the dice button share one row, edge to edge, and the dice tray
    is as wide as the screen allows.  (The dock used to float in the middle with the dice button stacked above it.) ---- */
-@media (max-width: 880px) and (orientation: portrait), (max-width: 880px) and (min-height: 501px) {
+@media (max-width: 1024px) and (orientation: portrait), (pointer: coarse) and (max-width: 1400px) and (orientation: portrait), (max-width: 1024px) and (min-height: 501px), (pointer: coarse) and (max-width: 1400px) and (min-height: 501px) {
   :root { --row-gap: 8px; --fab: 48px; }
   body.dice-fab-above-dock .map-toolbar {
     inset-inline: 12px calc(12px + var(--fab) + var(--row-gap)); width: auto; max-width: none; margin: 0;
@@ -4381,7 +4382,7 @@ body.has-dice-fab .modifier-hint { inset-inline-end: 80px; max-width: calc(100vw
    preview takes whatever room the controls leave and letterboxes the map inside it (contain),
    the controls scroll if they must and Confirm stays reachable.  Landscape puts them side by
    side because there is no vertical room for both.  */
-@media (max-width: 880px) {
+@media (max-width: 1024px), (pointer: coarse) and (max-width: 1400px) {
   .map-setup-overlay {
     inset: 0 0 auto 0; height: 100vh; height: 100dvh; box-sizing: border-box;
     padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right))
@@ -4423,7 +4424,7 @@ body.has-dice-fab .modifier-hint { inset-inline-end: 80px; max-width: calc(100vw
 }
 @keyframes map-setup-sheet-in { from { opacity: 0; transform: translateY(12px) scale(0.98); } to { opacity: 1; transform: none; } }
 
-@media (max-width: 880px) and (max-height: 500px) {
+@media (max-width: 1024px) and (max-height: 500px), (pointer: coarse) and (max-width: 1400px) and (max-height: 500px) {
   .map-setup-overlay { padding: max(8px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); }
   .map-setup-stack { max-width: none; flex-direction: row; align-items: stretch; gap: 10px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 340px); grid-template-rows: minmax(0, 1fr) auto; }
   .map-setup-preview-box { grid-column: 1; grid-row: 1 / span 2; width: auto; }
@@ -4473,7 +4474,7 @@ body.has-dice-fab .modifier-hint { inset-inline-end: 80px; max-width: calc(100vw
   bottom: calc(var(--bar-h, 0px) + env(safe-area-inset-bottom) + 20px);      /* the strip's centre line is the dice button's: that is 16px + (48 - 40) / 2 */
   font-size: 12px; padding-block-start: 72px; pointer-events: none;      /* the padding keeps the last page content clear of the strip; clicks pass through it */
 }
-@media (max-width: 880px), (max-height: 500px) and (orientation: landscape) { .battle-log { bottom: calc(var(--bar-h, 0px) + env(safe-area-inset-bottom) + 16px); } }   /* the button sits 12px up here */
+@media (max-width: 1024px), (pointer: coarse) and (max-width: 1400px), (max-height: 500px) and (orientation: landscape) { .battle-log { bottom: calc(var(--bar-h, 0px) + env(safe-area-inset-bottom) + 16px); } }   /* the button sits 12px up here */
 @media (orientation: landscape) and (max-height: 500px) { .battle-log { bottom: calc(var(--bar-h, 0px) + env(safe-area-inset-bottom) + 12px); } }                 /* and 8px up in a sideways phone */
 .battle-log[hidden] { display: none; }
 .battle-log[data-kind="damage"], .battle-log[data-kind="down"], .battle-log[data-kind="died"] { --bl-kind: var(--blood-ink); }
@@ -4537,7 +4538,7 @@ body.has-dice-fab .modifier-hint { inset-inline-end: 80px; max-width: calc(100vw
 .bl-heal, .bl-revive, .bl-stable { --bl-item: var(--moss-ink); border-inline-start-color: var(--moss-ink); }
 .bl-condition, .bl-temp, .bl-deathsave { --bl-item: var(--brass-ink); border-inline-start-color: var(--brass-ink); }
 .bl-round, .bl-initiative { --bl-item: var(--brass-bright-ink); border-inline-start-color: var(--parchment-dim); }
-@media (max-width: 880px) { .bl-bar { width: calc(100% - 62px); } }   /* the dice button sits beside the strip on a phone, never over its arrow */
+@media (max-width: 1024px), (pointer: coarse) and (max-width: 1400px) { .bl-bar { width: calc(100% - 62px); } }   /* the dice button sits beside the strip on a phone, never over its arrow */
 @media (prefers-reduced-motion: reduce) { .bl-sheet, .bl-chev, .bl-bar, .bl-latest { transition-duration: 0.01ms; } .bl-sheet { transform: none; } .battle-log.has-new .bl-bar::after { animation: none; } }
 @media (prefers-reduced-transparency: reduce) { .bl-bar, .bl-sheet { -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--bg-panel-raised); } }
 
@@ -4768,7 +4769,7 @@ input[type="range"]:disabled { opacity: 0.5; cursor: not-allowed; }
 .user-avatar { inline-size: 26px; block-size: 26px; }
 .foot-label { text-align: center; }
 
-@media (max-width: 880px), (max-height: 500px) and (orientation: landscape) {
+@media (max-width: 1024px), (pointer: coarse) and (max-width: 1400px), (max-height: 500px) and (orientation: landscape) {
   .nav-group, .cs-avatar, .cs-swap { display: none; }
 }
 .field-hint { margin: 10px 0 0; font-size: 12.5px; line-height: 1.5; color: var(--parchment-faint); }
@@ -4805,7 +4806,7 @@ input[type="range"]:disabled { opacity: 0.5; cursor: not-allowed; }
 .home-battle { margin: 0 0 10px; line-height: 1.6; }
 .home-empty { margin: 0; color: var(--parchment-dim); font-size: 13.5px; }
 .home-more { font-size: 12.5px; }
-@media (max-width: 880px) { .home-grid { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 1024px), (pointer: coarse) and (max-width: 1400px) { .home-grid { grid-template-columns: minmax(0, 1fr); } }
 
 /* Campaign Home hero: banner image beside the name and bio, then the player list. */
 .home-hero { display: flex; flex-wrap: wrap; gap: 20px; align-items: center; margin-block-end: 16px; }
@@ -4880,7 +4881,7 @@ input[type="range"]:disabled { opacity: 0.5; cursor: not-allowed; }
 .home-member-chars a { padding: 2px 9px; border: 1px solid var(--hairline); border-radius: 999px; font-size: 12px; color: var(--parchment-dim); text-decoration: none; }
 .home-member-chars a:hover, .home-member-chars a:focus-visible { border-color: var(--brass); color: var(--parchment); }
 .home-members .home-more { display: inline-block; margin-block-start: 10px; }
-@media (max-width: 880px) { .home-grid { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 1024px), (pointer: coarse) and (max-width: 1400px) { .home-grid { grid-template-columns: minmax(0, 1fr); } }
 /* Campaign settings: attach characters to a member, and the bio editor */
 .member-chars { flex: 1 0 100%; font-size: 13px; }
 .member-chars summary { cursor: pointer; color: var(--parchment-dim); display: inline-flex; align-items: center; gap: 6px; }
@@ -4987,7 +4988,7 @@ input[type="range"]:disabled { opacity: 0.5; cursor: not-allowed; }
 @media (max-width: 640px) { .cf-ally-toggle { margin-inline-start: 0; display: flex; } }
 
 /* Scrollable sidebar: when the window is short, the menu scrolls and the footer stays put. */
-@media (min-width: 881px) and (min-height: 501px) {
+@media (min-width: 1025px) and (min-height: 501px) and (pointer: fine), (min-width: 1401px) and (min-height: 501px) {
   .sidebar { --sb-pad: 14px; overflow: hidden; }                         /* the sidebar's real side padding (see the Sidebar v2 block) */
   :root[data-sidebar="collapsed"] .sidebar { --sb-pad: 10px; }
   .sidebar-nav {
@@ -5617,3 +5618,8 @@ a.pager-link:hover { border-color: var(--brass); }
 /* Avatars that open the lightbox when clicked (character page, Characters list, Overview party, profile, peek) */
 .avatar-frame[data-lightbox-src], .profile-avatar[data-lightbox-src], .profile-char-art[data-lightbox-src] { cursor: zoom-in; }
 .avatar-frame[data-lightbox-src]:focus-visible, .profile-avatar[data-lightbox-src]:focus-visible, .profile-char-art[data-lightbox-src]:focus-visible { outline: 2px solid var(--brass); outline-offset: 3px; }
+
+/* tablets: the More sheet is a centred panel, not a 1100px-wide strip */
+@media (min-width: 700px) and (min-height: 501px) {
+  .more-sheet { max-inline-size: 620px; margin-inline: auto; }
+}

@@ -165,7 +165,7 @@
 
     // On a phone the result sits below the Roll button: bring it into view.
     const stage = resultsRoot.closest('.dice-stage');
-    if (stage && window.matchMedia('(max-width: 880px)').matches) stage.scrollIntoView({ block: 'nearest', behavior: calm.matches ? 'auto' : 'smooth' });
+    if (stage && window.matchMedia('(max-width: 1024px), (pointer: coarse) and (max-width: 1400px)').matches) stage.scrollIntoView({ block: 'nearest', behavior: calm.matches ? 'auto' : 'smooth' });
 
     // Each die drops in turning, shows flickering numbers while it lands, then settles on the real value.
     // 40 ms stagger, 560 ms throw (ease-out, so it decelerates into place); reduced motion = a plain fade.

@@ -130,3 +130,51 @@ def test_sidebar_menu_scrolls_on_a_short_window_and_keeps_the_footer(shared_serv
     page.set_viewport_size({'width': 1280, 'height': 900})
     assert not nav.evaluate('e => e.scrollHeight > e.clientHeight')
     ctx.close()
+
+
+def _page_at(pw, dm, base, width, height, touch=False):
+    from test_e2e_browser import SESSION_COOKIE
+    ctx = pw.new_context(viewport={'width': width, 'height': height}, has_touch=touch, is_mobile=touch)
+    ctx.add_cookies([{'name': SESSION_COOKIE, 'value': dm.s.cookies.get(SESSION_COOKIE), 'url': base}])
+    return ctx.new_page()
+
+
+def test_tablets_get_the_phone_layout_and_desktops_keep_the_sidebar(shared_server, pw):
+    base = shared_server.url
+    dm = Api(base)
+    cid = dm.campaign('Tablet')
+    url = f'{base}/campaigns/{cid}/home'
+    for width, height, touch, phone in ((390, 844, False, True), (1024, 768, False, True), (1180, 820, True, True),
+                                        (1100, 900, False, False), (1440, 900, False, False)):
+        page = _page_at(pw, dm, base, width, height, touch)
+        page.goto(url)
+        bar = page.locator('.sidebar-nav').bounding_box()
+        if phone:
+            assert bar['width'] == width and bar['y'] + bar['height'] == height, f'{width}x{height}: bottom bar expected'
+        else:
+            assert bar['x'] == 0 and bar['width'] < 300, f'{width}x{height}: sidebar expected'
+        page.context.close()
+
+
+def test_phone_top_bar_icons_and_notification_tab_line_up(shared_server, pw):
+    base = shared_server.url
+    dm = Api(base)
+    dm.campaign('Margins')
+    page = _page_at(pw, dm, base, 390, 844)
+    page.goto(f'{base}/campaigns')
+    top = page.locator('.sidebar').bounding_box()
+    mark = page.locator('.sidebar-brand').bounding_box()
+    icon = page.locator('.sidebar-foot .foot-bell svg').bounding_box()
+    assert abs((icon['y'] + icon['height'] / 2) - (mark['y'] + mark['height'] / 2)) <= 1, 'the shield sits on the logo\'s centre line'
+    assert abs(top['width'] - (icon['x'] + icon['width']) - 14) <= 1, 'the glyph sits on the 14px content gutter'
+    tabs = [page.locator('.sidebar-nav .nav-tab svg').nth(i).bounding_box()['y'] for i in range(page.locator('.sidebar-nav .nav-tab').count())]
+    inactive = [y for y, cls in zip(tabs, page.locator('.sidebar-nav .nav-tab').evaluate_all('els => els.map(e => e.className)')) if 'active' not in cls]
+    assert max(inactive) - min(inactive) <= 1, f'bottom-bar icons share one line: {tabs}'
+    page.locator('#nav-more-btn').click()
+    page.wait_for_timeout(700)                                     # the sheet slides up first
+    chips = page.locator('.more-quick .more-chip:visible')
+    ys = sorted({round(chips.nth(i).bounding_box()['y'] / 10) for i in range(chips.count())})       # rows, not pixels
+    assert page.locator('.more-quick').count() == 1 and chips.count() >= 2 and len(ys) <= 2
+    names = [c.strip() for c in chips.all_text_contents()]
+    assert 'Privacy' in names
+    page.context.close()

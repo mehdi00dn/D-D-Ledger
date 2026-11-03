@@ -100,7 +100,7 @@
     document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && isOpen()) closeMore(true); });
     sheet.addEventListener('click', function (e) { if (e.target.closest('a[href]')) closeMore(); });
     // the sheet leaves when the layout stops being the phone one (rotate to a big window)
-    var phoneish = window.matchMedia('(max-width: 880px), (max-height: 500px) and (orientation: landscape)');
+    var phoneish = window.matchMedia('(max-width: 1024px), (pointer: coarse) and (max-width: 1400px), (max-height: 500px) and (orientation: landscape)');
     var onLayout = function () { if (!phoneish.matches) { sheet.classList.remove('is-open'); scrim.classList.remove('is-open'); sheet.hidden = true; scrim.hidden = true; } };
     if (phoneish.addEventListener) phoneish.addEventListener('change', onLayout);
 

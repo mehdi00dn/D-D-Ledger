@@ -1102,7 +1102,7 @@
 
   // On a phone the shape's action bubble is docked at the bottom centre of the screen instead of floating beside
   // the shape: it can never be cut off by the screen edge, hidden under a finger, or thrown off by zoom and pan.
-  const phoneBubbleQuery = window.matchMedia ? window.matchMedia('(max-width: 880px), (max-height: 500px) and (orientation: landscape)') : null;
+  const phoneBubbleQuery = window.matchMedia ? window.matchMedia('(max-width: 1024px), (pointer: coarse) and (max-width: 1400px), (max-height: 500px) and (orientation: landscape)') : null;
   const bubbleHome = shapeBubble.parentNode;
   function dockShapeBubble(on) {
     const host = on ? document.getElementById('map-content-area') : bubbleHome;
