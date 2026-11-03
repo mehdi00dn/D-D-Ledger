@@ -49,3 +49,22 @@ def test_note_editors_and_role_selects_have_names(make_user):
     assert editors and all('aria-label=' in e for e in editors)
     html = dm.get(f'/campaigns/{cid}/edit').data.decode()
     assert all('aria-label=' in s for s in re.findall(r'<select\b[^>]*title=[^>]*>', html))
+
+
+def test_links_in_legal_text_are_underlined():
+    """DL-71: axe flagged the About and Terms body links (brass on grey is under 3:1), so the underline stays."""
+    import os
+    css = open(os.path.join(os.path.dirname(__file__), '..', 'static', 'css', 'auth.css'), encoding='utf-8').read()
+    assert re.search(r'\.legal p a, \.legal li a \{[^}]*text-decoration: underline', css)
+
+
+def test_every_template_image_has_alt_text():
+    import glob
+    import os
+    root = os.path.join(os.path.dirname(__file__), '..', 'templates')
+    missing = []
+    for path in glob.glob(os.path.join(root, '**', '*.html'), recursive=True):
+        for tag in re.findall(r'<img\b[^>]*>', open(path, encoding='utf-8').read(), flags=re.I):
+            if not re.search(r'\balt=', tag):
+                missing.append(os.path.basename(path))
+    assert not missing, f'images without alt: {missing}'
