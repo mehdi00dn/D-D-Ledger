@@ -180,6 +180,8 @@ for the print only. A character whose stats are hidden from the viewer has no bu
 Quests (DL-151, migration 0038): a card on the campaign Overview page. The DM adds a quest (title, what the players know, optionally hidden),
 marks it done or reopens it, edits its title and details (the same limits as adding, and editing never changes whether it is hidden), hides it from or shows it to Players, or deletes it; Players read the quests that are not hidden. Up to 60
 per campaign. Adding or finishing a visible quest shows up in the activity feed. Not built: objectives inside a quest, quest export.
+The quest buttons (mark done or reopen, hide or show, delete, edit) are icon-only; each has a title and an accessible name that includes the quest.
+On the Overview, the whole party tile opens the character page, avatar included (the avatar preview stays on the Characters list and the character page). On the Characters list the name on a card is a link to the character page too.
 
 Session scheduling (DL-152, migration 0035): the DM or an owner sets one "next session" per campaign from the Overview (`campaigns.next_session_at`
 in UTC plus a short note). The browser shows it in each viewer's own time zone (`static/js/home.js`); members answer Going / Maybe /

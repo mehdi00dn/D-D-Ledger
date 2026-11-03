@@ -2005,9 +2005,13 @@ def test_clicking_an_avatar_previews_it_without_leaving_the_page(pw, shared_serv
     page.click('.dossier-card .avatar-frame[data-lightbox-src]')
     page.wait_for_selector('#image-lightbox:not([hidden])')
     page.keyboard.press('Escape'); page.wait_for_selector('#image-lightbox', state='hidden')
-    # Overview party: the avatar is inside the character's link, and previews instead of following it
+    # card: the name opens the character page
+    page.goto(base + f'/campaigns/{cid}/characters'); page.wait_for_load_state('networkidle')
+    page.click('.dossier-card .dossier-name-link')
+    page.wait_for_url(f'**/characters/{char_id}')
+    # Overview party: the whole tile, avatar included, opens the character page
     page.goto(base + f'/campaigns/{cid}/home'); page.wait_for_load_state('networkidle')
-    page.click('.home-pc .home-pc-avatar[data-lightbox-src]')
-    page.wait_for_selector('#image-lightbox:not([hidden])')
-    assert page.url.endswith('/home'), page.url
+    assert page.locator('.home-pc .home-pc-avatar[data-lightbox-src]').count() == 0
+    page.click('.home-pc .home-pc-avatar')
+    page.wait_for_url(f'**/characters/{char_id}')
     assert not bad and not errs, (bad, errs)

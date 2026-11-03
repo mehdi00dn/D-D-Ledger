@@ -69,3 +69,25 @@ def test_a_quest_of_another_campaign_cannot_be_edited(make_user):
     oqid = q('SELECT id FROM quests WHERE campaign_id = ?', ocid)[0]['id']
     assert dm.post(f'/campaigns/{cid}/quests/{oqid}', data={'action': 'edit', 'title': 'Mine now'}).status_code == 404
     assert q('SELECT title FROM quests WHERE id = ?', oqid)[0]['title'] == 'Theirs'
+
+
+def test_quest_buttons_are_icons_with_names_and_players_get_none(make_user):
+    dm, pl, cid = _setup(make_user)
+    dm.post(f'/campaigns/{cid}/quests/add', data={'title': 'Find the caravan'})
+    html = _home(dm, cid)
+    for name in ('Mark done: Find the caravan', 'Hide from players: Find the caravan', 'Edit: Find the caravan'):
+        assert f'aria-label="{name}"' in html, name
+    assert '>Mark done<' not in html and '>Hide<' not in html and 'Edit</summary>' not in html     # icon only
+    qid = q('SELECT id FROM quests WHERE campaign_id = ?', cid)[0]['id']
+    dm.post(f'/campaigns/{cid}/quests/{qid}', data={'action': 'done'})
+    dm.post(f'/campaigns/{cid}/quests/{qid}', data={'action': 'hide'})
+    html = _home(dm, cid)
+    assert 'aria-label="Reopen: Find the caravan"' in html and 'aria-label="Show to players: Find the caravan"' in html
+    assert 'quest-btn' not in _home(pl, cid)
+
+
+def test_party_tile_and_character_card_name_link_to_the_page(make_user):
+    dm = make_user(); cid = dm.new_campaign()
+    dm.post(f'/campaigns/{cid}/characters/new', data={'name': 'Mira', 'max_hp': '8'})
+    cid_char = q('SELECT id FROM characters WHERE campaign_id = ?', cid)[0]['id']
+    assert f'class="dossier-name-link" href="/campaigns/{cid}/characters/{cid_char}"' in dm.get(f'/campaigns/{cid}/characters').data.decode()

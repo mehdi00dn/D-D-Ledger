@@ -126,7 +126,7 @@
         {% endif %}
       </div>
       <div class="dossier-name-block">
-        <div class="dossier-name">{% if not npc_hidden and c.avatar_path %}{{ class_icon(c.class_key) }}{% endif %}{{ c.name }}</div>
+        <div class="dossier-name">{% if not npc_hidden and c.avatar_path %}{{ class_icon(c.class_key) }}{% endif %}<a class="dossier-name-link" href="{{ url_for('character_detail', char_id=c.id) }}">{{ c.name }}</a></div>
         <div class="dossier-meta">
           Lvl {{ c.level }}
           {% for f in c.factions %}
