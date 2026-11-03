@@ -7,7 +7,7 @@
 {% block content %}
 <div class="page-header">
   <div>
-    <a href="{{ url_for('journal_view', journal_id=entry.id) if entry else url_for('journal_list') }}" class="back-link">{{ icon('arrow-left') }} {{ 'Recap' if entry else 'Journal' }}</a>
+    <a href="{{ url_for('journal_view', journal_id=entry.id) if entry and not from_list else url_for('journal_list') }}" class="back-link">{{ icon('arrow-left') }} {{ 'Recap' if entry and not from_list else 'Journal' }}</a>
     <h1 class="page-title">{{ 'Edit session' if entry else 'New session' }}</h1>
   </div>
 </div>
@@ -41,7 +41,7 @@
   </div>
   <div class="form-actions">
     <button type="submit" class="btn btn-primary">{{ icon('check') }} {{ 'Save changes' if entry else 'Save recap' }}</button>
-    <a class="btn btn-ghost" href="{{ url_for('journal_view', journal_id=entry.id) if entry else url_for('journal_list') }}">Cancel</a>
+    <a class="btn btn-ghost" href="{{ url_for('journal_view', journal_id=entry.id) if entry and not from_list else url_for('journal_list') }}">Cancel</a>
   </div>
 </form>
 {% endblock %}
