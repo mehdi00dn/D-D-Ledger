@@ -1,4 +1,4 @@
-"""Rules reference (spells, monsters, items, conditions) from the public D&D 5e API, 2024 edition (https://www.dnd5eapi.co/api/2024).
+"""Rules reference (spells, monsters, items, conditions, classes, species, backgrounds, feats and the basic rules) from the public D&D 5e API, 2024 edition (https://www.dnd5eapi.co/api/2024).
 
 The browser never talks to the API: the server fetches, normalises and caches it, so the Content-Security-Policy stays
 strict, the data is shaped once here, and a flaky API only ever costs the reference pages (never a campaign).
@@ -20,11 +20,24 @@ API = f'{BASE}/api/{VERSION}'
 TIMEOUT = 8
 LIST_TTL = 24 * 3600
 DETAIL_TTL = 24 * 3600
-MAX_RESULTS = 60
+MAX_RESULTS = 120
 INDEX_RE = re.compile(r'^[a-z0-9][a-z0-9-]{0,80}$')
 
-# kind -> the API collections it is served from (items are two collections on the API)
-KINDS = {'spells': ['spells'], 'monsters': ['monsters'], 'items': ['equipment', 'magic-items'], 'conditions': ['conditions']}
+# kind -> the API collections it is served from (items, classes and rules are several collections on the API)
+KINDS = {
+    'spells': ['spells'], 'monsters': ['monsters'], 'items': ['equipment', 'magic-items'], 'conditions': ['conditions'],
+    'classes': ['classes', 'subclasses'], 'species': ['species'], 'backgrounds': ['backgrounds'], 'feats': ['feats'],
+    'rules': ['skills', 'ability-scores', 'damage-types', 'weapon-properties', 'weapon-mastery-properties', 'magic-schools',
+              'languages', 'alignments', 'poisons'],
+}
+# what the list shows under a name when it is not a spell level (so mixed lists such as Rules read clearly)
+COLL_LABEL = {
+    'magic-items': 'Magic item', 'classes': 'Class', 'subclasses': 'Subclass', 'species': 'Species', 'backgrounds': 'Background',
+    'feats': 'Feat', 'skills': 'Skill', 'ability-scores': 'Ability score', 'damage-types': 'Damage type',
+    'weapon-properties': 'Weapon property', 'weapon-mastery-properties': 'Weapon mastery', 'magic-schools': 'School of magic',
+    'languages': 'Language', 'alignments': 'Alignment', 'poisons': 'Poison',
+}
+MAX_TRAITS = 14
 
 
 class SrdError(Exception):
@@ -86,8 +99,8 @@ def search(kind, query='', limit=MAX_RESULTS):
             entry = {'id': f'{coll}/{index}', 'name': name}
             if row.get('level') is not None:
                 entry['sub'] = 'Cantrip' if row['level'] == 0 else f'Level {row["level"]}'
-            elif coll == 'magic-items':
-                entry['sub'] = 'Magic item'
+            elif coll in COLL_LABEL:
+                entry['sub'] = COLL_LABEL[coll]
             out.append((0 if low.startswith(q) else 1, low, entry))
     out.sort(key=lambda t: (t[0], t[1]))
     return [e for _a, _b, e in out[:limit]]
@@ -260,6 +273,119 @@ def _condition(d):
     return {'title': d.get('name', ''), 'subtitle': 'Condition', 'facts': [], 'body': body}
 
 
+def _plain(value):
+    """Rules text with the API's ** bold marks dropped (the page shows plain text)."""
+    return _text(value).replace('**', '')
+
+
+def _signed(n):
+    return f'+{n}' if isinstance(n, int) and n >= 0 else str(n)
+
+
+def _cell(value):
+    return str(value).replace('|', '/').replace('\n', ' ').strip()
+
+
+def _level_table(levels):
+    """'| Level | Proficiency bonus | Features |' lines (the page turns consecutive table lines into a real table)."""
+    rows = levels.get('results') if isinstance(levels, dict) else levels
+    seen, keep = set(), []
+    for r in sorted((r for r in rows or [] if isinstance(r, dict) and isinstance(r.get('level'), int)
+                     and isinstance(r.get('prof_bonus'), int)), key=lambda r: r['level']):
+        if r['level'] not in seen:          # one row per level (subclass level rows carry no proficiency bonus)
+            seen.add(r['level'])
+            keep.append(r)
+    rows = keep
+    if not rows:
+        return ''
+    lines = ['| Level | Proficiency bonus | Features |', '|---|---|---|']
+    for r in rows:
+        feats = ', '.join(_named(r.get('features'))) or '-'
+        lines.append(f'| {r["level"]} | {_signed(r.get("prof_bonus", ""))} | {_cell(feats)} |')
+    return '\n'.join(lines)
+
+
+def _class(d):
+    prof = [n for n in _named(d.get('proficiencies')) if not n.startswith('Saving Throw')]
+    pre = [f'{(p.get("ability_score") or {}).get("name", "")} {p.get("minimum_score", "")}'.strip()
+           for p in (d.get('multi_classing') or {}).get('prerequisites') or [] if isinstance(p, dict)]
+    spell = d.get('spellcasting') if isinstance(d.get('spellcasting'), dict) else {}
+    facts = [('Hit die', f'd{d["hit_die"]}' if d.get('hit_die') else ''),
+             ('Primary ability', (d.get('primary_ability') or {}).get('desc', '')),
+             ('Saving throws', ', '.join(_named(d.get('saving_throws')))),
+             ('Proficiencies', ', '.join(prof)),
+             ('Spellcasting', (spell.get('spellcasting_ability') or {}).get('name', '') and
+              f'{spell["spellcasting_ability"]["name"]} (from level {spell.get("level", 1)})'),
+             ('Multiclassing', ', '.join(pre)),
+             ('Subclasses', ', '.join(_named(d.get('subclasses'))))]
+    parts = [str(c.get('desc')) for c in d.get('proficiency_choices') or [] if isinstance(c, dict) and c.get('desc')]
+    parts += ['Starting equipment: ' + str(o['desc']) for o in d.get('starting_equipment_options') or [] if isinstance(o, dict) and o.get('desc')]
+    for info in spell.get('info') or []:
+        if isinstance(info, dict) and info.get('name'):
+            parts.append(f'{info["name"]}. {_plain(info.get("desc"))}')
+    return {'title': d.get('name', ''), 'subtitle': 'Class', 'facts': [(k, v) for k, v in facts if v], 'body': '\n\n'.join(parts)}
+
+
+def _subclass(d):
+    parts = [_plain(d.get('description') or d.get('summary'))]
+    for f in d.get('features') or []:
+        if isinstance(f, dict) and f.get('name'):
+            parts.append(f'Level {f.get("level", "")}: {f["name"]}. {_plain(f.get("description"))}'.replace('Level : ', ''))
+    cls = (d.get('class') or {}).get('name', '')
+    return {'title': d.get('name', ''), 'subtitle': f'{cls} subclass'.strip(), 'facts': [('Class', cls)] if cls else [],
+            'body': '\n\n'.join(p for p in parts if p)}
+
+
+def _species(d):
+    facts = [('Type', d.get('type')), ('Size', d.get('size')), ('Speed', f'{d["speed"]} ft.' if d.get('speed') else ''),
+             ('Lineages', ', '.join(_named(d.get('subspecies'))))]
+    parts = []
+    for t in (d.get('traits') or [])[:MAX_TRAITS]:
+        idx = t.get('index') if isinstance(t, dict) else None
+        if not valid_index(idx):
+            continue
+        try:
+            td = _get_json(f'/traits/{idx}')
+        except SrdError:
+            continue          # one missing trait costs that paragraph, not the entry
+        if isinstance(td, dict) and td.get('name'):
+            parts.append(f'{td["name"]}. {_plain(td.get("description"))}')
+    return {'title': d.get('name', ''), 'subtitle': 'Species', 'facts': [(k, v) for k, v in facts if v], 'body': '\n\n'.join(parts)}
+
+
+def _background(d):
+    feat = d.get('feat') if isinstance(d.get('feat'), dict) else {}
+    feat_text = feat.get('name', '') + (f' ({feat["note"]})' if feat.get('note') else '') if feat.get('name') else ''
+    prof = [n.split(': ', 1)[-1] for n in _named(d.get('proficiencies'))]
+    facts = [('Ability scores', ', '.join(_named(d.get('ability_scores')))), ('Feat', feat_text), ('Proficiencies', ', '.join(prof))]
+    body = '\n\n'.join('Equipment: ' + str(o['desc']) for o in d.get('equipment_options') or [] if isinstance(o, dict) and o.get('desc'))
+    return {'title': d.get('name', ''), 'subtitle': 'Background', 'facts': [(k, v) for k, v in facts if v], 'body': body}
+
+
+def _feat(d):
+    kind = str(d.get('type') or '').replace('-', ' ')
+    return {'title': d.get('name', ''), 'subtitle': f'{kind.capitalize()} feat' if kind else 'Feat',
+            'facts': [('Category', kind.capitalize())] if kind else [], 'body': _plain(d.get('description') or d.get('desc'))}
+
+
+def _rule(coll, d):
+    label = COLL_LABEL.get(coll, 'Rule')
+    title, facts, body = d.get('name', ''), [], _plain(d.get('description') or d.get('desc'))
+    if coll == 'skills' and d.get('ability_score'):
+        facts.append(('Ability', (d['ability_score'] or {}).get('name', '')))
+    elif coll == 'ability-scores':
+        title = d.get('full_name') or title
+        facts += [('Abbreviation', d.get('name', '')), ('Skills', ', '.join(_named(d.get('skills'))))]
+    elif coll == 'alignments' and d.get('abbreviation'):
+        facts.append(('Abbreviation', d['abbreviation']))
+    elif coll == 'languages':
+        facts.append(('Rarity', 'Rare' if d.get('is_rare') else 'Standard'))
+        body = body or str(d.get('note') or '')
+    elif coll == 'poisons':
+        facts += [('Type', str(d.get('type') or '').capitalize()), ('Cost', f'{d["cost"]} gp' if d.get('cost') is not None else '')]
+    return {'title': title, 'subtitle': label, 'facts': [(k, v) for k, v in facts if v], 'body': body}
+
+
 def detail(kind, ref):
     """One entry ('spells/fireball', 'monsters/aboleth', 'equipment/longsword', 'magic-items/bag-of-holding')."""
     if kind not in KINDS or not isinstance(ref, str) or '/' not in ref:
@@ -276,6 +402,26 @@ def detail(kind, ref):
         return _item(coll, d)
     if kind == 'conditions':
         return _condition(d)
+    if kind == 'classes':
+        if coll == 'subclasses':
+            return _subclass(d)
+        out = _class(d)
+        path = str(d.get('class_levels') or f'/classes/{index}/levels')
+        path = path[len('/api/' + VERSION):] if path.startswith('/api/' + VERSION) else f'/classes/{index}/levels'
+        try:
+            table = _level_table(_get_json(path))
+        except SrdError:
+            table = ''        # the class text stands without its level table
+        out['body'] = '\n\n'.join(x for x in (out['body'], table) if x)
+        return out
+    if kind == 'species':
+        return _species(d)
+    if kind == 'backgrounds':
+        return _background(d)
+    if kind == 'feats':
+        return _feat(d)
+    if kind == 'rules':
+        return _rule(coll, d)
     return {'title': d['name'], 'subtitle': ' '.join(x for x in (d.get('size'), d.get('type')) if x),
             'facts': [('Challenge', _cr(d.get('challenge_rating', 0))), ('Armor Class', str(_monster_prefill(d)['armor_class'])),
                       ('Hit Points', str(d.get('hit_points', ''))), ('Speed', ', '.join(f'{k} {v}' for k, v in (d.get('speed') or {}).items()))],

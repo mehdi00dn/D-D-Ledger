@@ -29,8 +29,20 @@ SAMPLES = {
     'items:weapon': ('equipment/longsword', {'name': str, 'cost': dict, 'equipment_categories': list, 'damage': dict,
                                              'properties': list, 'mastery': dict}, False),
     'items:magic': ('magic-items/bag-of-holding', {'name': str, 'rarity': dict, 'equipment_category': dict}),
+    'classes': ('classes/wizard', {'name': str, 'hit_die': int, 'primary_ability': dict, 'saving_throws': list,
+                                   'proficiencies': list, 'class_levels': str}),
+    'classes:sub': ('subclasses/evoker', {'name': str, 'class': dict, 'features': list}),
+    'species': ('species/elf', {'name': str, 'type': str, 'size': str, 'speed': int, 'traits': list}),
+    'backgrounds': ('backgrounds/acolyte', {'name': str, 'ability_scores': list, 'feat': dict, 'proficiencies': list,
+                                            'equipment_options': list}),
+    'feats': ('feats/alert', {'name': str, 'type': str, 'description': str}),
+    'rules:skill': ('skills/acrobatics', {'name': str, 'description': str, 'ability_score': dict}),
+    'rules:ability': ('ability-scores/str', {'name': str, 'full_name': str, 'description': str, 'skills': list}),
+    'rules:weapon': ('weapon-properties/ammunition', {'name': str, 'description': str}),
 }
-LISTS = ('spells', 'monsters', 'equipment', 'magic-items')
+LISTS = ('spells', 'monsters', 'equipment', 'magic-items', 'classes', 'subclasses', 'species', 'backgrounds', 'feats', 'skills',
+         'ability-scores', 'damage-types', 'weapon-properties', 'weapon-mastery-properties', 'magic-schools', 'languages',
+         'alignments', 'poisons')
 
 
 def check(get=None):
@@ -60,7 +72,7 @@ def check(get=None):
                 problems.append(f'/{ref}: field "{field}" is missing')
             elif not isinstance(raw[field], typ) or isinstance(raw[field], bool):
                 problems.append(f'/{ref}: field "{field}" is now {type(raw[field]).__name__}')
-        if needs_text and not (raw.get('description') or raw.get('desc')) and kind != 'monsters':
+        if needs_text and not (raw.get('description') or raw.get('desc')) and kind not in ('monsters', 'classes', 'species', 'backgrounds'):
             problems.append(f'/{ref}: neither "description" nor "desc" has text')
         if kind == 'monsters':
             ac = raw.get('armor_class')
@@ -77,7 +89,7 @@ def check(get=None):
             p = out.get('prefill') or {}
             if p.get('armor_class') == 10 and p.get('max_hp') == 1:
                 problems.append(f'detail({ref!r}): prefill fell back to defaults (AC 10 / 1 HP)')
-        elif not out.get('facts') or (needs_text and not out.get('body')):
+        elif (not out.get('facts') and kind != 'rules') or (needs_text and not out.get('body')):
             problems.append(f'detail({ref!r}): facts or body came out empty')
     return problems
 

@@ -3416,7 +3416,7 @@ body.page-leaving .content {
 /* ==========================================================================
    Rules reference (spells / monsters / items) and the monster picker
    ========================================================================== */
-.ref-tabs { display: inline-flex; gap: 4px; padding: 4px; margin-bottom: 18px; border-radius: 999px; background: var(--bg-panel-inset); border: 1px solid var(--hairline); }
+.ref-tabs { display: flex; flex-wrap: wrap; width: fit-content; max-width: 100%; gap: 4px; padding: 4px; margin-bottom: 18px; border-radius: 22px; background: var(--bg-panel-inset); border: 1px solid var(--hairline); }
 .ref-tab { appearance: none; border: 0; background: transparent; color: var(--parchment-dim); padding: 7px 18px; border-radius: 999px; font: 600 13px var(--font-body, inherit); cursor: pointer; }
 .ref-tab:hover { color: var(--parchment); }
 .ref-tab.is-active { background: var(--brass); color: var(--on-brass); }

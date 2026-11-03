@@ -44,7 +44,47 @@ DETAILS = {
                              'damage': {'damage_dice': '1d8', 'damage_type': {'name': 'Slashing'}}, 'properties': [{'name': 'Versatile'}]},
     '/magic-items/bag-of-holding': {'name': 'Bag of Holding', 'rarity': {'name': 'Uncommon'}, 'equipment_category': {'name': 'Wondrous Items'},
                                     'desc': ['Wondrous Item', 'This bag is bigger inside.']},
+    '/classes': {'results': [{'index': 'wizard', 'name': 'Wizard'}]},
+    '/subclasses': {'results': [{'index': 'evoker', 'name': 'Evoker'}]},
+    '/species': {'results': [{'index': 'elf', 'name': 'Elf'}]},
+    '/backgrounds': {'results': [{'index': 'acolyte', 'name': 'Acolyte'}]},
+    '/feats': {'results': [{'index': 'alert', 'name': 'Alert'}]},
+    '/skills': {'results': [{'index': 'acrobatics', 'name': 'Acrobatics'}]},
+    '/ability-scores': {'results': [{'index': 'str', 'name': 'STR'}]},
+    '/languages': {'results': [{'index': 'common', 'name': 'Common'}]},
+    '/poisons': {'results': [{'index': 'assassins-blood', 'name': "Assassin's Blood"}]},
 }
+for _c in ('damage-types', 'weapon-properties', 'weapon-mastery-properties', 'magic-schools', 'alignments'):
+    LISTS['/' + _c] = {'results': []}
+EXTRA = {
+    '/classes/wizard': {'name': 'Wizard', 'hit_die': 6, 'primary_ability': {'desc': 'Intelligence'},
+                        'saving_throws': [{'name': 'INT'}, {'name': 'WIS'}],
+                        'proficiencies': [{'name': 'Simple Weapons'}, {'name': 'Saving Throw: INT'}],
+                        'proficiency_choices': [{'desc': 'Choose 2: Arcana, History'}],
+                        'multi_classing': {'prerequisites': [{'ability_score': {'name': 'INT'}, 'minimum_score': 13}]},
+                        'spellcasting': {'level': 1, 'spellcasting_ability': {'name': 'INT'}, 'info': [{'name': 'Cantrips', 'desc': ['You know **three** cantrips.']}]},
+                        'subclasses': [{'name': 'Evoker'}], 'class_levels': '/api/2024/classes/wizard/levels'},
+    '/classes/wizard/levels': [
+        {'level': 2, 'prof_bonus': 2, 'features': [{'name': 'Scholar'}]},
+        {'level': 1, 'prof_bonus': 2, 'features': [{'name': 'Spellcasting'}, {'name': 'Ritual | Adept'}]},
+        {'level': 2, 'features': [{'name': 'Subclass row without a bonus'}]}],
+    '/subclasses/evoker': {'name': 'Evoker', 'class': {'name': 'Wizard'}, 'description': 'Masters of **force**.',
+                           'features': [{'name': 'Potent Cantrip', 'level': 3, 'description': 'Hit harder.'}]},
+    '/species/elf': {'name': 'Elf', 'type': 'Humanoid', 'size': 'Medium', 'speed': 30,
+                     'traits': [{'index': 'darkvision-60'}, {'index': 'missing-trait'}, {'index': '../bad'}],
+                     'subspecies': [{'name': 'Drow'}]},
+    '/traits/darkvision-60': {'name': 'Darkvision', 'description': 'You see in the dark.'},
+    '/backgrounds/acolyte': {'name': 'Acolyte', 'ability_scores': [{'name': 'INT'}, {'name': 'WIS'}],
+                             'feat': {'name': 'Magic Initiate', 'note': 'Cleric'},
+                             'proficiencies': [{'name': 'Skill: Insight'}, {'name': "Tool: Calligrapher's Supplies"}],
+                             'equipment_options': [{'desc': 'Choose A or B: (A) Robe; or (B) 50 GP'}]},
+    '/feats/alert': {'name': 'Alert', 'type': 'origin', 'description': 'You gain **Initiative Proficiency.**'},
+    '/skills/acrobatics': {'name': 'Acrobatics', 'description': 'Stay on your feet.', 'ability_score': {'name': 'DEX'}},
+    '/ability-scores/str': {'name': 'STR', 'full_name': 'Strength', 'description': 'Physical might', 'skills': [{'name': 'Athletics'}]},
+    '/languages/common': {'name': 'Common', 'is_rare': False, 'note': ''},
+    '/poisons/assassins-blood': {'name': "Assassin's Blood", 'type': 'ingested', 'cost': 150, 'description': 'Save or suffer.'},
+}
+DETAILS.update(EXTRA)
 
 
 @pytest.fixture(autouse=True)
@@ -203,3 +243,62 @@ def test_a_monster_added_to_the_battle_keeps_its_attacks(make_user):
     dm.json(f'/campaigns/{cid}/api/battle/add-monster', {'ref': 'monsters/goblin-warrior', 'count': 2})
     rows = q('SELECT c.id, a.name, a.damage FROM characters c JOIN character_attacks a ON a.character_id = c.id WHERE c.campaign_id = ? ORDER BY c.id, a.position', cid)
     assert [r['name'] for r in rows] == ['Scimitar', 'Shortbow', 'Weird Gaze']              # two goblins share one character
+
+
+def test_every_kind_is_listed_and_labelled():
+    assert set(srd.KINDS) >= {'classes', 'species', 'backgrounds', 'feats', 'rules'}
+    assert [(r['id'], r['sub']) for r in srd.search('classes')] == [('subclasses/evoker', 'Subclass'), ('classes/wizard', 'Class')]
+    assert srd.search('rules', 'str')[0]['sub'] == 'Ability score'
+    assert {r['sub'] for r in srd.search('rules')} == {'Skill', 'Ability score', 'Language', 'Poison'}
+
+
+def test_a_class_reads_with_its_level_table():
+    d = srd.detail('classes', 'classes/wizard')
+    facts = dict(d['facts'])
+    assert facts['Hit die'] == 'd6' and facts['Saving throws'] == 'INT, WIS' and facts['Proficiencies'] == 'Simple Weapons'
+    assert facts['Spellcasting'] == 'INT (from level 1)' and facts['Multiclassing'] == 'INT 13'
+    assert '**' not in d['body'] and 'Cantrips. You know three cantrips.' in d['body']
+    rows = [l for l in d['body'].splitlines() if l.startswith('| ')]
+    assert rows == ['| Level | Proficiency bonus | Features |', '| 1 | +2 | Spellcasting, Ritual / Adept |', '| 2 | +2 | Scholar |']
+
+
+def test_a_class_survives_a_missing_level_table(monkeypatch):
+    real = srd._get_json
+    def fake(path):
+        if path.endswith('/levels'):
+            raise srd.SrdError('The rules reference is unavailable right now.')
+        return real(path)
+    monkeypatch.setattr(srd, '_get_json', fake)
+    assert 'Choose 2' in srd.detail('classes', 'classes/wizard')['body']
+
+
+def test_subclass_species_background_and_feat():
+    sub = srd.detail('classes', 'subclasses/evoker')
+    assert sub['subtitle'] == 'Wizard subclass' and 'Level 3: Potent Cantrip. Hit harder.' in sub['body'] and '**' not in sub['body']
+    sp = srd.detail('species', 'species/elf')
+    assert dict(sp['facts'])['Speed'] == '30 ft.' and sp['body'] == 'Darkvision. You see in the dark.'     # the missing trait is skipped
+    bg = srd.detail('backgrounds', 'backgrounds/acolyte')
+    assert dict(bg['facts'])['Feat'] == 'Magic Initiate (Cleric)' and dict(bg['facts'])['Proficiencies'] == "Insight, Calligrapher's Supplies"
+    assert 'Equipment: Choose A or B' in bg['body']
+    ft = srd.detail('feats', 'feats/alert')
+    assert ft['subtitle'] == 'Origin feat' and ft['body'] == 'You gain Initiative Proficiency.'
+
+
+def test_the_rules_group():
+    assert srd.detail('rules', 'ability-scores/str')['title'] == 'Strength'
+    assert dict(srd.detail('rules', 'skills/acrobatics')['facts']) == {'Ability': 'DEX'}
+    assert dict(srd.detail('rules', 'languages/common')['facts']) == {'Rarity': 'Standard'}
+    assert dict(srd.detail('rules', 'poisons/assassins-blood')['facts']) == {'Type': 'Ingested', 'Cost': '150 gp'}
+    with pytest.raises(srd.SrdError):
+        srd.detail('rules', 'classes/wizard')          # a reference must belong to its kind
+
+
+def test_the_page_has_a_tab_for_every_kind(make_user):
+    dm = make_user()
+    cid = dm.new_campaign()
+    html = dm.get(f'/campaigns/{cid}/reference').get_data(as_text=True)
+    for kind in srd.KINDS:
+        assert f'data-kind="{kind}"' in html
+    rows = dm.get(f'/campaigns/{cid}/api/reference/search?kind=classes').json
+    assert [r['name'] for r in rows] == ['Evoker', 'Wizard']
+    assert dm.get(f'/campaigns/{cid}/api/reference/entry?kind=feats&ref=feats/alert').json['title'] == 'Alert'

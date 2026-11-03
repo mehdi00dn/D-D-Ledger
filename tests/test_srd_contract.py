@@ -28,7 +28,28 @@ GOOD = {
                             'equipment_categories': [{'name': 'Adventuring Gear'}], 'description': ['Holds up to 30 pounds.']},
     '/magic-items/bag-of-holding': {'name': 'Bag of Holding', 'rarity': {'name': 'Uncommon'}, 'equipment_category': {'name': 'Wondrous Items'},
                                     'desc': ['Wondrous Item', 'Bigger inside.']},
+    '/classes/wizard': {'name': 'Wizard', 'hit_die': 6, 'primary_ability': {'desc': 'Intelligence'}, 'saving_throws': [{'name': 'INT'}],
+                        'proficiencies': [{'name': 'Simple Weapons'}], 'class_levels': '/api/2024/classes/wizard/levels',
+                        'proficiency_choices': [{'desc': 'Choose 2'}]},
+    '/classes/wizard/levels': [{'level': 1, 'prof_bonus': 2, 'features': [{'name': 'Spellcasting'}]}],
+    '/subclasses/evoker': {'name': 'Evoker', 'class': {'name': 'Wizard'}, 'description': 'Force.',
+                           'features': [{'name': 'Potent Cantrip', 'level': 3, 'description': 'Hit harder.'}]},
+    '/species/elf': {'name': 'Elf', 'type': 'Humanoid', 'size': 'Medium', 'speed': 30, 'traits': [{'index': 'darkvision-60'}]},
+    '/traits/darkvision-60': {'name': 'Darkvision', 'description': 'See in the dark.'},
+    '/backgrounds/acolyte': {'name': 'Acolyte', 'ability_scores': [{'name': 'INT'}], 'feat': {'name': 'Magic Initiate'},
+                             'proficiencies': [{'name': 'Skill: Insight'}], 'equipment_options': [{'desc': 'Choose A or B'}]},
+    '/feats/alert': {'name': 'Alert', 'type': 'origin', 'description': 'Initiative.'},
+    '/skills/acrobatics': {'name': 'Acrobatics', 'description': 'Stay up.', 'ability_score': {'name': 'DEX'}},
+    '/ability-scores/str': {'name': 'STR', 'full_name': 'Strength', 'description': 'Might', 'skills': [{'name': 'Athletics'}]},
+    '/weapon-properties/ammunition': {'name': 'Ammunition', 'description': 'Needs ammo.'},
 }
+for _coll, _idx, _name in (('classes', 'wizard', 'Wizard'), ('subclasses', 'evoker', 'Evoker'), ('species', 'elf', 'Elf'),
+                           ('backgrounds', 'acolyte', 'Acolyte'), ('feats', 'alert', 'Alert'), ('skills', 'acrobatics', 'Acrobatics'),
+                           ('ability-scores', 'str', 'STR'), ('weapon-properties', 'ammunition', 'Ammunition'),
+                           ('damage-types', 'acid', 'Acid'), ('weapon-mastery-properties', 'cleave', 'Cleave'),
+                           ('magic-schools', 'abjuration', 'Abjuration'), ('languages', 'common', 'Common'),
+                           ('alignments', 'lawful-good', 'Lawful Good'), ('poisons', 'assassins-blood', "Assassin's Blood")):
+    GOOD['/' + _coll] = {'results': [{'index': _idx, 'name': _name}]}
 
 
 @pytest.fixture

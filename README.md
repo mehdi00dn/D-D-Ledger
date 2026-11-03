@@ -51,7 +51,7 @@ It also runs locally.
 - **Activity.** `/campaigns/<id>/activity` lists the latest 200 events (members joining or leaving, characters,
   factions and maps added or removed). The actor is stored as a user id, so a deleted account shows as "a former
   member". Table `campaign_activity` (migration 0025).
-- **Reference.** Spells, monsters, items and conditions from the 2024 rules (dnd5eapi.co). Hovering (or focusing/tapping) a condition chip on the battle page, or a tile in the condition picker, shows its rule.
+- **Reference (DL-127).** Nine tabs from the 2024 rules (dnd5eapi.co): Spells, Monsters, Items, Conditions, Classes (with subclasses; a class shows its hit die, proficiencies, spellcasting and a level table, a subclass its features), Species (traits are fetched one by one and a missing trait only drops its own paragraph), Backgrounds, Feats and Rules (skills, ability scores, damage types, weapon properties and mastery, schools of magic, languages, alignments, poisons). Each kind is a list of API collections in `srd.KINDS`; the list shows a label under the name when a kind mixes collections (`COLL_LABEL`). `scripts/check_srd_contract.py` checks one sample of each kind nightly. Hovering (or focusing/tapping) a condition chip on the battle page, or a tile in the condition picker, shows its rule.
 - **Import / export** of campaigns as ZIP bundles.
 
 ## Running locally
