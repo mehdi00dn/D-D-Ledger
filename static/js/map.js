@@ -1862,6 +1862,11 @@
   // ---------------------------------------------------------------------
   // Toolbar
   // ---------------------------------------------------------------------
+  const COARSE = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);       // a finger, not a mouse and keyboard
+  const PLACE_HINT_HTML = COARSE
+    ? 'Placing <strong id="place-hint-name"></strong> &middot; tap the map to drop &middot; pick <strong>Select</strong> to stop'
+    : 'Placing <strong id="place-hint-name"></strong> &middot; click the map to drop &middot; <strong>Esc</strong> to stop';
+  if (COARSE && attachHint) attachHint.textContent = 'Tap the token to attach the shape to. Tap the link button again to cancel.';
   const MODIFIER_HINT_KEY = 'ledger-map-modifier-hint-dismissed';
   const modifierHintEl = document.getElementById('modifier-hint');
   let modifierHintTimer = null;
@@ -1875,6 +1880,7 @@
     try { localStorage.setItem(MODIFIER_HINT_KEY, '1'); } catch (err) { /* ignore */ }
   }
   function showModifierHintIfNeeded() {
+    if (COARSE) return;                                      // Shift and Alt do not exist on a touch screen
     let alreadySeen = false;
     try { alreadySeen = !!localStorage.getItem(MODIFIER_HINT_KEY); } catch (err) { /* ignore */ }
     if (alreadySeen) return;
@@ -2705,6 +2711,7 @@
   function updatePlaceHint() {
     if (!placeHint) return;
     placeHint.hidden = !placingChar;
+    if (COARSE && placeHint.dataset.touchText !== '1') { placeHint.innerHTML = PLACE_HINT_HTML; placeHint.dataset.touchText = '1'; }
     const nameEl = document.getElementById('place-hint-name');
     if (placingChar && nameEl) nameEl.textContent = placingChar.name;
     canvas.classList.toggle('tool-place', !!placingChar);
@@ -2717,7 +2724,7 @@
     placeHint.hidden = false;
     clearTimeout(placeFlashTimer);
     placeFlashTimer = setTimeout(() => {
-      placeHint.innerHTML = 'Placing <strong id="place-hint-name"></strong> &middot; click the map to drop &middot; <strong>Esc</strong> to stop';
+      placeHint.innerHTML = PLACE_HINT_HTML;
       updatePlaceHint();
     }, 3500);
   }
@@ -3134,10 +3141,23 @@
       dismissNavHintForGood();
       return;
     }
+    if (e.target.closest && e.target.closest('#pin-resize-btn, #pin-rotate-btn, #shape-resize-toggle, #shape-rotate-toggle')) return;   // their own handler above owns this finger
     const t = e.touches[0];
     touchMode = (currentTool === 'select' && !fingerGrabsSomething(t.clientX, t.clientY, e.target)) ? 'scroll-maybe' : 'maybe';
     touchStart = { x: t.clientX, y: t.clientY, lastX: t.clientX, lastY: t.clientY, target: e.target };
   }, { passive: true });
+
+  // The four hold-and-drag buttons (token resize / rotate, shape resize / rotate) sit outside the map, so the
+  // handler above never sees them; they listen for mousedown.  A finger that goes down on one and moves becomes that
+  // mouse drag too (a tap still clicks it, which toggles the handles).
+  [pinResizeBtn, pinRotateBtn, shapeResizeToggle, shapeRotateToggle].forEach((btn) => {
+    btn.addEventListener('touchstart', (e) => {
+      if (e.touches.length !== 1) return;
+      const t = e.touches[0];
+      touchMode = 'maybe';
+      touchStart = { x: t.clientX, y: t.clientY, lastX: t.clientX, lastY: t.clientY, target: btn };
+    }, { passive: true });
+  });
 
   window.addEventListener('touchmove', (e) => {
     if (!touchMode) return;
@@ -3184,6 +3204,7 @@
 
   function touchFinished(e) {
     if (!touchMode) return;
+    if (fog && isFogTool(currentTool)) setTimeout(() => fog.showRing(false), 0);        // the brush ring follows a mouse; a lifted finger leaves it behind
     if (touchMode === 'scroll') e.preventDefault();
     if (touchMode === 'mouse' && touchStart) { e.preventDefault(); endMouseDrag(touchStart.lastX, touchStart.lastY); }
     if (e.touches.length === 0) { touchMode = null; touchStart = null; pinch = null; }
@@ -3206,6 +3227,17 @@
   // ---------------------------------------------------------------------
   const mapToolbar = document.getElementById('map-toolbar');
   const toolbarSentinel = document.getElementById('map-toolbar-sentinel');
+  // On a phone the toolbar is a dock at the bottom and grows when its tray (or the shape style row) opens; the token and
+  // shape buttons, hints and dice button sit above it, so they follow its real height instead of a fixed one.
+  if (mapToolbar && 'ResizeObserver' in window && phoneBubbleQuery) {
+    const syncDockHeight = () => {
+      if (phoneBubbleQuery.matches) document.documentElement.style.setProperty('--dock-h', `${Math.ceil(mapToolbar.getBoundingClientRect().height)}px`);
+      else document.documentElement.style.removeProperty('--dock-h');
+    };
+    new ResizeObserver(syncDockHeight).observe(mapToolbar);
+    phoneBubbleQuery.addEventListener('change', syncDockHeight);
+    syncDockHeight();
+  }
   if (mapToolbar && toolbarSentinel && 'IntersectionObserver' in window) {
     const toolbarPinObserver = new IntersectionObserver(
       ([entry]) => mapToolbar.classList.toggle('is-pinned', !entry.isIntersecting),

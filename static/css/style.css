@@ -4295,7 +4295,7 @@ body.has-dice-fab .modifier-hint { inset-inline-end: 80px; max-width: calc(100vw
   .map-toolbar.is-open .map-tool-group--more:has(#clear-drawings-btn) + .map-tool-group--more { padding: 0; }
 }
 @media (orientation: landscape) and (max-height: 500px) {
-  .map-toolbar { inset-inline: 98px 72px; max-width: none; margin-inline: auto 0; }           /* sits on the right, beside the dice button */
+  .map-toolbar { inset-inline: 98px 72px; max-width: calc(100vw - 170px); flex-wrap: wrap; margin-inline: auto 0; }           /* sits on the right, beside the dice button; on a narrow screen it wraps instead of running under the menu buttons */
   .map-toolbar.is-open { margin-inline: auto 0; width: fit-content; }
   .map-toolbar.is-open .map-tool-group--more:first-of-type { display: flex; flex: 0 0 auto; }
   .map-toolbar.is-open .map-tool-group--more:first-of-type .map-tool-btn { width: var(--ctl); }
@@ -5558,7 +5558,7 @@ a.pager-link:hover { border-color: var(--brass); }
 /* DL-153: what to measure, and whether to show it to the table */
 .measure-picker { position: fixed; inset-block-end: 20px; inset-inline-start: 50%; transform: translateX(-50%); z-index: 30; display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 4px;
   inline-size: max-content; max-inline-size: calc(100vw - 24px); padding: 6px 10px; border-radius: 999px; background: var(--bg-panel); border: 1px solid var(--hairline-strong); box-shadow: var(--shadow-deep); }
-@media (max-width: 760px) { .measure-picker { inset-block-end: calc(env(safe-area-inset-bottom, 0px) + 84px); border-radius: 18px; } }
+@media (max-width: 1024px), (pointer: coarse) and (max-width: 1400px) { .measure-picker { inset-block-end: calc(env(safe-area-inset-bottom, 0px) + 84px); inset-inline: 12px; transform: none; inline-size: auto; max-inline-size: 520px; margin-inline: auto; border-radius: 18px; } }   /* centred with margins, never wider than the screen */
 .measure-picker[hidden] { display: none; }
 .measure-kind { min-block-size: 28px; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--hairline-strong); background: transparent; color: var(--parchment-dim); font: 500 12px var(--font-body, inherit); cursor: pointer; }
 .measure-kind[aria-pressed="true"] { background: var(--brass); color: var(--on-brass); border-color: var(--brass); }
@@ -5623,3 +5623,13 @@ a.pager-link:hover { border-color: var(--brass); }
 @media (min-width: 700px) and (min-height: 501px) {
   .more-sheet { max-inline-size: 620px; margin-inline: auto; }
 }
+
+/* ---- touch screens: tokens and the drag buttons are meant for a finger ---- */
+@media (pointer: coarse) {
+  .map-pin::before { content: ''; position: absolute; inset: -14px; border-radius: 50%; }      /* a 12px token still gets a 40px target */
+  #map-pin-layer.draw-mode .map-pin::before { content: none; }
+  .map-stage-wrap, .map-pin { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }   /* a long press must not select text or open the image menu */
+  #pin-resize-btn, #pin-rotate-btn, #shape-resize-toggle, #shape-rotate-toggle { touch-action: none; }
+}
+/* a docked token/shape button row must not sit over a tool menu that opens upward from the dock */
+body:has(.tool-flyout.open) .pin-action-bubble.is-docked { opacity: 0; pointer-events: none; }
