@@ -17,19 +17,42 @@
 </div>
 
 {% if entries %}
-<ul class="journal-list">
-  {% for e in entries %}
-  <li>
-    <a class="journal-item" href="{{ url_for('journal_view', journal_id=e.id) }}">
-      <time class="journal-date" datetime="{{ e.played_on }}">{{ e.played_on.strftime('%d %b %Y') if e.played_on.strftime else e.played_on }}</time>
-      <span class="journal-main">
-        <b class="journal-title">{{ e.title }}{% if e.dm_only %} <span class="journal-tag">{{ icon('lock') }} DM only</span>{% endif %}</b>
-        {% if e.preview %}<span class="journal-preview">{{ e.preview }}</span>{% endif %}
-      </span>
-    </a>
-  </li>
-  {% endfor %}
-</ul>
+{% if entries|length > 3 %}
+<div class="journal-tools">
+  <div class="search-bar journal-search">
+    <span class="search-bar-icon">{{ icon('search') }}</span>
+    <input type="search" id="journal-search" placeholder="Search sessions…" autocomplete="off" aria-label="Search sessions">
+  </div>
+  <p class="journal-count" id="journal-count" aria-live="polite">{{ entries|length }} sessions</p>
+</div>
+{% endif %}
+{% for month, rows in months %}
+<section class="journal-month" aria-labelledby="jm-{{ loop.index }}">
+  <h2 class="journal-month-title" id="jm-{{ loop.index }}">{{ month }}</h2>
+  <ul class="journal-list">
+    {% for e in rows %}
+    <li class="journal-row" data-search="{{ (e.title ~ ' ' ~ e.preview)|lower }}">
+      <a class="journal-item" href="{{ url_for('journal_view', journal_id=e.id) }}">
+        <time class="journal-date" datetime="{{ e.played_on }}">{{ e.played_on.strftime('%d %b') if e.played_on.strftime else e.played_on }}</time>
+        <span class="journal-main">
+          <b class="journal-title">{{ e.title }}</b>
+          {% if e.preview %}<span class="journal-preview">{{ e.preview }}</span>{% endif %}
+          <span class="journal-meta">{{ e.notes }} note{{ '' if e.notes == 1 else 's' }}{% if e.dm_only %} <span class="journal-tag">{{ icon('lock') }} DM only</span>{% endif %}</span>
+        </span>
+      </a>
+      {% if g.is_dm %}
+      <div class="journal-actions">
+        <a class="btn-icon journal-btn" href="{{ url_for('journal_edit', journal_id=e.id, **{'from': 'list'}) }}" aria-label="Edit {{ e.title }}" title="Edit">{{ icon('pencil') }}</a>
+        <form method="POST" action="{{ url_for('journal_delete', journal_id=e.id) }}" data-confirm="Delete this session recap for good?">{{ csrf_field() }}<button type="submit" class="btn-icon journal-btn journal-delete" aria-label="Delete {{ e.title }}" title="Delete">{{ icon('trash-2') }}</button></form>
+      </div>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endfor %}
+<p class="hint-text" id="journal-no-matches" hidden>No sessions match. Clear the search to see them all.</p>
+<script src="{{ url_for('static', filename='js/journal.js') }}"></script>
 {% else %}
 <section class="cf-card journal-empty">
   {% if g.is_dm %}

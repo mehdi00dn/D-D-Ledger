@@ -86,3 +86,26 @@ def test_a_new_shared_recap_is_in_the_activity_feed_but_a_secret_one_is_not(make
     _add(dm, cid, title='Secret one', boxes=(('shh', True),))
     feed = pl.get(f'/campaigns/{cid}/activity').data.decode()
     assert 'Shared one' in feed and 'Secret one' not in feed
+
+
+def test_list_groups_by_month_and_gives_the_dm_edit_and_delete_on_each_row(make_user):
+    dm, pl, cid = _setup(make_user)
+    a = _add(dm, cid, title='Old one', date='2026-09-12')
+    b = _add(dm, cid, title='New one', boxes=(('Shared', False), ('Secret', True)), date='2026-10-31')
+    page = dm.get(f'/campaigns/{cid}/journal').data.decode()
+    assert page.index('October 2026') < page.index('New one') < page.index('September 2026') < page.index('Old one')
+    assert f'href="/campaigns/{cid}/journal/{b}/edit?from=list"' in page and 'aria-label="Edit New one"' in page
+    assert f'action="/campaigns/{cid}/journal/{a}/delete"' in page and 'aria-label="Delete Old one"' in page
+    assert '2 notes' in page and '1 note<' in page
+    pl_page = pl.get(f'/campaigns/{cid}/journal').data.decode()
+    assert 'journal-actions' not in pl_page and '/journal/' + str(b) + '/edit' not in pl_page and '1 note<' in pl_page     # a player counts only the shared boxes
+
+
+def test_editing_from_the_list_returns_to_the_list(make_user):
+    dm, pl, cid = _setup(make_user)
+    jid = _add(dm, cid)
+    url = f'/campaigns/{cid}/journal/{jid}/edit'
+    data = {'title': 'Renamed', 'played_on': '2026-10-31', 'body': _body(('We crossed.', False))}
+    assert dm.post(url + '?from=list', data=data).headers['Location'].endswith(f'/campaigns/{cid}/journal')
+    assert dm.post(url, data=data).headers['Location'].endswith(f'/journal/{jid}')
+    assert 'href="/campaigns/%s/journal"' % cid in dm.get(url + '?from=list').data.decode()

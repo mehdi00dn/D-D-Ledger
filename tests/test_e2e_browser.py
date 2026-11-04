@@ -2015,3 +2015,22 @@ def test_clicking_an_avatar_previews_it_without_leaving_the_page(pw, shared_serv
     page.click('.home-pc .home-pc-avatar')
     page.wait_for_url(f'**/characters/{char_id}')
     assert not bad and not errs, (bad, errs)
+
+
+def test_journal_search_filters_rows_and_hides_empty_months(pw, shared_server):
+    base = shared_server.url; dm = Api(base); cid = dm.campaign('Journal list')
+    for title, day in (('The bridge', '2026-09-03'), ('The ambush', '2026-09-20'), ('Market day', '2026-10-05'), ('Ruins', '2026-10-19')):
+        dm.post(f'/campaigns/{cid}/journal/new', data={'title': title, 'played_on': day, 'body': '["We played."]'})
+    ctx = dm.context(pw, base); page = ctx.new_page(); bad, errs = _collect(page)
+    page.goto(base + f'/campaigns/{cid}/journal'); page.wait_for_load_state('networkidle')
+    assert page.locator('.journal-row:visible').count() == 4 and '4 sessions' in page.inner_text('#journal-count')
+    page.fill('#journal-search', 'bridge')
+    assert page.locator('.journal-row:visible').count() == 1
+    assert page.locator('.journal-month:visible').count() == 1 and '1 of 4' in page.inner_text('#journal-count')
+    page.fill('#journal-search', 'zzz')
+    assert page.locator('#journal-no-matches').is_visible()
+    page.fill('#journal-search', '')
+    assert page.locator('.journal-row:visible').count() == 4
+    page.click('.journal-row >> nth=0 >> a[aria-label^="Edit"]')
+    page.wait_for_url('**/edit?from=list')
+    assert not bad and not errs, (bad, errs)

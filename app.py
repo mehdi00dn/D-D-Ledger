@@ -5495,9 +5495,21 @@ def journal_list():
     except pgerr.UndefinedTable:
         return _journal_missing(db)
     db.close()
-    entries = [dict(r, preview=notes_plain_preview(r['body'], show_hidden=g.is_dm),
-                    dm_only=all(e['h'] for e in notes_parse_entries(r['body']))) for r in rows if _journal_visible(r, g.is_dm)]
-    return render_template('journal.html', entries=entries)
+    entries = []
+    for r in rows:
+        boxes = notes_parse_entries(r['body'])
+        if not (g.is_dm or any(not e['h'] for e in boxes)):
+            continue
+        day = r['played_on']
+        entries.append(dict(r, preview=notes_plain_preview(r['body'], show_hidden=g.is_dm), dm_only=all(e['h'] for e in boxes),
+                            notes=len([e for e in boxes if g.is_dm or not e['h']]),
+                            month=day.strftime('%B %Y') if hasattr(day, 'strftime') else str(day)[:7]))
+    months = []                                    # newest first, as the rows already are: [(month label, [entries])]
+    for e in entries:
+        if not months or months[-1][0] != e['month']:
+            months.append((e['month'], []))
+        months[-1][1].append(e)
+    return render_template('journal.html', entries=entries, months=months)
 
 
 @app.route('/campaigns/<int:campaign_id>/journal/new', methods=['GET', 'POST'])
@@ -5548,6 +5560,7 @@ def journal_edit(journal_id):
     if row is None:
         db.close()
         abort(404)
+    from_list = request.args.get('from') == 'list'           # opened from a row of the list: save and cancel go back to it
     form_values = {'title': row['title'], 'played_on': row['played_on'].isoformat() if hasattr(row['played_on'], 'isoformat') else str(row['played_on']), 'body': row['body']}
     error = None
     if request.method == 'POST':
@@ -5557,9 +5570,10 @@ def journal_edit(journal_id):
             db.execute('UPDATE session_journal SET title = ?, played_on = ?, body = ?, updated_at = ' + _UTC_NOW + ' WHERE id = ? AND campaign_id = ?',
                        (values['title'], values['played_on'], values['body'], journal_id, g.campaign_id))
             db.commit(); db.close()
-            return redirect(url_for('journal_view', journal_id=journal_id))
+            return redirect(url_for('journal_list') if from_list else url_for('journal_view', journal_id=journal_id))
     db.close()
-    return render_template('journal_form.html', entry=row, values=form_values, notes_entries=notes_parse_entries(form_values['body']), error=error), (400 if error else 200)
+    return render_template('journal_form.html', entry=row, values=form_values, notes_entries=notes_parse_entries(form_values['body']), error=error,
+                           from_list=from_list), (400 if error else 200)
 
 
 @app.route('/campaigns/<int:campaign_id>/journal/<int:journal_id>/delete', methods=['POST'])
