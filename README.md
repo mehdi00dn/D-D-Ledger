@@ -51,7 +51,8 @@ It also runs locally.
 - **Activity.** `/campaigns/<id>/activity` lists the latest 200 events (members joining or leaving, characters,
   factions and maps added or removed). The actor is stored as a user id, so a deleted account shows as "a former
   member". Table `campaign_activity` (migration 0025).
-- **Reference (DL-127).** Nine tabs from the 2024 rules (dnd5eapi.co): Spells, Monsters, Items, Conditions, Classes (with subclasses; a class shows its hit die, proficiencies, spellcasting and a level table, a subclass its features), Species (traits are fetched one by one and a missing trait only drops its own paragraph), Backgrounds, Feats and Rules (skills, ability scores, damage types, weapon properties and mastery, schools of magic, languages, alignments, poisons). Each kind is a list of API collections in `srd.KINDS`; the list shows a label under the name when a kind mixes collections (`COLL_LABEL`). `scripts/check_srd_contract.py` checks one sample of each kind nightly. Hovering (or focusing/tapping) a condition chip on the battle page, or a tile in the condition picker, shows its rule.
+- **Reference (DL-127).** Nine tabs from the 2024 rules (dnd5eapi.co; a 2014 switch is described below): Spells, Monsters, Items, Conditions, Classes (with subclasses; a class shows its hit die, proficiencies, spellcasting and a level table, a subclass its features), Species (traits are fetched one by one and a missing trait only drops its own paragraph), Backgrounds, Feats and Rules (skills, ability scores, damage types, weapon properties and mastery, schools of magic, languages, alignments, poisons). Each kind is a list of API collections in `srd.KINDS`; the list shows a label under the name when a kind mixes collections (`COLL_LABEL`). `scripts/check_srd_contract.py` checks one sample of each kind nightly. Hovering (or focusing/tapping) a condition chip on the battle page, or a tile in the condition picker, shows its rule.
+- **Reference outside a campaign, and the 2014 rules.** The Reference also lives at `/reference` (menu entry "Reference" in the sidebar, and in the More sheet on a phone), for any signed-in user, with the same tabs and the same endpoints under `/api/reference/` (`search`, `entry`). A 2024 / 2014 switch at the top of the page (`?edition=2014`) swaps the rulebook; the choice is kept in the session (`ref_edition`) and an unknown value falls back to 2024 in the page and is refused with "bad request" in the API. Both editions go through the same normalisers in `srd.py`; `EDITIONS` holds the per-edition labels and `KINDS_2014` the collections that differ (Species becomes Races and Subraces, there are no weapon mastery or poisons, and Rules adds the rule sections). Differences in the 2014 data are handled in the normalisers: subclass features come from `subclass_levels`, backgrounds read `starting_proficiencies` and `feature`, feats show their prerequisite, magic items pull "requires attunement" out of the first description line, and markdown marks in rule text are dropped. Cached entries are kept per edition. The monster picker on the battle page and the character form still read the 2024 Monster Manual unless the page passes `edition`. About and the credit line name SRD 5.1 for the 2014 rules (also CC BY 4.0). `scripts/check_srd_contract.py` now checks both editions.
 - **Import / export** of campaigns as ZIP bundles.
 
 ## Running locally
@@ -212,7 +213,7 @@ internet or credentials. GitHub Actions runs it on every push and pull request.
 (`pytest --noconftest tests/test_observability.py`).
 
 A second workflow (`.github/workflows/srd-contract.yml`) runs nightly and fetches one spell, monster, equipment
-item and magic item from the real 2024 5e API through `scripts/check_srd_contract.py`. If dnd5eapi.co renames or
+item and magic item from the real 2024 and 2014 5e APIs through `scripts/check_srd_contract.py`. If dnd5eapi.co renames or
 drops a field the job fails and lists what changed (the normal tests fake the API and would not notice). Run it by
 hand with `python scripts/check_srd_contract.py`, or from the Actions tab (Run workflow).
 
@@ -227,7 +228,7 @@ hand with `python scripts/check_srd_contract.py`, or from the Actions tab (Run w
 | `security.py` | CSRF, rate limiting, sanitization helpers |
 | `observability.py` | Structured logs, request ids, error handling, optional Sentry |
 | `THIRD_PARTY.md` | Audit of third-party requests, tracking, browser storage and bundled-asset licences |
-| `srd.py`, `dnd5e.py` | 2024 rules reference and character rules data |
+| `srd.py`, `dnd5e.py` | 2024 and 2014 rules reference and character rules data |
 | `realtime.py`, `fog.py` | Live updates and map fog |
 | `templates/`, `static/` | Jinja templates, CSS, vanilla JS |
 | `scripts/` | Live check, temp cleanup, image optimization, backup and restore drill, storage-usage backfill |

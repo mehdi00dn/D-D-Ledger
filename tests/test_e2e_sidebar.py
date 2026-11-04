@@ -167,8 +167,9 @@ def test_phone_top_bar_icons_and_notification_tab_line_up(shared_server, pw):
     icon = page.locator('.sidebar-foot .foot-bell svg').bounding_box()
     assert abs((icon['y'] + icon['height'] / 2) - (mark['y'] + mark['height'] / 2)) <= 1, 'the shield sits on the logo\'s centre line'
     assert abs(top['width'] - (icon['x'] + icon['width']) - 14) <= 1, 'the glyph sits on the 14px content gutter'
-    tabs = [page.locator('.sidebar-nav .nav-tab svg').nth(i).bounding_box()['y'] for i in range(page.locator('.sidebar-nav .nav-tab').count())]
-    inactive = [y for y, cls in zip(tabs, page.locator('.sidebar-nav .nav-tab').evaluate_all('els => els.map(e => e.className)')) if 'active' not in cls]
+    shown = page.locator('.sidebar-nav .nav-tab:visible')                 # tabs that live in the More sheet on a phone are hidden
+    tabs = [shown.nth(i).locator('svg').bounding_box()['y'] for i in range(shown.count())]
+    inactive = [y for y, cls in zip(tabs, shown.evaluate_all('els => els.map(e => e.className)')) if 'active' not in cls]
     assert max(inactive) - min(inactive) <= 1, f'bottom-bar icons share one line: {tabs}'
     page.locator('#nav-more-btn').click()
     page.wait_for_timeout(700)                                     # the sheet slides up first

@@ -7,18 +7,25 @@
 <div class="page-header">
   <div>
     <h1 class="page-title">Rules Reference</h1>
-    <p class="page-sub">Spells, monsters, items, classes, species, backgrounds, feats and the core rules from the {{ version }} D&amp;D 5e rules.</p>
+    <p class="page-sub">Spells, monsters, items, classes, {{ editions[edition].species_tab|lower }}, backgrounds, feats and the core rules from the {{ editions[edition].label }} of D&amp;D 5e.</p>
+  </div>
+  <div class="page-actions toolbar">
+    <div class="segmented-switch ref-edition" role="group" aria-label="Rulebook">
+      {% for key, ed in editions.items()|sort(reverse=true) %}
+      <a href="?edition={{ key }}" class="{{ 'active' if key == edition else '' }}"{% if key == edition %} aria-current="true"{% endif %}>{{ key }}</a>
+      {% endfor %}
+    </div>
   </div>
 </div>
 
-<div class="ref" data-reference data-dm="{{ 1 if g.is_dm else 0 }}" data-base="{{ url_for('reference_view')|replace('/reference', '') }}/api/reference/">
+<div class="ref" data-reference data-dm="{{ 1 if g.is_dm else 0 }}" data-base="{{ api_base }}" data-edition="{{ edition }}">
   <div class="ref-tabs" role="tablist">
     <button type="button" class="ref-tab is-active" role="tab" data-kind="spells">Spells</button>
     <button type="button" class="ref-tab" role="tab" data-kind="monsters">Monsters</button>
     <button type="button" class="ref-tab" role="tab" data-kind="items">Items</button>
     <button type="button" class="ref-tab" role="tab" data-kind="conditions">Conditions</button>
     <button type="button" class="ref-tab" role="tab" data-kind="classes">Classes</button>
-    <button type="button" class="ref-tab" role="tab" data-kind="species">Species</button>
+    <button type="button" class="ref-tab" role="tab" data-kind="species">{{ editions[edition].species_tab }}</button>
     <button type="button" class="ref-tab" role="tab" data-kind="backgrounds">Backgrounds</button>
     <button type="button" class="ref-tab" role="tab" data-kind="feats">Feats</button>
     <button type="button" class="ref-tab" role="tab" data-kind="rules">Rules</button>
@@ -32,7 +39,7 @@
       <p class="hint-text">Pick an entry to read it.</p>
     </article>
   </div>
-  <p class="ref-credit">Rules text from the System Reference Document 5.2.1 by Wizards of the Coast LLC, under the <a href="https://creativecommons.org/licenses/by/4.0/legalcode" rel="noopener noreferrer" target="_blank">Creative Commons Attribution 4.0 International License</a>. <a href="{{ url_for('about') }}#credits">Full notice</a></p>
+  <p class="ref-credit">Rules text from the {{ editions[edition].srd }} by Wizards of the Coast LLC, under the <a href="https://creativecommons.org/licenses/by/4.0/legalcode" rel="noopener noreferrer" target="_blank">Creative Commons Attribution 4.0 International License</a>. <a href="{{ url_for('about') }}#credits">Full notice</a></p>
 </div>
 {% endblock %}
 

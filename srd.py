@@ -1,4 +1,4 @@
-"""Rules reference (spells, monsters, items, conditions, classes, species, backgrounds, feats and the basic rules) from the public D&D 5e API, 2024 edition (https://www.dnd5eapi.co/api/2024).
+"""Rules reference (spells, monsters, items, conditions, classes, species, backgrounds, feats and the basic rules) from the public D&D 5e API, 2024 edition (https://www.dnd5eapi.co/api/2024) or, on request, the 2014 edition (https://www.dnd5eapi.co/api/2014).
 
 The browser never talks to the API: the server fetches, normalises and caches it, so the Content-Security-Policy stays
 strict, the data is shaped once here, and a flaky API only ever costs the reference pages (never a campaign).
@@ -14,9 +14,9 @@ import requests
 
 import dnd5e
 
-VERSION = '2024'
+VERSION = DEFAULT_EDITION = '2024'
 BASE = os.environ.get('SRD_API_BASE', 'https://www.dnd5eapi.co').rstrip('/')      # overridable so tests can use a local stand-in
-API = f'{BASE}/api/{VERSION}'
+API = f'{BASE}/api/{VERSION}'            # the default edition's address (kept for callers and tests)
 TIMEOUT = 8
 LIST_TTL = 24 * 3600
 DETAIL_TTL = 24 * 3600
@@ -38,6 +38,33 @@ COLL_LABEL = {
     'languages': 'Language', 'alignments': 'Alignment', 'poisons': 'Poison',
 }
 MAX_TRAITS = 14
+# The 2014 API names things differently: races (and subraces) instead of species, no weapon mastery or poisons, plus rules and rule sections.
+KINDS_2014 = {
+    'spells': ['spells'], 'monsters': ['monsters'], 'items': ['equipment', 'magic-items'], 'conditions': ['conditions'],
+    'classes': ['classes', 'subclasses'], 'species': ['races', 'subraces'], 'backgrounds': ['backgrounds'], 'feats': ['feats'],
+    'rules': ['skills', 'ability-scores', 'damage-types', 'weapon-properties', 'magic-schools', 'languages', 'alignments',
+              'rules', 'rule-sections'],
+}
+COLL_LABEL.update({'races': 'Race', 'subraces': 'Subrace', 'rules': 'Rule', 'rule-sections': 'Rule'})
+# edition -> what the page needs to know: its kinds, the tab for "species", and the licence line
+EDITIONS = {
+    '2024': {'kinds': KINDS, 'species_tab': 'Species', 'label': '2024 rules', 'srd': 'System Reference Document 5.2.1'},
+    '2014': {'kinds': KINDS_2014, 'species_tab': 'Races', 'label': '2014 rules', 'srd': 'System Reference Document 5.1'},
+}
+
+
+def edition_of(value):
+    """The edition asked for ('2014' or '2024'); anything else, or nothing, is the default.  Raises nothing: callers that must
+    refuse a bad value (the API) use check_edition."""
+    return value if value in EDITIONS else DEFAULT_EDITION
+
+
+def check_edition(value):
+    if value in (None, ''):
+        return DEFAULT_EDITION
+    if value not in EDITIONS:
+        raise SrdError('bad request')
+    return value
 
 
 class SrdError(Exception):
@@ -48,14 +75,15 @@ _lock = threading.Lock()
 _cache = {}
 
 
-def _get_json(path):
+def _get_json(path, edition=DEFAULT_EDITION):
+    key = (edition, path)
     now = time.time()
     with _lock:
-        hit = _cache.get(path)
+        hit = _cache.get(key)
         if hit and hit[0] > now:
             return hit[1]
     try:
-        r = requests.get(API + path, timeout=TIMEOUT, headers={'Accept': 'application/json'})
+        r = requests.get(f'{BASE}/api/{edition}{path}', timeout=TIMEOUT, headers={'Accept': 'application/json'})
         if r.status_code == 404:
             raise SrdError('not found')
         r.raise_for_status()
@@ -67,7 +95,7 @@ def _get_json(path):
     with _lock:
         if len(_cache) > 2000:
             _cache.clear()
-        _cache[path] = (now + (LIST_TTL if path.count('/') <= 1 else DETAIL_TTL), data)
+        _cache[key] = (now + (LIST_TTL if path.count('/') <= 1 else DETAIL_TTL), data)
     return data
 
 
@@ -80,14 +108,21 @@ def valid_index(value):
     return isinstance(value, str) and bool(INDEX_RE.match(value))
 
 
-def search(kind, query='', limit=MAX_RESULTS):
+def search(kind, query='', limit=MAX_RESULTS, edition=DEFAULT_EDITION):
     """[{'id': 'monsters/aboleth', 'name': 'Aboleth', 'sub': ...}] -- names containing the query, best matches first."""
-    if kind not in KINDS:
+    ed = check_edition(edition)
+    kinds = EDITIONS[ed]['kinds']
+    if kind not in kinds:
         raise SrdError('bad request')
     q = (query or '').strip().lower()[:60]
     out = []
-    for coll in KINDS[kind]:
-        data = _get_json('/' + coll)
+    for coll in kinds[kind]:
+        try:
+            data = _get_json('/' + coll, ed)
+        except SrdError as e:
+            if str(e) == 'not found' and ed != DEFAULT_EDITION:
+                continue          # a collection the other edition does not have costs that part of the list only
+            raise
         for row in data.get('results', []):
             name = str(row.get('name', ''))
             index = str(row.get('index', ''))
@@ -241,10 +276,11 @@ def _item(coll, d):
         sub = (d.get('equipment_category') or {}).get('name', 'Magic item')
         if (d.get('rarity') or {}).get('name'):
             facts.append(('Rarity', d['rarity']['name']))
-        if d.get('attunement'):
+        first = str((d.get('desc') or [''])[0] if isinstance(d.get('desc'), list) and d.get('desc') else '').lower()
+        if d.get('attunement') or 'requires attunement' in first:          # 2014 notes it in the first line of the text
             facts.append(('Attunement', 'Required'))
     else:
-        cats = _named(d.get('equipment_categories'))
+        cats = _named(d.get('equipment_categories') or [d.get('equipment_category')])
         sub = cats[-1] if cats else 'Equipment'
         cost = d.get('cost')
         if isinstance(cost, dict) and cost.get('quantity') is not None:
@@ -257,6 +293,8 @@ def _item(coll, d):
         if d.get('armor_class') and isinstance(d['armor_class'], dict):
             ac = d['armor_class']
             facts.append(('Armor Class', str(ac.get('base', '')) + (' + Dex' if ac.get('dex_bonus') else '')))
+        if d.get('category_range'):                                        # 2014 weapons: "Martial Melee"
+            facts.append(('Category', str(d['category_range'])))
         if d.get('properties'):
             facts.append(('Properties', ', '.join(_named(d['properties']))))
         if (d.get('mastery') or {}).get('name'):
@@ -275,7 +313,7 @@ def _condition(d):
 
 def _plain(value):
     """Rules text with the API's ** bold marks dropped (the page shows plain text)."""
-    return _text(value).replace('**', '')
+    return re.sub(r'^#{1,6}\s*', '', _text(value).replace('**', ''), flags=re.M)      # and markdown heading marks (2014 rules text)
 
 
 def _signed(n):
@@ -319,6 +357,10 @@ def _class(d):
              ('Multiclassing', ', '.join(pre)),
              ('Subclasses', ', '.join(_named(d.get('subclasses'))))]
     parts = [str(c.get('desc')) for c in d.get('proficiency_choices') or [] if isinstance(c, dict) and c.get('desc')]
+    fixed = [f'{(e.get("equipment") or {}).get("name", "")} x{e.get("quantity", 1)}' for e in d.get('starting_equipment') or []
+             if isinstance(e, dict) and (e.get('equipment') or {}).get('name')]
+    if fixed:
+        parts.append('Starting equipment: ' + ', '.join(fixed))                # 2014; the 2024 API gives only the choices below
     parts += ['Starting equipment: ' + str(o['desc']) for o in d.get('starting_equipment_options') or [] if isinstance(o, dict) and o.get('desc')]
     for info in spell.get('info') or []:
         if isinstance(info, dict) and info.get('name'):
@@ -336,24 +378,92 @@ def _subclass(d):
             'body': '\n\n'.join(p for p in parts if p)}
 
 
-def _species(d):
-    facts = [('Type', d.get('type')), ('Size', d.get('size')), ('Speed', f'{d["speed"]} ft.' if d.get('speed') else ''),
-             ('Lineages', ', '.join(_named(d.get('subspecies'))))]
+def _trait_paragraphs(traits, ed):
     parts = []
-    for t in (d.get('traits') or [])[:MAX_TRAITS]:
+    for t in (traits or [])[:MAX_TRAITS]:
         idx = t.get('index') if isinstance(t, dict) else None
         if not valid_index(idx):
             continue
         try:
-            td = _get_json(f'/traits/{idx}')
+            td = _get_json(f'/traits/{idx}', ed)
         except SrdError:
             continue          # one missing trait costs that paragraph, not the entry
         if isinstance(td, dict) and td.get('name'):
-            parts.append(f'{td["name"]}. {_plain(td.get("description"))}')
+            parts.append(f'{td["name"]}. {_plain(td.get("description") or td.get("desc"))}')
+    return parts
+
+
+def _species(d, ed=DEFAULT_EDITION):
+    facts = [('Type', d.get('type')), ('Size', d.get('size')), ('Speed', f'{d["speed"]} ft.' if d.get('speed') else ''),
+             ('Lineages', ', '.join(_named(d.get('subspecies'))))]
+    parts = _trait_paragraphs(d.get('traits'), ed)
     return {'title': d.get('name', ''), 'subtitle': 'Species', 'facts': [(k, v) for k, v in facts if v], 'body': '\n\n'.join(parts)}
 
 
+def _bonuses(items):
+    return ', '.join(f'{(b.get("ability_score") or {}).get("name", "")} {_signed(b.get("bonus", 0))}'.strip()
+                     for b in items or [] if isinstance(b, dict) and (b.get('ability_score') or {}).get('name'))
+
+
+def _race(d, ed):
+    """2014: a race (the 2024 'species')."""
+    facts = [('Size', d.get('size')), ('Speed', f'{d["speed"]} ft.' if d.get('speed') else ''),
+             ('Ability scores', _bonuses(d.get('ability_bonuses'))), ('Age', d.get('age')), ('Alignment', d.get('alignment')),
+             ('Languages', d.get('language_desc')), ('Subraces', ', '.join(_named(d.get('subraces'))))]
+    parts = [_plain(d.get('size_description'))] + _trait_paragraphs(d.get('traits'), ed)
+    return {'title': d.get('name', ''), 'subtitle': 'Race', 'facts': [(k, str(v)) for k, v in facts if v],
+            'body': '\n\n'.join(p for p in parts if p)}
+
+
+def _subrace(d, ed):
+    race = (d.get('race') or {}).get('name', '')
+    facts = [('Race', race), ('Ability scores', _bonuses(d.get('ability_bonuses')))]
+    parts = [_plain(d.get('desc'))] + _trait_paragraphs(d.get('racial_traits'), ed)
+    return {'title': d.get('name', ''), 'subtitle': f'{race} subrace'.strip(), 'facts': [(k, v) for k, v in facts if v],
+            'body': '\n\n'.join(p for p in parts if p)}
+
+
+def _subclass_2014(d, ed):
+    """2014: the subclass text, then its features level by level (each feature is its own entry on the API)."""
+    cls = (d.get('class') or {}).get('name', '')
+    parts = [_plain(d.get('subclass_flavor')), _plain(d.get('desc'))]
+    path = str(d.get('subclass_levels') or '')
+    path = path[len('/api/' + ed):] if path.startswith('/api/' + ed) else ''
+    try:
+        levels = _get_json(path, ed) if path else []
+    except SrdError:
+        levels = []                    # the subclass text stands without its feature list
+    seen = set()
+    for row in sorted((r for r in levels if isinstance(r, dict) and isinstance(r.get('level'), int)), key=lambda r: r['level']):
+        for f in row.get('features') or []:
+            idx = f.get('index') if isinstance(f, dict) else None
+            if not valid_index(idx) or idx in seen or len(seen) >= MAX_TRAITS:
+                continue
+            seen.add(idx)
+            try:
+                fd = _get_json(f'/features/{idx}', ed)
+            except SrdError:
+                continue
+            if isinstance(fd, dict) and fd.get('name'):
+                parts.append(f'Level {row["level"]}: {fd["name"]}. {_plain(fd.get("desc"))}')
+    return {'title': d.get('name', ''), 'subtitle': f'{cls} subclass'.strip(), 'facts': [('Class', cls)] if cls else [],
+            'body': '\n\n'.join(p for p in parts if p)}
+
+
 def _background(d):
+    if d.get('starting_proficiencies') is not None or d.get('feature'):      # 2014
+        feature = d.get('feature') if isinstance(d.get('feature'), dict) else {}
+        prof = [n.split(': ', 1)[-1] for n in _named(d.get('starting_proficiencies'))]
+        gold = d.get('starting_gold') if isinstance(d.get('starting_gold'), dict) else {}
+        facts = [('Proficiencies', ', '.join(prof)), ('Feature', feature.get('name', '')),
+                 ('Starting gold', f'{gold["quantity"]} {gold.get("unit", "gp")}' if gold.get('quantity') else '')]
+        fixed = [f'{(e.get("equipment") or {}).get("name", "")} x{e.get("quantity", 1)}' for e in d.get('starting_equipment') or []
+                 if isinstance(e, dict) and (e.get('equipment') or {}).get('name')]
+        parts = [f'{feature["name"]}. {_plain(feature.get("desc"))}' if feature.get('name') else '']
+        parts.append('Equipment: ' + ', '.join(fixed) if fixed else '')
+        parts += ['Equipment choice: ' + str(o['desc']) for o in d.get('starting_equipment_options') or [] if isinstance(o, dict) and o.get('desc')]
+        return {'title': d.get('name', ''), 'subtitle': 'Background', 'facts': [(k, v) for k, v in facts if v],
+                'body': '\n\n'.join(p for p in parts if p)}
     feat = d.get('feat') if isinstance(d.get('feat'), dict) else {}
     feat_text = feat.get('name', '') + (f' ({feat["note"]})' if feat.get('note') else '') if feat.get('name') else ''
     prof = [n.split(': ', 1)[-1] for n in _named(d.get('proficiencies'))]
@@ -364,8 +474,13 @@ def _background(d):
 
 def _feat(d):
     kind = str(d.get('type') or '').replace('-', ' ')
+    facts = [('Category', kind.capitalize())] if kind else []
+    pre = [f'{(p.get("ability_score") or {}).get("name", "")} {p.get("minimum_score", "")}'.strip()      # 2014
+           for p in d.get('prerequisites') or [] if isinstance(p, dict) and (p.get('ability_score') or {}).get('name')]
+    if pre:
+        facts.append(('Prerequisite', ', '.join(pre)))
     return {'title': d.get('name', ''), 'subtitle': f'{kind.capitalize()} feat' if kind else 'Feat',
-            'facts': [('Category', kind.capitalize())] if kind else [], 'body': _plain(d.get('description') or d.get('desc'))}
+            'facts': facts, 'body': _plain(d.get('description') or d.get('desc'))}
 
 
 def _rule(coll, d):
@@ -379,21 +494,26 @@ def _rule(coll, d):
     elif coll == 'alignments' and d.get('abbreviation'):
         facts.append(('Abbreviation', d['abbreviation']))
     elif coll == 'languages':
-        facts.append(('Rarity', 'Rare' if d.get('is_rare') else 'Standard'))
+        if d.get('type') or d.get('script'):                                    # 2014: type, script and who speaks it
+            facts += [('Type', d.get('type')), ('Script', d.get('script')), ('Typical speakers', ', '.join(str(x) for x in d.get('typical_speakers') or []))]
+        else:
+            facts.append(('Rarity', 'Rare' if d.get('is_rare') else 'Standard'))
         body = body or str(d.get('note') or '')
     elif coll == 'poisons':
         facts += [('Type', str(d.get('type') or '').capitalize()), ('Cost', f'{d["cost"]} gp' if d.get('cost') is not None else '')]
     return {'title': title, 'subtitle': label, 'facts': [(k, v) for k, v in facts if v], 'body': body}
 
 
-def detail(kind, ref):
+def detail(kind, ref, edition=DEFAULT_EDITION):
     """One entry ('spells/fireball', 'monsters/aboleth', 'equipment/longsword', 'magic-items/bag-of-holding')."""
-    if kind not in KINDS or not isinstance(ref, str) or '/' not in ref:
+    ed = check_edition(edition)
+    kinds = EDITIONS[ed]['kinds']
+    if kind not in kinds or not isinstance(ref, str) or '/' not in ref:
         raise SrdError('bad request')
     coll, index = ref.split('/', 1)
-    if coll not in KINDS[kind] or not valid_index(index):
+    if coll not in kinds[kind] or not valid_index(index):
         raise SrdError('bad request')
-    d = _get_json(f'/{coll}/{index}')
+    d = _get_json(f'/{coll}/{index}', ed)
     if not isinstance(d, dict) or not d.get('name'):
         raise SrdError('not found')
     if kind == 'spells':
@@ -404,18 +524,22 @@ def detail(kind, ref):
         return _condition(d)
     if kind == 'classes':
         if coll == 'subclasses':
-            return _subclass(d)
+            return _subclass_2014(d, ed) if ed == '2014' else _subclass(d)
         out = _class(d)
         path = str(d.get('class_levels') or f'/classes/{index}/levels')
-        path = path[len('/api/' + VERSION):] if path.startswith('/api/' + VERSION) else f'/classes/{index}/levels'
+        path = path[len('/api/' + ed):] if path.startswith('/api/' + ed) else f'/classes/{index}/levels'
         try:
-            table = _level_table(_get_json(path))
+            table = _level_table(_get_json(path, ed))
         except SrdError:
             table = ''        # the class text stands without its level table
         out['body'] = '\n\n'.join(x for x in (out['body'], table) if x)
         return out
     if kind == 'species':
-        return _species(d)
+        if coll == 'races':
+            return _race(d, ed)
+        if coll == 'subraces':
+            return _subrace(d, ed)
+        return _species(d, ed)
     if kind == 'backgrounds':
         return _background(d)
     if kind == 'feats':

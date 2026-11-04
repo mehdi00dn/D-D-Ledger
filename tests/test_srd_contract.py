@@ -51,14 +51,43 @@ for _coll, _idx, _name in (('classes', 'wizard', 'Wizard'), ('subclasses', 'evok
                            ('alignments', 'lawful-good', 'Lawful Good'), ('poisons', 'assassins-blood', "Assassin's Blood")):
     GOOD['/' + _coll] = {'results': [{'index': _idx, 'name': _name}]}
 
+GOOD_2014 = {
+    '/spells/fireball': {'name': 'Fireball', 'level': 3, 'school': {'name': 'Evocation'}, 'casting_time': '1 action', 'range': '150 feet',
+                         'duration': 'Instantaneous', 'components': ['V', 'S'], 'classes': [{'name': 'Wizard'}], 'desc': ['Boom.']},
+    '/monsters/goblin': {'name': 'Goblin', 'size': 'Small', 'type': 'humanoid', 'armor_class': [{'value': 15}], 'hit_points': 7,
+                         'speed': {'walk': '30 ft.'}, 'strength': 8, 'dexterity': 14, 'constitution': 10, 'intelligence': 10, 'wisdom': 8,
+                         'charisma': 8, 'challenge_rating': 0.25, 'proficiency_bonus': 2},
+    '/equipment/longsword': {'name': 'Longsword', 'cost': {'quantity': 15, 'unit': 'gp'}, 'equipment_category': {'name': 'Weapon'},
+                             'damage': {'damage_dice': '1d8', 'damage_type': {'name': 'Slashing'}}, 'properties': [{'name': 'Versatile'}]},
+    '/magic-items/bag-of-holding': {'name': 'Bag of Holding', 'rarity': {'name': 'Uncommon'}, 'equipment_category': {'name': 'Wondrous Items'}, 'desc': ['Bigger inside.']},
+    '/classes/wizard': {'name': 'Wizard', 'hit_die': 6, 'saving_throws': [{'name': 'INT'}], 'proficiencies': [{'name': 'Daggers'}],
+                        'class_levels': '/api/2014/classes/wizard/levels'},
+    '/classes/wizard/levels': [{'level': 1, 'prof_bonus': 2, 'features': [{'name': 'Spellcasting'}]}],
+    '/subclasses/evocation': {'name': 'Evocation', 'class': {'name': 'Wizard'}, 'desc': ['Elemental.'], 'subclass_levels': '/api/2014/subclasses/evocation/levels'},
+    '/subclasses/evocation/levels': [{'level': 2, 'features': [{'index': 'evocation-savant'}]}],
+    '/features/evocation-savant': {'name': 'Evocation Savant', 'desc': ['Cheaper copies.']},
+    '/races/elf': {'name': 'Elf', 'speed': 30, 'size': 'Medium', 'ability_bonuses': [{'ability_score': {'name': 'DEX'}, 'bonus': 2}],
+                   'traits': [{'index': 'darkvision', 'name': 'Darkvision'}]},
+    '/traits/darkvision': {'name': 'Darkvision', 'desc': ['See in the dark.']},
+    '/subraces/high-elf': {'name': 'High Elf', 'race': {'name': 'Elf'}, 'racial_traits': [{'index': 'darkvision'}], 'desc': 'Keen mind.'},
+    '/backgrounds/acolyte': {'name': 'Acolyte', 'starting_proficiencies': [{'name': 'Skill: Insight'}], 'feature': {'name': 'Shelter', 'desc': ['Help.']}},
+    '/feats/grappler': {'name': 'Grappler', 'prerequisites': [{'ability_score': {'name': 'STR'}, 'minimum_score': 13}], 'desc': ['Grapple.']},
+    '/skills/acrobatics': {'name': 'Acrobatics', 'desc': ['Balance.'], 'ability_score': {'name': 'DEX'}},
+    '/rules/adventuring': {'name': 'Adventuring', 'desc': 'Time matters.'},
+}
+for _coll in ('spells', 'monsters', 'equipment', 'magic-items', 'classes', 'subclasses', 'races', 'subraces', 'backgrounds', 'feats', 'skills',
+              'ability-scores', 'damage-types', 'weapon-properties', 'magic-schools', 'languages', 'alignments', 'rules', 'rule-sections'):
+    GOOD_2014['/' + _coll] = {'results': [{'index': 'x', 'name': 'X'}]}
+
 
 @pytest.fixture
 def api(monkeypatch):
     data = copy.deepcopy(GOOD)
 
-    def fake(path):
-        if path in data:
-            return data[path]
+    def fake(path, edition='2024'):
+        src = data if edition == '2024' else GOOD_2014
+        if path in src:
+            return src[path]
         raise srd.SrdError('not found')
     monkeypatch.setattr(srd, '_get_json', fake)
     return data
@@ -96,3 +125,11 @@ def test_weapon_without_prose_is_fine_but_without_stats_is_not(api):
 def test_unreachable_endpoint_is_reported(api):
     del api['/magic-items']
     assert any('/magic-items' in p for p in contract.check())
+
+
+def test_2014_edition_contract_passes_and_reports_its_own_problems(api):
+    assert contract.check(edition='2014') == []
+    del GOOD_2014['/races/elf']['traits']
+    probs = contract.check(edition='2014')
+    assert any(p.startswith('[2014] ') and 'traits' in p for p in probs)
+    assert contract.check() == []                                       # the 2024 contract is unaffected

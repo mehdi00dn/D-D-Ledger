@@ -4,6 +4,8 @@ import pytest
 import srd
 from conftest import BACKEND
 
+REAL_GET_JSON = srd._get_json          # the fixture below replaces srd._get_json with a fake; this is the real one
+
 new_code = pytest.mark.skipif(BACKEND == 'sqlite', reason='new-code tests')
 
 GOBLIN = {
@@ -86,17 +88,83 @@ EXTRA = {
 }
 DETAILS.update(EXTRA)
 
+# The 2014 edition: its own collections and field names (desc lists, races, no species), a few entries of each kind.
+LISTS_2014 = {
+    '/spells': {'results': [{'index': 'fireball', 'name': 'Fireball', 'level': 3}]},
+    '/monsters': {'results': [{'index': 'goblin', 'name': 'Goblin'}]},
+    '/equipment': {'results': [{'index': 'longsword', 'name': 'Longsword'}]},
+    '/magic-items': {'results': [{'index': 'bag-of-holding', 'name': 'Bag of Holding'}]},
+    '/conditions': {'results': [{'index': 'blinded', 'name': 'Blinded'}]},
+    '/classes': {'results': [{'index': 'wizard', 'name': 'Wizard'}]},
+    '/subclasses': {'results': [{'index': 'evocation', 'name': 'Evocation'}]},
+    '/races': {'results': [{'index': 'elf', 'name': 'Elf'}]},
+    '/subraces': {'results': [{'index': 'high-elf', 'name': 'High Elf'}]},
+    '/backgrounds': {'results': [{'index': 'acolyte', 'name': 'Acolyte'}]},
+    '/feats': {'results': [{'index': 'grappler', 'name': 'Grappler'}]},
+    '/skills': {'results': [{'index': 'acrobatics', 'name': 'Acrobatics'}]},
+    '/rules': {'results': [{'index': 'adventuring', 'name': 'Adventuring'}]},
+    '/rule-sections': {'results': [{'index': 'cover', 'name': 'Cover'}]},
+    '/languages': {'results': [{'index': 'common', 'name': 'Common'}]},
+}
+DETAILS_2014 = {
+    '/spells/fireball': {'name': 'Fireball', 'level': 3, 'school': {'name': 'Evocation'}, 'casting_time': '1 action', 'range': '150 feet',
+                         'components': ['V', 'S', 'M'], 'material': 'a tiny ball of bat guano', 'duration': 'Instantaneous', 'concentration': False,
+                         'classes': [{'name': 'Sorcerer'}, {'name': 'Wizard'}], 'desc': ['A bright streak flashes.', 'It explodes.'],
+                         'higher_level': ['The damage increases by 1d6.']},
+    '/monsters/goblin': {'name': 'Goblin', 'size': 'Small', 'type': 'humanoid', 'alignment': 'neutral evil', 'armor_class': [{'type': 'armor', 'value': 15}],
+                         'hit_points': 7, 'hit_points_roll': '2d6', 'speed': {'walk': '30 ft.'}, 'strength': 8, 'dexterity': 14, 'constitution': 10,
+                         'intelligence': 10, 'wisdom': 8, 'charisma': 8, 'challenge_rating': 0.25, 'xp': 50, 'proficiency_bonus': 2,
+                         'proficiencies': [{'value': 6, 'proficiency': {'index': 'skill-stealth'}}],
+                         'actions': [{'name': 'Scimitar', 'desc': 'Melee.', 'attack_bonus': 4,
+                                      'damage': [{'damage_type': {'name': 'Slashing'}, 'damage_dice': '1d6+2'}]}]},
+    '/equipment/longsword': {'name': 'Longsword', 'equipment_category': {'name': 'Weapon'}, 'category_range': 'Martial Melee',
+                             'cost': {'quantity': 15, 'unit': 'gp'}, 'weight': 3, 'damage': {'damage_dice': '1d8', 'damage_type': {'name': 'Slashing'}},
+                             'properties': [{'name': 'Versatile'}]},
+    '/magic-items/bag-of-holding': {'name': 'Bag of Holding', 'equipment_category': {'name': 'Wondrous Items'}, 'rarity': {'name': 'Uncommon'},
+                                    'desc': ['Wondrous item, uncommon (requires attunement)', 'Bigger inside.']},
+    '/conditions/blinded': {'name': 'Blinded', 'desc': ['- A blinded creature cannot see.']},
+    '/classes/wizard': {'name': 'Wizard', 'hit_die': 6, 'proficiencies': [{'name': 'Daggers'}, {'name': 'Saving Throw: INT'}],
+                        'saving_throws': [{'name': 'INT'}, {'name': 'WIS'}], 'class_levels': '/api/2014/classes/wizard/levels',
+                        'starting_equipment': [{'equipment': {'name': 'Spellbook'}, 'quantity': 1}],
+                        'proficiency_choices': [{'desc': 'Choose two skills'}],
+                        'spellcasting': {'level': 1, 'spellcasting_ability': {'name': 'INT'}, 'info': [{'name': 'Cantrips', 'desc': ['Know three.']}]},
+                        'multi_classing': {'prerequisites': [{'ability_score': {'name': 'INT'}, 'minimum_score': 13}]},
+                        'subclasses': [{'name': 'Evocation'}]},
+    '/classes/wizard/levels': [{'level': 1, 'prof_bonus': 2, 'features': [{'name': 'Spellcasting'}]},
+                               {'level': 2, 'prof_bonus': 2, 'features': [{'name': 'Arcane Tradition'}]}],
+    '/subclasses/evocation': {'name': 'Evocation', 'class': {'name': 'Wizard'}, 'subclass_flavor': 'Arcane Tradition', 'desc': ['You study elemental magic.'],
+                              'subclass_levels': '/api/2014/subclasses/evocation/levels'},
+    '/subclasses/evocation/levels': [{'level': 2, 'features': [{'index': 'evocation-savant', 'name': 'Evocation Savant'}, {'index': '../bad'}]},
+                                     {'level': 6, 'features': [{'index': 'missing-feature', 'name': 'Gone'}]}],
+    '/features/evocation-savant': {'name': 'Evocation Savant', 'desc': ['Copy evocation spells for half the cost.']},
+    '/races/elf': {'name': 'Elf', 'size': 'Medium', 'speed': 30, 'ability_bonuses': [{'ability_score': {'name': 'DEX'}, 'bonus': 2}],
+                   'age': 'Live to 750.', 'alignment': 'Chaotic.', 'language_desc': 'Common and Elvish.', 'size_description': 'Slender.',
+                   'traits': [{'index': 'darkvision', 'name': 'Darkvision'}, {'index': 'missing-trait'}], 'subraces': [{'name': 'High Elf'}]},
+    '/traits/darkvision': {'name': 'Darkvision', 'desc': ['You can see in the dark.']},
+    '/subraces/high-elf': {'name': 'High Elf', 'race': {'name': 'Elf'}, 'desc': 'Keen mind.', 'ability_bonuses': [{'ability_score': {'name': 'INT'}, 'bonus': 1}],
+                           'racial_traits': [{'index': 'darkvision', 'name': 'Darkvision'}]},
+    '/backgrounds/acolyte': {'name': 'Acolyte', 'starting_proficiencies': [{'name': 'Skill: Insight'}, {'name': 'Skill: Religion'}],
+                             'starting_gold': {'quantity': 15, 'unit': 'gp'}, 'starting_equipment': [{'equipment': {'name': 'Holy symbol'}, 'quantity': 1}],
+                             'feature': {'name': 'Shelter of the Faithful', 'desc': ['Free healing at a temple.']}},
+    '/feats/grappler': {'name': 'Grappler', 'prerequisites': [{'ability_score': {'name': 'STR'}, 'minimum_score': 13}], 'desc': ['Advantage on grapples.']},
+    '/skills/acrobatics': {'name': 'Acrobatics', 'desc': ['Stay on your feet.'], 'ability_score': {'name': 'DEX'}},
+    '/rules/adventuring': {'name': 'Adventuring', 'desc': '# Adventuring\n\n**Time** matters.'},
+    '/rule-sections/cover': {'name': 'Cover', 'desc': '## Cover\n\nHalf cover gives +2.'},
+    '/languages/common': {'name': 'Common', 'type': 'Standard', 'script': 'Common', 'typical_speakers': ['Humans']},
+}
+
 
 @pytest.fixture(autouse=True)
 def fake_api(monkeypatch):
     calls = []
 
-    def fake(path):
-        calls.append(path)
-        if path in LISTS:
-            return LISTS[path]
-        if path in DETAILS:
-            return DETAILS[path]
+    def fake(path, edition='2024'):
+        calls.append(path if edition == '2024' else f'{edition}:{path}')
+        lists, details = (LISTS, DETAILS) if edition == '2024' else (LISTS_2014, DETAILS_2014)
+        if path in lists:
+            return lists[path]
+        if path in details:
+            return details[path]
         raise srd.SrdError('not found')
     monkeypatch.setattr(srd, '_get_json', fake)
     return calls
@@ -179,7 +247,7 @@ def test_the_routes_need_a_campaign_and_return_json(make_user):
 
 @new_code
 def test_an_unreachable_api_gives_a_clean_error(make_user, monkeypatch):
-    def down(path):
+    def down(path, edition='2024'):
         raise srd.SrdError('The rules reference is unavailable right now.')
     monkeypatch.setattr(srd, '_get_json', down)
     dm = make_user(); cid = dm.new_campaign()
@@ -264,10 +332,10 @@ def test_a_class_reads_with_its_level_table():
 
 def test_a_class_survives_a_missing_level_table(monkeypatch):
     real = srd._get_json
-    def fake(path):
+    def fake(path, edition='2024'):
         if path.endswith('/levels'):
             raise srd.SrdError('The rules reference is unavailable right now.')
-        return real(path)
+        return real(path, edition)
     monkeypatch.setattr(srd, '_get_json', fake)
     assert 'Choose 2' in srd.detail('classes', 'classes/wizard')['body']
 
@@ -302,3 +370,108 @@ def test_the_page_has_a_tab_for_every_kind(make_user):
     rows = dm.get(f'/campaigns/{cid}/api/reference/search?kind=classes').json
     assert [r['name'] for r in rows] == ['Evoker', 'Wizard']
     assert dm.get(f'/campaigns/{cid}/api/reference/entry?kind=feats&ref=feats/alert').json['title'] == 'Alert'
+
+
+# ---- the 2014 edition ----
+
+def test_the_edition_is_checked_and_defaults_to_2024():
+    assert srd.check_edition(None) == '2024' and srd.check_edition('2014') == '2014'
+    assert srd.edition_of('2014') == '2014' and srd.edition_of('1999') == '2024'
+    with pytest.raises(srd.SrdError):
+        srd.search('spells', 'x', edition='1999')
+    with pytest.raises(srd.SrdError):
+        srd.detail('spells', 'spells/fireball', edition='1999')
+
+
+def test_2014_has_its_own_lists_and_kinds(fake_api):
+    assert [r['name'] for r in srd.search('spells', 'fire', edition='2014')] == ['Fireball']
+    assert [r['id'] for r in srd.search('species', '', edition='2014')] == ['races/elf', 'subraces/high-elf']
+    assert [r['sub'] for r in srd.search('species', '', edition='2014')] == ['Race', 'Subrace']
+    assert [r['id'] for r in srd.search('rules', 'c', edition='2014')] == ['languages/common', 'rule-sections/cover', 'skills/acrobatics']
+    assert '2014:/spells' in fake_api and '/spells' not in fake_api         # asked the 2014 API, not the 2024 one
+    assert [r['name'] for r in srd.search('spells', 'fire')] == ['Fire Bolt', 'Fireball']          # no edition = 2024
+    with pytest.raises(srd.SrdError):
+        srd.detail('species', 'species/elf', edition='2014')                # 2014 has races, not species
+
+
+def test_2014_spells_items_and_monsters_read_like_2024():
+    sp = srd.detail('spells', 'spells/fireball', edition='2014')
+    assert sp['subtitle'] == 'Level 3 evocation' and dict(sp['facts'])['Components'] == 'V, S, M (a tiny ball of bat guano)'
+    assert sp['body'] == 'A bright streak flashes.\n\nIt explodes.\n\nUsing a higher-level spell slot: The damage increases by 1d6.'
+    it = srd.detail('items', 'equipment/longsword', edition='2014')
+    assert it['subtitle'] == 'Weapon' and dict(it['facts'])['Category'] == 'Martial Melee' and dict(it['facts'])['Damage'] == '1d8 Slashing'
+    mi = srd.detail('items', 'magic-items/bag-of-holding', edition='2014')
+    assert dict(mi['facts']) == {'Rarity': 'Uncommon', 'Attunement': 'Required'} and mi['body'] == 'Bigger inside.'
+    c = srd.detail('monsters', 'monsters/goblin', edition='2014')['prefill']
+    assert (c['max_hp'], c['armor_class'], c['dex_score'], c['skill_prof']) == (7, 15, 14, {'stealth': 2})
+    assert srd.detail('conditions', 'conditions/blinded', edition='2014')['body'] == '- A blinded creature cannot see.'
+
+
+def test_2014_classes_races_backgrounds_and_feats():
+    cl = srd.detail('classes', 'classes/wizard', edition='2014')
+    assert dict(cl['facts'])['Saving throws'] == 'INT, WIS' and 'Starting equipment: Spellbook x1' in cl['body']
+    assert [l for l in cl['body'].splitlines() if l.startswith('| 2')] == ['| 2 | +2 | Arcane Tradition |']      # level table from the 2014 path
+    sub = srd.detail('classes', 'subclasses/evocation', edition='2014')
+    assert sub['subtitle'] == 'Wizard subclass' and 'Level 2: Evocation Savant. Copy evocation spells for half the cost.' in sub['body']
+    assert 'Gone' not in sub['body'] and sub['body'].startswith('Arcane Tradition')               # a missing or bad feature is skipped
+    race = srd.detail('species', 'races/elf', edition='2014')
+    assert race['subtitle'] == 'Race' and dict(race['facts'])['Ability scores'] == 'DEX +2' and dict(race['facts'])['Subraces'] == 'High Elf'
+    assert race['body'] == 'Slender.\n\nDarkvision. You can see in the dark.'
+    sr = srd.detail('species', 'subraces/high-elf', edition='2014')
+    assert sr['subtitle'] == 'Elf subrace' and dict(sr['facts'])['Ability scores'] == 'INT +1' and 'Keen mind.' in sr['body']
+    bg = srd.detail('backgrounds', 'backgrounds/acolyte', edition='2014')
+    assert dict(bg['facts']) == {'Proficiencies': 'Insight, Religion', 'Feature': 'Shelter of the Faithful', 'Starting gold': '15 gp'}
+    assert 'Equipment: Holy symbol x1' in bg['body'] and bg['body'].startswith('Shelter of the Faithful. Free healing')
+    assert dict(srd.detail('feats', 'feats/grappler', edition='2014')['facts']) == {'Prerequisite': 'STR 13'}
+
+
+def test_2014_rules_drop_markdown_marks_and_describe_languages():
+    assert srd.detail('rules', 'rules/adventuring', edition='2014')['body'] == 'Adventuring\n\nTime matters.'
+    assert srd.detail('rules', 'rule-sections/cover', edition='2014')['body'] == 'Cover\n\nHalf cover gives +2.'
+    assert dict(srd.detail('rules', 'languages/common', edition='2014')['facts']) == {'Type': 'Standard', 'Script': 'Common', 'Typical speakers': 'Humans'}
+
+
+def test_cached_entries_are_kept_per_edition(monkeypatch):
+    calls = []
+    class R:
+        status_code = 200
+        def raise_for_status(self): pass
+        def json(self): return {'results': []}
+    monkeypatch.setattr(srd.requests, 'get', lambda url, **kw: calls.append(url) or R())
+    srd.clear_cache()
+    REAL_GET_JSON('/spells', '2014'); REAL_GET_JSON('/spells', '2024'); REAL_GET_JSON('/spells', '2014')
+    assert [u.rsplit('/api/', 1)[1] for u in calls] == ['2014/spells', '2024/spells']
+
+
+@new_code
+def test_reference_outside_a_campaign_and_the_edition_switch(make_user):
+    u = make_user()
+    html = u.get('/reference').get_data(as_text=True)
+    assert 'data-base="/api/reference/"' in html and 'data-edition="2024"' in html and '>Species</button>' in html
+    assert 'System Reference Document 5.2.1' in html and 'data-ref-detail' in html
+    assert u.get('/api/reference/search?kind=spells&q=fireb').json == [{'id': 'spells/fireball', 'name': 'Fireball', 'sub': 'Level 3'}]
+    assert u.get('/api/reference/entry?kind=feats&ref=feats/alert').json['title'] == 'Alert'
+    old = u.get('/reference?edition=2014').get_data(as_text=True)
+    assert 'data-edition="2014"' in old and '>Races</button>' in old and 'System Reference Document 5.1' in old
+    assert 'data-edition="2014"' in u.get('/reference').get_data(as_text=True)            # remembered for the next visit
+    assert u.get('/api/reference/search?kind=species&edition=2014').json[0]['id'] == 'races/elf'
+    assert u.get('/api/reference/entry?kind=species&ref=races/elf&edition=2014').json['title'] == 'Elf'
+    assert u.get('/api/reference/search?kind=spells&edition=1999').status_code == 400
+    assert u.get('/reference?edition=1999').status_code == 200                              # a bad value falls back, it never errors the page
+    cid = u.new_campaign()
+    assert 'data-base="/campaigns/%s/api/reference/"' % cid in u.get(f'/campaigns/{cid}/reference').get_data(as_text=True)
+    assert u.get(f'/campaigns/{cid}/api/reference/entry?kind=classes&ref=classes/wizard&edition=2014').json['title'] == 'Wizard'
+
+
+@new_code
+def test_the_reference_is_in_the_menu_outside_a_campaign(make_user):
+    u = make_user()
+    html = u.get('/campaigns').get_data(as_text=True)
+    assert 'href="/reference"' in html and html.count('href="/reference"') >= 2           # sidebar and the phone More sheet
+
+
+@new_code
+def test_the_reference_needs_a_login(appmod):
+    anon = appmod.app.test_client()
+    assert anon.get('/reference').status_code in (302, 401)
+    assert anon.get('/api/reference/search?kind=spells').status_code in (302, 401)

@@ -885,9 +885,12 @@ body.page-leaving .content {
   cursor: pointer;
   transition: background 0.18s ease, color 0.18s ease;
 }
+.segmented-switch a { font-family: var(--font-mono); font-size: 11.5px; padding: 6px 14px; border-radius: 999px; color: var(--parchment-dim); text-decoration: none; transition: background 0.18s ease, color 0.18s ease; }
+.segmented-switch a:hover { color: var(--parchment); }
+.segmented-switch a.active { background: var(--brass); color: #21170a; }
 .segmented-switch button:hover { color: var(--parchment); }
 .segmented-switch button.active { background: var(--brass); color: #21170a; }
-:root[data-theme="light"] .segmented-switch button.active { color: #fff; }
+:root[data-theme="light"] .segmented-switch button.active, :root[data-theme="light"] .segmented-switch a.active { color: #fff; }
 
 /* ==========================================================================
    Group banner cards

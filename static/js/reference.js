@@ -23,11 +23,11 @@
   }
 
   // Create the monster as an NPC and put it in the battle (DM only). Resolves to the new battle rows.
-  async function addMonsterToBattle(ref, count, hp) {
+  async function addMonsterToBattle(ref, count, hp, edition) {
     const r = await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/battle/add-monster`, {
       method: 'POST', credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify({ ref, count, hp }),
+      body: JSON.stringify({ ref, count, hp, edition }),
     });
     let data = null;
     try { data = await r.json(); } catch (e) { /* not json */ }
@@ -38,6 +38,7 @@
   // A result list bound to one kind. onPick(entry) is called with the clicked {id, name, sub}.
   function bindSearch(opts) {
     const { base, input, list, onPick } = opts;
+    const edition = opts.edition ? `&edition=${opts.edition}` : '';
     let kind = opts.kind;
     let seq = 0;
 
@@ -45,7 +46,7 @@
       const mine = ++seq;
       list.replaceChildren(el('li', 'ref-empty', 'Loading…'));
       try {
-        const rows = await getJson(`${base}search?kind=${kind}&q=${encodeURIComponent(input.value.trim())}`);
+        const rows = await getJson(`${base}search?kind=${kind}&q=${encodeURIComponent(input.value.trim())}${edition}`);
         if (mine !== seq) return;
         list.replaceChildren();
         if (!rows.length) list.append(el('li', 'ref-empty', 'No matches.'));
@@ -130,7 +131,7 @@
   }
 
   // "Add to battle": how many, average or rolled HP, one button.
-  function battleBar(row) {
+  function battleBar(row, edition) {
     const bar = el('div', 'ref-battle-bar');
     const count = el('input'); count.type = 'number'; count.min = '1'; count.max = '12'; count.value = '1'; count.setAttribute('aria-label', 'How many');
     const hp = el('select'); hp.setAttribute('aria-label', 'Hit points');
@@ -141,7 +142,7 @@
       btn.disabled = true; msg.classList.remove('ref-error'); msg.textContent = 'Adding…';
       try {
         const n = Math.max(1, Math.min(12, parseInt(count.value, 10) || 1));
-        await addMonsterToBattle(row.id, n, hp.value);
+        await addMonsterToBattle(row.id, n, hp.value, edition);
         msg.textContent = `Added ${n} to the battle.`;
       } catch (e) { msg.textContent = e.message; msg.classList.add('ref-error'); }
       btn.disabled = false;
@@ -157,6 +158,7 @@
     const tabs = page.querySelectorAll('.ref-tab');
     const input = page.querySelector('[data-ref-query]');
     let kind = 'spells';
+    const edition = page.dataset.edition || '';
     // On a phone the result list only shows while the search box is in use: it would otherwise push the entry far down the page.
     const card = page.querySelector('.ref-list-card');
     const phone = window.matchMedia('(max-width: 860px)');
@@ -171,15 +173,15 @@
     document.addEventListener('pointerup', () => { setTimeout(() => { pressing = false; }, 0); });
     document.addEventListener('pointerdown', (e) => { if (!card.contains(e.target)) { input.blur(); closeList(); } });
     const search = bindSearch({
-      base: page.dataset.base, kind, input, list: page.querySelector('[data-ref-list]'),
+      base: page.dataset.base, kind, edition, input, list: page.querySelector('[data-ref-list]'),
       onPick: async (row, btn) => {
         if (phone.matches) { input.blur(); closeList(); detail.scrollIntoView({ block: 'start', behavior: 'smooth' }); }
         page.querySelectorAll('.ref-item.is-active').forEach((n) => n.classList.remove('is-active'));
         btn.classList.add('is-active');
         detail.replaceChildren(el('p', 'hint-text', 'Loading…'));
         try {
-          renderDetail(detail, await getJson(`${page.dataset.base}entry?kind=${kind}&ref=${encodeURIComponent(row.id)}`));
-          if (kind === 'monsters' && page.dataset.dm === '1') detail.append(battleBar(row));
+          renderDetail(detail, await getJson(`${page.dataset.base}entry?kind=${kind}&ref=${encodeURIComponent(row.id)}${edition ? '&edition=' + edition : ''}`));
+          if (kind === 'monsters' && page.dataset.dm === '1') detail.append(battleBar(row, edition));
         }
         catch (e) { detail.replaceChildren(el('p', 'hint-text ref-error', e.message)); }
       },

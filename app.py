@@ -4687,7 +4687,7 @@ def api_battle_add_monster():
         return api_error(f'Add between 1 and {MONSTER_COUNT_MAX} at a time.', 400)
     rolled = data.get('hp') == 'rolled'
     try:
-        entry = srd.detail('monsters', data.get('ref'))
+        entry = srd.detail('monsters', data.get('ref'), edition=data.get('edition'))
     except srd.SrdError as e:
         return api_error(str(e), _srd_status(e))
     db = get_db()
@@ -6098,32 +6098,70 @@ def dice_rolls():
 
 # ---------------- RULES REFERENCE (spells, monsters, items: the public 5e API, 2024 rules) ----------------
 
-@app.route('/campaigns/<int:campaign_id>/reference')
-@campaign_access_required
-def reference_view():
-    return render_template('reference.html', kinds=list(srd.KINDS), version=srd.VERSION)
+def _reference_edition():
+    """Which rulebook the page shows: ?edition=2014|2024 wins and is remembered for this browser session; else the last one used."""
+    asked = request.args.get('edition')
+    if asked in srd.EDITIONS:
+        session['ref_edition'] = asked
+        return asked
+    return session.get('ref_edition') if session.get('ref_edition') in srd.EDITIONS else srd.DEFAULT_EDITION
+
+
+def _reference_page(api_base):
+    ed = _reference_edition()
+    return render_template('reference.html', kinds=list(srd.EDITIONS[ed]['kinds']), edition=ed, editions=srd.EDITIONS, api_base=api_base)
 
 
 def _srd_status(e):
     return {'bad request': 400, 'not found': 404}.get(str(e), 502)
 
 
+def _reference_search_response():
+    try:
+        return jsonify(srd.search(request.args.get('kind', ''), request.args.get('q', ''), edition=request.args.get('edition')))
+    except srd.SrdError as e:
+        return api_error(str(e), _srd_status(e))
+
+
+def _reference_entry_response():
+    try:
+        return jsonify(srd.detail(request.args.get('kind', ''), request.args.get('ref', ''), edition=request.args.get('edition')))
+    except srd.SrdError as e:
+        return api_error(str(e), _srd_status(e))
+
+
+@app.route('/campaigns/<int:campaign_id>/reference')
+@campaign_access_required
+def reference_view():
+    return _reference_page(url_for('reference_view').rsplit('/reference', 1)[0] + '/api/reference/')
+
+
 @app.route('/campaigns/<int:campaign_id>/api/reference/search')
 @campaign_access_required
 def reference_search():
-    try:
-        return jsonify(srd.search(request.args.get('kind', ''), request.args.get('q', '')))
-    except srd.SrdError as e:
-        return api_error(str(e), _srd_status(e))
+    return _reference_search_response()
 
 
 @app.route('/campaigns/<int:campaign_id>/api/reference/entry')
 @campaign_access_required
 def reference_detail():
-    try:
-        return jsonify(srd.detail(request.args.get('kind', ''), request.args.get('ref', '')))
-    except srd.SrdError as e:
-        return api_error(str(e), _srd_status(e))
+    return _reference_entry_response()
+
+
+# The same reference outside any campaign (any signed-in user: it is public rules text, nothing of a campaign's is in it).
+@app.route('/reference')
+def reference_global():
+    return _reference_page('/api/reference/')
+
+
+@app.route('/api/reference/search')
+def reference_global_search():
+    return _reference_search_response()
+
+
+@app.route('/api/reference/entry')
+def reference_global_detail():
+    return _reference_entry_response()
 
 
 # ---------------- EXPORT / IMPORT ----------------
