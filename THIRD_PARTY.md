@@ -54,7 +54,7 @@ belongs to DL-80 (applicable local laws) and DL-82.
 | lottie-web | `static/vendor/` | Verified: MIT, licence file bundled |
 | Map pin icons: skull, sword, hand, paw | `static/icons/pins/` | Source per owner: SVG Repo (the files carry SVG Repo headers). **Open:** SVG Repo licences are per icon (CC0, MIT, CC BY, ...) and the original author and licence of each were not recorded |
 | Class icons (13) | `static/icons/classes.svg` | Source per owner: SVG Repo or Flaticon, otherwise drawn by Claude. **Open:** the SVG files carry no author or licence, so which icon came from where is not recorded |
-| Condition icons (15) | `static/icons/conditions.svg` | Same as the class icons |
+| Condition icons (15) | `static/icons/conditions.svg` | [game-icons.net](https://game-icons.net), Creative Commons Attribution 3.0 (DL-173). Credited by author on the About page: Lorc, Delapouite, Skoll, Cathelineau, Sbed. The SVG paths come from the `@iconify-json/game-icons` package, recoloured with `currentColor`; the sprite also holds the app's own `custom` and `plus` symbols |
 | Fog animation | `static/fog/fog-smoke.json` | [Fog / Smoke Animation by Ladon Sklyarov, LottieFiles](https://lottiefiles.com/free-animation/fog-smoke-gcgRd1137Q), under the Lottie Simple License: commercial use and changes allowed, no attribution required but strongly encouraged (if given, it must be visible to users). Owner plans to replace it with his own work later |
 | Logo and favicons | `static/logo/` | Assumed the owner's own work (DL-90 redraw is the owner's task) |
 
