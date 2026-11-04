@@ -2952,6 +2952,7 @@ body.page-leaving .content {
   border-radius: var(--radius-s); border: 1px solid var(--hairline); color: var(--brass-bright-ink);
 }
 .foot-bell:hover { border-color: var(--brass); background: rgba(201,162,75,0.08); }
+.foot-profile { display: none; }                                  /* phone top bar only (see the phone block) */
 .foot-bell svg { width: 17px; height: 17px; }
 .foot-bell .nav-badge { position: absolute; top: 4px; inset-inline-end: 4px; margin: 0; min-width: 16px; padding: 0 4px; font-size: 10px; line-height: 16px; }
 :root[data-sidebar="collapsed"] .foot-actions { flex-direction: column; }
@@ -3967,6 +3968,21 @@ body.page-leaving .content {
   .sidebar-foot .foot-actions { margin: 0; }
   .sidebar-foot .foot-bell { flex: 0 0 auto; width: 34px; height: 34px; border-radius: 999px; border-color: transparent; background: transparent; }
   .sidebar-foot .foot-bell:active { background: var(--bg-panel-inset); }
+  /* outside a campaign the top bar shows your profile in place of the Privacy shield (Privacy stays in the More sheet) */
+  .sidebar-foot .foot-privacy { display: none; }
+  .sidebar-foot .foot-profile {
+    display: flex; align-items: center; justify-content: center; flex: 0 0 auto; inline-size: 34px; block-size: 34px;
+    margin-inline-end: 6px;                                                   /* the 28px picture, not the 34px tap area, sits on the content gutter */
+    border-radius: 999px; color: var(--brass-bright-ink); -webkit-tap-highlight-color: transparent;
+    transition: transform 140ms cubic-bezier(0.23, 1, 0.32, 1);
+  }
+  .sidebar-foot .foot-profile:active { transform: scale(0.94); }
+  .sidebar-foot .foot-profile img, .sidebar-foot .foot-profile-ico {
+    inline-size: 28px; block-size: 28px; border-radius: 50%; box-sizing: border-box; object-fit: cover;
+    box-shadow: 0 0 0 1px var(--hairline);
+  }
+  .sidebar-foot .foot-profile-ico { display: flex; align-items: center; justify-content: center; background: var(--bg-panel-inset); }
+  .sidebar-foot .foot-profile-ico svg { inline-size: 16px; block-size: 16px; }
 
   /* bottom bar: four places and "More", on a blurred material */
   .sidebar-nav {

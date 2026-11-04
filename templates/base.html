@@ -152,7 +152,15 @@
           <span class="theme-icon theme-icon-sun">{{ icon('sun') }}</span>
           <span class="theme-icon theme-icon-moon">{{ icon('moon') }}</span>
         </button>
-        {% if not g.campaign_id %}<a href="{{ url_for('privacy') }}" class="foot-bell foot-privacy" title="Privacy" aria-label="Privacy">{{ icon('shield') }}</a>{% endif %}
+        {% if not g.campaign_id %}
+        {% if session.username %}{% set me = my_profile() %}
+        {# phone only (the desktop sidebar has the profile row above): your profile, where the Privacy shield used to sit #}
+        <a href="{{ url_for('account') }}" class="foot-profile" title="Your profile" aria-label="Your profile ({{ (me.display_name if me and me.display_name else session.username) }})">
+          {% if me and me.avatar_path %}<img src="{{ url_for('uploaded_file', filename=me.avatar_path) }}" alt="">{% else %}<span class="foot-profile-ico">{{ icon('user') }}</span>{% endif %}
+        </a>
+        {% endif %}
+        <a href="{{ url_for('privacy') }}" class="foot-bell foot-privacy" title="Privacy" aria-label="Privacy">{{ icon('shield') }}</a>
+        {% endif %}
         {% if g.campaign_id and session.user_id %}
         {% set unread = unread_notification_count() %}
         <a href="{{ url_for('notifications_page') }}" class="foot-bell" title="Notifications{{ ' (%d unread)' % unread if unread else '' }}" aria-label="Notifications{{ ' (%d unread)' % unread if unread else '' }}">

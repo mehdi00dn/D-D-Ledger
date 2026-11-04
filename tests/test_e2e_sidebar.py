@@ -165,9 +165,13 @@ def test_phone_top_bar_icons_and_notification_tab_line_up(shared_server, pw):
     page.goto(f'{base}/campaigns')
     top = page.locator('.sidebar').bounding_box()
     mark = page.locator('.sidebar-brand').bounding_box()
-    icon = page.locator('.sidebar-foot .foot-bell svg').bounding_box()
-    assert abs((icon['y'] + icon['height'] / 2) - (mark['y'] + mark['height'] / 2)) <= 1, 'the shield sits on the logo\'s centre line'
-    assert abs(top['width'] - (icon['x'] + icon['width']) - 14) <= 1, 'the glyph sits on the 14px content gutter'
+    assert not page.locator('.sidebar-foot .foot-privacy').is_visible(), 'outside a campaign the top bar shows the profile, not the Privacy shield'
+    icon = page.locator('.sidebar-foot .foot-profile > *').first.bounding_box()
+    assert abs((icon['y'] + icon['height'] / 2) - (mark['y'] + mark['height'] / 2)) <= 1, 'the profile picture sits on the logo\'s centre line'
+    assert abs(top['width'] - (icon['x'] + icon['width']) - 14) <= 1, 'the picture sits on the 14px content gutter'
+    page.click('.sidebar-foot .foot-profile'); page.wait_for_url('**/account')                    # it opens the profile page
+    page.goto(f'{base}/campaigns'); page.locator('.more-chip', has_text='Privacy').count() or page.click('[data-more]')
+    assert 'Privacy' in page.inner_text('.more-links') or page.locator('.more-chip', has_text='Privacy').count() == 1
     shown = page.locator('.sidebar-nav .nav-tab:visible')                 # tabs that live in the More sheet on a phone are hidden
     tabs = [shown.nth(i).locator('svg').bounding_box()['y'] for i in range(shown.count())]
     inactive = [y for y, cls in zip(tabs, shown.evaluate_all('els => els.map(e => e.className)')) if 'active' not in cls]
