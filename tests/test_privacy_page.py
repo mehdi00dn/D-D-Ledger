@@ -27,7 +27,7 @@ def test_privacy_is_linked_outside_campaigns_only(make_user):
 
 def test_terms_and_cookies_pages_are_public_and_cross_linked(appmod):
     c = appmod.app.test_client()
-    for path, needle in (('/terms', 'Terms of use'), ('/cookies', '__Host-ledger'), ('/privacy', 'What we keep')):
+    for path, needle in (('/terms', 'Terms of use'), ('/cookies', '__Host-oaken'), ('/privacy', 'What we keep')):
         r = c.get(path); text = r.get_data(as_text=True)
         assert r.status_code == 200 and needle in text
         assert 'href="/terms"' in text and 'href="/cookies"' in text and 'href="/privacy"' in text
@@ -50,7 +50,7 @@ def test_about_and_contact_are_public_and_contact_waits_for_an_address(appmod, m
     c = appmod.app.test_client()
     monkeypatch.delenv('PRIVACY_CONTACT', raising=False)
     about = c.get('/about'); contact = c.get('/contact')
-    assert about.status_code == 200 and 'About Campaign Ledger' in about.get_data(as_text=True)
+    assert about.status_code == 200 and 'About Oaken' in about.get_data(as_text=True)
     assert contact.status_code == 200 and 'being set up' in contact.get_data(as_text=True) and 'mailto:' not in contact.get_data(as_text=True)
     monkeypatch.setenv('PRIVACY_CONTACT', 'hello@example.com')
     assert 'mailto:hello@example.com' in c.get('/contact').get_data(as_text=True)
@@ -72,15 +72,17 @@ import re  # noqa: E402
 _ROOT = os.path.join(os.path.dirname(__file__), '..')
 # every key the scripts keep in the browser -> a phrase the Cookies page must use to describe it
 STORAGE_KEYS = {
-    'ledger-theme': 'Light or dark theme',
-    'ledger-sidebar-collapsed': 'sidebar is collapsed',
-    'ledger-map-dock-tucked': 'map tool dock',
-    'ledger-map-modifier-hint-dismissed': 'map tips',
-    'ledger-map-nav-hint-dismissed': 'map tips',
-    'ledger-map-space-hint-dismissed': 'map tips',
-    'ledger-map-share-measure': 'Show to table',
+    'oaken-theme': 'Light or dark theme',
+    'oaken-sidebar-collapsed': 'sidebar is collapsed',
+    'ledger-theme': 'Light or dark theme',                 # DL-176: the pre-rename key is still read once, so the choice carries over
+    'ledger-sidebar-collapsed': 'sidebar is collapsed',   # DL-176: same
+    'oaken-map-dock-tucked': 'map tool dock',
+    'oaken-map-modifier-hint-dismissed': 'map tips',
+    'oaken-map-nav-hint-dismissed': 'map tips',
+    'oaken-map-space-hint-dismissed': 'map tips',
+    'oaken-map-share-measure': 'Show to table',
     'account-section': 'section of Account settings',
-    'ledger-fullscreen': 'full screen',
+    'oaken-fullscreen': 'full screen',
 }
 
 

@@ -1,5 +1,5 @@
 /* Click-to-roll for a character's numbers.  Any element with data-roll-bonus (a skill, a save, an ability check,
- * initiative) rolls d20 + that bonus through LedgerDice, so everyone in the campaign sees it.
+ * initiative) rolls d20 + that bonus through OakenDice, so everyone in the campaign sees it.
  * Shift-click rolls with advantage, Ctrl/Cmd/Alt-click with disadvantage; a Normal / Adv. / Dis. switch does the same
  * for touch screens, where there is no modifier key.  The bonus is read from the page and the server just adds it,
  * so this is a convenience: the server never treats it as a character fact.
@@ -13,7 +13,7 @@
  */
 (function () {
   'use strict';
-  if (!window.LedgerDice) return;
+  if (!window.OakenDice) return;
 
   function bind(root, getCharacterId, modeName, getParticipantId) {
     function chosenMode(ev) {
@@ -29,14 +29,14 @@
       var dice = { '20': 1 }, damage = false;
       var spec = target.getAttribute('data-roll-dice');      // a damage roll (DL-150): those dice, never with advantage
       if (spec) { try { dice = JSON.parse(spec); damage = true; } catch (e) { /* fall back to a d20 */ } }
-      LedgerDice.roll({
+      OakenDice.roll({
         dice: dice,
         modifier: parseInt(target.getAttribute('data-roll-bonus'), 10) || 0,
         label: target.getAttribute('data-roll-label') || '',
         mode: damage ? 'normal' : chosenMode(ev),
         character_id: getCharacterId(),
         participant_id: getParticipantId ? getParticipantId() : null
-      }).catch(function (err) { LedgerDice.announceError(err.message); })
+      }).catch(function (err) { OakenDice.announceError(err.message); })
         .then(function () { target.classList.remove('is-rolling'); });
     }
 

@@ -12,7 +12,7 @@
  *
  * The server re-validates everything either way; nothing here is trusted.
  *
- * window.LEDGER_UPLOAD_MODE = 'direct' | 'inline' forces a path (for troubleshooting/tests).
+ * window.OAKEN_UPLOAD_MODE = 'direct' | 'inline' forces a path (for troubleshooting/tests).
  */
 (function () {
   'use strict';
@@ -296,7 +296,7 @@
     if (form.dataset.uploading) return;                        // already on its way: a second click must not create a duplicate
     form.dataset.uploading = '1';
     var submitter = ev.submitter || null;
-    var mode = window.LEDGER_UPLOAD_MODE;
+    var mode = window.OAKEN_UPLOAD_MODE;
     var saving = Array.prototype.some.call(inputs, function (i) { return i.name === 'import_file'; }) ? 'Importing\u2026' : 'Saving\u2026';
     try {
       if (mode === 'inline' || (mode !== 'direct' && totalSize(inputs) <= INLINE_LIMIT)) {

@@ -22,15 +22,15 @@ Source: [Supabase: Database Backups](https://supabase.com/docs/guides/platform/b
 ```
 export BACKUP_DATABASE_URL="postgresql://postgres:PASSWORD@db.PROJECT_REF.supabase.co:5432/postgres"   # direct or session pooler
 export SUPABASE_URL="https://PROJECT_REF.supabase.co"  SUPABASE_SECRET_KEY="sb_secret_..."
-python scripts/backup.py --out ~/ledger-backups --keep 8
+python scripts/backup.py --out ~/oaken-backups --keep 8
 ```
 
 * Use the **direct** or **session-pooler** connection string, not the transaction pooler (port 6543) that Vercel uses.
 * `pg_dump` must be the same major version as the server or newer (Supabase runs Postgres 17: `postgresql-client-17`).
 * Backups contain personal data. The folder is created readable only by you. Encrypt before copying it anywhere else
-  (for example `tar c ledger-2026... | age -p > backup.tar.age`), and never commit it (`backups/` is git-ignored).
+  (for example `tar c oaken-2026... | age -p > backup.tar.age`), and never commit it (`backups/` is git-ignored).
 * How often: **weekly while the site is in testing, daily once real campaigns run** (a day of lost play is the
-  most a table should have to redo). Example crontab line: `15 3 * * * cd /path/to/D-D-Ledger && python scripts/backup.py --out ~/ledger-backups --keep 14`
+  most a table should have to redo). Example crontab line: `15 3 * * * cd /path/to/D-D-Ledger && python scripts/backup.py --out ~/oaken-backups --keep 14`
   (put the variables in a file that cron loads, not in the crontab).
 * Keep at least one copy off the machine that took it.
 
@@ -39,7 +39,7 @@ python scripts/backup.py --out ~/ledger-backups --keep 8
 ```
 docker run -d --name drill-pg -p 55432:5432 -e POSTGRES_PASSWORD=drill postgres:17
 export DRILL_PG_ADMIN="postgresql://postgres:drill@localhost:55432/postgres"
-python scripts/restore_drill.py ~/ledger-backups/ledger-20261014-221500Z
+python scripts/restore_drill.py ~/oaken-backups/oaken-20261014-221500Z
 ```
 
 The drill never touches production. It creates a throw-away database on the Postgres server above, restores the dump

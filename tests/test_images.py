@@ -5,7 +5,7 @@ from PIL import Image
 import images
 from images import ImageError, process_image, SERVE_LIMIT
 
-pytestmark = pytest.mark.skipif(os.environ.get('LEDGER_TEST_BACKEND', 'sqlite') == 'sqlite', reason='new-code unit tests')
+pytestmark = pytest.mark.skipif(os.environ.get('OAKEN_TEST_BACKEND', 'sqlite') == 'sqlite', reason='new-code unit tests')
 
 
 def enc(img, fmt, **kw):

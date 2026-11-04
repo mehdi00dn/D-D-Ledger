@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon, class_icon %}
 {% set active_page = 'characters' %}
-{% block title %}Characters — Campaign Ledger{% endblock %}
+{% block title %}Characters — Oaken{% endblock %}
 
 {% block content %}
 <div class="page-header">
@@ -38,7 +38,7 @@
 {% if request.args.get('import_error') == 'quota' %}
 <div class="banner-notice banner-error">That import would pass this campaign's or your image storage limit, so nothing was imported. Free some space (delete images you no longer need) or import a smaller file.</div>
 {% elif request.args.get('import_error') %}
-<div class="banner-notice banner-error">That file couldn't be read as a Campaign Ledger export. Make sure you're uploading a .zip created by the Export button.</div>
+<div class="banner-notice banner-error">That file couldn't be read as a Oaken export. Make sure you're uploading a .zip created by the Export button.</div>
 {% endif %}
 
 {% if library_options %}

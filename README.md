@@ -1,4 +1,6 @@
-# Campaign Ledger — D&D Campaign Manager
+# Oaken — D&D Campaign Manager
+
+> **Renamed (DL-176).** The app was called Campaign Ledger / D&D Ledger; it is now **Oaken**. Still using the old names on purpose: the Supabase buckets `ledger-uploads` and `ledger-temp` (override with `STORAGE_BUCKET_UPLOADS` / `STORAGE_BUCKET_TEMP`), the Vercel project and URL, and the GitHub repository. `LEDGER_QUOTA_*` variables still work when `OAKEN_QUOTA_*` are not set. The session cookie is now `__Host-oaken` (`oaken_session` locally), so everyone signs in once more after the update. Migration `0057_rename_to_oaken.sql` rewrites the old name in the tutorial campaign's text.
 
 A browser-based app for running D&D campaigns online with your table: campaigns and
 members, characters and factions, live battles, interactive maps, dice, and a 2024
@@ -62,7 +64,7 @@ Python 3.12 and a Postgres database are needed.
 ```
 pip install -r requirements-dev.txt
 cp .env.example .env              # set DATABASE_URL and SECRET_KEY
-docker run -d -p 5432:5432 -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=ledger postgres:16
+docker run -d -p 5432:5432 -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=oaken postgres:16
 python app.py                     # AUTO_MIGRATE=1 creates the tables
 ```
 
@@ -81,7 +83,7 @@ Open **http://127.0.0.1:5000**. Uploads go to `./uploads` locally (no Supabase n
 Images are re-encoded before they are stored, and what is kept is counted per user and per campaign
 (table `stored_files`, module `quotas.py`). Defaults: **150 MB per user**, **300 MB per campaign**; the
 existing per-file caps (avatar 8 MB, sheet 25 MB, map 30 MB, import ZIP 50 MB) still apply. Change them with
-`LEDGER_QUOTA_USER_MB` and `LEDGER_QUOTA_CAMPAIGN_MB` (`0` turns a limit off). The server refuses an upload
+`OAKEN_QUOTA_USER_MB` and `OAKEN_QUOTA_CAMPAIGN_MB` (`0` turns a limit off). The server refuses an upload
 that would pass a limit, saves nothing and shows a banner; imports are checked as a whole, so a refused
 import adds nothing. Deleting or replacing an image frees its space. Images uploaded before quotas existed
 count as 0 bytes until you run `python scripts/backfill_storage_usage.py` once after applying migration 0021.
@@ -145,7 +147,7 @@ verification, rollback and operations. Never commit `.env` or production credent
 - **JSON error shape.** Every AJAX/JSON route (anything under `/api/`, JSON requests, `/uploads/sign`)
   answers failures as `{"error": "<message for people>", "code": "<stable slug>", "request_id": "..."}`
   with the matching HTTP status (401 also carries `login_url`; quota errors carry `scope`). Build
-  them with `api_error()` in `app.py`. In the browser `static/js/api.js` (`LedgerApi`) turns them into a toast.
+  them with `api_error()` in `app.py`. In the browser `static/js/api.js` (`OakenApi`) turns them into a toast.
 - **Error tracking (optional).** Set `SENTRY_DSN` and add `sentry-sdk` to
   `requirements.in` (then recompile the lock file). Without both, nothing is sent. Personal
   data is not sent.
@@ -204,7 +206,7 @@ anyone in the running battle (`_battle_live_status`, built on `_battle_rows`, so
 ## Tests
 
 ```
-LEDGER_TEST_BACKEND=postgres pytest tests
+OAKEN_TEST_BACKEND=postgres pytest tests
 ```
 
 The suite creates a throw-away database and a fake Supabase Storage server, so it needs no
@@ -255,7 +257,7 @@ Sign-up needs a username, an **email** and a password. The email is stored uncon
 `/u/<username>` shows avatar, name, bio, member-since and up to 6 featured player characters (name, class, level, portrait only; never the campaign, stats or notes). Under Account the owner picks who can open it: everyone signed in, people who share a campaign (default), or only themselves. A profile you may not open answers 404, the same as a name that does not exist. Campaign Home links player names to their profiles unless private.
 
 ### Account settings sections (DL-39)
-`/account` is split into five sections with a side menu (a row of chips on a phone): **Profile**, **Privacy** (who can open your profile page, featured characters), **Sign-in and security** (email, username, password, sign out everywhere), **Appearance** (dark, light or match the device; saved in this browser under `ledger-theme`, value `system` is read by the head script of every page) and **Your data** (download, delete). Without JavaScript every section shows. A link such as `/account#email-panel`, an error banner or a `?mail=` result opens the section it belongs to; otherwise the last section is remembered for the tab. Notification settings are not part of this yet because there are no notification preferences to set. Script: `static/js/account.js`.
+`/account` is split into five sections with a side menu (a row of chips on a phone): **Profile**, **Privacy** (who can open your profile page, featured characters), **Sign-in and security** (email, username, password, sign out everywhere), **Appearance** (dark, light or match the device; saved in this browser under `oaken-theme`, value `system` is read by the head script of every page) and **Your data** (download, delete). Without JavaScript every section shows. A link such as `/account#email-panel`, an error banner or a `?mail=` result opens the section it belongs to; otherwise the last section is remembered for the tab. Notification settings are not part of this yet because there are no notification preferences to set. Script: `static/js/account.js`.
 
 ### Party treasury (DL-148; migration `0040_treasury.sql`)
 The Treasury page (`/campaigns/<id>/treasury`, sidebar under Table) is the party purse. The purse is not stored: it is the sum of the entries in `treasury_entries`, each holding a signed change per coin (cp, sp, ep, gp, pp), who made it, an optional character it was for, and a note. Any member can add coins, spend coins, or split coins; the DM can remove any entry and a member their own. Spending pays the coins named first, makes up any shortfall from the smallest coins, and gives change back (pp, gp, sp, cp), so the purse never goes below zero in any coin; removing an entry is refused when later entries already spent its coins. Values are worked in copper (cp 1, sp 10, ep 50, gp 100, pp 1000). "Split evenly" shares typed coins, or the whole purse when none are typed, between the chosen player characters: each gets the same share rounded down, the rest stays in the purse, and it is recorded as one spending entry. Entries show in the campaign Activity feed. Not built: links to the item manual (DL-114) and inventory (DL-119).
@@ -348,7 +350,7 @@ The battle log strip now drops with the menu bar like the dice button and the do
 ### Unsupported claims (DL-73, DL-86)
 Copyright check (DL-76, DL-171): the rules reference shows SRD 5.2.1 text, which is CC BY 4.0 and needs a credit. The full notice (plus the fog animation, fonts and lottie-web) is on `/about#credits` and a short credit sits under the Rules Reference. The icon sources are still open: see the 31 Oct 2026 update in `THIRD_PARTY.md`. `tests/test_third_party_audit.py` lets only the About and Rules Reference pages link out.
 
-Cookie consent review (DL-82, DL-170): the app sets one cookie (the session, `__Host-ledger` on https) and keeps nine small settings in the browser's local or session storage (theme, sidebar, map dock, three map tips, map "Show to table", open Account section, full screen). All are either strictly necessary or set only when you change that setting, nothing is loaded from another site, and there is no analytics, so no consent banner is needed; the sign-up tick box (DL-167) records that the person was told. This is a reading of the code, not legal advice: DL-80 still covers the local rules. The Cookies page now lists the two session-storage items and explains that Google sets its own cookies on its own page when you choose Google sign-in. Three tests in `tests/test_privacy_page.py` keep that true: every storage key the scripts use must be listed on `/cookies` (add new ones to `STORAGE_KEYS` there), no script may write `document.cookie`, no page may load from another site, and a logged-in session may set only the session cookie.
+Cookie consent review (DL-82, DL-170): the app sets one cookie (the session, `__Host-oaken` on https) and keeps nine small settings in the browser's local or session storage (theme, sidebar, map dock, three map tips, map "Show to table", open Account section, full screen). All are either strictly necessary or set only when you change that setting, nothing is loaded from another site, and there is no analytics, so no consent banner is needed; the sign-up tick box (DL-167) records that the person was told. This is a reading of the code, not legal advice: DL-80 still covers the local rules. The Cookies page now lists the two session-storage items and explains that Google sets its own cookies on its own page when you choose Google sign-in. Three tests in `tests/test_privacy_page.py` keep that true: every storage key the scripts use must be listed on `/cookies` (add new ones to `STORAGE_KEYS` there), no script may write `document.cookie`, no page may load from another site, and a logged-in session may set only the session cookie.
 
 Audit of the public pages (about, contact, login, sign-up, privacy, terms, cookies): there are no reviews or testimonials anywhere (DL-73, nothing to remove). One claim had no basis: the Terms said "we keep backups", but no backup or restore drill exists yet, so it now says the data cannot be promised never to be lost and points to the download in Account settings. A test keeps the word "backup" off the public pages until the backup task is done; then restore the sentence and drop the test. Test: `tests/test_privacy_page.py`.
 

@@ -318,7 +318,7 @@
     });
     const before = snapshotRows();
     root.innerHTML = html;
-    if (window.ledgerApplyDataStyles) window.ledgerApplyDataStyles(root);      // colours and bar fills come as data-* (dyn-style.js); apply before anything measures the rows
+    if (window.oakenApplyDataStyles) window.oakenApplyDataStyles(root);      // colours and bar fills come as data-* (dyn-style.js); apply before anything measures the rows
     condSeen = condNow; condNow = new Set();
     animateRows(before);
   }
@@ -516,9 +516,9 @@
       body: JSON.stringify(body || {}),
     });
     if (!res.ok) {
-      const message = await LedgerApi.message(res, 'That did not work. Please try again.');
-      LedgerApi.notify(message);                 // say why (no permission, session ended, ...) instead of failing silently
-      throw new LedgerApi.Error(message, res.status);
+      const message = await OakenApi.message(res, 'That did not work. Please try again.');
+      OakenApi.notify(message);                 // say why (no permission, session ended, ...) instead of failing silently
+      throw new OakenApi.Error(message, res.status);
     }
     refreshLogSoon();                              // whatever just changed may have a line in the log
     return res.json();
@@ -773,7 +773,7 @@
       if (standing.some((p) => p.initiative) && !(await window.confirmAction('Roll initiative for ' + scopeLabel[scope] + ' again? The numbers already entered are replaced.'))) return;
       rollInitBtn.disabled = true;
       try { participants = await apiCall('/api/battle/roll-initiative', { scope }); render(); }
-      catch (e) { if (window.LedgerDice) LedgerDice.announceError('Could not roll initiative.'); }
+      catch (e) { if (window.OakenDice) OakenDice.announceError('Could not roll initiative.'); }
       rollInitBtn.disabled = false;
     };
     // A mouse hovers to see the choices and a click still rolls for everyone; a touch screen has no hover, so the first tap opens them.
@@ -1049,12 +1049,12 @@
   // heals/damage/initiative/new arrivals after a manual reload. Skipped
   // mid-HP-scrub or while an amount/search input has focus so a poll can't
   // wipe out something half-typed.
-  // Live refresh runs through the shared LedgerPoll scheduler: it pauses while this tab is
+  // Live refresh runs through the shared OakenPoll scheduler: it pauses while this tab is
   // hidden, backs off while nothing changes, and snaps back to full speed on any change.
   // The server snapshot is compared with what is ON SCREEN (not just the previous
   // snapshot), so an optimistic local edit that never reached the server is still corrected.
   let lastBattleSig = null;
-  const battlePoll = LedgerPoll.every(async () => {
+  const battlePoll = OakenPoll.every(async () => {
     if (scrubbing) return 'skip';
     const active = document.activeElement;
     if (active && active.tagName === 'INPUT' && (root.contains(active) || (addModal && addModal.contains(active)))) return 'skip';
@@ -1073,7 +1073,7 @@
   }, { base: 3000, max: 12000 });
 
   // Real-time: a ping from the server means "something changed" -> refresh right now.  Polling above stays as the safety net.
-  if (window.LEDGER_REALTIME && window.LedgerRealtime) {
-    LedgerRealtime.connect(window.LEDGER_REALTIME, (p) => { if (p.s !== 'map' && p.s !== 'dice') battlePoll.poke(); });
+  if (window.OAKEN_REALTIME && window.OakenRealtime) {
+    OakenRealtime.connect(window.OAKEN_REALTIME, (p) => { if (p.s !== 'map' && p.s !== 'dice') battlePoll.poke(); });
   }
 })();

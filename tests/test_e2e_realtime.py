@@ -13,7 +13,7 @@ from test_e2e_browser import Api, pw            # fixtures/helpers reused from t
 
 pytestmark = pytest.mark.skipif(BACKEND == 'sqlite', reason='new-code tests')
 
-SLOW_POLL = "window.__LEDGER_POLL__ = {base: 60000, max: 60000, skip: 60000};"
+SLOW_POLL = "window.__OAKEN_POLL__ = {base: 60000, max: 60000, skip: 60000};"
 
 
 @pytest.fixture
@@ -88,7 +88,7 @@ def test_a_battle_change_reaches_an_open_player_page_at_once(pw, rt_server):
     page = ctx.new_page(); sock = FakeRealtimeSocket(page); battle_reqs = _record(page, r'/api/battle$')
     page.goto(f'{base}/campaigns/{cid}/battle'); page.wait_for_load_state('networkidle')
     assert sock.wait_joined(), 'the page never joined its Realtime channel'
-    channel = page.evaluate("() => window.LEDGER_REALTIME.channel")
+    channel = page.evaluate("() => window.OAKEN_REALTIME.channel")
     assert sock.joins[0]['topic'] == 'realtime:' + channel
 
     dm.s.post(f'{base}/campaigns/{cid}/api/battle/add', json={'character_id': hero})
@@ -112,7 +112,7 @@ def test_the_map_page_refreshes_on_a_ping_too(pw, rt_server):
     page = ctx.new_page(); sock = FakeRealtimeSocket(page); syncs = _record(page, r'/api/maps/\d+/sync$')
     page.goto(f'{base}/campaigns/{cid}/maps/{mid}'); page.wait_for_load_state('networkidle')
     assert sock.wait_joined()
-    channel = page.evaluate("() => window.LEDGER_REALTIME.channel")
+    channel = page.evaluate("() => window.OAKEN_REALTIME.channel")
     page.wait_for_timeout(500); before = len(syncs)
     sock.ping(channel, 'map')
     assert _wait(page, lambda: len(syncs) > before, 3.0), 'a ping must trigger an immediate /sync'
@@ -127,7 +127,7 @@ def test_a_battle_page_ignores_map_only_pings(pw, rt_server):
     base, dm, pl, cid, hero, ctx = _setup(srv)
     page = ctx.new_page(); sock = FakeRealtimeSocket(page); reqs = _record(page, r'/api/battle$')
     page.goto(f'{base}/campaigns/{cid}/battle'); page.wait_for_load_state('networkidle')
-    assert sock.wait_joined(); channel = page.evaluate("() => window.LEDGER_REALTIME.channel")
+    assert sock.wait_joined(); channel = page.evaluate("() => window.OAKEN_REALTIME.channel")
     page.wait_for_timeout(400); n = len(reqs)
     sock.ping(channel, 'map'); page.wait_for_timeout(1200)
     assert len(reqs) == n, 'drawing on a map should not make battle pages refetch'
@@ -162,11 +162,11 @@ def test_without_realtime_the_page_just_polls(pw):
     srv = Server({'SUPABASE_URL': '', 'SUPABASE_SECRET_KEY': '', 'SUPABASE_PUBLISHABLE_KEY': '', 'STORAGE_BACKEND': 'local'})
     try:
         base = srv.url; dm = Api(base); cid = dm.campaign('NoRT')
-        ctx = dm.context(pw, base); ctx.add_init_script("window.__LEDGER_POLL__ = {base: 250, max: 500, skip: 250};")
+        ctx = dm.context(pw, base); ctx.add_init_script("window.__OAKEN_POLL__ = {base: 250, max: 500, skip: 250};")
         page = ctx.new_page(); sockets = []
         page.on('websocket', lambda w: sockets.append(w)); reqs = _record(page, r'/api/battle$')
         page.goto(f'{base}/campaigns/{cid}/battle'); page.wait_for_load_state('load'); page.wait_for_timeout(1500)   # not networkidle: polling every 250 ms never goes quiet
-        assert not page.evaluate("() => 'LEDGER_REALTIME' in window") and not sockets
+        assert not page.evaluate("() => 'OAKEN_REALTIME' in window") and not sockets
         assert len(reqs) >= 3
         ctx.close()
     finally:
@@ -180,7 +180,7 @@ def test_a_poke_during_a_request_in_flight_triggers_another_refresh(pw, shared_s
     page.goto(f'{base}/campaigns')
     calls = page.evaluate("""() => new Promise((resolve) => {
         let n = 0;
-        const poll = LedgerPoll.every(() => new Promise((done) => { n += 1; setTimeout(() => done(true), 500); }), {base: 60000, max: 60000});
+        const poll = OakenPoll.every(() => new Promise((done) => { n += 1; setTimeout(() => done(true), 500); }), {base: 60000, max: 60000});
         poll.poke();                                   // first fetch starts ~150 ms later and takes 500 ms
         setTimeout(() => poll.poke(), 400);            // ping lands while it is still in flight
         setTimeout(() => { poll.stop(); resolve(n); }, 1800);

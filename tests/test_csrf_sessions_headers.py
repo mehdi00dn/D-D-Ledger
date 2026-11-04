@@ -128,7 +128,7 @@ def test_production_starts_with_a_strong_secret_and_secure_cookies():
     r = run_python("import app; c=app.app.config; print(c['SESSION_COOKIE_NAME'], c['SESSION_COOKIE_SECURE'], c['SESSION_COOKIE_HTTPONLY'], c['SESSION_COOKIE_SAMESITE'])",
                    {'VERCEL': '1', 'SECRET_KEY': 'k' * 40, 'DATABASE_URL': os.environ['DATABASE_URL']})
     assert r.returncode == 0, r.stderr[-300:]
-    assert r.stdout.split() == ['__Host-ledger', 'True', 'True', 'Lax']
+    assert r.stdout.split() == ['__Host-oaken', 'True', 'True', 'Lax']
 
 
 def test_development_without_a_secret_gets_a_random_one_not_a_known_constant():

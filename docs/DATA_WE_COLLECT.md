@@ -1,4 +1,4 @@
-# What Campaign Ledger collects about a person
+# What Oaken collects about a person
 
 This is the working inventory behind "only collect what is necessary" (DL-84). It describes what the code does today, so it can feed the Privacy Policy and Cookies pages. `tests/test_data_inventory.py` fails when a column is added to `users` without being listed here, which keeps it honest.
 
@@ -38,7 +38,7 @@ No analytics, advertising or tracking scripts, and no third-party fonts or embed
 Raw IP addresses are not stored. For sign-in and sign-up throttling the server keeps a keyed hash of the address (HMAC with the app secret) in `login_attempts`, and rows older than 24 hours are deleted. Normal request logs carry a request id, method, path and status.
 
 ## Cookies and browser storage
-- One session cookie (`__Host-ledger` on https), HttpOnly, SameSite=Lax, Secure. It keeps the person signed in for up to 30 days when "remember me" is on, and ends with the browser session when it is off. It also carries the CSRF token.
+- One session cookie (`__Host-oaken` on https), HttpOnly, SameSite=Lax, Secure. It keeps the person signed in for up to 30 days when "remember me" is on, and ends with the browser session when it is off. It also carries the CSRF token.
 - `localStorage`, only on the person's own device and never sent anywhere: theme, sidebar collapsed, map dock tucked, and three "already shown this tip" flags.
 
 ## Sent to other services

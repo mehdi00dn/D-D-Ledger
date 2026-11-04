@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon %}
 {% set active_page = 'factions' %}
-{% block title %}Factions — Campaign Ledger{% endblock %}
+{% block title %}Factions — Oaken{% endblock %}
 
 {% block content %}
 {% set is_dm = g.is_dm %}
@@ -31,7 +31,7 @@
 {% if request.args.get('import_error') == 'quota' %}
 <div class="banner-notice banner-error">That import would pass this campaign's or your image storage limit, so nothing was imported. Free some space (delete images you no longer need) or import a smaller file.</div>
 {% elif request.args.get('import_error') %}
-<div class="banner-notice banner-error">That file couldn't be read as a Campaign Ledger export. Make sure you're uploading a .zip created by the Export button.</div>
+<div class="banner-notice banner-error">That file couldn't be read as a Oaken export. Make sure you're uploading a .zip created by the Export button.</div>
 {% endif %}
 
 <div class="search-bar">

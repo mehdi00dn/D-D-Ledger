@@ -31,7 +31,7 @@ def payload(name, data, mime='image/png'):
 def new_page(pw, api, base, mode=None):
     ctx = api.context(pw, base)
     if mode:
-        ctx.add_init_script(f"window.LEDGER_UPLOAD_MODE = '{mode}';")
+        ctx.add_init_script(f"window.OAKEN_UPLOAD_MODE = '{mode}';")
     page = ctx.new_page(); seen = []
     page.on('request', lambda r: seen.append((r.method, r.url)))
     bad, errs = _collect(page)

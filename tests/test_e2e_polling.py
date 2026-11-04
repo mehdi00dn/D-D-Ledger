@@ -7,7 +7,7 @@ from test_e2e_browser import Api, pw            # fixtures/helpers reused from t
 
 pytestmark = pytest.mark.skipif(BACKEND == 'sqlite', reason='new-code tests')
 
-FAST = "window.__LEDGER_POLL__ = {base: 250, max: 2000, step: 2, skip: 250};"       # test-only speed-up
+FAST = "window.__OAKEN_POLL__ = {base: 250, max: 2000, step: 2, skip: 250};"       # test-only speed-up
 
 
 def _ctx(api, browser, base, fast=True):

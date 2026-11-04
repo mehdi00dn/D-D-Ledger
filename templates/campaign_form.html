@@ -2,7 +2,7 @@
 {% from "_icons.html" import icon %}
 {% from "_note_editor.html" import note_block %}
 {% if campaign %}{% set active_page = 'settings' %}{% endif %}
-{% block title %}{{ 'Edit' if campaign else 'New' }} Campaign — Campaign Ledger{% endblock %}
+{% block title %}{{ 'Edit' if campaign else 'New' }} Campaign — Oaken{% endblock %}
 
 {% block content %}
 {% set is_owner = (not campaign) or g.campaign_role == 'owner' %}

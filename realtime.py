@@ -21,7 +21,7 @@ import time
 
 import requests
 
-log = logging.getLogger('ledger.realtime')
+log = logging.getLogger('oaken.realtime')
 
 PUBLISH_TIMEOUT = 1.5            # seconds; a ping is never worth holding anything up for
 BREAKER_SECONDS = 30             # after a failed publish, stay quiet this long instead of failing on every change

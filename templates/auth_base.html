@@ -4,10 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="csrf-token" content="{{ csrf_token() }}">
-<title>{% block title %}Campaign Ledger{% endblock %}</title>
+<title>{% block title %}Oaken{% endblock %}</title>
 <script nonce="{{ csp_nonce() }}">
   (function () {
-    var saved = localStorage.getItem('ledger-theme');
+    var saved = (localStorage.getItem('oaken-theme') || localStorage.getItem('ledger-theme'));
     if (saved === 'system') saved = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
     if (saved === 'light' || saved === 'dark') {
       document.documentElement.setAttribute('data-theme', saved);
@@ -25,8 +25,7 @@
     <div class="auth-brand">
       <span class="brand-mark"><img src="{{ url_for('static', filename='logo/logo-128.png') }}" alt=""></span>
       <span class="brand-text">
-        <span class="brand-title">Campaign</span>
-        <span class="brand-subtitle">Ledger</span>
+        <span class="brand-title">Oaken</span>
       </span>
     </div>
     <div class="auth-aside-body">
@@ -44,7 +43,7 @@
     <div class="form-panel auth-card">
       <div class="auth-brand auth-brand-compact">
         <span class="brand-mark"><img src="{{ url_for('static', filename='logo/logo-128.png') }}" alt=""></span>
-        <span class="brand-text"><span class="brand-title">Campaign</span><span class="brand-subtitle">Ledger</span></span>
+        <span class="brand-text"><span class="brand-title">Oaken</span></span>
       </div>
       {% block card %}{% endblock %}
     </div>

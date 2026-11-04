@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""End-to-end check of a RUNNING Campaign Ledger (local or deployed).
+"""End-to-end check of a RUNNING Oaken (local or deployed).
 
     pip install requests
     python scripts/live_check.py --base https://d-d-ledger.vercel.app
@@ -50,7 +50,7 @@ def check(name, ok, detail='', ms=None):
 class Player:
     def __init__(self, base, name):
         self.base, self.name, self.s, self.token = base.rstrip('/'), name, requests.Session(), ''
-        self.s.headers['User-Agent'] = 'ledger-live-check/1.0'
+        self.s.headers['User-Agent'] = 'oaken-live-check/1.0'
 
     def _grab_token(self, html):
         m = re.search(r'name="csrf-token" content="([^"]+)"', html) or re.search(r'name="csrf_token" value="([^"]+)"', html)
@@ -98,7 +98,7 @@ def main():
     campaigns = []
     mid = pid = None
 
-    print(f'\nCampaign Ledger live check  ->  {base}\n')
+    print(f'\nOaken live check  ->  {base}\n')
     print('Health')
     try:
         r, ms = a.timed(a.get, '/healthz')

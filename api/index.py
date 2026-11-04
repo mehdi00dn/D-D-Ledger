@@ -1,4 +1,4 @@
-"""Vercel entry point for the Campaign Ledger Flask application.
+"""Vercel entry point for the Oaken Flask application.
 
 All persistent state lives in the cloud: Postgres (DATABASE_URL) and object storage
 (Supabase Storage).  Nothing is seeded, copied or migrated on a cold start -- apply

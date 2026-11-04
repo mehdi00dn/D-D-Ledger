@@ -1,8 +1,8 @@
-"""Backend-agnostic regression suite for Campaign Ledger.
+"""Backend-agnostic regression suite for Oaken.
 
 Run from the application directory:
-    LEDGER_TEST_BACKEND=sqlite   pytest tests     # legacy build (baseline)
-    LEDGER_TEST_BACKEND=postgres pytest tests     # migrated build
+    OAKEN_TEST_BACKEND=sqlite   pytest tests     # legacy build (baseline)
+    OAKEN_TEST_BACKEND=postgres pytest tests     # migrated build
 
 Everything goes through HTTP (Flask test client / real servers) so the same
 assertions hold on both backends.  DB helpers use the app's own get_db().
@@ -13,7 +13,7 @@ import pytest
 
 APP_DIR = os.getcwd()
 sys.path.insert(0, APP_DIR)
-BACKEND = os.environ.get('LEDGER_TEST_BACKEND', 'sqlite')
+BACKEND = os.environ.get('OAKEN_TEST_BACKEND', 'sqlite')
 SECRET = 'test-secret-key-not-for-production'
 os.environ['SECRET_KEY'] = SECRET
 # The suite registers/logs in hundreds of times from one address; production limits would trip.
@@ -23,13 +23,13 @@ os.environ.update(REGISTER_LIMIT_IP='1000000', LOGIN_LIMIT_PAIR='1000000', LOGIN
                   WRITE_LIMIT_USER='1000000', DICE_LIMIT_USER='1000000', CAMPAIGN_CREATE_LIMIT='1000000')
 os.environ.pop('VERCEL', None)
 
-_TMP = tempfile.mkdtemp(prefix='ledger-tests-')
+_TMP = tempfile.mkdtemp(prefix='oaken-tests-')
 atexit.register(lambda: shutil.rmtree(_TMP, ignore_errors=True))
 
 PG_ADMIN = os.environ.get('TEST_PG_ADMIN', 'host=/tmp port=5433 user=postgres dbname=postgres')
-STORAGE = os.environ.get('LEDGER_TEST_STORAGE', 'supabase')     # 'supabase' (fake server) | 'local'
+STORAGE = os.environ.get('OAKEN_TEST_STORAGE', 'supabase')     # 'supabase' (fake server) | 'local'
 PG_APP = os.environ.get('TEST_PG_APP', PG_ADMIN)   # how the APP connects (set to a pooler DSN to test through it)
-PG_DBNAME = f'ledger_test_{os.getpid()}'
+PG_DBNAME = f'oaken_test_{os.getpid()}'
 
 
 def _pg_url(dbname):
@@ -83,7 +83,7 @@ def appmod():
 from flask.testing import FlaskClient
 import requests as _requests
 
-SESSION_COOKIE = 'ledger_session'
+SESSION_COOKIE = 'oaken_session'
 
 
 class CsrfClient(FlaskClient):
@@ -251,7 +251,7 @@ def _free_port():
 class Server:
     def __init__(self, env_extra):
         self.port = _free_port()
-        env = dict(os.environ, EMAIL_CONFIRM_REQUIRED='0', **env_extra, PYTHONPATH=APP_DIR, LEDGER_PORT=str(self.port))     # DL-165: test servers do not lock new accounts
+        env = dict(os.environ, EMAIL_CONFIRM_REQUIRED='0', **env_extra, PYTHONPATH=APP_DIR, OAKEN_PORT=str(self.port))     # DL-165: test servers do not lock new accounts
         # Output goes to a file, NOT a pipe: nothing ever reads a pipe, and once ~64 KB of request-log
         # lines pile up in it the server blocks on its next write and every later request hangs.
         self.log_path = os.path.join(_TMP, f'server-{self.port}.log')

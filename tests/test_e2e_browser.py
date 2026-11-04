@@ -1705,7 +1705,7 @@ def test_full_screen_choice_is_remembered_between_pages(pw, shared_server):
         page.evaluate("document.querySelector('.js-fullscreen').hidden = false; document.querySelector('.js-fullscreen').style.display = 'inline-flex'")
         btn = page.locator('.js-fullscreen').first
     btn.click(); page.wait_for_timeout(400)
-    assert page.evaluate("sessionStorage.getItem('ledger-fullscreen')") == '1'
+    assert page.evaluate("sessionStorage.getItem('oaken-fullscreen')") == '1'
     # a new page does not start in full screen (the browser does not allow that): a note appears and the first tap goes back in
     page.goto(base + f'/campaigns/{cid}/battle'); page.wait_for_load_state('load')
     playwright.expect(page.locator('.fs-resume')).to_be_visible()
@@ -1713,7 +1713,7 @@ def test_full_screen_choice_is_remembered_between_pages(pw, shared_server):
     assert page.evaluate("!!document.fullscreenElement"); assert page.locator('.fs-resume').count() == 0
     # leaving full screen yourself (Escape / the button) forgets it
     page.evaluate("document.exitFullscreen()"); page.wait_for_timeout(800)
-    assert page.evaluate("sessionStorage.getItem('ledger-fullscreen')") is None
+    assert page.evaluate("sessionStorage.getItem('oaken-fullscreen')") is None
     page.goto(base + f'/campaigns/{cid}/maps'); page.wait_for_load_state('load')
     assert page.locator('.fs-resume').count() == 0
     assert not errs, errs; ctx.close()

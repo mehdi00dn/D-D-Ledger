@@ -23,7 +23,7 @@ def check(base, tries=TRIES, pause=PAUSE, timeout=TIMEOUT):
     why = 'no try was made'
     for attempt in range(1, tries + 1):
         try:
-            with urllib.request.urlopen(urllib.request.Request(url, headers={'User-Agent': 'ledger-uptime-check'}), timeout=timeout) as resp:
+            with urllib.request.urlopen(urllib.request.Request(url, headers={'User-Agent': 'oaken-uptime-check'}), timeout=timeout) as resp:
                 body = json.loads(resp.read(65536) or b'{}')
                 if resp.status == 200 and body.get('ok') is True:
                     return True, 'healthy (try %d)' % attempt

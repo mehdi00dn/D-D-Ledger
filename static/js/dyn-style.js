@@ -36,7 +36,7 @@
     var all = node.querySelectorAll(SEL);
     for (var i = 0; i < all.length; i++) apply(all[i]);
   }
-  window.ledgerApplyDataStyles = scan;
+  window.oakenApplyDataStyles = scan;
   new MutationObserver(function (list) {
     for (var i = 0; i < list.length; i++) {
       var added = list[i].addedNodes;

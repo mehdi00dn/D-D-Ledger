@@ -7,7 +7,7 @@
 @font-face { font-family: 'IBM Plex Mono'; font-style: normal; font-weight: 600; font-display: swap; src: url('../fonts/ibm-plex-mono-latin-600-normal.woff2') format('woff2'); }
 
 /* ==========================================================================
-   Campaign Ledger — design tokens
+   Oaken — design tokens
    ========================================================================== */
 :root {
   --bg-void: #10121a;
@@ -2543,7 +2543,7 @@ body.page-leaving .content {
   position: absolute;
   top: 100%;
   left: 50%; /* phys */
-  transform: translateX(-50%) scale(var(--ledger-zoom-inv, 1));
+  transform: translateX(-50%) scale(var(--oaken-zoom-inv, 1));
   transform-origin: top center;
   margin-top: 4px;
   font-family: var(--font-mono);
@@ -2562,7 +2562,7 @@ body.page-leaving .content {
 #ruler-canvas { position: absolute; inset: 0; inline-size: 100%; block-size: 100%; z-index: 8; pointer-events: none; }
 .angle-degree-label {
   position: absolute;
-  transform: translate(-50%, -50%) scale(var(--ledger-zoom-inv, 1));
+  transform: translate(-50%, -50%) scale(var(--oaken-zoom-inv, 1));
   font-family: var(--font-mono);
   font-size: 11px;
   font-weight: 600;
@@ -4457,12 +4457,12 @@ body.has-dice-fab .modifier-hint { inset-inline-end: 80px; max-width: calc(100vw
 }
 @media (prefers-reduced-motion: reduce) { .map-setup-stack { animation: none; } }
 
-/* Alert toasts from LedgerApi.notify (static/js/api.js): a failed action says why, then goes away. */
-.ledger-toasts {
+/* Alert toasts from OakenApi.notify (static/js/api.js): a failed action says why, then goes away. */
+.oaken-toasts {
   position: fixed; z-index: 300; inset-inline: 12px; top: calc(12px + env(safe-area-inset-top));
   display: flex; flex-direction: column; align-items: center; gap: 8px; pointer-events: none;
 }
-.ledger-toast {
+.oaken-toast {
   pointer-events: auto; display: flex; align-items: flex-start; gap: 10px; max-width: min(460px, 100%);
   padding: 10px 12px 10px 14px; border-radius: var(--radius-m); font-size: 13px; line-height: 1.4; color: var(--parchment);
   background: color-mix(in srgb, var(--bg-panel) 94%, transparent); border: 1px solid var(--blood, #b4443a);
@@ -4470,13 +4470,13 @@ body.has-dice-fab .modifier-hint { inset-inline-end: 80px; max-width: calc(100vw
   opacity: 0; transform: translateY(-8px) scale(0.98);
   transition: opacity 180ms var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), transform 220ms var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));
 }
-.ledger-toast.is-in { opacity: 1; transform: none; }
-.ledger-toast.is-info { border-color: var(--hairline-strong); }
-.ledger-toast-close {
+.oaken-toast.is-in { opacity: 1; transform: none; }
+.oaken-toast.is-info { border-color: var(--hairline-strong); }
+.oaken-toast-close {
   flex: none; margin: -4px -4px -4px 0; min-width: 32px; min-height: 32px; border: 0; background: transparent;
   color: var(--parchment-dim); font-size: 18px; line-height: 1; cursor: pointer; border-radius: var(--radius-s, 6px);
 }
-@media (prefers-reduced-motion: reduce) { .ledger-toast { transition: opacity 120ms linear; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .oaken-toast { transition: opacity 120ms linear; transform: none; } }
 
 /* ---- campaign activity feed ---- */
 .activity-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; max-width: 720px; }

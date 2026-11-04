@@ -12,7 +12,7 @@
 
   function setTheme(theme) {
     document.documentElement.setAttribute('data-theme', theme);
-    localStorage.setItem('ledger-theme', theme);
+    localStorage.setItem('oaken-theme', theme);
   }
 
   btns.forEach((btn) => btn.addEventListener('click', () => {

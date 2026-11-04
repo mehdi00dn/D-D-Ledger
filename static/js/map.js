@@ -7,10 +7,10 @@
   async function mapWrite(url, init) {
     try {
       const res = await fetch(url, init);
-      if (!res.ok) await LedgerApi.fail(res, "That change wasn't saved.");
+      if (!res.ok) await OakenApi.fail(res, "That change wasn't saved.");
       return res;
     } catch (err) {
-      LedgerApi.notify(LedgerApi.networkMessage);
+      OakenApi.notify(OakenApi.networkMessage);
       throw err;
     }
   }
@@ -87,7 +87,7 @@
   const measurePicker = document.getElementById('measure-picker');
   const measureShareBox = document.getElementById('measure-share');
   let rulerKind = 'ruler';
-  try { if (measureShareBox && localStorage.getItem('ledger-map-share-measure') === '0') measureShareBox.checked = false; } catch (e) { /* storage is optional */ }
+  try { if (measureShareBox && localStorage.getItem('oaken-map-share-measure') === '0') measureShareBox.checked = false; } catch (e) { /* storage is optional */ }
   let selectedShapeId = null;      // the single selected shape, only meaningful when selectedShapeIds.size === 1
   let selectedShapeIds = new Set(); // multi-select (Ctrl/Cmd+click)
   let selectedPinId = null;
@@ -851,7 +851,7 @@
 
   function renderPins() {
     pinLayer.innerHTML = pins.map(pinMarkup).join('');
-    if (window.ledgerApplyDataStyles) window.ledgerApplyDataStyles(pinLayer);
+    if (window.oakenApplyDataStyles) window.oakenApplyDataStyles(pinLayer);
     if (typeof renderRoster === 'function') renderRoster();
     markFoggedPins();
     if (selectedPinId) positionPinBubble(selectedPinId);
@@ -1781,7 +1781,7 @@
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ owner_user_id: ownerId }),
       });
-      if (!res.ok) { LedgerApi.fail(res, "Couldn't change who controls that token."); return; }
+      if (!res.ok) { OakenApi.fail(res, "Couldn't change who controls that token."); return; }
       pin.owner_user_id = ownerId;
       const m = members.find((x) => Number(x.id) === ownerId);
       pin.owner_name = m ? m.username : null;
@@ -1867,7 +1867,7 @@
     ? 'Placing <strong id="place-hint-name"></strong> &middot; tap the map to drop &middot; pick <strong>Select</strong> to stop'
     : 'Placing <strong id="place-hint-name"></strong> &middot; click the map to drop &middot; <strong>Esc</strong> to stop';
   if (COARSE && attachHint) attachHint.textContent = 'Tap the token to attach the shape to. Tap the link button again to cancel.';
-  const MODIFIER_HINT_KEY = 'ledger-map-modifier-hint-dismissed';
+  const MODIFIER_HINT_KEY = 'oaken-map-modifier-hint-dismissed';
   const modifierHintEl = document.getElementById('modifier-hint');
   let modifierHintTimer = null;
 
@@ -1898,7 +1898,7 @@
 
   // Zoom/pan hint: shown once on load, dismissed after a timeout or the
   // first time the person actually zooms or pans.
-  const NAV_HINT_KEY = 'ledger-map-nav-hint-dismissed';
+  const NAV_HINT_KEY = 'oaken-map-nav-hint-dismissed';
   const navHintEl = document.getElementById('nav-hint');
   let navHintTimer = null;
   function hideNavHint() {
@@ -1921,7 +1921,7 @@
 
   // "Hold Space to pan" toolbar hint disappears for good the first time
   // it's actually used.
-  const SPACE_HINT_KEY = 'ledger-map-space-hint-dismissed';
+  const SPACE_HINT_KEY = 'oaken-map-space-hint-dismissed';
   const holdSpaceHintEl = document.getElementById('hold-space-hint');
   if (holdSpaceHintEl) {
     let spaceHintSeen = false;
@@ -2078,7 +2078,7 @@
 
   // Every open map tab refreshes through ONE request to /sync (grid/lock state, drawings and,
   // while linked to the battle, pins) so grid settings, the lock, the battle-link toggle,
-  // shapes and pins all take effect live. It runs through the shared LedgerPoll scheduler:
+  // shapes and pins all take effect live. It runs through the shared OakenPoll scheduler:
   // paused while the tab is hidden, slower while nothing changes, instant on activity.
   // Skipped while this tab's own grid-settings dialog is open so it can't clobber an
   // in-progress edit, and shapes/pins are left alone mid-drag or mid-draw.
@@ -2112,7 +2112,7 @@
   }
 
   let lastSyncSig = '';
-  syncPoll = LedgerPoll.every(async () => {
+  syncPoll = OakenPoll.every(async () => {
     if (!setupOverlay.hidden) return 'skip';
     const res = await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/sync`);
     if (!res.ok) return false;
@@ -2138,7 +2138,7 @@
   }, { base: 3000, max: 12000 });
 
   // Real-time: a ping from the server means "something changed" -> refresh right now.  Polling above stays as the safety net.
-  if (window.LEDGER_REALTIME && window.LedgerRealtime) {
+  if (window.OAKEN_REALTIME && window.OakenRealtime) {
     if (window.MapLive) {
       live = window.MapLive.create({
         mapId, fog, userId: window.USER_ID,
@@ -2162,7 +2162,7 @@
         redraw: () => redraw(),
       });
     }
-    const conn = LedgerRealtime.connect(window.LEDGER_REALTIME, (p) => { if (p.s !== 'dice') syncPoll.poke(); }, live ? (m) => live.receive(m) : null);
+    const conn = OakenRealtime.connect(window.OAKEN_REALTIME, (p) => { if (p.s !== 'dice') syncPoll.poke(); }, live ? (m) => live.receive(m) : null);
     if (live) live.attach(conn);
   }
 
@@ -2252,7 +2252,7 @@
   }
   if (measureShareBox) {
     measureShareBox.addEventListener('change', () => {
-      try { localStorage.setItem('ledger-map-share-measure', measureShareBox.checked ? '1' : '0'); } catch (e) { /* storage is optional */ }
+      try { localStorage.setItem('oaken-map-share-measure', measureShareBox.checked ? '1' : '0'); } catch (e) { /* storage is optional */ }
       if (!measureShareBox.checked) {                                                                // switching sharing off takes your line off everyone else's screen
         const mine = ruler; ruler = null;
         fetch(`${measureApi}/clear`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).catch(() => {});
@@ -2758,7 +2758,7 @@
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ pin_type: 'character', character_id: character.id, x: snapped.x, y: snapped.y, scale: 1.0, rotation: 0, dm_only: window.IS_DM && newObjectsHidden }),
     });
-    if (!res.ok) { flashPlaceHint(await LedgerApi.message(res, "Couldn't place that character. Please try again.")); return; }
+    if (!res.ok) { flashPlaceHint(await OakenApi.message(res, "Couldn't place that character. Please try again.")); return; }
     const json = await res.json();
     await loadPins();                                         // the server numbers duplicates and links the battle row
     const pin = pins.find((p) => p.id === json.id);
@@ -2800,7 +2800,7 @@
     rosterList.addEventListener('dragstart', (e) => {
       const item = e.target.closest('[data-roster-id]');
       if (!item) return;
-      e.dataTransfer.setData('application/x-ledger-character', item.dataset.rosterId);
+      e.dataTransfer.setData('application/x-oaken-character', item.dataset.rosterId);
       e.dataTransfer.setData('text/plain', item.textContent.trim());
       e.dataTransfer.effectAllowed = 'copy';
       // Keep the panel "open" (so the dragged row stays rendered) but see-through, so the map underneath is a clear target.
@@ -2808,7 +2808,7 @@
       setTimeout(() => rosterFlyout.classList.add('open', 'roster-dragging'), 0);
     });
     rosterList.addEventListener('dragend', () => rosterFlyout.classList.remove('open', 'roster-dragging'));
-    const isRosterDrag = (e) => Array.from(e.dataTransfer ? e.dataTransfer.types : []).includes('application/x-ledger-character');
+    const isRosterDrag = (e) => Array.from(e.dataTransfer ? e.dataTransfer.types : []).includes('application/x-oaken-character');
     stageWrap.addEventListener('dragover', (e) => {
       if (!isRosterDrag(e)) return;
       e.preventDefault();
@@ -2818,7 +2818,7 @@
       if (!isRosterDrag(e)) return;
       e.preventDefault();
       rosterFlyout.classList.remove('open', 'roster-dragging');
-      const character = ROSTER.find((c) => c.id === Number(e.dataTransfer.getData('application/x-ledger-character')));
+      const character = ROSTER.find((c) => c.id === Number(e.dataTransfer.getData('application/x-oaken-character')));
       if (character) placeCharacter(eventPos(e), character);
     });
     rosterList.addEventListener('click', (e) => {
@@ -3028,7 +3028,7 @@
 
   function applyZoomTransform() {
     stageInner.style.transform = `translate(${panX}px, ${panY}px) scale(${zoomLevel})`;
-    stageInner.style.setProperty('--ledger-zoom-inv', String(1 / zoomLevel));
+    stageInner.style.setProperty('--oaken-zoom-inv', String(1 / zoomLevel));
     if (zoomLevelLabel) zoomLevelLabel.textContent = `${Math.round(zoomLevel * 100)}%`;
     if (ruler) drawRuler();                                        // its size follows the zoom
     applyBubbleScale();

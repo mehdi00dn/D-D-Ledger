@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Take a full, verifiable backup of Campaign Ledger: the database AND the uploaded images.
+"""Take a full, verifiable backup of Oaken: the database AND the uploaded images.
 
     BACKUP_DATABASE_URL=postgresql://...  SUPABASE_URL=...  SUPABASE_SECRET_KEY=...  python scripts/backup.py
-    python scripts/backup.py --out ~/ledger-backups --keep 8
+    python scripts/backup.py --out ~/oaken-backups --keep 8
 
 What you get (one folder per backup, never overwritten):
-    ledger-20261014-221500Z/
+    oaken-20261014-221500Z/
         db.dump         pg_dump custom format of schema `public` (restorable with pg_restore)
         files/<key>     every object of the uploads bucket, under its own key (so the folder doubles as UPLOAD_DIR)
         manifest.json   when, which migration, row count of every table, sha256 + size of every file
@@ -78,7 +78,7 @@ def backup(out_dir, dsn, storage, keep=None, log=print):
     started = time.time()
     stamp = datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%SZ')
     os.makedirs(out_dir, mode=0o700, exist_ok=True)
-    final = os.path.join(out_dir, f'ledger-{stamp}')
+    final = os.path.join(out_dir, f'oaken-{stamp}')
     work = final + '.partial'
     if os.path.exists(final) or os.path.exists(work):
         raise SystemExit(f'{final} already exists; wait a second and retry')
@@ -129,7 +129,7 @@ def backup(out_dir, dsn, storage, keep=None, log=print):
         shutil.rmtree(work, ignore_errors=True)
         raise
     if keep:
-        old = sorted(d for d in os.listdir(out_dir) if d.startswith('ledger-') and not d.endswith('.partial'))
+        old = sorted(d for d in os.listdir(out_dir) if d.startswith(('oaken-', 'ledger-')) and not d.endswith('.partial'))
         for d in old[:-keep]:
             shutil.rmtree(os.path.join(out_dir, d), ignore_errors=True)
             log(f'pruned old backup {d}')

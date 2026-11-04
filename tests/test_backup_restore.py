@@ -37,7 +37,7 @@ def _drill(path):
 
 def _leftover_drill_dbs():
     with psycopg.connect(PG_ADMIN, autocommit=True) as c:
-        return [r[0] for r in c.execute("SELECT datname FROM pg_database WHERE datname LIKE 'ledger_drill_%'")]
+        return [r[0] for r in c.execute("SELECT datname FROM pg_database WHERE datname LIKE 'oaken_drill_%'")]
 
 
 def test_backup_and_restore_drill_pass_end_to_end(populated, appmod, tmp_path):

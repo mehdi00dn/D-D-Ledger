@@ -42,12 +42,12 @@
     function setTucked(tucked) {
       tb.classList.toggle('is-tucked', tucked);
       toggle.setAttribute('aria-expanded', tucked ? 'false' : 'true');
-      try { localStorage.setItem('ledger-map-dock-tucked', tucked ? '1' : '0'); } catch (e) { /* private window: just do not remember */ }
+      try { localStorage.setItem('oaken-map-dock-tucked', tucked ? '1' : '0'); } catch (e) { /* private window: just do not remember */ }
     }
     function syncDock() {
       if (sidewaysTools.matches) {
         var saved = false;
-        try { saved = localStorage.getItem('ledger-map-dock-tucked') === '1'; } catch (e) { /* ignore */ }
+        try { saved = localStorage.getItem('oaken-map-dock-tucked') === '1'; } catch (e) { /* ignore */ }
         setTucked(saved);
       } else {
         tb.classList.remove('is-tucked');
@@ -138,7 +138,7 @@
   // (with a small note saying so). Leaving by the button or Escape forgets it.
   var fsEl = root;
   var canFs = !!(fsEl.requestFullscreen || fsEl.webkitRequestFullscreen);
-  var FS_KEY = 'ledger-fullscreen';
+  var FS_KEY = 'oaken-fullscreen';
   function isFs() { return !!(document.fullscreenElement || document.webkitFullscreenElement); }
   function wantsFs() { try { return sessionStorage.getItem(FS_KEY) === '1'; } catch (e) { return false; } }
   function rememberFs(on) { try { if (on) sessionStorage.setItem(FS_KEY, '1'); else sessionStorage.removeItem(FS_KEY); } catch (e) { /* private window: just do not remember */ } }

@@ -3,10 +3,10 @@
  * Every AJAX route answers a failure as  {"error": "<sentence for people>", "code": "<slug>", "request_id": "..."}
  * with a real HTTP status (see app.py: api_error).  This file turns that into one thing the pages can use:
  *
- *   var msg = await LedgerApi.message(res, 'Could not save.')   // the server's sentence, or a status-based fallback
- *   await LedgerApi.check(res, 'Could not save.')               // throws LedgerApi.Error (message, status, code) unless res.ok
- *   LedgerApi.notify(msg)                                       // a small alert toast, de-duplicated, gone after a few seconds
- *   LedgerApi.fail(res, 'Could not save.')                      // message() + notify() in one call; returns the message
+ *   var msg = await OakenApi.message(res, 'Could not save.')   // the server's sentence, or a status-based fallback
+ *   await OakenApi.check(res, 'Could not save.')               // throws OakenApi.Error (message, status, code) unless res.ok
+ *   OakenApi.notify(msg)                                       // a small alert toast, de-duplicated, gone after a few seconds
+ *   OakenApi.fail(res, 'Could not save.')                      // message() + notify() in one call; returns the message
  *
  * Polling requests must stay quiet, so nothing here runs unless a page calls it.
  */
@@ -23,7 +23,7 @@
   };
 
   function ApiError(message, status, code, requestId) {
-    this.name = 'LedgerApiError';
+    this.name = 'OakenApiError';
     this.message = message;
     this.status = status;
     this.code = code || null;
@@ -46,7 +46,7 @@
     if (!message) return;
     if (!holder || !document.body.contains(holder)) {
       holder = document.createElement('div');
-      holder.className = 'ledger-toasts';
+      holder.className = 'oaken-toasts';
       holder.setAttribute('role', 'region');
       holder.setAttribute('aria-label', 'Notices');
       document.body.appendChild(holder);
@@ -54,13 +54,13 @@
     var again = Array.prototype.find.call(holder.children, function (el) { return el.dataset.msg === message; });
     if (again) { again.classList.remove('is-in'); void again.offsetWidth; again.classList.add('is-in'); return; }
     var t = document.createElement('div');
-    t.className = 'ledger-toast is-in' + (kind === 'info' ? ' is-info' : '');
+    t.className = 'oaken-toast is-in' + (kind === 'info' ? ' is-info' : '');
     t.dataset.msg = message;
     t.setAttribute('role', kind === 'info' ? 'status' : 'alert');
     var span = document.createElement('span');
     span.textContent = message;                          // text, never HTML: the message may echo user input
     var close = document.createElement('button');
-    close.type = 'button'; close.className = 'ledger-toast-close'; close.setAttribute('aria-label', 'Dismiss'); close.textContent = '×';
+    close.type = 'button'; close.className = 'oaken-toast-close'; close.setAttribute('aria-label', 'Dismiss'); close.textContent = '×';
     t.appendChild(span); t.appendChild(close);
     function remove() { t.classList.remove('is-in'); setTimeout(function () { t.remove(); }, 200); }
     close.addEventListener('click', remove);
@@ -68,7 +68,7 @@
     holder.appendChild(t);
   }
 
-  window.LedgerApi = {
+  window.OakenApi = {
     Error: ApiError,
     notify: notify,
     message: async function (res, fallback) { return (await details(res, fallback)).message; },

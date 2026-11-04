@@ -97,7 +97,7 @@ def open_zip(data):
         raise ImportRejected('The archive expands to too much data.')
     raw = read_member(zf, 'manifest.json', MAX_MANIFEST_BYTES)
     if raw is None:
-        raise ImportRejected('manifest.json is missing - this is not a Campaign Ledger export.')
+        raise ImportRejected('manifest.json is missing - this is not a Oaken export.')
     try:
         manifest = json.loads(raw.decode('utf-8'))
     except (UnicodeDecodeError, json.JSONDecodeError):

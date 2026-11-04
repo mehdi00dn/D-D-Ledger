@@ -5,7 +5,7 @@
  * through its normal, permission-checked endpoints.  Polling keeps running underneath, so if this socket
  * cannot connect, drops, or is blocked, the page still updates -- just at polling speed.
  *
- *   var rt = LedgerRealtime.connect({url, key, channel}, onPing, onLive);
+ *   var rt = OakenRealtime.connect({url, key, channel}, onPing, onLive);
  *   rt.send({...})      // live, throwaway messages to everyone else on the channel (e.g. a token being dragged)
  *
  * "Live" messages are for looks only: they never change what is stored, and the saved state always wins.
@@ -75,5 +75,5 @@
     };
   }
 
-  window.LedgerRealtime = { connect: connect };
+  window.OakenRealtime = { connect: connect };
 })();

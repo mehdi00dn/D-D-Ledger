@@ -82,7 +82,7 @@ def open_pages(w):
         page.goto(f'{w.base}/campaigns/{w.cid}/maps/{w.mid}'); page.wait_for_load_state('networkidle')
         assert sock.wait_joined(), 'the map page never joined its Realtime channel'
         out.append((page, sock, errors))
-    w.channel = out[0][0].evaluate("() => window.LEDGER_REALTIME.channel")
+    w.channel = out[0][0].evaluate("() => window.OAKEN_REALTIME.channel")
     page_dm, sock_dm, err_dm = out[0]; page_pl, sock_pl, err_pl = out[1]
     return page_dm, sock_dm, err_dm, page_pl, sock_pl, err_pl
 

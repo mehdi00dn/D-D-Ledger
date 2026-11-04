@@ -101,7 +101,7 @@ def test_simultaneous_registration_of_one_username_never_500s(appmod):
 
 def test_migrations_are_idempotent_and_race_safe():
     import psycopg, migrate
-    name = f'ledger_mig_{uuid.uuid4().hex[:8]}'
+    name = f'oaken_mig_{uuid.uuid4().hex[:8]}'
     with psycopg.connect(PG_ADMIN, autocommit=True) as c:
         c.execute(f'CREATE DATABASE {name}')
     dsn = PG_ADMIN.replace('dbname=postgres', f'dbname={name}')

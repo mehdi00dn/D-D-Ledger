@@ -4,17 +4,17 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="csrf-token" content="{{ csrf_token() }}">
-<title>{% block title %}Campaign Ledger{% endblock %}</title>
+<title>{% block title %}Oaken{% endblock %}</title>
 <script nonce="{{ csp_nonce() }}">
   (function () {
-    var saved = localStorage.getItem('ledger-theme');
+    var saved = (localStorage.getItem('oaken-theme') || localStorage.getItem('ledger-theme'));
     if (saved === 'system') saved = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
     if (saved === 'light' || saved === 'dark') {
       document.documentElement.setAttribute('data-theme', saved);
     }
     // Applied before paint (like the theme above) to avoid a flash of the
     // expanded sidebar before sidebar.js has a chance to run.
-    if (localStorage.getItem('ledger-sidebar-collapsed') === '1') {
+    if ((localStorage.getItem('oaken-sidebar-collapsed') || localStorage.getItem('ledger-sidebar-collapsed')) === '1') {
       document.documentElement.setAttribute('data-sidebar', 'collapsed');
     }
   })();
@@ -38,8 +38,7 @@
         <img src="{{ url_for('static', filename='logo/logo-128.png') }}" alt="">
       </span>
       <span class="brand-text">
-        <span class="brand-title">Campaign</span>
-        <span class="brand-subtitle">Ledger</span>
+        <span class="brand-title">Oaken</span>
       </span>
       <button type="button" class="sidebar-toggle-btn" id="sidebar-toggle-btn" title="Collapse menu">
         {{ icon('sidebar-collapse') }}
@@ -170,7 +169,7 @@
         {% endif %}
       </div>
       <span class="foot-line"></span>
-      <span class="foot-label">Campaign Ledger v0.1</span>
+      <span class="foot-label">Oaken v0.1</span>
     </div>
   </aside>
 
@@ -298,7 +297,7 @@
 </div>
 
 {% if g.campaign_id %}<script nonce="{{ csp_nonce() }}">window.CAMPAIGN_ID = {{ g.campaign_id | tojson }}; window.IS_DM = {{ g.is_dm | default(false) | tojson }}; window.USER_ID = {{ session.user_id | tojson }}; window.CLASS_LABELS = {{ class_labels | tojson }};</script>{% endif %}
-{% if g.campaign_id and realtime_settings %}<script nonce="{{ csp_nonce() }}">window.LEDGER_REALTIME = {{ realtime_settings | tojson }};</script>{% endif %}
+{% if g.campaign_id and realtime_settings %}<script nonce="{{ csp_nonce() }}">window.OAKEN_REALTIME = {{ realtime_settings | tojson }};</script>{% endif %}
 <script src="{{ url_for('static', filename='js/csrf.js') }}"></script>
 <script src="{{ url_for('static', filename='js/api.js') }}"></script>
 <script src="{{ url_for('static', filename='js/poller.js') }}"></script>

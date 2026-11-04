@@ -25,12 +25,12 @@ personal data.
 
 | Where | Name | Purpose | Lifetime |
 |---|---|---|---|
-| Cookie | `__Host-ledger` (production) / `ledger_session` (local) | Login session: user id, username, CSRF token, last campaign, one-time flags. HttpOnly, SameSite=Lax, Secure | Until the browser closes; 30 days only if "remember me" is ticked |
-| localStorage | `ledger-theme` | Light/dark choice | Until cleared |
-| localStorage | `ledger-sidebar-collapsed` | Sidebar open or collapsed | Until cleared |
-| localStorage | `ledger-map-dock-tucked` | Phone map toolbar tucked or not | Until cleared |
-| localStorage | `ledger-map-modifier-hint-dismissed`, `ledger-map-nav-hint-dismissed`, `ledger-map-space-hint-dismissed` | "Don't show this tip again" flags | Until cleared |
-| sessionStorage | `ledger-fullscreen` | Phone map fullscreen state | Until the tab closes |
+| Cookie | `__Host-oaken` (production) / `oaken_session` (local) | Login session: user id, username, CSRF token, last campaign, one-time flags. HttpOnly, SameSite=Lax, Secure | Until the browser closes; 30 days only if "remember me" is ticked |
+| localStorage | `oaken-theme` | Light/dark choice | Until cleared |
+| localStorage | `oaken-sidebar-collapsed` | Sidebar open or collapsed | Until cleared |
+| localStorage | `oaken-map-dock-tucked` | Phone map toolbar tucked or not | Until cleared |
+| localStorage | `oaken-map-modifier-hint-dismissed`, `oaken-map-nav-hint-dismissed`, `oaken-map-space-hint-dismissed` | "Don't show this tip again" flags | Until cleared |
+| sessionStorage | `oaken-fullscreen` | Phone map fullscreen state | Until the tab closes |
 
 The cookie is strictly necessary (it is the login). The localStorage entries are interface preferences; they never leave
 the browser and carry no personal data. No consent banner is needed for these on current guidance, but the final answer

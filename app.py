@@ -73,7 +73,7 @@ app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE='Lax',
     SESSION_COOKIE_SECURE=_SECURE_COOKIES,
-    SESSION_COOKIE_NAME='__Host-ledger' if _SECURE_COOKIES else 'ledger_session',
+    SESSION_COOKIE_NAME='__Host-oaken' if _SECURE_COOKIES else 'oaken_session',
     PERMANENT_SESSION_LIFETIME=timedelta(days=30),
     # Header holding the real client IP when behind a trusted proxy (Vercel sets x-vercel-forwarded-for).
     CLIENT_IP_HEADER=os.environ.get('CLIENT_IP_HEADER') or ('x-vercel-forwarded-for' if os.environ.get('VERCEL') else None),
@@ -826,7 +826,7 @@ def _send_verification(db, user, address):
     try:
         security.record_mail(db, app.secret_key, user['id'], address, ip)
         db.commit()                                                     # the attempt counts even if sending fails
-        mailer.send(address, 'Confirm your email for Campaign Ledger',
+        mailer.send(address, 'Confirm your email for Oaken',
                     render_template('email/verify_email.txt', **ctx), render_template('email/verify_email.html', **ctx))
     except mailer.MailError as exc:
         return str(exc)
@@ -976,7 +976,7 @@ def account_delete():
     delete_uploads(files)
     if user.get('email') and user.get('email_verified_at'):
         try:
-            mailer.send(user['email'], 'Your Campaign Ledger account was deleted',
+            mailer.send(user['email'], 'Your Oaken account was deleted',
                         render_template('email/account_deleted.txt', name=user['display_name'] or user['username'], username=user['username']))
         except mailer.MailError:
             pass
@@ -1034,7 +1034,7 @@ def forgot_password():
     ctx = {'name': user['display_name'] or user['username'], 'username': user['username'],
            'link': url_for('reset_password', token=token, _external=True)}
     try:
-        mailer.send(address, 'Reset your Campaign Ledger password',
+        mailer.send(address, 'Reset your Oaken password',
                     render_template('email/password_reset.txt', **ctx), render_template('email/password_reset.html', **ctx))
     except mailer.MailError:                    # the details are already in the log
         db.close()
@@ -1073,7 +1073,7 @@ def reset_password(token):
     _bump_session_version(db, user['id'])           # every device is signed out, including whoever had the old password
     if user['email']:
         try:
-            mailer.send(user['email'], 'Your Campaign Ledger password was changed',
+            mailer.send(user['email'], 'Your Oaken password was changed',
                         render_template('email/password_changed.txt', name=user['display_name'] or user['username'], username=user['username']))
         except mailer.MailError:
             pass
@@ -1163,7 +1163,7 @@ def privacy():
 
 @app.route('/about')
 def about():
-    """DL-25: what Campaign Ledger is, public."""
+    """DL-25: what Oaken is, public."""
     return _legal_page('about.html')
 
 
@@ -1307,7 +1307,7 @@ def account():
 # that does not exist, so the page cannot be used to find out who has an account.  Only name, class, level and portrait of a
 # showcased character are shown: never the campaign it belongs to, its stats or its notes.
 PROFILE_VISIBILITY = {
-    'members': ('Everyone signed in', 'Any signed-in Campaign Ledger user can open your profile.'),
+    'members': ('Everyone signed in', 'Any signed-in Oaken user can open your profile.'),
     'shared': ('People I play with', 'Only people who share a campaign with you, and your friends.'),
     'friends': ('Friends only', 'Only people on your friends list.'),
     'private': ('Only me', 'Nobody else can open it.'),
@@ -1691,7 +1691,7 @@ def account_username():
     g.pop('_profile', None)
     if user.get('email') and user.get('email_verified_at') and mailer.enabled():
         try:
-            mailer.send(user['email'], 'Your Campaign Ledger username was changed',
+            mailer.send(user['email'], 'Your Oaken username was changed',
                         render_template('email/username_changed.txt', name=user['display_name'] or new, old=old, new=new))
         except mailer.MailError:
             pass                                  # the change is made; the notice is a courtesy and the failure is in the log
@@ -1800,7 +1800,7 @@ def account_export():
     db.close()
     body = json.dumps(data, indent=2, ensure_ascii=False, default=str)
     return Response(body, mimetype='application/json',
-                    headers={'Content-Disposition': 'attachment; filename="campaign-ledger-%s.json"' % re.sub(r'[^A-Za-z0-9_-]+', '_', user['username'])})
+                    headers={'Content-Disposition': 'attachment; filename="oaken-%s.json"' % re.sub(r'[^A-Za-z0-9_-]+', '_', user['username'])})
 
 
 @app.route('/account/sessions/logout-all', methods=['POST'])
@@ -3565,7 +3565,7 @@ LIBRARY_NOTES = {
     'already': ('error', 'That character is already in that campaign.'),
     'not_member': ('error', 'Pick one of your own campaigns.'),
     'nothing': ('error', 'Pick at least one character.'),
-    'import_error': ('error', "That file couldn't be read as a Campaign Ledger export. Upload a .zip made by an Export button."),
+    'import_error': ('error', "That file couldn't be read as a Oaken export. Upload a .zip made by an Export button."),
     'import_quota': ('error', 'That import would pass your image storage limit, so nothing was imported. Delete images you no longer need or import a smaller file.'),
 }
 
@@ -5910,8 +5910,8 @@ def campaign_session_ics():
         abort(409)                                          # no session scheduled
     start = nxt['at']
     stamp = lambda d: d.strftime('%Y%m%dT%H%M%SZ')
-    lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Campaign Ledger//Session//EN', 'CALSCALE:GREGORIAN', 'BEGIN:VEVENT',
-             'UID:session-%d-%s@campaign-ledger' % (g.campaign_id, stamp(start)),
+    lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Oaken//Session//EN', 'CALSCALE:GREGORIAN', 'BEGIN:VEVENT',
+             'UID:session-%d-%s@oaken' % (g.campaign_id, stamp(start)),
              'DTSTAMP:' + stamp(datetime.now(timezone.utc)), 'DTSTART:' + stamp(start), 'DTEND:' + stamp(start + timedelta(hours=3)),
              'SUMMARY:' + _ics_escape('%s: next session' % g.campaign['name'])]
     if nxt['note']:

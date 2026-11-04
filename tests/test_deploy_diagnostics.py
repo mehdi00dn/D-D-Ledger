@@ -8,7 +8,7 @@ pytestmark = pytest.mark.skipif(BACKEND != 'postgres', reason='postgres backend 
 
 def _fresh_db():
     import psycopg
-    name = f'ledger_hc_{uuid.uuid4().hex[:8]}'
+    name = f'oaken_hc_{uuid.uuid4().hex[:8]}'
     with psycopg.connect(PG_ADMIN, autocommit=True) as c:
         c.execute(f'CREATE DATABASE {name}')
     return name, PG_ADMIN.replace('dbname=postgres', f'dbname={name}')
@@ -44,13 +44,13 @@ def test_healthz_ready(appmod):
     r = appmod.app.test_client().get('/healthz')
     assert r.status_code == 200 and r.get_json()['ok'] is True
     assert r.get_json()['migrations'] == ['0001_initial.sql', '0002_lock_down_data_api.sql', '0003_auth_throttle.sql',
-                                           '0004_public_ids.sql', '0005_case_insensitive_usernames.sql', '0006_map_fog.sql', '0007_battle_turns.sql', '0008_battle_conditions.sql', '0009_character_class.sql', '0010_invitations_notifications.sql', '0011_invite_links.sql', '0012_custom_conditions.sql', '0013_map_character_pins.sql', '0014_made_by.sql', '0015_token_owner.sql', '0016_character_proficiencies.sql', '0017_character_factions.sql', '0018_dice_rolls.sql', '0019_dice_roll_character_label.sql', '0020_map_dm_only.sql', '0021_stored_files.sql', '0022_user_profile.sql', '0023_session_version.sql', '0024_user_email.sql', '0025_campaign_activity.sql', '0026_battle_log.sql', '0027_death_saves.sql', '0028_fk_indexes.sql', '0029_action_economy.sql', '0030_drop_action_economy.sql', '0031_character_levels.sql', '0032_character_attacks.sql', '0033_hide_npcs.sql', '0034_campaign_notes_and_players.sql', '0035_next_session.sql', '0036_npc_ally.sql', '0037_map_feet_per_square.sql', '0038_quests.sql', '0039_profiles_and_google.sql', '0040_treasury.sql', '0041_encounters.sql', '0042_shape_attach.sql', '0043_treasury_purses.sql', '0044_encounter_characters.sql', '0045_character_library.sql', '0046_your_characters_wording.sql', '0047_profile_setup.sql', '0048_terms_accepted.sql', '0049_email_confirm_required.sql', '0050_cookies_accepted.sql', '0051_map_measures.sql', '0052_friends.sql', '0053_player_details.sql', '0054_friends_visibility.sql', '0055_session_journal.sql', '0056_short_ids.sql']
+                                           '0004_public_ids.sql', '0005_case_insensitive_usernames.sql', '0006_map_fog.sql', '0007_battle_turns.sql', '0008_battle_conditions.sql', '0009_character_class.sql', '0010_invitations_notifications.sql', '0011_invite_links.sql', '0012_custom_conditions.sql', '0013_map_character_pins.sql', '0014_made_by.sql', '0015_token_owner.sql', '0016_character_proficiencies.sql', '0017_character_factions.sql', '0018_dice_rolls.sql', '0019_dice_roll_character_label.sql', '0020_map_dm_only.sql', '0021_stored_files.sql', '0022_user_profile.sql', '0023_session_version.sql', '0024_user_email.sql', '0025_campaign_activity.sql', '0026_battle_log.sql', '0027_death_saves.sql', '0028_fk_indexes.sql', '0029_action_economy.sql', '0030_drop_action_economy.sql', '0031_character_levels.sql', '0032_character_attacks.sql', '0033_hide_npcs.sql', '0034_campaign_notes_and_players.sql', '0035_next_session.sql', '0036_npc_ally.sql', '0037_map_feet_per_square.sql', '0038_quests.sql', '0039_profiles_and_google.sql', '0040_treasury.sql', '0041_encounters.sql', '0042_shape_attach.sql', '0043_treasury_purses.sql', '0044_encounter_characters.sql', '0045_character_library.sql', '0046_your_characters_wording.sql', '0047_profile_setup.sql', '0048_terms_accepted.sql', '0049_email_confirm_required.sql', '0050_cookies_accepted.sql', '0051_map_measures.sql', '0052_friends.sql', '0053_player_details.sql', '0054_friends_visibility.sql', '0055_session_journal.sql', '0056_short_ids.sql', '0057_rename_to_oaken.sql']
     assert r.headers['Cache-Control'] == 'no-store'
 
 
 def test_healthz_reports_missing_tables():
     name, dsn = _fresh_db()
-    srv = Server({'DATABASE_URL': dsn, 'LEDGER_SKIP_MIGRATE': '1'})
+    srv = Server({'DATABASE_URL': dsn, 'OAKEN_SKIP_MIGRATE': '1'})
     try:
         r = requests.get(srv.url + '/healthz')
         assert r.status_code == 503 and r.json()['stage'] == 'schema' and 'migrate' in r.json()['hint']
