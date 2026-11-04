@@ -1,6 +1,7 @@
 """Concurrent users spread over two independent app processes (= two serverless
 instances) sharing one database.  Nothing may be lost, duplicated or 404."""
 import re, uuid, threading, itertools
+import pubid
 import concurrent.futures as cf
 import pytest, requests
 from conftest import BACKEND, CsrfSession
@@ -22,7 +23,7 @@ def test_many_users_many_writes_consistent_on_both_instances(two_instances):
     def worker(i):
         s, name = _user(insts[i % 2])
         r = s.post(insts[i % 2].url + '/campaigns/new', data={'name': f'Camp {i}'}, allow_redirects=False)
-        cid = int(re.search(r'/campaigns/(\d+)/', r.headers['Location']).group(1))
+        cid = pubid.pk('campaigns', r.headers['Location'])
         for k in range(N_CHARS):
             inst = insts[(i + k) % 2]                       # every request may land on a different instance
             r = s.post(f'{inst.url}/campaigns/{cid}/characters/new', data={'name': f'c{i}-{k}', 'max_hp': '9'}, allow_redirects=False)
@@ -43,7 +44,7 @@ def test_many_users_many_writes_consistent_on_both_instances(two_instances):
 def test_damage_from_both_instances_never_loses_a_hit(two_instances):
     a, b = two_instances; insts = [a, b]
     dm, _ = _user(a)
-    cid = int(re.search(r'/campaigns/(\d+)/', dm.post(a.url + '/campaigns/new', data={'name': 'Arena'}, allow_redirects=False).headers['Location']).group(1))
+    cid = pubid.pk('campaigns', dm.post(a.url + '/campaigns/new', data={'name': 'Arena'}, allow_redirects=False).headers['Location'])
     dm.post(f'{a.url}/campaigns/{cid}/characters/new', data={'name': 'Dummy', 'max_hp': '400'}, allow_redirects=False)
     chid = dm.get(f'{a.url}/campaigns/{cid}/api/characters').json()[0]['id']
     pid = dm.post(f'{a.url}/campaigns/{cid}/api/battle/add', json={'character_id': chid}).json()[0]['id']

@@ -1,5 +1,6 @@
 """DL-93: inviting someone creates a pending invitation + notification; they join only by accepting."""
 import pytest
+import pubid
 from conftest import BACKEND, q
 
 pytestmark = pytest.mark.skipif(BACKEND == 'sqlite', reason='new-code tests')
@@ -29,7 +30,7 @@ def test_accepting_joins_with_the_offered_status_and_tells_the_owner(make_user):
     dm, pl = make_user(), make_user(); cid = dm.new_campaign('Quest')
     inv = _invite(dm, cid, pl, 'dm')
     r = pl.post(f'/invitations/{inv}/accept')
-    assert r.status_code == 302 and f'/campaigns/{cid}/' in r.headers['Location']
+    assert r.status_code == 302 and f'/campaigns/%s/' % pubid.short('campaigns', cid) in r.headers['Location']
     assert _members(cid)[pl.name] == 'dm'
     assert q('SELECT role FROM campaign_members cm JOIN users u ON u.id = cm.user_id WHERE u.username = ? AND cm.campaign_id = ?', pl.name, cid)[0]['role'] == 'member'
     assert q('SELECT read_at IS NOT NULL AS r FROM notifications n JOIN users u ON u.id = n.user_id WHERE u.username = ? AND n.kind = ?', pl.name, 'campaign_invite')[0]['r']

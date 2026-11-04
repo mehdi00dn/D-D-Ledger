@@ -1,4 +1,5 @@
 import json, uuid
+import pubid
 import pytest
 from conftest import q
 
@@ -269,7 +270,7 @@ def test_faction_details_lists_members_and_hides_edit_from_players(make_user):
     for who in (dm, player):
         page = who.get(f'/campaigns/{cid}/factions/{gid}').data.decode()
         assert 'Aldric' in page and 'Brute Orc' in page and 'Cyrene' not in page
-        assert f'/characters/{a}"' in page and '2 members' in page
+        assert f'/characters/%s"' % pubid.short('characters', a) in page and '2 members' in page
         # No stat block anywhere on the faction page (the NPC's numbers stay private).
         assert '8731' not in page and 'AC 29' not in page and '>29<' not in page
     # Edit is reachable from inside the details view for the DM only.
@@ -346,7 +347,7 @@ def test_faction_member_remove_button(make_user):
 
     # The DM gets an X per member; a Player gets none.
     page = dm.get(f'/campaigns/{cid}/factions/{gid}').data.decode()
-    assert page.count('faction-member-remove') == 2 and f'/factions/{gid}/members/{a}/remove' in page
+    assert page.count('faction-member-remove') == 2 and f'/factions/{gid}/members/%s/remove' % pubid.short('characters', a) in page
     assert 'faction-member-remove' not in player.get(f'/campaigns/{cid}/factions/{gid}').data.decode()
 
     # Removing one member ungroups only them, and lands back on the Details page.

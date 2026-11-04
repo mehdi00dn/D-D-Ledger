@@ -1,5 +1,6 @@
 """DL-121: the session journal - the DM writes recaps (some boxes hidden), members read what is shared."""
 import json
+import pubid
 import pytest
 from conftest import q, BACKEND
 
@@ -94,8 +95,8 @@ def test_list_groups_by_month_and_gives_the_dm_edit_and_delete_on_each_row(make_
     b = _add(dm, cid, title='New one', boxes=(('Shared', False), ('Secret', True)), date='2026-10-31')
     page = dm.get(f'/campaigns/{cid}/journal').data.decode()
     assert page.index('October 2026') < page.index('New one') < page.index('September 2026') < page.index('Old one')
-    assert f'href="/campaigns/{cid}/journal/{b}/edit?from=list"' in page and 'aria-label="Edit New one"' in page
-    assert f'action="/campaigns/{cid}/journal/{a}/delete"' in page and 'aria-label="Delete Old one"' in page
+    assert f'href="/campaigns/%s/journal/%s/edit?from=list"' % (pubid.short('campaigns', cid), pubid.short('journal', b)) in page and 'aria-label="Edit New one"' in page
+    assert f'action="/campaigns/%s/journal/%s/delete"' % (pubid.short('campaigns', cid), pubid.short('journal', a)) in page and 'aria-label="Delete Old one"' in page
     assert '2 notes' in page and '1 note<' in page
     pl_page = pl.get(f'/campaigns/{cid}/journal').data.decode()
     assert 'journal-actions' not in pl_page and '/journal/' + str(b) + '/edit' not in pl_page and '1 note<' in pl_page     # a player counts only the shared boxes
@@ -106,6 +107,6 @@ def test_editing_from_the_list_returns_to_the_list(make_user):
     jid = _add(dm, cid)
     url = f'/campaigns/{cid}/journal/{jid}/edit'
     data = {'title': 'Renamed', 'played_on': '2026-10-31', 'body': _body(('We crossed.', False))}
-    assert dm.post(url + '?from=list', data=data).headers['Location'].endswith(f'/campaigns/{cid}/journal')
-    assert dm.post(url, data=data).headers['Location'].endswith(f'/journal/{jid}')
-    assert 'href="/campaigns/%s/journal"' % cid in dm.get(url + '?from=list').data.decode()
+    assert dm.post(url + '?from=list', data=data).headers['Location'].endswith(f'/campaigns/%s/journal' % pubid.short('campaigns', cid))
+    assert dm.post(url, data=data).headers['Location'].endswith(f'/journal/%s' % pubid.short('journal', jid))
+    assert 'href="/campaigns/%s/journal"' % pubid.short('campaigns', cid) in dm.get(url + '?from=list').data.decode()

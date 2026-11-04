@@ -1,4 +1,5 @@
 import io, re
+import pubid
 import pytest
 from conftest import q, png_bytes
 
@@ -30,7 +31,7 @@ def test_map_from_uploaded_image_and_file_served(camp):
     r = u.post(f'/campaigns/{cid}/maps/new', data={'name': 'Img', 'image': (io.BytesIO(png_bytes(800, 600)), 'map.png')},
                content_type='multipart/form-data')
     assert r.status_code == 302
-    mid = int(re.search(r'/maps/(\d+)', r.headers['Location']).group(1))
+    mid = pubid.pk('maps', r.headers['Location'])
     row = q('SELECT image_path, image_width, image_height FROM maps WHERE id = ?', mid)[0]
     assert (row['image_width'], row['image_height']) == (800, 600)
     img = u.get('/uploads/' + row['image_path'])

@@ -1,5 +1,6 @@
 """DL-7: real campaign invite links -- opaque hashed token, expiry, max uses, revoke, login required."""
 import re
+import pubid
 import pytest
 from conftest import BACKEND, q
 
@@ -60,7 +61,7 @@ def test_join_flow_requires_login_and_confirmation_then_makes_a_player(make_user
     assert page.status_code == 200 and b'Join campaign' in page.data
     assert guest.name not in _members(cid)                                   # opening the link alone grants nothing
     r = guest.post(path)
-    assert r.status_code == 302 and f'/campaigns/{cid}/' in r.headers['Location']
+    assert r.status_code == 302 and f'/campaigns/%s/' % pubid.short('campaigns', cid) in r.headers['Location']
     assert guest.name in _members(cid)
     row = q('SELECT cm.role, cm.status FROM campaign_members cm JOIN users u ON u.id = cm.user_id WHERE u.username = ? AND cm.campaign_id = ?', guest.name, cid)[0]
     assert (row['role'], row['status']) == ('member', 'player')

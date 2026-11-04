@@ -8,6 +8,7 @@ Everything goes through HTTP (Flask test client / real servers) so the same
 assertions hold on both backends.  DB helpers use the app's own get_db().
 """
 import io, os, re, sys, uuid, json, shutil, socket, subprocess, tempfile, time, atexit
+import pubid
 import pytest
 
 APP_DIR = os.getcwd()
@@ -185,7 +186,7 @@ class User:
         name = name or f'Camp {uuid.uuid4().hex[:6]}'
         r = self.post('/campaigns/new', data={'name': name, 'description': 'd'})
         assert r.status_code == 302, r.status_code
-        return int(re.search(r'/campaigns/(\d+)/', r.headers['Location']).group(1))
+        return pubid.pk('campaigns', r.headers['Location'])
 
     def new_character(self, cid, name=None, **fields):
         name = name or f'Char {uuid.uuid4().hex[:6]}'
@@ -219,7 +220,7 @@ class User:
                       data={'name': name, 'blank_width': str(w), 'blank_height': str(h)},
                       content_type='multipart/form-data')
         assert r.status_code == 302, r.status_code
-        return int(re.search(r'/maps/(\d+)', r.headers['Location']).group(1))
+        return pubid.pk('maps', r.headers['Location'])
 
     def add_to_battle(self, cid, char_id):
         r = self.json(f'/campaigns/{cid}/api/battle/add', {'character_id': char_id})

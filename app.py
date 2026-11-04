@@ -35,12 +35,14 @@ import dnd5e
 import srd
 import importer
 import quotas
+import public_ids
 from storage import get_storage, StorageError, UPLOADS, TEMP
 from database import get_db, init_db, init_app as init_database_app, UniqueViolation
 
 
 app = Flask(__name__)
 observability.init_app(app)
+public_ids.init_app(app)
 
 
 # ---------------- SECURITY CONFIGURATION ----------------
@@ -1907,7 +1909,7 @@ def npc_filter(alias='c'):
     return f' AND ({alias}.is_npc = 0 OR {alias}.is_ally = 1 OR {alias}.created_by = ?)', [None if getattr(g, 'previewing', False) else session.get('user_id')]
 
 
-@app.route('/campaigns/<int:campaign_id>/preview-as-player', methods=['POST'])
+@app.route('/campaigns/<campaign:campaign_id>/preview-as-player', methods=['POST'])
 @campaign_access_required
 def preview_as_player():
     """DM only (judged by their real status, so it also works to switch the preview off while it
@@ -2009,7 +2011,7 @@ def campaign_new():
                             setting_preset=setting_preset, setting_custom=setting_custom)
 
 
-@app.route('/campaigns/<int:campaign_id>/edit', methods=['GET', 'POST'])
+@app.route('/campaigns/<campaign:campaign_id>/edit', methods=['GET', 'POST'])
 @campaign_access_required
 def campaign_edit():
     db = get_db()
@@ -2127,7 +2129,7 @@ def unread_notification_count():
 app.jinja_env.globals['unread_notification_count'] = unread_notification_count
 
 
-@app.route('/campaigns/<int:campaign_id>/members/add', methods=['POST'])
+@app.route('/campaigns/<campaign:campaign_id>/members/add', methods=['POST'])
 @campaign_access_required
 def campaign_member_add():
     """Owner-only: INVITE a user.  Nobody is added to the campaign here -- the invited user gets a
@@ -2176,7 +2178,7 @@ def campaign_member_add():
     return redirect(url_for('campaign_edit', campaign_id=g.campaign_id))
 
 
-@app.route('/campaigns/<int:campaign_id>/members/<int:user_id>/uninvite', methods=['POST'])
+@app.route('/campaigns/<campaign:campaign_id>/members/<int:user_id>/uninvite', methods=['POST'])
 @campaign_access_required
 def campaign_member_uninvite(user_id):
     """Owner-only: withdraw a pending invitation."""
@@ -2212,7 +2214,7 @@ def _hash_invite_token(token):
     return hashlib.sha256(str(token).encode()).hexdigest()
 
 
-@app.route('/campaigns/<int:campaign_id>/invite-links', methods=['POST'])
+@app.route('/campaigns/<campaign:campaign_id>/invite-links', methods=['POST'])
 @campaign_access_required
 def invite_link_create():
     if g.campaign_role != 'owner':
@@ -2255,7 +2257,7 @@ def invite_link_create():
     return redirect(url_for('campaign_edit', campaign_id=g.campaign_id))
 
 
-@app.route('/campaigns/<int:campaign_id>/invite-links/revoke', methods=['POST'])
+@app.route('/campaigns/<campaign:campaign_id>/invite-links/revoke', methods=['POST'])
 @campaign_access_required
 def invite_link_revoke():
     if g.campaign_role != 'owner':
@@ -2428,7 +2430,7 @@ def invitation_decline(invitation_id):
     return _respond_to_invitation(invitation_id, False)
 
 
-@app.route('/campaigns/<int:campaign_id>/api/members/search')
+@app.route('/campaigns/<campaign:campaign_id>/api/members/search')
 @campaign_access_required
 def api_member_search():
     """Owner-only autocomplete for the invite box: usernames matching the query, excluding
@@ -2460,7 +2462,7 @@ def api_member_search():
     return jsonify({'results': [r['username'] for r in rows]})
 
 
-@app.route('/campaigns/<int:campaign_id>/members/<int:user_id>/status', methods=['POST'])
+@app.route('/campaigns/<campaign:campaign_id>/members/<int:user_id>/status', methods=['POST'])
 @campaign_access_required
 def campaign_member_status(user_id):
     """Owner-only: set a member's DM/Player status. The owner can change
@@ -2478,7 +2480,7 @@ def campaign_member_status(user_id):
     return redirect(url_for('campaign_edit', campaign_id=g.campaign_id))
 
 
-@app.route('/campaigns/<int:campaign_id>/npc-visibility', methods=['POST'])
+@app.route('/campaigns/<campaign:campaign_id>/npc-visibility', methods=['POST'])
 @campaign_access_required
 def campaign_npc_visibility():
     """The DM or an owner switches "Hide NPCs from Players" on or off.  Judged by the real status, so a DM previewing as
@@ -2493,7 +2495,7 @@ def campaign_npc_visibility():
     return redirect(url_for('campaign_edit', campaign_id=g.campaign_id))
 
 
-@app.route('/campaigns/<int:campaign_id>/members/<int:user_id>/characters', methods=['POST'])
+@app.route('/campaigns/<campaign:campaign_id>/members/<int:user_id>/characters', methods=['POST'])
 @campaign_access_required
 def campaign_member_characters(user_id):
     """The DM or an owner chooses which characters a member plays.  That member can then edit them and move their map
@@ -2520,7 +2522,7 @@ def campaign_member_characters(user_id):
     return redirect(url_for('campaign_edit', campaign_id=g.campaign_id) + '#member-list')
 
 
-@app.route('/campaigns/<int:campaign_id>/members/<int:user_id>/make-owner', methods=['POST'])
+@app.route('/campaigns/<campaign:campaign_id>/members/<int:user_id>/make-owner', methods=['POST'])
 @campaign_access_required
 def campaign_member_make_owner(user_id):
     """Owner-only: grant another member co-ownership. Owners default to
@@ -2535,7 +2537,7 @@ def campaign_member_make_owner(user_id):
     return redirect(url_for('campaign_edit', campaign_id=g.campaign_id))
 
 
-@app.route('/campaigns/<int:campaign_id>/leave', methods=['POST'])
+@app.route('/campaigns/<campaign:campaign_id>/leave', methods=['POST'])
 @campaign_access_required
 def campaign_leave():
     """Any member can leave a campaign on their own. The sole owner can't
@@ -2559,7 +2561,7 @@ def campaign_leave():
     return redirect(url_for('campaigns_list'))
 
 
-@app.route('/campaigns/<int:campaign_id>/members/<int:user_id>/remove', methods=['POST'])
+@app.route('/campaigns/<campaign:campaign_id>/members/<int:user_id>/remove', methods=['POST'])
 @campaign_access_required
 def campaign_member_remove(user_id):
     if g.campaign_role != 'owner':
@@ -2610,7 +2612,7 @@ def _delete_campaign_rows(db, campaign_id):
     return [p for p in avatar_paths + sheet_paths + map_paths if p]
 
 
-@app.route('/campaigns/<int:campaign_id>/delete', methods=['POST'])
+@app.route('/campaigns/<campaign:campaign_id>/delete', methods=['POST'])
 @campaign_access_required
 def campaign_delete():
     if g.campaign_role != 'owner':
@@ -3143,7 +3145,7 @@ def index():
 
 # ---------------- CHARACTERS ----------------
 
-@app.route('/campaigns/<int:campaign_id>/characters')
+@app.route('/campaigns/<campaign:campaign_id>/characters')
 @campaign_access_required
 def characters_list():
     db = get_db()
@@ -3172,7 +3174,7 @@ def characters_list():
                            deletable={c['id'] for c in characters if can_delete(c['created_by'])})
 
 
-@app.route('/campaigns/<int:campaign_id>/characters/new', methods=['GET', 'POST'])
+@app.route('/campaigns/<campaign:campaign_id>/characters/new', methods=['GET', 'POST'])
 @campaign_access_required
 def character_new():
     db = get_db()
@@ -3195,7 +3197,7 @@ def character_new():
     return render_template('character_form.html', character=None, sheets=[], groups=groups, from_battle=from_battle, notes_entries=[{'t': '', 'h': False}])
 
 
-@app.route('/campaigns/<int:campaign_id>/characters/<int:char_id>')
+@app.route('/campaigns/<campaign:campaign_id>/characters/<character:char_id>')
 @campaign_access_required
 def character_detail(char_id):
     db = get_db()
@@ -3238,7 +3240,7 @@ def character_detail(char_id):
                             sheet=None if stats_hidden else dnd5e.derive(character))
 
 
-@app.route('/campaigns/<int:campaign_id>/characters/<int:char_id>/edit', methods=['GET', 'POST'])
+@app.route('/campaigns/<campaign:campaign_id>/characters/<character:char_id>/edit', methods=['GET', 'POST'])
 @campaign_access_required
 def character_edit(char_id):
     db = get_db()
@@ -3505,7 +3507,7 @@ def _save_character(db, char_id):
     return char_id
 
 
-@app.route('/campaigns/<int:campaign_id>/characters/<int:char_id>/delete', methods=['POST'])
+@app.route('/campaigns/<campaign:campaign_id>/characters/<character:char_id>/delete', methods=['POST'])
 @campaign_access_required
 def character_delete(char_id):
     db = get_db()
@@ -3526,7 +3528,7 @@ def character_delete(char_id):
     return redirect(url_for('characters_list'))
 
 
-@app.route('/campaigns/<int:campaign_id>/characters/<int:char_id>/sheets/<int:sheet_id>/delete', methods=['POST'])
+@app.route('/campaigns/<campaign:campaign_id>/characters/<character:char_id>/sheets/<int:sheet_id>/delete', methods=['POST'])
 @campaign_access_required
 def sheet_delete(char_id, sheet_id):
     db = get_db()
@@ -3731,7 +3733,7 @@ def library_new():
                            add_to_campaign=request.args.get('campaign', ''))
 
 
-@app.route('/library/<int:char_id>')
+@app.route('/library/<character:char_id>')
 def library_detail(char_id):
     db = get_db()
     character = _library_character(db, char_id)
@@ -3750,7 +3752,7 @@ def library_detail(char_id):
                            featured=featured, note=_library_note(request.args))
 
 
-@app.route('/library/<int:char_id>/edit', methods=['GET', 'POST'])
+@app.route('/library/<character:char_id>/edit', methods=['GET', 'POST'])
 def library_edit(char_id):
     db = get_db()
     character = _library_character(db, char_id)
@@ -3769,7 +3771,7 @@ def library_edit(char_id):
                            level_history={str(r['level']): r for r in level_history}, attacks=attacks)
 
 
-@app.route('/library/<int:char_id>/delete', methods=['POST'])
+@app.route('/library/<character:char_id>/delete', methods=['POST'])
 def library_delete(char_id):
     db = get_db()
     character = _library_character(db, char_id)
@@ -3782,7 +3784,7 @@ def library_delete(char_id):
     return _library_back('deleted')
 
 
-@app.route('/library/<int:char_id>/sheets/<int:sheet_id>/delete', methods=['POST'])
+@app.route('/library/<character:char_id>/sheets/<int:sheet_id>/delete', methods=['POST'])
 def library_sheet_delete(char_id, sheet_id):
     db = get_db()
     _library_character(db, char_id)
@@ -3795,7 +3797,7 @@ def library_sheet_delete(char_id, sheet_id):
     return redirect(url_for('library_edit', char_id=char_id))
 
 
-@app.route('/library/<int:char_id>/add-to-campaign', methods=['POST'])
+@app.route('/library/<character:char_id>/add-to-campaign', methods=['POST'])
 def library_add_to_campaign(char_id):
     """Put a copy of a library character into one of the person's campaigns, as a player character played by them."""
     db = get_db()
@@ -3899,7 +3901,7 @@ def library_export():
     return _send_manifest_zip(manifest, 'your_characters.zip')
 
 
-@app.route('/library/<int:char_id>/export')
+@app.route('/library/<character:char_id>/export')
 def library_export_one(char_id):
     db = get_db()
     row = _library_character(db, char_id)
@@ -3926,7 +3928,7 @@ def library_import():
     return _library_back('imported', n=stats['added'], skipped=stats['skipped_npcs'], full=stats['skipped_full'])
 
 
-@app.route('/library/<int:char_id>/showcase', methods=['POST'])
+@app.route('/library/<character:char_id>/showcase', methods=['POST'])
 def library_showcase(char_id):
     """Feature a library character on the profile, or take it off again."""
     db = get_db()
@@ -3950,7 +3952,7 @@ def library_showcase(char_id):
 
 # ---------------- FACTIONS ----------------
 
-@app.route('/campaigns/<int:campaign_id>/factions')
+@app.route('/campaigns/<campaign:campaign_id>/factions')
 @campaign_access_required
 def factions_list():
     db = get_db()
@@ -3964,7 +3966,7 @@ def factions_list():
                            deletable={x['id'] for x in groups if can_delete(x['created_by'])})
 
 
-@app.route('/campaigns/<int:campaign_id>/factions/new', methods=['GET', 'POST'])
+@app.route('/campaigns/<campaign:campaign_id>/factions/new', methods=['GET', 'POST'])
 @campaign_access_required
 @dm_required
 def faction_new():
@@ -3978,7 +3980,7 @@ def faction_new():
     return render_template('group_form.html', group=None, candidates=candidates)
 
 
-@app.route('/campaigns/<int:campaign_id>/factions/<int:group_id>')
+@app.route('/campaigns/<campaign:campaign_id>/factions/<int:group_id>')
 @campaign_access_required
 def faction_detail(group_id):
     """Read-only 'Details' view of a faction: who is in it. Editing (DM only) is reached from here.
@@ -4000,7 +4002,7 @@ def faction_detail(group_id):
     return render_template('group_detail.html', group=group, members=members)
 
 
-@app.route('/campaigns/<int:campaign_id>/factions/<int:group_id>/members/<int:char_id>/remove', methods=['POST'])
+@app.route('/campaigns/<campaign:campaign_id>/factions/<int:group_id>/members/<character:char_id>/remove', methods=['POST'])
 @campaign_access_required
 @dm_required
 def faction_member_remove(group_id, char_id):
@@ -4015,7 +4017,7 @@ def faction_member_remove(group_id, char_id):
     return redirect(url_for('faction_detail', group_id=group_id))
 
 
-@app.route('/campaigns/<int:campaign_id>/factions/<int:group_id>/edit', methods=['GET', 'POST'])
+@app.route('/campaigns/<campaign:campaign_id>/factions/<int:group_id>/edit', methods=['GET', 'POST'])
 @campaign_access_required
 @dm_required
 def faction_edit(group_id):
@@ -4100,7 +4102,7 @@ def _save_faction(db, group_id):
     db.commit()
 
 
-@app.route('/campaigns/<int:campaign_id>/factions/<int:group_id>/delete', methods=['POST'])
+@app.route('/campaigns/<campaign:campaign_id>/factions/<int:group_id>/delete', methods=['POST'])
 @campaign_access_required
 @dm_required
 def faction_delete(group_id):
@@ -4124,7 +4126,7 @@ def faction_delete(group_id):
 
 # ---------------- API (for future battle screen use) ----------------
 
-@app.route('/campaigns/<int:campaign_id>/api/characters')
+@app.route('/campaigns/<campaign:campaign_id>/api/characters')
 @campaign_access_required
 def api_characters():
     db = get_db()
@@ -4152,7 +4154,7 @@ def api_characters():
     return jsonify(out)
 
 
-@app.route('/campaigns/<int:campaign_id>/api/characters/<int:char_id>/detail')
+@app.route('/campaigns/<campaign:campaign_id>/api/characters/<character:char_id>/detail')
 @campaign_access_required
 def api_character_detail(char_id):
     db = get_db()
@@ -4206,7 +4208,7 @@ def api_character_detail(char_id):
 
 # ---------------- BATTLE ----------------
 
-@app.route('/campaigns/<int:campaign_id>/battle')
+@app.route('/campaigns/<campaign:campaign_id>/battle')
 @campaign_access_required
 def battle_view():
     db = get_db()
@@ -4533,7 +4535,7 @@ def _cleanup_familiar_participants(db, map_id):
     db.commit()
 
 
-@app.route('/campaigns/<int:campaign_id>/api/battle')
+@app.route('/campaigns/<campaign:campaign_id>/api/battle')
 @campaign_access_required
 def api_battle_list():
     db = get_db()
@@ -4542,7 +4544,7 @@ def api_battle_list():
     return jsonify(rows)
 
 
-@app.route('/campaigns/<int:campaign_id>/api/battle/log')
+@app.route('/campaigns/<campaign:campaign_id>/api/battle/log')
 @campaign_access_required
 def api_battle_log():
     """The battle log, newest first.  Players get the public wording of enemy events (and none of the hidden ones)."""
@@ -4565,7 +4567,7 @@ def api_battle_log():
     return jsonify(out)
 
 
-@app.route('/campaigns/<int:campaign_id>/api/battle/add', methods=['POST'])
+@app.route('/campaigns/<campaign:campaign_id>/api/battle/add', methods=['POST'])
 @campaign_access_required
 @dm_required
 def api_battle_add():
@@ -4669,7 +4671,7 @@ def _add_monsters_to_battle(db, entry, count, rolled, source='encounter'):
     log_battle(db, f"{c['name']} joined the battle" if count == 1 else f"{count} \u00d7 {c['name']} joined the battle", None, 'joined', npc=True)
 
 
-@app.route('/campaigns/<int:campaign_id>/api/battle/add-monster', methods=['POST'])
+@app.route('/campaigns/<campaign:campaign_id>/api/battle/add-monster', methods=['POST'])
 @campaign_access_required
 @dm_required
 def api_battle_add_monster():
@@ -4698,7 +4700,7 @@ def api_battle_add_monster():
     return jsonify(rows)
 
 
-@app.route('/campaigns/<int:campaign_id>/api/battle/add-group', methods=['POST'])
+@app.route('/campaigns/<campaign:campaign_id>/api/battle/add-group', methods=['POST'])
 @campaign_access_required
 @dm_required
 def api_battle_add_group():
@@ -4722,7 +4724,7 @@ def api_battle_add_group():
     return jsonify(rows)
 
 
-@app.route('/campaigns/<int:campaign_id>/api/battle/<int:pid>/heal', methods=['POST'])
+@app.route('/campaigns/<campaign:campaign_id>/api/battle/<int:pid>/heal', methods=['POST'])
 @campaign_access_required
 @dm_required
 def api_battle_heal(pid):
@@ -4755,7 +4757,7 @@ def api_battle_heal(pid):
     return jsonify(rows)
 
 
-@app.route('/campaigns/<int:campaign_id>/api/battle/<int:pid>/damage', methods=['POST'])
+@app.route('/campaigns/<campaign:campaign_id>/api/battle/<int:pid>/damage', methods=['POST'])
 @campaign_access_required
 @dm_required
 def api_battle_damage(pid):
@@ -4786,7 +4788,7 @@ def api_battle_damage(pid):
     return jsonify(rows)
 
 
-@app.route('/campaigns/<int:campaign_id>/api/battle/<int:pid>/temphp', methods=['POST'])
+@app.route('/campaigns/<campaign:campaign_id>/api/battle/<int:pid>/temphp', methods=['POST'])
 @campaign_access_required
 @dm_required
 def api_battle_temphp(pid):
@@ -4807,7 +4809,7 @@ def api_battle_temphp(pid):
     return jsonify(rows)
 
 
-@app.route('/campaigns/<int:campaign_id>/api/battle/<int:pid>/set_hp', methods=['POST'])
+@app.route('/campaigns/<campaign:campaign_id>/api/battle/<int:pid>/set_hp', methods=['POST'])
 @campaign_access_required
 @dm_required
 def api_battle_set_hp(pid):
@@ -4838,7 +4840,7 @@ def api_battle_set_hp(pid):
     return jsonify(rows)
 
 
-@app.route('/campaigns/<int:campaign_id>/api/battle/<int:pid>/initiative', methods=['POST'])
+@app.route('/campaigns/<campaign:campaign_id>/api/battle/<int:pid>/initiative', methods=['POST'])
 @campaign_access_required
 @dm_required
 def api_battle_initiative(pid):
@@ -4855,7 +4857,7 @@ def api_battle_initiative(pid):
 INITIATIVE_SCOPES = {'all': ('everyone', None), 'pc': ('the player characters', 0), 'npc': ('the NPCs and monsters', 1)}
 
 
-@app.route('/campaigns/<int:campaign_id>/api/battle/roll-initiative', methods=['POST'])
+@app.route('/campaigns/<campaign:campaign_id>/api/battle/roll-initiative', methods=['POST'])
 @campaign_access_required
 @dm_required
 def api_battle_roll_initiative():
@@ -4885,7 +4887,7 @@ def api_battle_roll_initiative():
     return jsonify(rows)
 
 
-@app.route('/campaigns/<int:campaign_id>/api/battle/long-rest', methods=['POST'])
+@app.route('/campaigns/<campaign:campaign_id>/api/battle/long-rest', methods=['POST'])
 @campaign_access_required
 @dm_required
 def api_battle_long_rest():
@@ -4913,7 +4915,7 @@ def api_battle_long_rest():
     return jsonify(rows)
 
 
-@app.route('/campaigns/<int:campaign_id>/api/battle/short-rest', methods=['POST'])
+@app.route('/campaigns/<campaign:campaign_id>/api/battle/short-rest', methods=['POST'])
 @campaign_access_required
 @dm_required
 def api_battle_short_rest():
@@ -4951,7 +4953,7 @@ def api_battle_short_rest():
     return jsonify(out)
 
 
-@app.route('/campaigns/<int:campaign_id>/api/battle/<int:pid>/ac', methods=['POST'])
+@app.route('/campaigns/<campaign:campaign_id>/api/battle/<int:pid>/ac', methods=['POST'])
 @campaign_access_required
 @dm_required
 def api_battle_ac(pid):
@@ -4965,7 +4967,7 @@ def api_battle_ac(pid):
     return jsonify(rows)
 
 
-@app.route('/campaigns/<int:campaign_id>/api/battle/<int:pid>/max-hp', methods=['POST'])
+@app.route('/campaigns/<campaign:campaign_id>/api/battle/<int:pid>/max-hp', methods=['POST'])
 @campaign_access_required
 @dm_required
 def api_battle_max_hp(pid):
@@ -4988,7 +4990,7 @@ def api_battle_max_hp(pid):
     return jsonify(rows)
 
 
-@app.route('/campaigns/<int:campaign_id>/api/battle/<int:pid>/die', methods=['POST'])
+@app.route('/campaigns/<campaign:campaign_id>/api/battle/<int:pid>/die', methods=['POST'])
 @campaign_access_required
 @dm_required
 def api_battle_die(pid):
@@ -5006,7 +5008,7 @@ def api_battle_die(pid):
     return jsonify(rows)
 
 
-@app.route('/campaigns/<int:campaign_id>/api/battle/<int:pid>/revive', methods=['POST'])
+@app.route('/campaigns/<campaign:campaign_id>/api/battle/<int:pid>/revive', methods=['POST'])
 @campaign_access_required
 @dm_required
 def api_battle_revive(pid):
@@ -5025,7 +5027,7 @@ def api_battle_revive(pid):
     return jsonify(rows)
 
 
-@app.route('/campaigns/<int:campaign_id>/api/battle/<int:pid>/death-save', methods=['POST'])
+@app.route('/campaigns/<campaign:campaign_id>/api/battle/<int:pid>/death-save', methods=['POST'])
 @campaign_access_required
 def api_battle_death_save(pid):
     """One death saving throw for a character who is down at 0 HP (2024 rules).  The DM can roll for any player
@@ -5093,7 +5095,7 @@ def api_battle_death_save(pid):
     return jsonify({'roll': roll, 'outcome': outcome, 'rows': rows})
 
 
-@app.route('/campaigns/<int:campaign_id>/api/battle/<int:pid>/conditions', methods=['POST'])
+@app.route('/campaigns/<campaign:campaign_id>/api/battle/<int:pid>/conditions', methods=['POST'])
 @campaign_access_required
 @dm_required
 def api_battle_conditions(pid):
@@ -5139,7 +5141,7 @@ def api_battle_conditions(pid):
     return jsonify(rows)
 
 
-@app.route('/campaigns/<int:campaign_id>/api/battle/next-turn', methods=['POST'])
+@app.route('/campaigns/<campaign:campaign_id>/api/battle/next-turn', methods=['POST'])
 @campaign_access_required
 @dm_required
 def api_battle_next_turn():
@@ -5153,7 +5155,7 @@ def api_battle_next_turn():
     return jsonify(rows)
 
 
-@app.route('/campaigns/<int:campaign_id>/api/battle/prev-turn', methods=['POST'])
+@app.route('/campaigns/<campaign:campaign_id>/api/battle/prev-turn', methods=['POST'])
 @campaign_access_required
 @dm_required
 def api_battle_prev_turn():
@@ -5166,7 +5168,7 @@ def api_battle_prev_turn():
     return jsonify(rows)
 
 
-@app.route('/campaigns/<int:campaign_id>/api/battle/restart-turns', methods=['POST'])
+@app.route('/campaigns/<campaign:campaign_id>/api/battle/restart-turns', methods=['POST'])
 @campaign_access_required
 @dm_required
 def api_battle_restart_turns():
@@ -5198,7 +5200,7 @@ def _remove_participant(db, pid):
     return True
 
 
-@app.route('/campaigns/<int:campaign_id>/api/battle/<int:pid>/remove', methods=['POST'])
+@app.route('/campaigns/<campaign:campaign_id>/api/battle/<int:pid>/remove', methods=['POST'])
 @campaign_access_required
 @dm_required
 def api_battle_remove(pid):
@@ -5212,7 +5214,7 @@ def api_battle_remove(pid):
     return jsonify(rows)
 
 
-@app.route('/campaigns/<int:campaign_id>/api/battle/clear', methods=['POST'])
+@app.route('/campaigns/<campaign:campaign_id>/api/battle/clear', methods=['POST'])
 @campaign_access_required
 @dm_required
 def api_battle_clear():
@@ -5249,7 +5251,7 @@ def _activity_events(db, limit=100):
     return events
 
 
-@app.route('/campaigns/<int:campaign_id>/activity')
+@app.route('/campaigns/<campaign:campaign_id>/activity')
 @campaign_access_required
 def activity_view():
     """What has happened in this campaign lately: members joining or leaving, and things added or removed."""
@@ -5259,7 +5261,7 @@ def activity_view():
     return render_template('activity.html', events=events)
 
 
-@app.route('/campaigns/<int:campaign_id>/home')
+@app.route('/campaigns/<campaign:campaign_id>/home')
 @campaign_access_required
 def campaign_home():
     """The campaign's front page: the party, where the battle stands, what happened lately and the latest rolls."""
@@ -5346,7 +5348,7 @@ def _next_session(db):
             'mine': mine['status'] if mine else None}
 
 
-@app.route('/campaigns/<int:campaign_id>/session', methods=['POST'])
+@app.route('/campaigns/<campaign:campaign_id>/session', methods=['POST'])
 @campaign_access_required
 def campaign_session_set():
     """The DM or an owner sets, changes or clears the next session.  A new time clears the answers and tells the members."""
@@ -5376,7 +5378,7 @@ def campaign_session_set():
     return redirect(url_for('campaign_home'))
 
 
-@app.route('/campaigns/<int:campaign_id>/session/rsvp', methods=['POST'])
+@app.route('/campaigns/<campaign:campaign_id>/session/rsvp', methods=['POST'])
 @campaign_access_required
 def campaign_session_rsvp():
     """Any member answers yes / maybe / no for the scheduled session."""
@@ -5399,7 +5401,7 @@ def campaign_session_rsvp():
 QUEST_TITLE_MAX, QUEST_DETAILS_MAX, QUEST_LIMIT = 120, 600, 60
 
 
-@app.route('/campaigns/<int:campaign_id>/quests/add', methods=['POST'])
+@app.route('/campaigns/<campaign:campaign_id>/quests/add', methods=['POST'])
 @campaign_access_required
 @dm_required
 def quest_add():
@@ -5419,7 +5421,7 @@ def quest_add():
     return redirect(url_for('campaign_home'))
 
 
-@app.route('/campaigns/<int:campaign_id>/quests/<int:quest_id>', methods=['POST'])
+@app.route('/campaigns/<campaign:campaign_id>/quests/<quest:quest_id>', methods=['POST'])
 @campaign_access_required
 @dm_required
 def quest_change(quest_id):
@@ -5485,7 +5487,7 @@ def _journal_missing(db):
     return api_error('The journal needs a database update that has not been applied yet (migration 0055).', 503, code='migration_pending')
 
 
-@app.route('/campaigns/<int:campaign_id>/journal')
+@app.route('/campaigns/<campaign:campaign_id>/journal')
 @campaign_access_required
 def journal_list():
     db = get_db()
@@ -5512,7 +5514,7 @@ def journal_list():
     return render_template('journal.html', entries=entries, months=months)
 
 
-@app.route('/campaigns/<int:campaign_id>/journal/new', methods=['GET', 'POST'])
+@app.route('/campaigns/<campaign:campaign_id>/journal/new', methods=['GET', 'POST'])
 @campaign_access_required
 @dm_required
 def journal_new():
@@ -5539,7 +5541,7 @@ def journal_new():
     return render_template('journal_form.html', entry=None, values=form_values, notes_entries=notes_parse_entries(form_values['body']), error=error), (400 if error else 200)
 
 
-@app.route('/campaigns/<int:campaign_id>/journal/<int:journal_id>')
+@app.route('/campaigns/<campaign:campaign_id>/journal/<journal:journal_id>')
 @campaign_access_required
 def journal_view(journal_id):
     db = get_db()
@@ -5551,7 +5553,7 @@ def journal_view(journal_id):
     return render_template('journal_entry.html', entry=row, body_html=notes_to_html(row['body'], show_hidden=g.is_dm))
 
 
-@app.route('/campaigns/<int:campaign_id>/journal/<int:journal_id>/edit', methods=['GET', 'POST'])
+@app.route('/campaigns/<campaign:campaign_id>/journal/<journal:journal_id>/edit', methods=['GET', 'POST'])
 @campaign_access_required
 @dm_required
 def journal_edit(journal_id):
@@ -5576,7 +5578,7 @@ def journal_edit(journal_id):
                            from_list=from_list), (400 if error else 200)
 
 
-@app.route('/campaigns/<int:campaign_id>/journal/<int:journal_id>/delete', methods=['POST'])
+@app.route('/campaigns/<campaign:campaign_id>/journal/<journal:journal_id>/delete', methods=['POST'])
 @campaign_access_required
 @dm_required
 def journal_delete(journal_id):
@@ -5733,7 +5735,7 @@ def _treasury_done(message, **redirect_args):
     return redirect(url_for('treasury_view', **redirect_args))
 
 
-@app.route('/campaigns/<int:campaign_id>/treasury/panels')
+@app.route('/campaigns/<campaign:campaign_id>/treasury/panels')
 @campaign_access_required
 def treasury_panels():
     """The purses and the entries list alone (HTML), so the page can refresh them after a change without reloading."""
@@ -5743,7 +5745,7 @@ def treasury_panels():
     return render_template('_treasury_live.html', error=None, **ctx)
 
 
-@app.route('/campaigns/<int:campaign_id>/treasury')
+@app.route('/campaigns/<campaign:campaign_id>/treasury')
 @campaign_access_required
 def treasury_view():
     """The party purse, every character's purse, every entry that got the coins there, and the forms to add, spend and share."""
@@ -5773,7 +5775,7 @@ def _holder_from(db, raw):
     return False, None
 
 
-@app.route('/campaigns/<int:campaign_id>/treasury/add', methods=['POST'])
+@app.route('/campaigns/<campaign:campaign_id>/treasury/add', methods=['POST'])
 @campaign_access_required
 def treasury_add():
     """Coins in (kind=income) or out (kind=expense) of a purse (character_id: blank = the party's).  Spending makes change by
@@ -5810,7 +5812,7 @@ def treasury_add():
                           who='party' if holder is None else holder)
 
 
-@app.route('/campaigns/<int:campaign_id>/treasury/split', methods=['POST'])
+@app.route('/campaigns/<campaign:campaign_id>/treasury/split', methods=['POST'])
 @campaign_access_required
 def treasury_split():
     """Move coins out of one purse (`source`: blank = the party's) and share them evenly between the chosen purses
@@ -5865,7 +5867,7 @@ def treasury_split():
     return _treasury_done('%s %s: %s each.' % (verb, to_names, format_coins(each)))
 
 
-@app.route('/campaigns/<int:campaign_id>/treasury/<int:entry_id>/delete', methods=['POST'])
+@app.route('/campaigns/<campaign:campaign_id>/treasury/<int:entry_id>/delete', methods=['POST'])
 @campaign_access_required
 def treasury_delete(entry_id):
     """The DM can remove any entry, a member the ones they made - unless that would leave a purse with a coin below zero.
@@ -5897,7 +5899,7 @@ def _ics_escape(text):
     return str(text).replace('\\', '\\\\').replace(';', '\\;').replace(',', '\\,').replace('\r', '').replace('\n', '\\n')
 
 
-@app.route('/campaigns/<int:campaign_id>/session.ics')
+@app.route('/campaigns/<campaign:campaign_id>/session.ics')
 @campaign_access_required
 def campaign_session_ics():
     """The next session as a calendar file (a three-hour event; the DM's note goes in the description)."""
@@ -5919,7 +5921,7 @@ def campaign_session_ics():
                     headers={'Content-Disposition': 'attachment; filename="session.ics"', 'Cache-Control': 'no-store'})
 
 
-@app.route('/campaigns/<int:campaign_id>/dice')
+@app.route('/campaigns/<campaign:campaign_id>/dice')
 @campaign_access_required
 def dice_view():
     return render_template('dice.html')
@@ -5981,7 +5983,7 @@ def _dice_feed(db, after=None, limit=DICE_FEED_LIMIT):
     return [_roll_row_out(r, names) for r in rows if not names.get(('gone', r['character_id']))]
 
 
-@app.route('/campaigns/<int:campaign_id>/api/dice/roll', methods=['POST'])
+@app.route('/campaigns/<campaign:campaign_id>/api/dice/roll', methods=['POST'])
 @campaign_access_required
 def dice_roll():
     """Roll on the server (so everyone sees one honest result), store it, and return it.
@@ -6086,7 +6088,7 @@ def dice_roll():
     return jsonify(rolls[0] if rolls else {})
 
 
-@app.route('/campaigns/<int:campaign_id>/api/dice/rolls')
+@app.route('/campaigns/<campaign:campaign_id>/api/dice/rolls')
 @campaign_access_required
 def dice_rolls():
     """The roll feed.  ?after=<id> returns rolls newer than that id; ?init=1 returns nothing but the newest id
@@ -6144,19 +6146,19 @@ def _reference_entry_response():
         return api_error(str(e), _srd_status(e))
 
 
-@app.route('/campaigns/<int:campaign_id>/reference')
+@app.route('/campaigns/<campaign:campaign_id>/reference')
 @campaign_access_required
 def reference_view():
     return _reference_page(url_for('reference_view').rsplit('/reference', 1)[0] + '/api/reference/')
 
 
-@app.route('/campaigns/<int:campaign_id>/api/reference/search')
+@app.route('/campaigns/<campaign:campaign_id>/api/reference/search')
 @campaign_access_required
 def reference_search():
     return _reference_search_response()
 
 
-@app.route('/campaigns/<int:campaign_id>/api/reference/entry')
+@app.route('/campaigns/<campaign:campaign_id>/api/reference/entry')
 @campaign_access_required
 def reference_detail():
     return _reference_entry_response()
@@ -6335,13 +6337,13 @@ def _slugify(name):
     return slug or 'export'
 
 
-@app.route('/campaigns/<int:campaign_id>/export/data')
+@app.route('/campaigns/<campaign:campaign_id>/export/data')
 @campaign_access_required
 def export_data():
     return _build_export_zip(g.campaign_id, download_name='campaign_export.zip')
 
 
-@app.route('/campaigns/<int:campaign_id>/characters/<int:char_id>/export')
+@app.route('/campaigns/<campaign:campaign_id>/characters/<character:char_id>/export')
 @campaign_access_required
 def character_export(char_id):
     db = get_db()
@@ -6354,7 +6356,7 @@ def character_export(char_id):
     return _build_export_zip(g.campaign_id, character_ids=[char_id], download_name=f'{_slugify(row["name"])}.zip')
 
 
-@app.route('/campaigns/<int:campaign_id>/factions/<int:group_id>/export')
+@app.route('/campaigns/<campaign:campaign_id>/factions/<int:group_id>/export')
 @campaign_access_required
 def faction_export(group_id):
     db = get_db()
@@ -6493,7 +6495,7 @@ def _import_manifest(db, zf, manifest, campaign_id):
     return stats
 
 
-@app.route('/campaigns/<int:campaign_id>/import/data', methods=['POST'])
+@app.route('/campaigns/<campaign:campaign_id>/import/data', methods=['POST'])
 @campaign_access_required
 def import_data():
     dest = 'factions_list' if 'groups' in (request.referrer or '') else 'characters_list'
@@ -6512,7 +6514,7 @@ def import_data():
 
 # ---------------- MAPS ----------------
 
-@app.route('/campaigns/<int:campaign_id>/maps')
+@app.route('/campaigns/<campaign:campaign_id>/maps')
 @campaign_access_required
 def maps_list():
     # Reopen the last map viewed in this campaign, like the editor was never
@@ -6537,7 +6539,7 @@ def maps_list():
                            deletable={m['id'] for m in maps if can_delete(m['created_by'])})
 
 
-@app.route('/campaigns/<int:campaign_id>/maps/new', methods=['POST'])
+@app.route('/campaigns/<campaign:campaign_id>/maps/new', methods=['POST'])
 @campaign_access_required
 def map_new():
     name = request.form.get('name', '').strip() or 'Untitled Map'
@@ -6566,7 +6568,7 @@ def map_new():
     return redirect(url_for('map_editor', map_id=map_id))
 
 
-@app.route('/campaigns/<int:campaign_id>/maps/<int:map_id>')
+@app.route('/campaigns/<campaign:campaign_id>/maps/<gamemap:map_id>')
 @campaign_access_required
 def map_editor(map_id):
     db = get_db()
@@ -6601,7 +6603,7 @@ def map_editor(map_id):
     return render_template('map_editor.html', map=init, roster=roster)
 
 
-@app.route('/campaigns/<int:campaign_id>/maps/<int:map_id>/delete', methods=['POST'])
+@app.route('/campaigns/<campaign:campaign_id>/maps/<gamemap:map_id>/delete', methods=['POST'])
 @campaign_access_required
 def map_delete(map_id):
     db = get_db()
@@ -6645,7 +6647,7 @@ def map_edit_allowed(view_func):
     return wrapped
 
 
-@app.route('/campaigns/<int:campaign_id>/api/maps/<int:map_id>/state')
+@app.route('/campaigns/<campaign:campaign_id>/api/maps/<gamemap:map_id>/state')
 @campaign_access_required
 def api_map_state(map_id):
     """Polled by every open map tab so grid settings, the lock, and the
@@ -6682,7 +6684,7 @@ def _map_fog_row(db, map_id):
     return raw, m['fog_cols'], m['fog_rows'], m['fog_version'], m['image_path'], m['image_width'], m['image_height']
 
 
-@app.route('/campaigns/<int:campaign_id>/maps/<int:map_id>/image')
+@app.route('/campaigns/<campaign:campaign_id>/maps/<gamemap:map_id>/image')
 @campaign_access_required
 def map_image(map_id):
     """The map picture. The DM gets the original; a Player gets it with every fogged area painted
@@ -6712,7 +6714,7 @@ def map_image(map_id):
     return resp.make_conditional(request)
 
 
-@app.route('/campaigns/<int:campaign_id>/api/maps/<int:map_id>/fog')
+@app.route('/campaigns/<campaign:campaign_id>/api/maps/<gamemap:map_id>/fog')
 @campaign_access_required
 def api_map_fog_get(map_id):
     """The fog mask (what is covered -- exactly what the DM chooses to show everyone)."""
@@ -6727,7 +6729,7 @@ def api_map_fog_get(map_id):
                     'mask': fog.to_client(raw) if raw is not None else None})
 
 
-@app.route('/campaigns/<int:campaign_id>/api/maps/<int:map_id>/fog', methods=['POST'])
+@app.route('/campaigns/<campaign:campaign_id>/api/maps/<gamemap:map_id>/fog', methods=['POST'])
 @campaign_access_required
 @dm_required
 def api_map_fog_set(map_id):
@@ -6765,7 +6767,7 @@ def api_map_fog_set(map_id):
     return jsonify({'version': new_version, 'active': raw is not None})
 
 
-@app.route('/campaigns/<int:campaign_id>/api/maps/<int:map_id>/settings', methods=['POST'])
+@app.route('/campaigns/<campaign:campaign_id>/api/maps/<gamemap:map_id>/settings', methods=['POST'])
 @campaign_access_required
 def api_map_settings(map_id):
     data = request.get_json(force=True)
@@ -6841,7 +6843,7 @@ def api_map_settings(map_id):
 
 # ---- Drawings ----
 
-@app.route('/campaigns/<int:campaign_id>/api/maps/<int:map_id>/drawings')
+@app.route('/campaigns/<campaign:campaign_id>/api/maps/<gamemap:map_id>/drawings')
 @campaign_access_required
 def api_map_drawings_list(map_id):
     db = get_db()
@@ -6879,7 +6881,7 @@ def _attach_target(db, map_id, raw):
     return pin_id
 
 
-@app.route('/campaigns/<int:campaign_id>/api/maps/<int:map_id>/drawings', methods=['POST'])
+@app.route('/campaigns/<campaign:campaign_id>/api/maps/<gamemap:map_id>/drawings', methods=['POST'])
 @campaign_access_required
 @map_edit_allowed
 def api_map_drawings_add(map_id):
@@ -6915,7 +6917,7 @@ def api_map_drawings_add(map_id):
     return jsonify({'id': cur.lastrowid})
 
 
-@app.route('/campaigns/<int:campaign_id>/api/maps/<int:map_id>/drawings/<int:drawing_id>/update', methods=['POST'])
+@app.route('/campaigns/<campaign:campaign_id>/api/maps/<gamemap:map_id>/drawings/<int:drawing_id>/update', methods=['POST'])
 @campaign_access_required
 @map_edit_allowed
 def api_map_drawing_update(map_id, drawing_id):
@@ -6955,7 +6957,7 @@ def api_map_drawing_update(map_id, drawing_id):
     return jsonify({'ok': True})
 
 
-@app.route('/campaigns/<int:campaign_id>/api/maps/<int:map_id>/drawings/<int:drawing_id>/delete', methods=['POST'])
+@app.route('/campaigns/<campaign:campaign_id>/api/maps/<gamemap:map_id>/drawings/<int:drawing_id>/delete', methods=['POST'])
 @campaign_access_required
 @map_edit_allowed
 def api_map_drawing_delete(map_id, drawing_id):
@@ -6966,7 +6968,7 @@ def api_map_drawing_delete(map_id, drawing_id):
     return jsonify({'ok': True})
 
 
-@app.route('/campaigns/<int:campaign_id>/api/maps/<int:map_id>/drawings/clear', methods=['POST'])
+@app.route('/campaigns/<campaign:campaign_id>/api/maps/<gamemap:map_id>/drawings/clear', methods=['POST'])
 @campaign_access_required
 @map_edit_allowed
 def api_map_drawings_clear(map_id):
@@ -7126,7 +7128,7 @@ def _map_pins_payload(db, map_id):
     return result
 
 
-@app.route('/campaigns/<int:campaign_id>/api/maps/<int:map_id>/pins')
+@app.route('/campaigns/<campaign:campaign_id>/api/maps/<gamemap:map_id>/pins')
 @campaign_access_required
 def api_map_pins_list(map_id):
     db = get_db()
@@ -7135,7 +7137,7 @@ def api_map_pins_list(map_id):
     return jsonify(result)
 
 
-@app.route('/campaigns/<int:campaign_id>/api/maps/<int:map_id>/sync')
+@app.route('/campaigns/<campaign:campaign_id>/api/maps/<gamemap:map_id>/sync')
 @campaign_access_required
 def api_map_sync(map_id):
     """One request instead of three: the map editor's live refresh needs the grid/lock
@@ -7186,7 +7188,7 @@ def _measure_point(raw):
     return x, y
 
 
-@app.route('/campaigns/<int:campaign_id>/api/maps/<int:map_id>/measure', methods=['POST'])
+@app.route('/campaigns/<campaign:campaign_id>/api/maps/<gamemap:map_id>/measure', methods=['POST'])
 @campaign_access_required
 def api_map_measure(map_id):
     data = request.get_json(silent=True) or {}
@@ -7216,7 +7218,7 @@ def api_map_measure(map_id):
     return jsonify({'ok': True})
 
 
-@app.route('/campaigns/<int:campaign_id>/api/maps/<int:map_id>/measure/clear', methods=['POST'])
+@app.route('/campaigns/<campaign:campaign_id>/api/maps/<gamemap:map_id>/measure/clear', methods=['POST'])
 @campaign_access_required
 def api_map_measure_clear(map_id):
     db = get_db()
@@ -7257,7 +7259,7 @@ def _may_move_pin(pin_row):
     return bool(g.is_dm or (pin_row is not None and me is not None and me in (pin_row['owner_user_id'], pin_row['char_player_id'])))
 
 
-@app.route('/campaigns/<int:campaign_id>/api/maps/<int:map_id>/pins', methods=['POST'])
+@app.route('/campaigns/<campaign:campaign_id>/api/maps/<gamemap:map_id>/pins', methods=['POST'])
 @campaign_access_required
 @map_edit_allowed
 def api_map_pins_add(map_id):
@@ -7314,7 +7316,7 @@ def api_map_pins_add(map_id):
     return jsonify({'id': new_id, 'participant_id': participant_id})
 
 
-@app.route('/campaigns/<int:campaign_id>/api/maps/<int:map_id>/pins/<int:pin_id>/update', methods=['POST'])
+@app.route('/campaigns/<campaign:campaign_id>/api/maps/<gamemap:map_id>/pins/<int:pin_id>/update', methods=['POST'])
 @campaign_access_required
 @map_edit_allowed
 def api_map_pin_update(map_id, pin_id):
@@ -7404,7 +7406,7 @@ def api_map_pin_update(map_id, pin_id):
     return jsonify({'ok': True})
 
 
-@app.route('/campaigns/<int:campaign_id>/api/maps/<int:map_id>/pins/<int:pin_id>/delete', methods=['POST'])
+@app.route('/campaigns/<campaign:campaign_id>/api/maps/<gamemap:map_id>/pins/<int:pin_id>/delete', methods=['POST'])
 @campaign_access_required
 @map_edit_allowed
 def api_map_pin_delete(map_id, pin_id):

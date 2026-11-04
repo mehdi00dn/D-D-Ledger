@@ -1,5 +1,6 @@
 """DL-151: the quest list on the campaign Home page - the DM keeps it, Players read the quests that are not hidden."""
 import pytest
+import pubid
 from conftest import q, BACKEND
 
 pytestmark = pytest.mark.skipif(BACKEND == 'sqlite', reason='postgres-only')
@@ -90,4 +91,4 @@ def test_party_tile_and_character_card_name_link_to_the_page(make_user):
     dm = make_user(); cid = dm.new_campaign()
     dm.post(f'/campaigns/{cid}/characters/new', data={'name': 'Mira', 'max_hp': '8'})
     cid_char = q('SELECT id FROM characters WHERE campaign_id = ?', cid)[0]['id']
-    assert f'class="dossier-name-link" href="/campaigns/{cid}/characters/{cid_char}"' in dm.get(f'/campaigns/{cid}/characters').data.decode()
+    assert f'class="dossier-name-link" href="/campaigns/%s/characters/%s"' % (pubid.short('campaigns', cid), pubid.short('characters', cid_char)) in dm.get(f'/campaigns/{cid}/characters').data.decode()

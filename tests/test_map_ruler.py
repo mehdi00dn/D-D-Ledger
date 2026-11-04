@@ -27,11 +27,12 @@ def test_feet_per_square_is_a_clamped_per_map_setting(make_user):
 playwright = pytest.importorskip('playwright.sync_api')
 from test_e2e_browser import Api, pw                      # noqa: F401,E402
 import re
+import pubid
 
 
 def _new_map(api, cid):
     r = api.post(f'/campaigns/{cid}/maps/new', data={'name': 'Ruler map', 'blank_width': '400', 'blank_height': '300'})
-    return int(re.search(r'/maps/(\d+)', r.headers['Location']).group(1))
+    return pubid.pk('maps', r.headers['Location'])
 
 
 def _open(dm, pw, base, cid, mid):

@@ -82,8 +82,8 @@ class Player:
 
 
 def cid_from(resp):
-    m = re.search(r'/campaigns/(\d+)/', resp.headers.get('Location', ''))
-    return int(m.group(1)) if m else None
+    m = re.search(r'/campaigns/([0-9a-f]{12}|\d+)/', resp.headers.get('Location', ''))      # a short code (DL-109) or an old number
+    return m.group(1) if m else None
 
 
 def main():
@@ -160,7 +160,8 @@ def main():
                 if put.status_code == 200:
                     r = a.form(f'/campaigns/{cid}/maps/new', {'name': 'Big Map', 'image__key': j['key']})
                     check('map created from the direct upload', r.status_code == 302, str(r.status_code))
-                    mid = int(re.search(r'/maps/(\d+)', r.headers.get('Location', '') or '/maps/0').group(1))
+                    mid = re.search(r'/maps/([0-9a-f]{12}|\d+)', r.headers.get('Location', '') or '/maps/0').group(1)
+                    mid = None if mid == '0' else mid
                     row = a.get(f'/campaigns/{cid}/api/maps/{mid}/sync').json() if mid else {}
                     check('big image was validated and shrunk for serving', bool(row))
             except requests.RequestException as exc:
@@ -169,10 +170,10 @@ def main():
 
     print('\nMap, battle, live sync')
     r = a.form(f'/campaigns/{cid}/maps/new', {'name': 'Blank', 'blank_width': '400', 'blank_height': '300'})
-    m = re.search(r'/maps/(\d+)', r.headers.get('Location', ''))
+    m = re.search(r'/maps/([0-9a-f]{12}|\d+)', r.headers.get('Location', ''))
     check('blank map created', bool(m), str(r.status_code))
     if m:
-        mid = int(m.group(1))
+        mid = m.group(1)
         d = a.json(f'/campaigns/{cid}/api/maps/{mid}/drawings', {'kind': 'rect', 'data': {}, 'cx': 10, 'cy': 10, 'w': 50, 'h': 40})
         check('drawing saved', d.status_code == 200, str(d.status_code))
         r, ms = a.timed(a.get, f'/campaigns/{cid}/api/maps/{mid}/sync')

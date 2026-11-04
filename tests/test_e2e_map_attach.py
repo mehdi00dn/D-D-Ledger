@@ -1,6 +1,7 @@
 """DL-159 in a real browser: select a shape, press Attach, click a token; dragging the token carries the shape."""
 import os
 import re
+import pubid
 
 import pytest
 if os.path.isdir('/opt/pw-browsers'):
@@ -16,7 +17,7 @@ pytestmark = pytest.mark.skipif(BACKEND == 'sqlite', reason='new-code tests')
 def test_attach_a_shape_then_drag_the_token(pw, shared_server):
     base = shared_server.url; dm = Api(base); cid = dm.campaign('Attach')
     r = dm.post(f'/campaigns/{cid}/maps/new', data={'name': 'Arena', 'blank_width': '1000', 'blank_height': '700'})
-    mid = int(re.search(r'/maps/(\d+)', r.headers['Location']).group(1))
+    mid = pubid.pk('maps', r.headers['Location'])
     api = f'/campaigns/{cid}/api/maps/{mid}'
     dm.post(f'{api}/settings', json={'grid_setup_done': 1, 'grid_size': 50, 'snap_to_grid': 0})
     dm.post(f'{api}/drawings', json={'kind': 'rect', 'cx': 700, 'cy': 200, 'w': 160, 'h': 120, 'fill': True, 'data': {}})
@@ -49,7 +50,7 @@ def test_attach_a_shape_then_drag_the_token(pw, shared_server):
 def test_locked_shape_behind_its_token_is_unlocked_from_the_token_menu(pw, shared_server):
     base = shared_server.url; dm = Api(base); cid = dm.campaign('Hidden lock')
     r = dm.post(f'/campaigns/{cid}/maps/new', data={'name': 'Arena', 'blank_width': '1000', 'blank_height': '700'})
-    mid = int(re.search(r'/maps/(\d+)', r.headers['Location']).group(1))
+    mid = pubid.pk('maps', r.headers['Location'])
     api = f'/campaigns/{cid}/api/maps/{mid}'
     dm.post(f'{api}/settings', json={'grid_setup_done': 1, 'grid_size': 50, 'snap_to_grid': 0})
     pin = dm.post(f'{api}/pins', json={'pin_type': 'prop', 'icon_key': 'paw', 'x': 500, 'y': 350}).json()

@@ -1,5 +1,6 @@
 """Rules reference: spells, monsters and items from the 2024 D&D 5e API (faked here -- no network in tests)."""
 import pytest
+import pubid
 
 import srd
 from conftest import BACKEND
@@ -459,7 +460,7 @@ def test_reference_outside_a_campaign_and_the_edition_switch(make_user):
     assert u.get('/api/reference/search?kind=spells&edition=1999').status_code == 400
     assert u.get('/reference?edition=1999').status_code == 200                              # a bad value falls back, it never errors the page
     cid = u.new_campaign()
-    assert 'data-base="/campaigns/%s/api/reference/"' % cid in u.get(f'/campaigns/{cid}/reference').get_data(as_text=True)
+    assert 'data-base="/campaigns/%s/api/reference/"' % pubid.short('campaigns', cid) in u.get(f'/campaigns/{cid}/reference').get_data(as_text=True)
     assert u.get(f'/campaigns/{cid}/api/reference/entry?kind=classes&ref=classes/wizard&edition=2014').json['title'] == 'Wizard'
 
 

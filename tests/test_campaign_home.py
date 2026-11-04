@@ -1,5 +1,6 @@
 """DL-144: the front page inside a campaign."""
 import pytest
+import pubid
 from conftest import BACKEND
 
 pytestmark = pytest.mark.skipif(BACKEND == 'sqlite', reason='postgres-only')
@@ -24,7 +25,7 @@ def test_opening_the_site_lands_on_home(make_user):
     dm = make_user(); cid = dm.new_campaign()
     dm.get(f'/campaigns/{cid}/home')                      # remembers the campaign
     r = dm.get('/')
-    assert r.status_code == 302 and r.headers['Location'].endswith(f'/campaigns/{cid}/home')
+    assert r.status_code == 302 and r.headers['Location'].endswith(f'/campaigns/%s/home' % pubid.short('campaigns', cid))
 
 
 def test_home_shows_the_bio_and_the_player_list(make_user):

@@ -1,5 +1,6 @@
 """Real-browser checks (Chromium via Playwright) against a live server process."""
 import json, os, re, uuid, time
+import pubid
 import pytest
 import requests
 if os.path.isdir('/opt/pw-browsers'):                       # pre-installed browsers (some sandboxes); CI installs its own
@@ -30,7 +31,7 @@ class Api:
     def post(self, path, **kw): return self.s.post(self.base + path, allow_redirects=False, **kw)
     def get(self, path, **kw): return self.s.get(self.base + path, **kw)
     def campaign(self, name='E2E'):
-        r = self.post('/campaigns/new', data={'name': name}); return int(re.search(r'/campaigns/(\d+)/', r.headers['Location']).group(1))
+        r = self.post('/campaigns/new', data={'name': name}); return pubid.pk('campaigns', r.headers['Location'])
     def character(self, cid, name, **f):
         self.post(f'/campaigns/{cid}/characters/new', data={'name': name, 'max_hp': '30', **{k: str(v) for k, v in f.items()}}, **({'files': f.pop('files')} if 'files' in f else {}))
         return next(c['id'] for c in self.get(f'/campaigns/{cid}/api/characters').json() if c['name'] == name)
@@ -88,7 +89,7 @@ def test_ui_delete_flows_never_land_on_a_404(pw, shared_server):
         landed = page.request.get(page.url)
         assert landed.status == 200, f'{path}: after delete landed on {page.url} -> {landed.status}'
     page.goto(base + '/campaigns')
-    resp = _confirm_delete(page, f'form[action$="/campaigns/{cid}/delete"]')
+    resp = _confirm_delete(page, f'form[action$="/campaigns/{pubid.short("campaigns", cid)}/delete"]')
     assert page.request.get(page.url).status == 200 and page.url.rstrip('/').endswith('/campaigns')
     assert not [b for b in bad if b[0] >= 400 and '/delete' not in b[1]], bad
     ctx.close()
@@ -170,7 +171,7 @@ def test_invite_autocomplete_and_inline_feedback(pw, shared_server):
 def test_drawing_persists_after_reload(pw, shared_server):
     base = shared_server.url; api = Api(base); cid = api.campaign('Map')
     r = api.post(f'/campaigns/{cid}/maps/new', data={'name': 'Draw', 'blank_width': '800', 'blank_height': '600'})
-    mid = int(re.search(r'/maps/(\d+)', r.headers['Location']).group(1))
+    mid = pubid.pk('maps', r.headers['Location'])
     ctx = api.context(pw, base); page = ctx.new_page(); bad, errs = _collect(page)
     page.goto(base + f'/campaigns/{cid}/maps/{mid}'); page.wait_for_load_state('networkidle'); page.wait_for_timeout(800)
     if page.locator('#setup-confirm-btn').is_visible():
@@ -194,7 +195,7 @@ def test_drawing_persists_after_reload(pw, shared_server):
 def test_fog_flyout_paints_fog_over_tokens_and_animates(pw, shared_server):
     base = shared_server.url; api = Api(base); cid = api.campaign('Fog')
     r = api.post(f'/campaigns/{cid}/maps/new', data={'name': 'Mist', 'blank_width': '800', 'blank_height': '600'})
-    mid = int(re.search(r'/maps/(\d+)', r.headers['Location']).group(1))
+    mid = pubid.pk('maps', r.headers['Location'])
     ctx = api.context(pw, base); page = ctx.new_page(); bad, errs = _collect(page)
     page.goto(base + f'/campaigns/{cid}/maps/{mid}'); page.wait_for_load_state('networkidle'); page.wait_for_timeout(800)
     if page.locator('#setup-confirm-btn').is_visible():
@@ -462,7 +463,7 @@ def test_invitation_flow_in_the_browser(pw, shared_server):
     ppage.screenshot(path='/tmp/invite-player.png')
     ppage.evaluate("() => document.documentElement.setAttribute('data-theme', 'light')")
     ppage.wait_for_timeout(400); ppage.screenshot(path='/tmp/invite-player-light.png')
-    ppage.click('.notification-card button:has-text("Accept")'); ppage.wait_for_url(f'**/campaigns/{cid}/**')
+    ppage.click('.notification-card button:has-text("Accept")'); ppage.wait_for_url(f'**/campaigns/{pubid.short("campaigns", cid)}/**')
     assert ppage.locator('.nav-badge').count() == 0
     # inside a campaign the bell is an icon-only button beside the theme switch, not a menu entry
     assert ppage.locator('.sidebar-nav .nav-notifications').count() == 0
@@ -626,7 +627,7 @@ def test_dm_places_characters_on_a_map_without_a_battle(pw, shared_server):
     dm.add_member(cid, player)
     dm.character(cid, 'Aria'); dm.character(cid, 'Goblin')
     r = dm.post(f'/campaigns/{cid}/maps/new', data={'name': 'Cave', 'blank_width': '800', 'blank_height': '600'})
-    mid = int(re.search(r'/maps/(\d+)', r.headers['Location']).group(1))
+    mid = pubid.pk('maps', r.headers['Location'])
     dctx = dm.context(pw, base); page = dctx.new_page(); bad, errs = _collect(page)
     pctx = player.context(pw, base); ppage = pctx.new_page()
     page.goto(base + f'/campaigns/{cid}/maps/{mid}'); page.wait_for_load_state('networkidle'); page.wait_for_timeout(800)
@@ -670,7 +671,7 @@ def test_dm_places_characters_on_a_map_without_a_battle(pw, shared_server):
 
 def _open_map(pw, base, api, cid, name='Arena'):
     r = api.post(f'/campaigns/{cid}/maps/new', data={'name': name, 'blank_width': '1000', 'blank_height': '700'})
-    mid = int(re.search(r'/maps/(\d+)', r.headers['Location']).group(1))
+    mid = pubid.pk('maps', r.headers['Location'])
     ctx = api.context(pw, base); page = ctx.new_page(); bad, errs = _collect(page)
     page.goto(base + f'/campaigns/{cid}/maps/{mid}'); page.wait_for_load_state('networkidle'); page.wait_for_timeout(800)
     if page.locator('#setup-confirm-btn').is_visible():
@@ -771,7 +772,7 @@ def test_a_player_drags_only_the_token_assigned_to_them(pw, shared_server):
     base = shared_server.url; dm = Api(base); cid = dm.campaign('Owners')
     pl = Api(base); dm.add_member(cid, pl)
     r = dm.post(f'/campaigns/{cid}/maps/new', data={'name': 'Arena', 'blank_width': '1000', 'blank_height': '700'})
-    mid = int(re.search(r'/maps/(\d+)', r.headers['Location']).group(1))
+    mid = pubid.pk('maps', r.headers['Location'])
     api = f'/campaigns/{cid}/api/maps/{mid}'
     ids = {}
     for key, x in (('mine', 200), ('theirs', 600)):
@@ -842,7 +843,7 @@ def test_the_token_menu_stays_inside_the_map_and_the_owner_list_flips(pw, shared
     base = shared_server.url; dm = Api(base); cid = dm.campaign('Edges')
     for _ in range(3): dm.add_member(cid, Api(base))
     r = dm.post(f'/campaigns/{cid}/maps/new', data={'name': 'Arena', 'blank_width': '1000', 'blank_height': '700'})
-    mid = int(re.search(r'/maps/(\d+)', r.headers['Location']).group(1))
+    mid = pubid.pk('maps', r.headers['Location'])
     api = f'/campaigns/{cid}/api/maps/{mid}'
     ids = {k: dm.post(f'{api}/pins', json={'pin_type': 'prop', 'icon_key': 'skull', 'custom_name': k, 'x': x, 'y': y}).json()['id']
            for k, (x, y) in {'left': (25, 300), 'right': (975, 300), 'corner': (25, 25), 'top': (500, 40)}.items()}
@@ -1002,7 +1003,7 @@ def test_phone_and_tablet_pages_fit_the_screen_with_a_bottom_tab_bar(pw, shared_
     hero = dm.character(cid, 'Hero', dex_score=14); dm.character(cid, 'Ogre', is_npc='on')
     dm.post(f'/campaigns/{cid}/api/battle/add', json={'character_id': hero})
     r = dm.post(f'/campaigns/{cid}/maps/new', data={'name': 'Cave', 'blank_width': '800', 'blank_height': '600'})
-    mid = int(re.search(r'/maps/(\d+)', r.headers['Location']).group(1))
+    mid = pubid.pk('maps', r.headers['Location'])
     ctx = _touch_context(pw, dm, base, *size); page = ctx.new_page(); bad, errs = _collect(page)
     w, h = size
     paths = ['/campaigns', f'/campaigns/{cid}/characters', f'/campaigns/{cid}/characters/{hero}', f'/campaigns/{cid}/characters/new',
@@ -1034,7 +1035,7 @@ def test_phone_and_tablet_pages_fit_the_screen_with_a_bottom_tab_bar(pw, shared_
 def test_phone_map_touch_drag_moves_a_token_and_pinch_zooms(pw, shared_server):
     base = shared_server.url; dm = Api(base); cid = dm.campaign('Touch')
     r = dm.post(f'/campaigns/{cid}/maps/new', data={'name': 'Arena', 'blank_width': '1000', 'blank_height': '700'})
-    mid = int(re.search(r'/maps/(\d+)', r.headers['Location']).group(1))
+    mid = pubid.pk('maps', r.headers['Location'])
     api = f'/campaigns/{cid}/api/maps/{mid}'
     pin = dm.post(f'{api}/pins', json={'pin_type': 'prop', 'icon_key': 'skull', 'custom_name': 'Trap', 'x': 200, 'y': 200}).json()['id']
     ctx = _touch_context(pw, dm, base); page = ctx.new_page(); bad, errs = _collect(page)
@@ -1076,7 +1077,7 @@ def test_phone_map_touch_drag_moves_a_token_and_pinch_zooms(pw, shared_server):
 
 def _map_with_pin(dm, cid, character_id):
     r = dm.post(f'/campaigns/{cid}/maps/new', data={'name': 'Cave', 'blank_width': '1000', 'blank_height': '700'})
-    mid = int(re.search(r'/maps/(\d+)', r.headers['Location']).group(1))
+    mid = pubid.pk('maps', r.headers['Location'])
     dm.post(f'/campaigns/{cid}/api/maps/{mid}/pins', json={'pin_type': 'character', 'character_id': character_id, 'x': 300, 'y': 300})
     return mid
 
@@ -1245,7 +1246,7 @@ def _swipe(page, x, y, dx, dy, steps=8):
 def test_phone_map_scrolls_the_page_from_empty_map_but_not_from_a_token(pw, shared_server):
     base = shared_server.url; dm = Api(base); cid = dm.campaign('Scrolly')
     r = dm.post(f'/campaigns/{cid}/maps/new', data={'name': 'Arena', 'blank_width': '1000', 'blank_height': '1400'})
-    mid = int(re.search(r'/maps/(\d+)', r.headers['Location']).group(1))
+    mid = pubid.pk('maps', r.headers['Location'])
     pin = dm.post(f'/campaigns/{cid}/api/maps/{mid}/pins', json={'pin_type': 'prop', 'icon_key': 'skull', 'custom_name': 'Trap', 'x': 300, 'y': 300}).json()['id']
     ctx = _touch_context(pw, dm, base, 390, 700); page = ctx.new_page(); bad, errs = _collect(page)
     page.goto(base + f'/campaigns/{cid}/maps/{mid}'); page.wait_for_load_state('load'); page.wait_for_timeout(800)
@@ -1324,7 +1325,7 @@ def test_roll_initiative_button_fills_in_every_row_and_fits_the_phone_header(pw,
 def test_phone_shape_action_bubble_is_docked_bottom_centre_and_floats_on_desktop(pw, shared_server):
     base = shared_server.url; dm = Api(base); cid = dm.campaign('Bubble')
     r = dm.post(f'/campaigns/{cid}/maps/new', data={'name': 'Arena', 'blank_width': '1000', 'blank_height': '700'})
-    mid = int(re.search(r'/maps/(\d+)', r.headers['Location']).group(1))
+    mid = pubid.pk('maps', r.headers['Location'])
     dm.post(f'/campaigns/{cid}/api/maps/{mid}/drawings', json={'kind': 'rect', 'cx': 900, 'cy': 120, 'w': 160, 'h': 120, 'fill': True, 'data': {}})   # hard against the right edge
     ctx = _touch_context(pw, dm, base, 390, 800); page = ctx.new_page(); bad, errs = _collect(page)
     page.goto(base + f'/campaigns/{cid}/maps/{mid}'); page.wait_for_load_state('load'); page.wait_for_timeout(800)
@@ -1383,7 +1384,7 @@ def test_dm_hides_a_token_and_a_shape_from_players_in_the_browser(pw, shared_ser
     base = shared_server.url; dm = Api(base); cid = dm.campaign('Hidden')
     pl = Api(base); dm.add_member(cid, pl)
     r = dm.post(f'/campaigns/{cid}/maps/new', data={'name': 'Vault', 'blank_width': '1000', 'blank_height': '700'})
-    mid = int(re.search(r'/maps/(\d+)', r.headers['Location']).group(1))
+    mid = pubid.pk('maps', r.headers['Location'])
     api = f'/campaigns/{cid}/api/maps/{mid}'
     pin = dm.post(f'{api}/pins', json={'pin_type': 'prop', 'icon_key': 'skull', 'custom_name': 'Trap', 'x': 250, 'y': 250}).json()['id']
     shape = dm.post(f'{api}/drawings', json={'kind': 'rect', 'cx': 650, 'cy': 400, 'w': 200, 'h': 150, 'color': '#ff0000', 'fill': True, 'fill_opacity': 0.5, 'data': {}}).json()['id']
@@ -1463,7 +1464,7 @@ def test_map_bubble_scales_with_the_screen_and_rides_with_the_bars(pw, shared_se
     the bars slide away (like the full-screen button)."""
     base = shared_server.url; dm = Api(base); cid = dm.campaign('Scale')
     r = dm.post(f'/campaigns/{cid}/maps/new', data={'name': 'Hall', 'blank_width': '1000', 'blank_height': '700'})
-    mid = int(re.search(r'/maps/(\d+)', r.headers['Location']).group(1)); api = f'/campaigns/{cid}/api/maps/{mid}'
+    mid = pubid.pk('maps', r.headers['Location']); api = f'/campaigns/{cid}/api/maps/{mid}'
     pin = dm.post(f'{api}/pins', json={'pin_type': 'prop', 'icon_key': 'skull', 'x': 300, 'y': 300}).json()['id']
     shape = dm.post(f'{api}/drawings', json={'kind': 'rect', 'cx': 600, 'cy': 350, 'w': 200, 'h': 120, 'color': '#ff4040', 'fill': True, 'fill_opacity': 0.4, 'data': {}}).json()['id']
     k = {}
@@ -1833,7 +1834,7 @@ def test_battle_page_shows_turn_rank_and_gives_hit_and_heal_feedback(pw, shared_
 def test_phone_grid_settings_lightbox_fits_and_the_grid_drags_by_touch(pw, shared_server, size):
     base = shared_server.url; dm = Api(base); cid = dm.campaign('Lightbox')
     r = dm.post(f'/campaigns/{cid}/maps/new', data={'name': 'Hall', 'blank_width': '1000', 'blank_height': '700'})
-    mid = int(re.search(r'/maps/(\d+)', r.headers['Location']).group(1))
+    mid = pubid.pk('maps', r.headers['Location'])
     w, h = size
     ctx = _touch_context(pw, dm, base, w, h); page = ctx.new_page(); bad, errs = _collect(page)
     page.goto(base + f'/campaigns/{cid}/maps/{mid}'); page.wait_for_load_state('load'); page.wait_for_timeout(800)
@@ -2008,12 +2009,12 @@ def test_clicking_an_avatar_previews_it_without_leaving_the_page(pw, shared_serv
     # card: the name opens the character page
     page.goto(base + f'/campaigns/{cid}/characters'); page.wait_for_load_state('networkidle')
     page.click('.dossier-card .dossier-name-link')
-    page.wait_for_url(f'**/characters/{char_id}')
+    page.wait_for_url(f'**/characters/{pubid.short("characters", char_id)}')
     # Overview party: the whole tile, avatar included, opens the character page
     page.goto(base + f'/campaigns/{cid}/home'); page.wait_for_load_state('networkidle')
     assert page.locator('.home-pc .home-pc-avatar[data-lightbox-src]').count() == 0
     page.click('.home-pc .home-pc-avatar')
-    page.wait_for_url(f'**/characters/{char_id}')
+    page.wait_for_url(f'**/characters/{pubid.short("characters", char_id)}')
     assert not bad and not errs, (bad, errs)
 
 

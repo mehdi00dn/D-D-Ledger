@@ -1,5 +1,6 @@
 """DL-160: the personal character library - characters that belong to a person, not a campaign."""
 import io
+import pubid
 import re
 import pytest
 from conftest import q, png_bytes, BACKEND
@@ -19,7 +20,7 @@ def _form(**extra):
 def _make(user, **extra):
     r = user.post('/library/new', data=_form(**extra), content_type='multipart/form-data')
     assert r.status_code == 302, r.status_code
-    return int(re.search(r'/library/(\d+)', r.headers['Location']).group(1))
+    return pubid.pk('library', r.headers['Location'])
 
 
 def _row(char_id):
@@ -70,7 +71,7 @@ def test_adding_to_a_campaign_makes_a_separate_copy_once(make_user):
     cid, other_cid = me.new_campaign(), me.new_campaign()
     lib = _make(me)
     r = me.post(f'/library/{lib}/add-to-campaign', data={'campaign_id': str(cid), 'next': 'campaign'})
-    assert r.status_code == 302 and f'/campaigns/{cid}/characters/' in r.headers['Location']
+    assert r.status_code == 302 and f'/campaigns/%s/characters/' % pubid.short('campaigns', cid) in r.headers['Location']
     copy = q('SELECT * FROM characters WHERE campaign_id = ?', cid)[0]
     src = _row(lib)
     uid = q('SELECT id FROM users WHERE username = ?', me.name)[0]['id']
@@ -138,14 +139,14 @@ def test_saving_a_campaign_character_to_the_library(make_user):
     dms = dm.new_character(cid, name='DM hero')
     r = pl.post('/library/save', data={'campaign_id': str(cid), 'character_id': str(mine)})
     assert r.status_code == 302
-    lib = int(re.search(r'/library/(\d+)', r.headers['Location']).group(1))
+    lib = pubid.pk('library', r.headers['Location'])
     row = _row(lib)
     assert row['campaign_id'] is None and row['name'] == 'Player hero' and row['class_key'] == 'fighter' and row['added_from']
     assert row['library_id'] is None and _row(mine)['library_id'] == lib                          # linked both ways round
     assert 'Saved from' in pl.get(f'/library/{lib}').get_data(as_text=True)
     # saving it again just opens the one already kept
     again = pl.post('/library/save', data={'campaign_id': str(cid), 'character_id': str(mine)})
-    assert again.headers['Location'].endswith(f'/library/{lib}')
+    assert again.headers['Location'].endswith(f'/library/%s' % pubid.short('library', lib))
     assert len(q('SELECT id FROM characters WHERE owner_id IS NOT NULL AND campaign_id IS NULL AND name = ?', 'Player hero')) == 1
     # and it cannot be added back to the campaign it came from
     assert 'note=already' in pl.post(f'/library/{lib}/add-to-campaign', data={'campaign_id': str(cid)}).headers['Location']

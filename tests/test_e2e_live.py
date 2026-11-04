@@ -6,6 +6,7 @@ shows DURING a gesture can only have arrived through the live channel.  What is 
 the sender's messages, the receiver's gliding and drawing, safety against hostile messages, and that the saved state
 still has the last word."""
 import json, re, time
+import pubid
 import pytest
 from conftest import BACKEND, q
 from test_e2e_browser import Api, pw                       # noqa: F401  (fixtures/helpers reused from the browser suite)
@@ -61,7 +62,7 @@ def world(pw, rt_server):
     w.dm, w.pl = Api(w.base), Api(w.base)
     w.cid = w.dm.campaign('Live'); w.dm.add_member(w.cid, w.pl, 'player')
     r = w.dm.post(f'/campaigns/{w.cid}/maps/new', data={'name': 'Arena', 'blank_width': str(NATURAL_W), 'blank_height': str(NATURAL_H)})
-    w.mid = int(re.search(r'/maps/(\d+)', r.headers['Location']).group(1))
+    w.mid = pubid.pk('maps', r.headers['Location'])
     w.dm.post(f'/campaigns/{w.cid}/api/maps/{w.mid}/settings', json={'grid_setup_done': 1, 'grid_size': 50, 'snap_to_grid': 0})
     w.api = f'/campaigns/{w.cid}/api/maps/{w.mid}'
     w.ctxs = []
@@ -337,7 +338,7 @@ def test_ones_own_drag_is_never_overridden_by_someone_elses_message(world):
 def test_without_realtime_nothing_is_sent_and_dragging_still_works(pw, shared_server):
     base = shared_server.url; dm = Api(base); cid = dm.campaign('NoRT')
     r = dm.post(f'/campaigns/{cid}/maps/new', data={'name': 'M', 'blank_width': '1000', 'blank_height': '700'})
-    mid = int(re.search(r'/maps/(\d+)', r.headers['Location']).group(1))
+    mid = pubid.pk('maps', r.headers['Location'])
     dm.post(f'/campaigns/{cid}/api/maps/{mid}/settings', json={'grid_setup_done': 1, 'snap_to_grid': 0})
     dm.post(f'/campaigns/{cid}/api/maps/{mid}/pins', json={'pin_type': 'prop', 'icon_key': 'paw', 'x': 300, 'y': 300})
     ctx = dm.context(pw, base); page = ctx.new_page(); errors = []

@@ -5,6 +5,7 @@ WebSocket mock (Realtime -> browser), so what is proved here is OUR half of the 
 channel the page subscribed to, and the page refreshes the moment a ping arrives.  Polling is set to once a
 minute, so a refresh within a couple of seconds can only have come from the push."""
 import json, re, time
+import pubid
 import pytest
 from conftest import BACKEND, Server
 from fake_supabase import FakeSupabase
@@ -106,7 +107,7 @@ def test_the_map_page_refreshes_on_a_ping_too(pw, rt_server):
     srv, fake = rt_server; _browser['b'] = pw
     base, dm, pl, cid, hero, ctx = _setup(srv)
     r = dm.post(f'/campaigns/{cid}/maps/new', data={'name': 'M', 'blank_width': '600', 'blank_height': '400'})
-    mid = int(re.search(r'/maps/(\d+)', r.headers['Location']).group(1))
+    mid = pubid.pk('maps', r.headers['Location'])
     dm.post(f'/campaigns/{cid}/api/maps/{mid}/settings', json={'grid_setup_done': 1})
     page = ctx.new_page(); sock = FakeRealtimeSocket(page); syncs = _record(page, r'/api/maps/\d+/sync$')
     page.goto(f'{base}/campaigns/{cid}/maps/{mid}'); page.wait_for_load_state('networkidle')

@@ -3,6 +3,7 @@ form field look; the campaign image preview tells its size, and the saved image 
 import io
 import json
 import re
+import pubid
 
 import pytest
 from conftest import BACKEND, q, png_bytes
@@ -44,7 +45,7 @@ def test_campaign_image_is_capped_at_1200_and_the_preview_shows_no_size_note(sha
     dm = Api(base)
     r = dm.post('/campaigns/new', data={'name': 'Wide', 'description': json.dumps([])},
                 files={'avatar': ('c.png', png_bytes(2400, 1400, (120, 60, 30)), 'image/png')})
-    cid = int(re.search(r'/campaigns/(\d+)/', r.headers['Location']).group(1))
+    cid = pubid.pk('campaigns', r.headers['Location'])
     from PIL import Image
     path = q('SELECT avatar_path FROM campaigns WHERE id = ?', cid)[0]['avatar_path']
     stored = Image.open(io.BytesIO(dm.get('/uploads/' + path).content))

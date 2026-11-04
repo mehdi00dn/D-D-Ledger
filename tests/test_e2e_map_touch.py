@@ -2,6 +2,7 @@
 the four hold-and-drag buttons, tokens that are easy to hit, the docked buttons clearing the dock, and the wording."""
 import os
 import re
+import pubid
 
 import pytest
 if os.path.isdir('/opt/pw-browsers'):
@@ -38,7 +39,7 @@ def _centre(box):
 def _map(pw, shared_server, name, width=390, height=844):
     base = shared_server.url; dm = Api(base); cid = dm.campaign(name)
     r = dm.post(f'/campaigns/{cid}/maps/new', data={'name': 'Arena', 'blank_width': '1000', 'blank_height': '700'})
-    mid = int(re.search(r'/maps/(\d+)', r.headers['Location']).group(1))
+    mid = pubid.pk('maps', r.headers['Location'])
     api = f'/campaigns/{cid}/api/maps/{mid}'
     dm.post(f'{api}/settings', json={'grid_setup_done': 1, 'grid_size': 50, 'snap_to_grid': 0})
     ctx = pw.new_context(viewport={'width': width, 'height': height}, has_touch=True, is_mobile=True)

@@ -6,6 +6,7 @@ change anything.  Because the routes are enumerated from the app's URL map, a ro
 tomorrow is covered automatically; one that introduces a brand-new kind of URL argument
 fails test_every_url_argument_is_covered_by_the_policy until the policy learns about it.
 """
+import re
 import io, re
 import pytest
 from conftest import q, png_bytes
@@ -58,9 +59,9 @@ def routes_with_ids(appmod):
 
 
 def fill(rule, cid, ids):
-    url = rule.rule.replace('<int:campaign_id>', str(cid))
+    url = re.sub(r'<\w+:campaign_id>', str(cid), rule.rule)
     for arg in rule.arguments - {'campaign_id'}:
-        url = url.replace(f'<int:{arg}>', str(ids[arg]))
+        url = re.sub(rf'<\w+:{arg}>', str(ids[arg]), url)
     return url
 
 

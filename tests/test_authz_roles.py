@@ -182,7 +182,7 @@ def test_anonymous_is_sent_to_login_everywhere_except_public_routes(appmod, make
     for rule, method in all_routes(appmod):
         if level(rule.endpoint, method) == PUBLIC:
             continue
-        url = t.url(rule) if 'campaign_id' in rule.arguments else re.sub(r'<(?:int:)?\w+>', '1', re.sub(r'<path:\w+>', 'x.png', rule.rule))
+        url = t.url(rule) if 'campaign_id' in rule.arguments else re.sub(r'<(?:\w+:)?\w+>', '1', re.sub(r'<path:\w+>', 'x.png', rule.rule))
         resp = send(t.anon, method, url)
         assert is_login_redirect(resp), f'anonymous {method} {url} -> {resp.status_code} {resp.headers.get("Location")}'
         checked += 1

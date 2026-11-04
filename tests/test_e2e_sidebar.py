@@ -2,6 +2,7 @@
 Set SHOT_DIR to save screenshots."""
 import os
 import re
+import pubid
 import pytest
 if os.path.isdir('/opt/pw-browsers'):
     os.environ.setdefault('PLAYWRIGHT_BROWSERS_PATH', '/opt/pw-browsers')
@@ -30,7 +31,7 @@ def test_settings_link_and_hide_npcs_switch(shared_server, pw):
     page.goto(f'{base}/campaigns/{cid}/characters')
     assert page.locator('.sidebar-nav .nav-group').all_text_contents() == ['Table', 'Play', 'Lore', 'Campaign']
     page.get_by_role('link', name='Settings').first.click()
-    page.wait_for_url(f'**/campaigns/{cid}/edit')
+    page.wait_for_url(f'**/campaigns/{pubid.short("campaigns", cid)}/edit')
     assert page.locator('.sidebar-nav a.nav-tab.active').inner_text().strip() == 'Settings'
     assert page.locator('#npc-visibility-form input[name=hide_npcs]').is_checked() is False
     page.locator('#npc-visibility-form .toggle-switch').click()
@@ -53,7 +54,7 @@ def test_campaign_home_page(shared_server, pw):
     dm = Api(base)
     r = dm.post('/campaigns/new', data={'name': 'The Ashfall Chronicles', 'description': 'Ash falls on the Cinder Coast.\nThe party hunts the Ember King.'},
                 files={'avatar': ('c.png', png_bytes(640, 384, (120, 60, 30)), 'image/png')})
-    cid = int(re.search(r'/campaigns/(\d+)/', r.headers['Location']).group(1))
+    cid = pubid.pk('campaigns', r.headers['Location'])
     ids = [dm.character(cid, n, level=lv, max_hp=hp, armor_class=ac) for n, lv, hp, ac in (('Kael Thorne', 3, 28, 16), ('Nyx', 3, 21, 14), ('Sera Veyl', 3, 24, 14))]
     r = dm.post(f'/campaigns/{cid}/api/dice/roll', json={'dice': {'20': 1}, 'modifier': 4, 'label': 'Perception', 'character_id': ids[1]})
     ctx = dm.context(pw, base)

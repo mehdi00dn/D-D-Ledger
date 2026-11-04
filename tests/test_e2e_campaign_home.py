@@ -3,6 +3,7 @@ Set SHOT_DIR to save screenshots."""
 import json
 import os
 import re
+import pubid
 import pytest
 if os.path.isdir('/opt/pw-browsers'):
     os.environ.setdefault('PLAYWRIGHT_BROWSERS_PATH', '/opt/pw-browsers')
@@ -25,7 +26,7 @@ def _shot(page, name):
 def _campaign(dm, bio, notes=None):
     r = dm.post('/campaigns/new', data={'name': 'The Ashfall Chronicles', 'description': json.dumps(bio)},
                 files={'avatar': ('c.png', png_bytes(640, 384, (120, 60, 30)), 'image/png')})
-    cid = int(re.search(r'/campaigns/(\d+)/', r.headers['Location']).group(1))
+    cid = pubid.pk('campaigns', r.headers['Location'])
     if notes:
         dm.post(f'/campaigns/{cid}/edit', data={'name': 'The Ashfall Chronicles', 'description': json.dumps(bio), 'notes': json.dumps(notes)})
     return cid
