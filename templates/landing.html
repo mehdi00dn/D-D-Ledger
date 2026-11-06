@@ -1,0 +1,288 @@
+{#- DL-177: the public home page, shown at / to anyone who is not signed in.  Copy and structure follow the "Modern Fantasy Journal"
+    landing brief.  Standalone on purpose (does not extend base.html): it has its own palette and no app chrome.  No inline styles
+    (the Content-Security-Policy forbids them); every size lives in static/css/landing.css. -#}
+{% macro ico(name) -%}
+<svg class="ico" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+{%- if name == 'book' %}<path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v16H6.5A2.5 2.5 0 0 0 4 21.5z"/><path d="M4 5.5v16"/><path d="M9 8h7"/>
+{%- elif name == 'link' %}<circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="8" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="M8.5 6.3l7 1.4M7.3 8.3l3.5 7.4M16.9 10.3l-3.6 5.8"/>
+{%- elif name == 'users' %}<circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><circle cx="17" cy="9" r="2.4"/><path d="M16 14.2c2.9.2 5 2.5 5 5.3"/>
+{%- elif name == 'dice' %}<path d="M12 2.5l8.5 4.9v9.2L12 21.5l-8.5-4.9V7.4z"/><path d="M12 2.5l-3.6 10h7.2z"/><path d="M3.5 7.4l4.9 5.1M20.5 7.4l-4.9 5.1M8.4 12.5L12 21.5M15.6 12.5L12 21.5"/>
+{%- elif name == 'rules' %}<path d="M12 6.5C10 5 7 4.5 3.5 5v13c3.5-.5 6.5 0 8.5 1.5 2-1.5 5-2 8.5-1.5V5c-3.5-.5-6.5 0-8.5 1.5z"/><path d="M12 6.5v13"/>
+{%- elif name == 'quest' %}<path d="M5 21V4"/><path d="M5 4h12l-2 4 2 4H5"/>
+{%- elif name == 'calendar' %}<rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/>
+{%- elif name == 'coins' %}<ellipse cx="12" cy="6.5" rx="7" ry="3"/><path d="M5 6.5v5c0 1.7 3.1 3 7 3s7-1.3 7-3v-5"/><path d="M5 11.5v5c0 1.7 3.1 3 7 3s7-1.3 7-3v-5"/>
+{%- elif name == 'chat' %}<path d="M4 4.5h16v11.5H10l-6 4z"/><path d="M8 9h8M8 12.5h5"/>
+{%- endif -%}
+</svg>
+{%- endmacro %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Oaken: a home for your tabletop campaigns</title>
+<meta name="description" content="Plan campaigns, bring characters to life, run battles and maps, and keep your whole table in sync. Oaken is a home for tabletop role-playing campaigns, for Dungeon Masters and players.">
+<meta name="theme-color" content="#171B18">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Oaken">
+<meta property="og:title" content="Oaken: your world, your party, your adventure">
+<meta property="og:description" content="Organize your world, manage your characters, prepare encounters, and keep your players connected.">
+<link rel="icon" href="{{ url_for('static', filename='logo/favicon.ico') }}" sizes="any">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/landing.css') }}">
+<script nonce="{{ csp_nonce() }}">document.documentElement.classList.add('js');</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="nav" id="top">
+  <div class="wrap nav-bar">
+    <a class="brand" href="{{ url_for('index') }}" aria-label="Oaken, home">
+      <img class="brand-mark" src="{{ url_for('static', filename='logo/logo-128.png') }}" alt="" width="34" height="34">
+      <span class="brand-word">Oaken</span>
+    </a>
+    <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="nav-menu" data-nav-toggle>
+      <span class="nav-toggle-bars" aria-hidden="true"></span>
+      <span class="vh">Menu</span>
+    </button>
+    <nav class="nav-menu" id="nav-menu" aria-label="Main" data-nav-menu>
+      <ul class="nav-links">
+        <li><a href="#features">Features</a></li>
+        <li><a href="#how-it-works">How it works</a></li>
+        <li><a href="{{ url_for('about') }}">About</a></li>
+      </ul>
+      <div class="nav-actions">
+        <a class="nav-login" href="{{ url_for('login') }}">Log in</a>
+        <a class="btn btn-primary btn-sm" href="{{ url_for('register') }}">Get started</a>
+      </div>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+
+<!-- 02 · Hero -->
+<section class="hero" aria-labelledby="hero-title">
+  <div class="wrap hero-grid">
+    <div class="hero-copy">
+      <p class="eyebrow eyebrow--dark">Campaign management, reimagined</p>
+      <h1 id="hero-title">Your world. Your party. Your adventure.</h1>
+      <p class="lede">Everything you need to bring a tabletop campaign together. Organize your world, manage your characters, prepare encounters, and keep your players connected.</p>
+      <div class="cta-row">
+        <a class="btn btn-primary btn-lg" href="{{ url_for('register') }}">Get started</a>
+        <a class="btn btn-ghost btn-lg" href="#features">Explore features</a>
+      </div>
+      <p class="reassure">Built for Dungeon Masters and players alike.</p>
+    </div>
+    <div class="hero-visual">
+      <figure class="shot shot--hero shot--empty" data-slot="IMG-01" aria-hidden="true"></figure>{#- IMG-01: hero product preview: campaign overview / dashboard -#}
+      <figure class="shot shot--float shot--empty" data-slot="IMG-01b" aria-hidden="true"></figure>{#- IMG-01b: hero overlay: a character card -#}
+    </div>
+  </div>
+</section>
+
+<!-- 03 · Product-value strip -->
+<section class="strip" aria-label="Why Oaken">
+  <div class="wrap strip-grid">
+    <div class="strip-item">
+      {{ ico('book') }}
+      <div>
+        <p class="strip-title">One place for your campaign</p>
+        <p>Keep important campaign information organized and easy to find.</p>
+      </div>
+    </div>
+    <div class="strip-item">
+      {{ ico('link') }}
+      <div>
+        <p class="strip-title">Tools that work together</p>
+        <p>Move between characters, encounters, maps, and campaign details without juggling separate tools.</p>
+      </div>
+    </div>
+    <div class="strip-item">
+      {{ ico('users') }}
+      <div>
+        <p class="strip-title">Made for the whole table</p>
+        <p>Give Dungeon Masters and players a shared space for the adventure.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 04 · Campaign management -->
+<section class="feature feature--light" id="features" aria-labelledby="campaign-title">
+  <div class="wrap feature-grid">
+    <div class="feature-copy">
+      <p class="eyebrow"><span class="eyebrow-num">01</span> / Keep the story organized</p>
+      <h2 id="campaign-title">Every campaign has a story. Keep yours together.</h2>
+      <p class="lede">Bring the moving parts of your campaign into one organized space. Keep track of your party, important people, notes, quests, and the details that make your world feel alive.</p>
+      <ul class="points">
+        <li>Organize campaigns and invite your players.</li>
+        <li>Keep characters, factions, and important notes connected.</li>
+        <li>Track campaign details without losing sight of the bigger picture.</li>
+      </ul>
+    </div>
+    <figure class="shot shot--empty" data-slot="IMG-02" aria-hidden="true"></figure>{#- IMG-02: campaign overview with party and details -#}
+  </div>
+</section>
+
+<!-- 05 · Character management -->
+<section class="feature feature--light feature--alt feature--flip" aria-labelledby="character-title">
+  <div class="wrap feature-grid">
+    <div class="feature-copy">
+      <p class="eyebrow"><span class="eyebrow-num">02</span> / Bring characters to life</p>
+      <h2 id="character-title">More than a character sheet.</h2>
+      <p class="lede">Your characters are at the heart of every adventure. Keep their details, abilities, stats, and stories together, so the information you need is always close at hand.</p>
+      <ul class="points">
+        <li>Create and manage player characters and NPCs.</li>
+        <li>Keep character details and important notes organized.</li>
+        <li>Give every character a place in your campaign.</li>
+      </ul>
+    </div>
+    <div class="shot-stack">
+      <figure class="shot shot--empty" data-slot="IMG-03" aria-hidden="true"></figure>{#- IMG-03: character sheet with portrait and stats -#}
+      <figure class="shot shot--inset shot--empty" data-slot="IMG-04" aria-hidden="true"></figure>{#- IMG-04: character library or selection cards -#}
+    </div>
+  </div>
+</section>
+
+<!-- 06 · Battle management -->
+<section class="feature feature--dark" aria-labelledby="battle-title">
+  <div class="wrap feature-grid">
+    <div class="feature-copy">
+      <p class="eyebrow eyebrow--dark"><span class="eyebrow-num">03</span> / Keep the action moving</p>
+      <h2 id="battle-title">Less time managing the encounter. More time in the adventure.</h2>
+      <p class="lede">Keep combat organized while the action unfolds. Follow initiative, manage hit points, track conditions, and keep the encounter moving without losing the flow of the session.</p>
+      <ul class="points">
+        <li>Track initiative, turns, and rounds.</li>
+        <li>Manage hit points, damage, healing, and conditions.</li>
+        <li>Keep encounter information available to the people who need it.</li>
+      </ul>
+    </div>
+    <figure class="shot shot--empty" data-slot="IMG-05" aria-hidden="true"></figure>{#- IMG-05: battle tracker: initiative order and health controls -#}
+  </div>
+</section>
+
+<!-- 07 · Interactive maps -->
+<section class="feature feature--light feature--map" aria-labelledby="map-title">
+  <div class="wrap">
+    <div class="map-head">
+      <div>
+        <p class="eyebrow"><span class="eyebrow-num">04</span> / Explore your world</p>
+        <h2 id="map-title">Give your adventures a place to unfold.</h2>
+      </div>
+      <p class="lede">Bring locations and encounters to the table with interactive maps. Place tokens, mark important areas, measure distances, and reveal the world as your players explore.</p>
+    </div>
+    <figure class="shot shot--wide shot--empty" data-slot="IMG-06" aria-hidden="true"></figure>{#- IMG-06: map editor with grid, tokens and fog of war -#}
+    <ul class="points points--cols">
+      <li>Use maps as a shared space for exploration and encounters.</li>
+      <li>Place and manage tokens.</li>
+      <li>Use grids, measurements, and drawing tools.</li>
+      <li>Control what players can see with fog of war and visibility options.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- 08 · Supporting tools -->
+<section class="tools" aria-labelledby="tools-title">
+  <div class="wrap">
+    <div class="section-head">
+      <p class="eyebrow">The details that complete the experience</p>
+      <h2 id="tools-title">Everything else your table needs.</h2>
+      <p class="lede">The little details matter. Oaken brings useful campaign tools together so you can spend less time switching between resources and more time playing.</p>
+    </div>
+    <ul class="tool-grid">
+      <li class="tool">{{ ico('dice') }}<h3>Dice roller</h3><p>Roll, calculate modifiers, and keep the table's rolls close at hand.</p></li>
+      <li class="tool">{{ ico('rules') }}<h3>Rules reference</h3><p>Find useful rules, spells, equipment, monsters, and conditions.</p></li>
+      <li class="tool">{{ ico('quest') }}<h3>Quests and notes</h3><p>Keep track of story threads, clues, plans, and important discoveries.</p></li>
+      <li class="tool">{{ ico('calendar') }}<h3>Sessions</h3><p>Keep your group informed about upcoming sessions and campaign activity.</p></li>
+      <li class="tool">{{ ico('coins') }}<h3>Campaign treasury</h3><p>Keep a shared record of the party's resources and valuables.</p></li>
+      <li class="tool">{{ ico('chat') }}<h3>Player collaboration</h3><p>Bring your group together with shared campaign information and updates.</p></li>
+    </ul>
+  </div>
+</section>
+
+<!-- 09 · How Oaken works -->
+<section class="how" id="how-it-works" aria-labelledby="how-title">
+  <div class="wrap">
+    <div class="section-head">
+      <p class="eyebrow eyebrow--dark">Get your table ready</p>
+      <h2 id="how-title">Start with a campaign. Build from there.</h2>
+    </div>
+    <ol class="steps">
+      <li class="step">
+        <figure class="shot shot--small shot--empty" data-slot="IMG-08a" aria-hidden="true"></figure>{#- IMG-08a: how it works, step 1: create a campaign -#}
+        <p class="step-num" aria-hidden="true">01</p>
+        <h3>Create your campaign</h3>
+        <p>Set up your campaign and give your adventure a home.</p>
+      </li>
+      <li class="step">
+        <figure class="shot shot--small shot--empty" data-slot="IMG-08b" aria-hidden="true"></figure>{#- IMG-08b: how it works, step 2: bring the party together -#}
+        <p class="step-num" aria-hidden="true">02</p>
+        <h3>Bring your party together</h3>
+        <p>Add characters, invite your players, and organize the details of your world.</p>
+      </li>
+      <li class="step">
+        <figure class="shot shot--small shot--empty" data-slot="IMG-08c" aria-hidden="true"></figure>{#- IMG-08c: how it works, step 3: play -#}
+        <p class="step-num" aria-hidden="true">03</p>
+        <h3>Play your way</h3>
+        <p>Prepare encounters, use your maps, and keep the adventure moving.</p>
+      </li>
+    </ol>
+  </div>
+</section>
+
+<!-- 10 · Closing call to action -->
+<section class="closing" aria-labelledby="closing-title">
+  <div class="wrap closing-body">
+    <h2 id="closing-title">Your next adventure starts here.</h2>
+    <p class="lede">Bring your campaign, your characters, and your table together. Make Oaken the place where your next story takes shape.</p>
+    <div class="cta-row cta-row--center">
+      <a class="btn btn-primary btn-lg" href="{{ url_for('register') }}">Get started</a>
+    </div>
+    <p class="reassure">Have an account already? <a href="{{ url_for('login') }}">Log in</a></p>
+  </div>
+</section>
+
+</main>
+
+<!-- 11 · Footer -->
+<footer class="foot">
+  <div class="wrap foot-grid">
+    <div class="foot-brand">
+      <a class="brand" href="{{ url_for('index') }}" aria-label="Oaken, home">
+        <img class="brand-mark" src="{{ url_for('static', filename='logo/logo-128.png') }}" alt="" width="34" height="34">
+        <span class="brand-word">Oaken</span>
+      </a>
+      <p>A home for your tabletop adventures.</p>
+    </div>
+    <nav class="foot-col" aria-label="Explore">
+      <h3>Explore</h3>
+      <ul>
+        <li><a href="#features">Features</a></li>
+        <li><a href="#how-it-works">How it works</a></li>
+        <li><a href="{{ url_for('about') }}">About</a></li>
+      </ul>
+    </nav>
+    <nav class="foot-col" aria-label="Resources">
+      <h3>Resources</h3>
+      <ul>
+        <li><a href="{{ url_for('contact') }}">Contact</a></li>
+        <li><a href="{{ url_for('about') }}#credits">SRD attribution</a></li>
+      </ul>
+    </nav>
+    <nav class="foot-col" aria-label="Legal">
+      <h3>Legal</h3>
+      <ul>
+        <li><a href="{{ url_for('privacy') }}">Privacy Policy</a></li>
+        <li><a href="{{ url_for('terms') }}">Terms of Service</a></li>
+        <li><a href="{{ url_for('cookies') }}">Cookie Policy</a></li>
+      </ul>
+    </nav>
+  </div>
+  <div class="wrap foot-base">
+    <p>&copy; Oaken. All rights reserved.</p>
+  </div>
+</footer>
+
+<script src="{{ url_for('static', filename='js/landing.js') }}" defer></script>
+</body>
+</html>

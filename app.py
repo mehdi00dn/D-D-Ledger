@@ -119,7 +119,7 @@ def _campaign_access_field(form):
 # Full accounts: anyone can self-register, and every route requires a
 # logged-in session except the handful that must stay reachable to get one.
 
-PUBLIC_ENDPOINTS = {'login', 'register', 'static', 'healthz', 'forgot_password', 'reset_password', 'robots_txt', 'security_txt', 'csp_report', 'google_start', 'google_callback', 'privacy', 'terms', 'cookies', 'about', 'contact', 'verify_email'}
+PUBLIC_ENDPOINTS = {'login', 'register', 'static', 'healthz', 'forgot_password', 'reset_password', 'robots_txt', 'security_txt', 'csp_report', 'google_start', 'google_callback', 'privacy', 'terms', 'cookies', 'about', 'contact', 'verify_email', 'index'}
 
 
 # Which classification of connection failure gets which fixed, secret-free hint.
@@ -3124,6 +3124,11 @@ def storage_unavailable(exc):
 
 @app.route('/')
 def index():
+    """DL-177: signed-out visitors get the public home page; everyone signed in is sent on to their campaign as before."""
+    if session.get('user_id') and not _session_is_current():
+        session.clear()                                    # signed out elsewhere: this is a visitor again
+    if not session.get('user_id'):
+        return render_template('landing.html')
     db = get_db()
     last_id = session.get('last_campaign_id')
     if last_id and db.execute(
