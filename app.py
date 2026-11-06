@@ -347,7 +347,7 @@ _SCOPE_OWNER_SQL = {
     'quest_id': 'SELECT campaign_id AS owner FROM quests WHERE id = ?',
     'journal_id': 'SELECT campaign_id AS owner FROM session_journal WHERE id = ?',
     'entry_id': 'SELECT campaign_id AS owner FROM treasury_entries WHERE id = ?',
-    'pid': 'SELECT c.campaign_id AS owner FROM battle_participants bp JOIN characters c ON c.id = bp.character_id WHERE bp.id = ?',
+    'pid': 'SELECT campaign_id AS owner FROM battle_participants WHERE id = ?',
 }
 _SCOPE_PARENT_SQL = {            # arg -> (SQL returning the parent id, name of the parent arg)
     'drawing_id': ('SELECT map_id AS parent FROM map_drawings WHERE id = ?', 'map_id'),
@@ -2599,7 +2599,7 @@ def _delete_campaign_rows(db, campaign_id):
     map_paths = [r['image_path'] for r in db.execute(
         'SELECT image_path FROM maps WHERE campaign_id = ? AND image_path IS NOT NULL', (campaign_id,))]
 
-    db.execute('DELETE FROM battle_participants WHERE character_id IN (SELECT id FROM characters WHERE campaign_id = ?)', (campaign_id,))
+    db.execute('DELETE FROM battle_participants WHERE campaign_id = ?', (campaign_id,))
     db.execute('DELETE FROM character_sheets WHERE character_id IN (SELECT id FROM characters WHERE campaign_id = ?)', (campaign_id,))
     db.execute('DELETE FROM map_drawings WHERE map_id IN (SELECT id FROM maps WHERE campaign_id = ?)', (campaign_id,))
     db.execute('DELETE FROM map_pins WHERE map_id IN (SELECT id FROM maps WHERE campaign_id = ?)', (campaign_id,))
@@ -4292,6 +4292,32 @@ def _battle_live_status(db):
     return out
 
 
+def _battle_turn(db):
+    """(round, id of the participant whose turn it is) for this campaign's battle; (1, None) before anything started."""
+    b = db.execute('SELECT round, turn_participant_id FROM battles WHERE campaign_id = ?', (g.campaign_id,)).fetchone()
+    return (b['round'], b['turn_participant_id']) if b else (1, None)
+
+
+def _set_battle_turn(db, round_, turn_id, expect=False, expected_turn=None):
+    """Write the round and the current turn (the caller commits).  With expect=True it only writes while the turn is still
+    `expected_turn`, and says whether it did, so two clicks at once never skip a person."""
+    db.execute('INSERT INTO battles (campaign_id) VALUES (?) ON CONFLICT (campaign_id) DO NOTHING', (g.campaign_id,))
+    if not expect:
+        db.execute('UPDATE battles SET round = ?, turn_participant_id = ?, updated_at = CURRENT_TIMESTAMP AT TIME ZONE \'UTC\' WHERE campaign_id = ?',
+                   (round_, turn_id, g.campaign_id))
+        return True
+    cur = db.execute('UPDATE battles SET round = ?, turn_participant_id = ?, updated_at = CURRENT_TIMESTAMP AT TIME ZONE \'UTC\' '
+                     'WHERE campaign_id = ? AND turn_participant_id IS NOT DISTINCT FROM CAST(? AS INTEGER)',
+                     (round_, turn_id, g.campaign_id, expected_turn))
+    return cur.rowcount == 1
+
+
+def _next_sort_order(db):
+    """The sort_order for a participant added to THIS campaign's battle now."""
+    return db.execute('SELECT COALESCE(MAX(sort_order), -1) + 1 AS n FROM battle_participants WHERE campaign_id = ?',
+                      (g.campaign_id,)).fetchone()['n']
+
+
 def _battle_rows(db, redact_enemies=False):
     """redact_enemies=True (a Player viewing the battle) strips HP, AC, and
     initiative off every NPC/monster row before it ever reaches the
@@ -4299,24 +4325,32 @@ def _battle_rows(db, redact_enemies=False):
     player shouldn't know a monster's exact numbers), the client-side hiding
     is just presentation on top of it. PCs (is_npc=0) and familiars are
     never redacted -- a party can see its own stats."""
+    # A participant is either linked to a character (PCs, NPCs, monsters: the sheet is the source of the name, hit points
+    # and armour) or stands on its own (a familiar: snap_* hold what it needs).  Either way it carries its own campaign_id.
     rows = db.execute('''
-        SELECT bp.*, c.name AS char_name, c.avatar_path, c.is_npc, c.is_ally, c.max_hp AS char_max_hp,
-               c.armor_class AS base_ac, c.is_temp_familiar, c.familiar_icon_key, c.class_key, c.created_by AS owner_id, c.player_id AS player_id,
+        SELECT bp.*, COALESCE(c.name, bp.snap_name) AS char_name, c.avatar_path, COALESCE(c.is_npc, bp.snap_is_npc) AS is_npc,
+               COALESCE(c.is_ally, 0) AS is_ally, COALESCE(c.max_hp, bp.snap_max_hp) AS char_max_hp,
+               COALESCE(c.armor_class, bp.snap_ac) AS base_ac,
+               CASE WHEN bp.character_id IS NULL OR c.is_temp_familiar = 1 THEN 1 ELSE 0 END AS is_temp_familiar,
+               COALESCE(c.familiar_icon_key, bp.snap_icon) AS familiar_icon_key, c.class_key,
+               COALESCE(c.created_by, bp.snap_owner_id) AS owner_id, c.player_id AS player_id,
                g.id AS gid, g.name AS group_name, g.color AS group_color
         FROM battle_participants bp
-        JOIN characters c ON bp.character_id = c.id
+        LEFT JOIN characters c ON bp.character_id = c.id
         LEFT JOIN groups g ON c.group_id = g.id
-        WHERE c.campaign_id = ?
+        WHERE bp.campaign_id = ?
         ORDER BY bp.sort_order ASC, bp.id ASC
     ''', (g.campaign_id,)).fetchall()
     rows = [dict(r) for r in rows]
 
-    turn = db.execute('SELECT battle_round, battle_turn_id FROM campaigns WHERE id = ?', (g.campaign_id,)).fetchone()
+    turn_round, turn_id = _battle_turn(db)
     for r in rows:
+        for k in ('campaign_id', 'snap_name', 'snap_max_hp', 'snap_ac', 'snap_icon', 'snap_is_npc', 'snap_owner_id'):
+            r.pop(k, None)                                  # storage details, not part of what the screens get
         r['conditions'] = [k for k in _CONDITION_KEYS if k in (r.get('conditions') or '').split(',')]
         r['custom_conditions'] = _load_custom_conditions(r.get('custom_conditions'))
-        r['is_active'] = bool(turn and turn['battle_turn_id'] == r['id'])
-        r['battle_round'] = turn['battle_round'] if turn else 1
+        r['is_active'] = turn_id is not None and turn_id == r['id']
+        r['battle_round'] = turn_round
 
     for r in rows:
         r['effective_ac'] = r['ac_override'] if r['ac_override'] is not None else r['base_ac']
@@ -4395,9 +4429,10 @@ def log_battle(db, text, public=None, kind='info', npc=False):
 def _bp_state(db, pid):
     """What the log needs to know about one participant of THIS campaign: name (with the "#2" suffix when several share
     a name), whether it is an NPC, HP, temp HP, dead flag and conditions.  None if it is not in this campaign's battle."""
-    rows = db.execute('''SELECT bp.id, c.name, c.is_npc, c.is_ally, bp.current_hp, bp.temp_hp, bp.is_dead, bp.conditions, bp.custom_conditions
-                          FROM battle_participants bp JOIN characters c ON c.id = bp.character_id
-                          WHERE c.campaign_id = ? ORDER BY bp.sort_order ASC, bp.id ASC''', (g.campaign_id,)).fetchall()
+    rows = db.execute('''SELECT bp.id, COALESCE(c.name, bp.snap_name) AS name, COALESCE(c.is_npc, bp.snap_is_npc) AS is_npc,
+                                COALESCE(c.is_ally, 0) AS is_ally, bp.current_hp, bp.temp_hp, bp.is_dead, bp.conditions, bp.custom_conditions
+                          FROM battle_participants bp LEFT JOIN characters c ON c.id = bp.character_id
+                          WHERE bp.campaign_id = ? ORDER BY bp.sort_order ASC, bp.id ASC''', (g.campaign_id,)).fetchall()
     total, seen, found = {}, {}, None
     for r in rows:
         total[r['name']] = total.get(r['name'], 0) + 1
@@ -4447,8 +4482,8 @@ def _turn_order(db):
     screen happens to sort its list in (and whether or not a Player can see the numbers)."""
     rows = db.execute('''
         SELECT bp.id, bp.is_dead
-        FROM battle_participants bp JOIN characters c ON bp.character_id = c.id
-        WHERE c.campaign_id = ?
+        FROM battle_participants bp
+        WHERE bp.campaign_id = ?
         ORDER BY bp.initiative DESC, bp.sort_order ASC, bp.id ASC
     ''', (g.campaign_id,)).fetchall()
     return [(r['id'], bool(r['is_dead'])) for r in rows]
@@ -4459,11 +4494,11 @@ def _pass_turn(db, skip_id=None, step=1):
     skipped, and so is `skip_id`, someone who is about to be removed.  Going past the end of the
     order starts a new round; going back past the top returns to the previous round (never below 1).
     Returns False if someone else moved the turn first, so a double click never skips a person."""
-    camp = db.execute('SELECT battle_round, battle_turn_id FROM campaigns WHERE id = ?', (g.campaign_id,)).fetchone()
+    camp_round, current = _battle_turn(db)
     order = _turn_order(db)
     ids = [i for i, _dead in order]
     alive = {i for i, dead in order if not dead and i != skip_id}
-    current, rnd, nxt = camp['battle_turn_id'], camp['battle_round'], None
+    rnd, nxt = camp_round, None
     start = ids.index(current) if current in ids else -1
     if step < 0 and start < 0:
         return True                                        # nothing has started, so there is nothing to go back to
@@ -4478,40 +4513,66 @@ def _pass_turn(db, skip_id=None, step=1):
                     return True                            # already at the very first turn of round 1
                 rnd -= 1
             break
-    cur = db.execute(
-        'UPDATE campaigns SET battle_turn_id = ?, battle_round = ? WHERE id = ? AND battle_turn_id IS NOT DISTINCT FROM CAST(? AS INTEGER)',
-        (nxt, rnd if nxt is not None else camp['battle_round'], g.campaign_id, current))
-    return cur.rowcount == 1
+    return _set_battle_turn(db, rnd if nxt is not None else camp_round, nxt, expect=True, expected_turn=current)
 
 
 def _pass_turn_logged(db, step):
     """_pass_turn, plus a log line when combat starts or the round changes (a line per turn would only be noise)."""
-    camp = db.execute('SELECT battle_round, battle_turn_id FROM campaigns WHERE id = ?', (g.campaign_id,)).fetchone()
+    was_round, was_turn = _battle_turn(db)
     _pass_turn(db, step=step)
-    now = db.execute('SELECT battle_round, battle_turn_id FROM campaigns WHERE id = ?', (g.campaign_id,)).fetchone()
-    if camp['battle_turn_id'] is None and now['battle_turn_id'] is not None:
+    now_round, now_turn = _battle_turn(db)
+    if was_turn is None and now_turn is not None:
         log_battle(db, 'Combat started: round 1', None, 'round')
-    elif now['battle_round'] > camp['battle_round']:
-        log_battle(db, f"Round {now['battle_round']} begins", None, 'round')
-    elif now['battle_round'] < camp['battle_round']:
-        log_battle(db, f"Back to round {now['battle_round']}", None, 'round')
+    elif now_round > was_round:
+        log_battle(db, f"Round {now_round} begins", None, 'round')
+    elif now_round < was_round:
+        log_battle(db, f"Back to round {now_round}", None, 'round')
 
 
 def _create_familiar_participant(db, icon_key, custom_name):
-    """A familiar/prop pin gets a lightweight, temporary battle presence: a
-    throwaway character (flagged is_temp_familiar so it never shows in the
-    real character roster) plus a normal battle_participants row. Deleting
-    the character (see _cleanup_familiar_participants) cascades to remove
-    the participant row too."""
+    """A familiar/prop pin on a linked map gets a lightweight battle presence of its own: a participant with no character
+    behind it (snap_* hold its name, picture, 4 hit points and armour 10).  Whoever placed it is its owner."""
     display_name = custom_name or (icon_key or 'familiar').capitalize()
     cur = db.execute(
-        '''INSERT INTO characters (name, level, max_hp, armor_class, is_npc, is_temp_familiar, familiar_icon_key, campaign_id, created_by)
-           VALUES (?, 1, 4, 10, 0, 1, ?, ?, ?)''',
-        (display_name, icon_key, g.campaign_id, session['user_id'])
+        '''INSERT INTO battle_participants (campaign_id, character_id, current_hp, sort_order, snap_name, snap_max_hp, snap_ac, snap_icon, snap_is_npc, snap_owner_id)
+           VALUES (?, NULL, 4, ?, ?, 4, 10, ?, 0, ?)''',
+        (g.campaign_id, _next_sort_order(db), display_name, icon_key, session['user_id'])
     )
-    char_id = cur.lastrowid
-    cur2 = db.execute('INSERT INTO battle_participants (character_id, current_hp) VALUES (?, 4)', (char_id,))
-    return cur2.lastrowid
+    return cur.lastrowid
+
+
+def _delete_familiar_participant(db, pid):
+    """Remove one familiar from the battle.  (A familiar made before DL-13 still has its hidden character: that goes too.)"""
+    row = db.execute('SELECT bp.character_id, c.is_temp_familiar FROM battle_participants bp LEFT JOIN characters c ON c.id = bp.character_id '
+                     'WHERE bp.id = ? AND bp.campaign_id = ?', (pid, g.campaign_id)).fetchone()
+    if row is None:
+        return
+    if row['character_id'] is None:
+        db.execute('DELETE FROM battle_participants WHERE id = ? AND campaign_id = ?', (pid, g.campaign_id))
+    elif row['is_temp_familiar']:
+        db.execute('DELETE FROM characters WHERE id = ? AND is_temp_familiar = 1', (row['character_id'],))
+
+
+def _rename_familiar(db, pid, name):
+    row = db.execute('SELECT bp.character_id, c.is_temp_familiar FROM battle_participants bp LEFT JOIN characters c ON c.id = bp.character_id '
+                     'WHERE bp.id = ? AND bp.campaign_id = ?', (pid, g.campaign_id)).fetchone()
+    if row is None:
+        return
+    if row['character_id'] is None:
+        db.execute('UPDATE battle_participants SET snap_name = ? WHERE id = ?', (name, pid))
+    elif row['is_temp_familiar']:
+        db.execute('UPDATE characters SET name = ? WHERE id = ?', (name, row['character_id']))
+
+
+def _set_familiar_npc(db, pid, is_npc):
+    row = db.execute('SELECT bp.character_id, c.is_temp_familiar FROM battle_participants bp LEFT JOIN characters c ON c.id = bp.character_id '
+                     'WHERE bp.id = ? AND bp.campaign_id = ?', (pid, g.campaign_id)).fetchone()
+    if row is None:
+        return
+    if row['character_id'] is None:
+        db.execute('UPDATE battle_participants SET snap_is_npc = ? WHERE id = ?', (1 if is_npc else 0, pid))
+    elif row['is_temp_familiar']:
+        db.execute('UPDATE characters SET is_npc = ? WHERE id = ?', (1 if is_npc else 0, row['character_id']))
 
 
 def _detach_character_pins(db, map_id):
@@ -4528,9 +4589,7 @@ def _cleanup_familiar_participants(db, map_id):
         (map_id,)
     ).fetchall()
     for p in pins:
-        row = db.execute('SELECT character_id FROM battle_participants WHERE id = ?', (p['participant_id'],)).fetchone()
-        if row:
-            db.execute('DELETE FROM characters WHERE id = ? AND is_temp_familiar = 1', (row['character_id'],))
+        _delete_familiar_participant(db, p['participant_id'])
         db.execute('UPDATE map_pins SET participant_id = NULL WHERE id = ?', (p['id'],))
     db.commit()
 
@@ -4578,11 +4637,10 @@ def api_battle_add():
     if char is None:
         db.close()
         return api_error('That character could not be found.', 404)
-    max_order = db.execute('SELECT COALESCE(MAX(sort_order), -1) AS m FROM battle_participants').fetchone()['m']
     db.execute('''
-        INSERT INTO battle_participants (character_id, current_hp, initiative, is_dead, sort_order)
-        VALUES (?, ?, 0, 0, ?)
-    ''', (character_id, char['max_hp'], max_order + 1))
+        INSERT INTO battle_participants (campaign_id, character_id, current_hp, initiative, is_dead, sort_order)
+        VALUES (?, ?, ?, 0, 0, ?)
+    ''', (g.campaign_id, character_id, char['max_hp'], _next_sort_order(db)))
     log_battle(db, f"{char['name']} joined the battle", None, 'joined', npc=is_foe(char['is_npc'], char['is_ally']))
     db.commit()
     rows = _battle_rows(db)
@@ -4661,13 +4719,11 @@ def _add_monsters_to_battle(db, entry, count, rolled, source='encounter'):
     notes = sanitize_notes_payload(json.dumps([{'t': n, 'h': 1} for n in entry.get('notes') or []]))
     skill_prof = json.dumps(dnd5e.clean_skill_prof(c['skill_prof']))
     save_prof = json.dumps(dnd5e.clean_save_prof(c['save_prof']))
-    max_order = db.execute('SELECT COALESCE(MAX(sort_order), -1) AS m FROM battle_participants').fetchone()['m']
     for _ in range(count):
         hp = _roll_monster_hp(c.get('hp_roll'), c['max_hp']) if rolled else c['max_hp']
         char_id = _monster_character(db, c, hp, source, notes, skill_prof, save_prof)
-        max_order += 1
-        db.execute('INSERT INTO battle_participants (character_id, current_hp, initiative, is_dead, sort_order) VALUES (?, ?, 0, 0, ?)',
-                   (char_id, hp, max_order))
+        db.execute('INSERT INTO battle_participants (campaign_id, character_id, current_hp, initiative, is_dead, sort_order) VALUES (?, ?, ?, 0, 0, ?)',
+                   (g.campaign_id, char_id, hp, _next_sort_order(db)))
     log_battle(db, f"{c['name']} joined the battle" if count == 1 else f"{count} \u00d7 {c['name']} joined the battle", None, 'joined', npc=True)
 
 
@@ -4709,12 +4765,12 @@ def api_battle_add_group():
     db = get_db()
     members = db.execute('SELECT c.id, c.max_hp FROM characters c JOIN character_groups cg ON cg.character_id = c.id '
                          'WHERE cg.group_id = ? AND c.campaign_id = ? ORDER BY c.id', (group_id, g.campaign_id)).fetchall()
-    max_order = db.execute('SELECT COALESCE(MAX(sort_order), -1) AS m FROM battle_participants').fetchone()['m']
+    first_order = _next_sort_order(db)
     for i, m in enumerate(members):
         db.execute('''
-            INSERT INTO battle_participants (character_id, current_hp, initiative, is_dead, sort_order)
-            VALUES (?, ?, 0, 0, ?)
-        ''', (m['id'], m['max_hp'], max_order + 1 + i))
+            INSERT INTO battle_participants (campaign_id, character_id, current_hp, initiative, is_dead, sort_order)
+            VALUES (?, ?, ?, 0, 0, ?)
+        ''', (g.campaign_id, m['id'], m['max_hp'], first_order + i))
     if members:
         gname = db.execute('SELECT name FROM groups WHERE id = ? AND campaign_id = ?', (group_id, g.campaign_id)).fetchone()
         log_battle(db, f"{gname['name'] if gname else 'A faction'} joined the battle ({len(members)})", None, 'joined')
@@ -4739,12 +4795,14 @@ def api_battle_heal(pid):
     # the same creature at the same moment can never overwrite each other.
     cur = db.execute('''
         UPDATE battle_participants SET
-            current_hp = LEAST(c.max_hp, battle_participants.current_hp + ?),
-            is_dead = CASE WHEN LEAST(c.max_hp, battle_participants.current_hp + ?) > 0
+            current_hp = LEAST(m.mx, battle_participants.current_hp + ?),
+            is_dead = CASE WHEN LEAST(m.mx, battle_participants.current_hp + ?) > 0
                            THEN 0 ELSE battle_participants.is_dead END
-        FROM characters c
-        WHERE battle_participants.id = ? AND battle_participants.character_id = c.id
-    ''', (amount, amount, pid))
+        FROM (SELECT bp.id, COALESCE(c.max_hp, bp.snap_max_hp) AS mx
+              FROM battle_participants bp LEFT JOIN characters c ON c.id = bp.character_id
+              WHERE bp.id = ? AND bp.campaign_id = ?) m
+        WHERE battle_participants.id = m.id
+    ''', (amount, amount, pid, g.campaign_id))
     if cur.rowcount == 0:
         db.rollback()
         db.close()
@@ -4775,8 +4833,8 @@ def api_battle_damage(pid):
         UPDATE battle_participants SET
             temp_hp    = COALESCE(temp_hp, 0) - LEAST(COALESCE(temp_hp, 0), ?),
             current_hp = GREATEST(0, current_hp - (? - LEAST(COALESCE(temp_hp, 0), ?)))
-        WHERE id = ?
-    ''', (amount, amount, amount, pid))
+        WHERE id = ? AND campaign_id = ?
+    ''', (amount, amount, amount, pid, g.campaign_id))
     if cur.rowcount == 0:
         db.rollback()
         db.close()
@@ -4822,12 +4880,14 @@ def api_battle_set_hp(pid):
         return api_error(None, 404)
     cur = db.execute('''
         UPDATE battle_participants SET
-            current_hp = GREATEST(0, LEAST(c.max_hp, ?)),
-            is_dead = CASE WHEN GREATEST(0, LEAST(c.max_hp, ?)) > 0
+            current_hp = GREATEST(0, LEAST(m.mx, ?)),
+            is_dead = CASE WHEN GREATEST(0, LEAST(m.mx, ?)) > 0
                            THEN 0 ELSE battle_participants.is_dead END
-        FROM characters c
-        WHERE battle_participants.id = ? AND battle_participants.character_id = c.id
-    ''', (wanted, wanted, pid))
+        FROM (SELECT bp.id, COALESCE(c.max_hp, bp.snap_max_hp) AS mx
+              FROM battle_participants bp LEFT JOIN characters c ON c.id = bp.character_id
+              WHERE bp.id = ? AND bp.campaign_id = ?) m
+        WHERE battle_participants.id = m.id
+    ''', (wanted, wanted, pid, g.campaign_id))
     if cur.rowcount == 0:
         db.rollback()
         db.close()
@@ -4871,11 +4931,11 @@ def api_battle_roll_initiative():
     who, npc_flag = INITIATIVE_SCOPES[scope]
     db = get_db()
     sql = '''
-        SELECT bp.id, c.dex_score FROM battle_participants bp JOIN characters c ON c.id = bp.character_id
-        WHERE c.campaign_id = ? AND bp.is_dead = 0'''
+        SELECT bp.id, c.dex_score FROM battle_participants bp LEFT JOIN characters c ON c.id = bp.character_id
+        WHERE bp.campaign_id = ? AND bp.is_dead = 0'''
     params = [g.campaign_id]
     if npc_flag is not None:
-        sql += ' AND c.is_npc = ?'
+        sql += ' AND COALESCE(c.is_npc, bp.snap_is_npc) = ?'
         params.append(npc_flag)
     for r in db.execute(sql, params).fetchall():
         total = secrets.randbelow(20) + 1 + dnd5e.modifier(r['dex_score'] if r['dex_score'] is not None else 10)
@@ -4895,10 +4955,12 @@ def api_battle_long_rest():
     NPCs and monsters are left alone.  Optional {"id": <participant id>} rests just that one character."""
     data = request.get_json(silent=True) or {}
     db = get_db()
-    sql = '''UPDATE battle_participants SET current_hp = c.max_hp, temp_hp = 0, is_dead = 0,
+    sql = '''UPDATE battle_participants SET current_hp = m.mx, temp_hp = 0, is_dead = 0,
                 death_successes = 0, death_failures = 0, is_stable = 0
-            FROM characters c
-            WHERE battle_participants.character_id = c.id AND c.campaign_id = ? AND c.is_npc = 0'''
+            FROM (SELECT bp.id, COALESCE(c.max_hp, bp.snap_max_hp) AS mx
+                  FROM battle_participants bp LEFT JOIN characters c ON c.id = bp.character_id
+                  WHERE bp.campaign_id = ? AND COALESCE(c.is_npc, bp.snap_is_npc) = 0) m
+            WHERE battle_participants.id = m.id'''
     params = [g.campaign_id]
     if data.get('id') is not None:
         sql += ' AND battle_participants.id = ?'
@@ -4926,7 +4988,7 @@ def api_battle_short_rest():
     heals = data.get('heals') if isinstance(data.get('heals'), dict) else {}
     db = get_db()
     rows = db.execute('SELECT bp.id, bp.current_hp, bp.is_dead, c.max_hp, c.name FROM battle_participants bp JOIN characters c ON c.id = bp.character_id '
-                      'WHERE c.campaign_id = ? AND c.is_npc = 0 AND c.is_temp_familiar = 0', (g.campaign_id,)).fetchall()
+                      'WHERE bp.campaign_id = ? AND c.is_npc = 0 AND c.is_temp_familiar = 0', (g.campaign_id,)).fetchall()
     if not rows:
         db.close()
         return api_error('There are no player characters in the battle to rest.', 404)
@@ -4978,11 +5040,14 @@ def api_battle_max_hp(pid):
     value = max(1, int(data.get('value', 1)))
     db = get_db()
     row = db.execute('''
-        SELECT c.id AS character_id FROM battle_participants bp
-        JOIN characters c ON bp.character_id = c.id
-        WHERE bp.id = ? AND c.is_temp_familiar = 1
-    ''', (pid,)).fetchone()
-    if row:
+        SELECT bp.character_id, c.is_temp_familiar FROM battle_participants bp
+        LEFT JOIN characters c ON bp.character_id = c.id
+        WHERE bp.id = ? AND bp.campaign_id = ?
+    ''', (pid, g.campaign_id)).fetchone()
+    if row and row['character_id'] is None:
+        db.execute('UPDATE battle_participants SET snap_max_hp = ? WHERE id = ?', (value, pid))
+        db.commit()
+    elif row and row['is_temp_familiar']:                  # a familiar made before DL-13
         db.execute('UPDATE characters SET max_hp = ? WHERE id = ?', (value, row['character_id']))
         db.commit()
     rows = _battle_rows(db)
@@ -5038,9 +5103,9 @@ def api_battle_death_save(pid):
     in the log (the table sees only the outcome: stable, back on 1 HP, died); the DM gets every roll."""
     db = get_db()
     row = db.execute('''SELECT bp.current_hp, bp.is_dead, bp.is_stable, bp.death_successes AS ok, bp.death_failures AS bad,
-                               c.is_npc, c.created_by, c.player_id
-                        FROM battle_participants bp JOIN characters c ON c.id = bp.character_id
-                        WHERE bp.id = ? AND c.campaign_id = ?''', (pid, g.campaign_id)).fetchone()
+                               COALESCE(c.is_npc, bp.snap_is_npc) AS is_npc, COALESCE(c.created_by, bp.snap_owner_id) AS created_by, c.player_id
+                        FROM battle_participants bp LEFT JOIN characters c ON c.id = bp.character_id
+                        WHERE bp.id = ? AND bp.campaign_id = ?''', (pid, g.campaign_id)).fetchone()
     if row is None:
         db.close()
         return api_error(None, 404)
@@ -5175,7 +5240,7 @@ def api_battle_restart_turns():
     """DM only. Back to round 1 with the first living participant in initiative order acting."""
     db = get_db()
     first = next((i for i, dead in _turn_order(db) if not dead), None)
-    db.execute('UPDATE campaigns SET battle_round = 1, battle_turn_id = ? WHERE id = ?', (first, g.campaign_id))
+    _set_battle_turn(db, 1, first)
     log_battle(db, 'Turns restarted: round 1', None, 'round')
     db.commit()
     rows = _battle_rows(db)
@@ -5186,17 +5251,14 @@ def api_battle_restart_turns():
 def _remove_participant(db, pid):
     """Take one participant out of this campaign's battle (the caller commits).  Removing whoever is acting
     passes the turn on, and an emptied battle goes back to round 1."""
-    row = db.execute(
-        'SELECT bp.id FROM battle_participants bp JOIN characters c ON c.id = bp.character_id WHERE bp.id = ? AND c.campaign_id = ?',
-        (pid, g.campaign_id)).fetchone()
+    row = db.execute('SELECT id FROM battle_participants WHERE id = ? AND campaign_id = ?', (pid, g.campaign_id)).fetchone()
     if row is None:
         return False
-    camp = db.execute('SELECT battle_turn_id FROM campaigns WHERE id = ?', (g.campaign_id,)).fetchone()
-    if camp and camp['battle_turn_id'] == pid:
+    if _battle_turn(db)[1] == pid:
         _pass_turn(db, skip_id=pid)
-    db.execute('DELETE FROM battle_participants WHERE id = ?', (pid,))
+    db.execute('DELETE FROM battle_participants WHERE id = ? AND campaign_id = ?', (pid, g.campaign_id))
     if not _turn_order(db):
-        db.execute('UPDATE campaigns SET battle_round = 1, battle_turn_id = NULL WHERE id = ?', (g.campaign_id,))
+        _set_battle_turn(db, 1, None)
     return True
 
 
@@ -5223,11 +5285,8 @@ def api_battle_clear():
         db.execute('DELETE FROM battle_log WHERE campaign_id = ?', (g.campaign_id,))      # a new encounter starts with a clean log
     except pgerr.UndefinedTable:
         db.rollback()                                       # not migrated yet
-    db.execute(
-        'DELETE FROM battle_participants WHERE character_id IN (SELECT id FROM characters WHERE campaign_id = ?)',
-        (g.campaign_id,)
-    )
-    db.execute('UPDATE campaigns SET battle_round = 1, battle_turn_id = NULL WHERE id = ?', (g.campaign_id,))
+    db.execute('DELETE FROM battle_participants WHERE campaign_id = ?', (g.campaign_id,))   # familiars included; no hidden characters left behind
+    _set_battle_turn(db, 1, None)
     log_battle(db, 'Battle cleared', None, 'left')
     db.commit()
     db.close()
@@ -6991,7 +7050,7 @@ def _reconcile_map_battle(db, map_id):
     parts = db.execute('''
         SELECT bp.id, bp.character_id FROM battle_participants bp
         JOIN characters c ON bp.character_id = c.id
-        WHERE c.is_temp_familiar = 0 AND c.campaign_id = ?
+        WHERE c.is_temp_familiar = 0 AND bp.campaign_id = ?
         ORDER BY bp.sort_order ASC, bp.id ASC
     ''', (g.campaign_id,)).fetchall()
     valid = {r['id'] for r in parts}
@@ -7007,7 +7066,6 @@ def _reconcile_map_battle(db, map_id):
             pinned.add(pin['participant_id'])
         else:                                                   # its battle row is gone: removed from the battle
             db.execute('DELETE FROM map_pins WHERE id = ?', (pin['id'],))
-    max_order = db.execute('SELECT COALESCE(MAX(sort_order), -1) AS m FROM battle_participants').fetchone()['m']
     for pin in unplaced:
         char = db.execute('SELECT max_hp, name, is_npc, is_ally FROM characters WHERE id = ? AND campaign_id = ?', (pin['character_id'], g.campaign_id)).fetchone()
         if char is None:
@@ -7015,10 +7073,9 @@ def _reconcile_map_battle(db, map_id):
         pid = next((r['id'] for r in parts if r['character_id'] == pin['character_id'] and r['id'] not in pinned), None)
         created = pid is None
         if created:
-            max_order += 1
             pid = db.execute(
-                'INSERT INTO battle_participants (character_id, current_hp, initiative, is_dead, sort_order) VALUES (?, ?, 0, 0, ?)',
-                (pin['character_id'], char['max_hp'], max_order)).lastrowid
+                'INSERT INTO battle_participants (campaign_id, character_id, current_hp, initiative, is_dead, sort_order) VALUES (?, ?, ?, 0, 0, ?)',
+                (g.campaign_id, pin['character_id'], char['max_hp'], _next_sort_order(db))).lastrowid
         won = db.execute(
             'UPDATE map_pins SET participant_id = ? WHERE id = ? AND participant_id IS NULL '
             'AND NOT EXISTS (SELECT 1 FROM map_pins x WHERE x.map_id = ? AND x.participant_id = ?)',
@@ -7078,7 +7135,7 @@ def _map_pins_payload(db, map_id):
             p.pop('char_made_by', None)
             live = None
             if p['participant_id']:
-                live = db.execute('SELECT current_hp, is_dead FROM battle_participants WHERE id = ?', (p['participant_id'],)).fetchone()
+                live = db.execute('SELECT current_hp, is_dead FROM battle_participants WHERE id = ? AND campaign_id = ?', (p['participant_id'], g.campaign_id)).fetchone()
             if live is not None:
                 p['current_hp'], p['is_dead'] = live['current_hp'], live['is_dead']
                 p['char_name'] = battle_display_names.get(p['participant_id'], p['char_name'])
@@ -7096,13 +7153,15 @@ def _map_pins_payload(db, map_id):
             # A prop pin with a participant_id is a familiar wired into the battle tracker -- fetch its live
             # is_npc/HP too, so a familiar the DM has marked as an NPC gets the same PC/NPC-aware treatment.
             live = db.execute('''
-                SELECT bp.current_hp, bp.is_dead, c.id AS character_id, c.name AS char_name, c.avatar_path,
-                       c.max_hp AS char_max_hp, c.is_npc, c.is_ally, c.is_temp_familiar, c.class_key, g.color AS group_color, c.created_by AS char_made_by
+                SELECT bp.current_hp, bp.is_dead, bp.character_id, COALESCE(c.name, bp.snap_name) AS char_name, c.avatar_path,
+                       COALESCE(c.max_hp, bp.snap_max_hp) AS char_max_hp, COALESCE(c.is_npc, bp.snap_is_npc) AS is_npc, COALESCE(c.is_ally, 0) AS is_ally,
+                       CASE WHEN bp.character_id IS NULL OR c.is_temp_familiar = 1 THEN 1 ELSE 0 END AS is_temp_familiar,
+                       c.class_key, g.color AS group_color, COALESCE(c.created_by, bp.snap_owner_id) AS char_made_by
                 FROM battle_participants bp
-                JOIN characters c ON bp.character_id = c.id
+                LEFT JOIN characters c ON bp.character_id = c.id
                 LEFT JOIN groups g ON c.group_id = g.id
-                WHERE bp.id = ?
-            ''', (p['participant_id'],)).fetchone()
+                WHERE bp.id = ? AND bp.campaign_id = ?
+            ''', (p['participant_id'], g.campaign_id)).fetchone()
             if live is None or npc_is_hidden(live['is_npc'], live['char_made_by'], live['is_ally']):
                 continue
             p.update(dict(live))
@@ -7372,9 +7431,7 @@ def api_map_pin_update(map_id, pin_id):
         pin_row = db.execute('SELECT participant_id, icon_key FROM map_pins WHERE id = ? AND map_id = ?', (pin_id, map_id)).fetchone()
         if pin_row and pin_row['participant_id']:
             new_name = new_custom_name or (pin_row['icon_key'] or 'familiar').capitalize()
-            char_row = db.execute('SELECT character_id FROM battle_participants WHERE id = ?', (pin_row['participant_id'],)).fetchone()
-            if char_row:
-                db.execute('UPDATE characters SET name = ? WHERE id = ?', (new_name, char_row['character_id']))
+            _rename_familiar(db, pin_row['participant_id'], new_name)
     if 'is_npc' in data:
         # Whether a familiar counts as a PC or an NPC (and therefore whether
         # its stats get hidden from Players) is the DM's call alone.
@@ -7383,11 +7440,8 @@ def api_map_pin_update(map_id, pin_id):
             abort(403)
         pin_row = db.execute('SELECT participant_id FROM map_pins WHERE id = ? AND map_id = ?', (pin_id, map_id)).fetchone()
         if pin_row and pin_row['participant_id']:
-            char_row = db.execute('SELECT character_id FROM battle_participants WHERE id = ?', (pin_row['participant_id'],)).fetchone()
-            if char_row:
-                db.execute('UPDATE characters SET is_npc = ? WHERE id = ? AND is_temp_familiar = 1',
-                           (1 if data['is_npc'] else 0, char_row['character_id']))
-                db.commit()
+            _set_familiar_npc(db, pin_row['participant_id'], data['is_npc'])
+            db.commit()
     if fields:
         moved = None
         if 'x' in data or 'y' in data:
@@ -7425,9 +7479,7 @@ def api_map_pin_delete(map_id, pin_id):
         if pin['participant_id'] and m and m['linked_to_battle']:
             _remove_participant(db, pin['participant_id'])
     elif pin and pin['participant_id']:
-        char_row = db.execute('SELECT character_id FROM battle_participants WHERE id = ?', (pin['participant_id'],)).fetchone()
-        if char_row:
-            db.execute('DELETE FROM characters WHERE id = ? AND is_temp_familiar = 1', (char_row['character_id'],))
+        _delete_familiar_participant(db, pin['participant_id'])
     db.execute('DELETE FROM map_pins WHERE id = ? AND map_id = ?', (pin_id, map_id))
     db.commit()
     db.close()
