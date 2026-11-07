@@ -100,7 +100,7 @@ def test_home_lists_who_plays_whom_and_hides_hidden_npcs(make_user):
     _attach(dm, cid, uid, hero, npc)
     assert 'Hero' in pl.get(f'/campaigns/{cid}/home').data.decode().split('aria-label="Players"')[1]
     dm.post(f'/campaigns/{cid}/npc-visibility', data={'hide_npcs': 'on'})
-    assert 'Secret Duke' not in pl.get(f'/campaigns/{cid}/home').data.decode()
+    assert 'Secret Duke' not in pl.get(f'/campaigns/{cid}/home').data.decode().split('aria-label="Players"')[1].split('</section>')[0]
     assert 'Attach characters to players' in dm.get(f'/campaigns/{cid}/home').data.decode()
     assert 'Attach characters to players' not in pl.get(f'/campaigns/{cid}/home').data.decode()
     form = dm.get(f'/campaigns/{cid}/edit').data.decode()

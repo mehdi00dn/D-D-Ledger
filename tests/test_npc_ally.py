@@ -39,13 +39,12 @@ def test_ally_stays_visible_when_npcs_are_hidden(make_user):
     html = pl.get(f'/campaigns/{cid}/characters').data.decode()
     assert 'Friendly Knight' in html and 'Goblin Boss' not in html
     assert pl.get(f'/campaigns/{cid}/api/characters/{ally}/detail').status_code == 200
-    assert pl.get(f'/campaigns/{cid}/api/characters/{foe}/detail').status_code == 404
-    rows = pl.battle(cid)
-    assert [r['char_name'] for r in rows] == ['Friendly Knight']
-    assert rows[0]['current_hp'] == 40 and not rows[0].get('hidden_stats')
-    assert rows[0]['is_npc']                                         # technically still an NPC
-    log = pl.get(f'/campaigns/{cid}/api/battle/log').get_json()
-    assert any('Friendly Knight' in l['text'] for l in log) and not any('Goblin' in l['text'] for l in log)
+    assert [c['name'] for c in pl.get(f'/campaigns/{cid}/api/characters').get_json()] == ['Friendly Knight']
+    rows = {r['char_name']: r for r in pl.battle(cid)}
+    assert sorted(rows) == ['Friendly Knight', 'Goblin Boss']        # the switch only hides cards in the character list
+    assert rows['Friendly Knight']['current_hp'] == 40 and not rows['Friendly Knight'].get('hidden_stats')
+    assert rows['Friendly Knight']['is_npc']                         # technically still an NPC
+    assert rows['Goblin Boss'].get('hidden_stats')                   # a foe's numbers stay hidden from Players
     assert 'Friendly Knight' in pl.get(f'/campaigns/{cid}/activity').data.decode()
 
 
@@ -65,7 +64,7 @@ def test_ally_token_stays_on_a_players_map(make_user):
     names = lambda u: sorted(p['char_name'] for p in u.get(f'/campaigns/{cid}/api/maps/{mid}/pins').get_json())
     assert names(pl) == ['Friendly Knight', 'Goblin Boss']
     dm.post(f'/campaigns/{cid}/npc-visibility', data={'hide_npcs': 'on'})
-    assert names(pl) == ['Friendly Knight'] and names(dm) == ['Friendly Knight', 'Goblin Boss']
+    assert names(pl) == ['Friendly Knight', 'Goblin Boss'] and names(dm) == ['Friendly Knight', 'Goblin Boss']
     pins = {p['char_name']: p for p in pl.get(f'/campaigns/{cid}/api/maps/{mid}/pins').get_json()}
     assert not pins['Friendly Knight'].get('hidden_stats') and pins['Friendly Knight']['is_npc']
 

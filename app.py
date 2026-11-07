@@ -1883,10 +1883,14 @@ def campaign_access_required(view_func):
     return wrapped
 
 
-def npcs_hidden_from_viewer():
-    """True when this campaign hides its NPCs and the person asking is not the DM (the DM viewing as a player counts as a Player)."""
+HIDE_NPC_SURFACES = ('characters',)      # DL-178: "Hide NPCs from Players" only empties the character list; maps, battle and the rest still show them
+
+
+def npcs_hidden_from_viewer(surface=None):
+    """True when this campaign hides its NPCs, the person asking is not the DM (the DM viewing as a player counts as a Player)
+    AND `surface` is one the switch covers (only the character list; a call without a surface is for everywhere else)."""
     c = getattr(g, 'campaign', None)
-    return bool(c is not None and c['hide_npcs'] and not g.is_dm)
+    return bool(surface in HIDE_NPC_SURFACES and c is not None and c['hide_npcs'] and not g.is_dm)
 
 
 def is_foe(is_npc, is_ally=0):
@@ -1895,16 +1899,16 @@ def is_foe(is_npc, is_ally=0):
     return bool(is_npc) and not is_ally
 
 
-def npc_is_hidden(is_npc, created_by, is_ally=0):
+def npc_is_hidden(is_npc, created_by, is_ally=0, surface=None):
     """One character's visibility: an NPC is hidden from a Player while the switch is on, except from the Player who made it
     (and except an ally, which is always visible)."""
     mine = created_by == session.get('user_id') and not getattr(g, 'previewing', False)     # "View as player" shows what a Player who did not make it sees
-    return is_foe(is_npc, is_ally) and npcs_hidden_from_viewer() and not mine
+    return is_foe(is_npc, is_ally) and npcs_hidden_from_viewer(surface) and not mine
 
 
-def npc_filter(alias='c'):
+def npc_filter(alias='c', surface=None):
     """(sql, params) to AND onto a characters query so a Player never gets a hidden NPC; empty when nothing is hidden."""
-    if not npcs_hidden_from_viewer():
+    if not npcs_hidden_from_viewer(surface):
         return '', []
     return f' AND ({alias}.is_npc = 0 OR {alias}.is_ally = 1 OR {alias}.created_by = ?)', [None if getattr(g, 'previewing', False) else session.get('user_id')]
 
@@ -3154,7 +3158,7 @@ def index():
 @campaign_access_required
 def characters_list():
     db = get_db()
-    hide_sql, hide_params = npc_filter()
+    hide_sql, hide_params = npc_filter(surface='characters')
     characters = db.execute('''
         SELECT c.*, g.name AS group_name, g.color AS group_color, mk.username AS made_by
         FROM characters c
@@ -4135,7 +4139,7 @@ def faction_delete(group_id):
 @campaign_access_required
 def api_characters():
     db = get_db()
-    hide_sql, hide_params = npc_filter()
+    hide_sql, hide_params = npc_filter(surface='characters')
     rows = db.execute('''
         SELECT c.*, g.name AS group_name, g.color AS group_color
         FROM characters c LEFT JOIN groups g ON c.group_id = g.id
@@ -4391,8 +4395,6 @@ def _battle_rows(db, redact_enemies=False):
         else:
             r['display_name'] = n
 
-    if redact_enemies and getattr(g, 'campaign', None) is not None and g.campaign['hide_npcs']:
-        rows = [r for r in rows if not is_foe(r['is_npc'], r['is_ally']) or (me is not None and r['owner_id_'] == me)]   # gone from a Player's battle unless they made it
     for r in rows:
         r.pop('owner_id_', None)
     if redact_enemies:
@@ -5330,7 +5332,7 @@ def activity_view():
 def campaign_home():
     """The campaign's front page: the party, where the battle stands, what happened lately and the latest rolls."""
     db = get_db()
-    hide_sql, hide_params = npc_filter()
+    hide_sql, hide_params = npc_filter(surface='characters')
     party = db.execute('''SELECT c.id, c.name, c.level, c.max_hp, c.armor_class, c.avatar_path, c.class_key
                            FROM characters c WHERE c.campaign_id = ? AND c.is_temp_familiar = 0 AND c.is_npc = 0
                            ORDER BY lower(c.name) ASC''', (g.campaign_id,)).fetchall()

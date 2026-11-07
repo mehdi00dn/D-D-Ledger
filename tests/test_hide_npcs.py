@@ -1,4 +1,5 @@
-"""Hide NPCs from Players: one campaign switch, enforced on the server wherever an NPC could show up."""
+"""Hide NPCs from Players: one campaign switch.  DL-178: it only empties the character list (the cards in the character menu);
+NPCs stay on the map and in the battle, with their stats hidden from Players as usual."""
 import pytest
 from conftest import q, BACKEND
 
@@ -34,7 +35,7 @@ def test_only_dm_or_owner_flips_the_switch(make_user):
     assert q('SELECT hide_npcs FROM campaigns WHERE id = ?', cid)[0]['hide_npcs'] is False
 
 
-def test_hidden_npc_is_gone_for_players_but_not_the_dm(make_user):
+def test_hidden_npc_card_is_gone_for_players_but_not_the_dm(make_user):
     dm, pl, cid, npc, pc = _setup(make_user)
     pid = dm.add_to_battle(cid, npc)
     dm.add_to_battle(cid, pc)
@@ -42,29 +43,27 @@ def test_hidden_npc_is_gone_for_players_but_not_the_dm(make_user):
     _hide(dm, cid)
     html = pl.get(f'/campaigns/{cid}/characters').data.decode()
     assert 'Goblin Boss' not in html and 'Hero' in html
-    assert 'Goblin Boss' not in pl.get(f'/campaigns/{cid}/battle').data.decode()
-    assert pl.get(f'/campaigns/{cid}/api/characters/{npc}/detail').status_code == 404
-    assert pl.get(f'/campaigns/{cid}/characters/{npc}').status_code == 302
     assert [c['id'] for c in pl.get(f'/campaigns/{cid}/api/characters').get_json()] == [pc]
+    # ...but the battle still has it (a Player sees an enemy there, just not its numbers)
     rows = pl.battle(cid)
-    assert [r['char_name'] for r in rows] == ['Hero']
+    assert sorted(r['char_name'] for r in rows) == ['Goblin Boss', 'Hero']
     assert 'owner_id_' not in rows[0]
-    log = pl.get(f'/campaigns/{cid}/api/battle/log').get_json()
-    assert not any('Goblin' in l['text'] for l in log)
+    assert any('Goblin' in l['text'] for l in pl.get(f'/campaigns/{cid}/api/battle/log').get_json())
+    assert pl.get(f'/campaigns/{cid}/api/characters/{npc}/detail').status_code == 200      # opened from the battle: notes only
     assert 'Goblin Boss' in dm.get(f'/campaigns/{cid}/characters').data.decode()
     assert len(dm.battle(cid)) == 2
     assert any('Goblin' in l['text'] for l in dm.get(f'/campaigns/{cid}/api/battle/log').get_json())
 
 
-def test_npc_rolls_activity_and_factions_are_hidden_too(make_user):
+def test_npc_rolls_and_activity_stay_visible(make_user):
     dm, pl, cid, npc, pc = _setup(make_user)
     r = dm.json(f'/campaigns/{cid}/api/dice/roll', {'dice': {'20': 1}, 'modifier': 2, 'label': 'Stealth', 'character_id': npc})
     assert r.status_code == 200
     assert 'Goblin Boss' in pl.get(f'/campaigns/{cid}/activity').data.decode()
     assert any(x['character'] == 'Goblin Boss' for x in pl.get(f'/campaigns/{cid}/api/dice/rolls').get_json()['rolls'])
     _hide(dm, cid)
-    assert 'Goblin Boss' not in pl.get(f'/campaigns/{cid}/activity').data.decode()
-    assert not any(x['character'] == 'Goblin Boss' for x in pl.get(f'/campaigns/{cid}/api/dice/rolls').get_json()['rolls'])
+    assert 'Goblin Boss' in pl.get(f'/campaigns/{cid}/activity').data.decode()
+    assert any(x['character'] == 'Goblin Boss' for x in pl.get(f'/campaigns/{cid}/api/dice/rolls').get_json()['rolls'])
     assert 'Goblin Boss' in dm.get(f'/campaigns/{cid}/activity').data.decode()
 
 
@@ -86,7 +85,7 @@ def test_view_as_player_matches(make_user):
     assert dm.post(f'/campaigns/{cid}/npc-visibility', data={}).status_code == 302   # still allowed to switch it off while previewing
 
 
-def test_hidden_npc_tokens_leave_a_players_map(make_user):
+def test_hidden_npc_tokens_stay_on_a_players_map(make_user):
     dm, pl, cid, npc, pc = _setup(make_user)
     mid = dm.new_map(cid)
     for ch in (npc, pc):
@@ -94,7 +93,7 @@ def test_hidden_npc_tokens_leave_a_players_map(make_user):
     names = lambda u: sorted(p['char_name'] for p in u.get(f'/campaigns/{cid}/api/maps/{mid}/pins').get_json())
     assert names(pl) == ['Goblin Boss', 'Hero']
     _hide(dm, cid)
-    assert names(pl) == ['Hero'] and names(dm) == ['Goblin Boss', 'Hero']
+    assert names(pl) == ['Goblin Boss', 'Hero'] and names(dm) == ['Goblin Boss', 'Hero']
     assert all('char_made_by' not in p for p in pl.get(f'/campaigns/{cid}/api/maps/{mid}/pins').get_json())
 
 
@@ -105,5 +104,5 @@ def test_campaign_home_respects_the_switch(make_user):
     assert 'Hero' in page(pl) and 'Goblin Boss' in page(pl)          # the roll by the NPC is in the latest rolls
     _hide(dm, cid)
     html = page(pl)
-    assert 'Hero' in html and 'Goblin Boss' not in html
+    assert 'Hero' in html and 'Goblin Boss' in html                 # the NPC's roll still shows in the feed
     assert 'Goblin Boss' in page(dm)
