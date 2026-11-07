@@ -3128,28 +3128,24 @@ def storage_unavailable(exc):
 
 @app.route('/')
 def index():
-    """DL-177: signed-out visitors get the public home page; everyone signed in is sent on to their campaign as before."""
+    """DL-179: the home page of the whole site, for everyone.  Signed out it sells Oaken; signed in it carries the app menu
+    (campaigns, your characters, reference, notifications, profile) and a way back into the table.  This route is public, so it
+    checks the session itself."""
     if session.get('user_id') and not _session_is_current():
         session.clear()                                    # signed out elsewhere: this is a visitor again
-    if not session.get('user_id'):
-        return render_template('landing.html')
-    db = get_db()
-    last_id = session.get('last_campaign_id')
-    if last_id and db.execute(
-        'SELECT 1 FROM campaign_members WHERE campaign_id = ? AND user_id = ?', (last_id, session['user_id'])
-    ).fetchone():
-        db.close()
-        return redirect(url_for('campaign_home', campaign_id=last_id))
-    campaigns = db.execute(
-        'SELECT c.id FROM campaigns c JOIN campaign_members cm ON cm.campaign_id = c.id WHERE cm.user_id = ?',
-        (session['user_id'],)
-    ).fetchall()
-    db.close()
-    if len(campaigns) == 1:
-        return redirect(url_for('campaign_home', campaign_id=campaigns[0]['id']))
-    # Zero campaigns, or more than one with no remembered choice: let the
-    # person pick (or create their first one) on the campaigns list.
-    return redirect(url_for('campaigns_list'))
+    resume = None
+    if session.get('user_id'):
+        db = get_db()
+        try:
+            mine = db.execute('SELECT c.id, c.name FROM campaigns c JOIN campaign_members cm ON cm.campaign_id = c.id '
+                              'WHERE cm.user_id = ? ORDER BY c.id', (session['user_id'],)).fetchall()
+        finally:
+            db.close()
+        last_id = session.get('last_campaign_id')
+        pick = next((c for c in mine if c['id'] == last_id), None) or (mine[0] if len(mine) == 1 else None)
+        if pick:
+            resume = {'name': pick['name'], 'url': url_for('campaign_home', campaign_id=pick['id'])}
+    return render_template('landing.html', resume=resume)
 
 
 # ---------------- CHARACTERS ----------------

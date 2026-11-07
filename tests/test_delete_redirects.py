@@ -25,11 +25,16 @@ def test_all_delete_flows_land_on_working_pages(make_user):
     _lands_ok(u, u.post(f'/campaigns/{cid}/delete'))
 
 
-def test_root_redirects_are_consistent_after_delete(make_user):
+def test_root_is_consistent_after_delete(make_user):
+    """DL-179: / is a page now.  After the remembered campaign is deleted it must not link to it."""
+    import pubid
     u = make_user()
     a, b = u.new_campaign(), u.new_campaign()
+    a_code = pubid.short('campaigns', a)
     u.get(f'/campaigns/{a}/characters')                 # remembers last_campaign_id = a in the session
     u.post(f'/campaigns/{a}/delete')
     r = u.get('/')
-    assert r.status_code == 302
-    assert u.get(r.headers['Location']).status_code == 200
+    assert r.status_code == 200
+    html = r.data.decode()
+    assert f'/campaigns/{a_code}/' not in html
+    assert f'href="/campaigns/{pubid.short("campaigns", b)}/home"' in html          # the one that is left

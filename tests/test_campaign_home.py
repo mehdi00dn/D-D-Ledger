@@ -21,11 +21,14 @@ def test_home_shows_party_battle_activity_and_rolls(make_user):
     assert 'Perception' in dm.get(f'/campaigns/{cid}/home').data.decode()
 
 
-def test_opening_the_site_lands_on_home(make_user):
-    dm = make_user(); cid = dm.new_campaign()
+def test_opening_the_site_offers_the_way_back_to_the_campaign(make_user):
+    """DL-179: / is the home page for everyone; signed in, its main button resumes the campaign you were last in."""
+    dm = make_user(); cid = dm.new_campaign('Frostmaiden')
     dm.get(f'/campaigns/{cid}/home')                      # remembers the campaign
     r = dm.get('/')
-    assert r.status_code == 302 and r.headers['Location'].endswith(f'/campaigns/%s/home' % pubid.short('campaigns', cid))
+    html = r.data.decode()
+    assert r.status_code == 200 and 'Continue to Frostmaiden' in html
+    assert f'href="/campaigns/%s/home"' % pubid.short('campaigns', cid) in html
 
 
 def test_home_shows_the_bio_and_the_player_list(make_user):

@@ -1,4 +1,4 @@
-"""DL-177: the public home page at / (signed-out visitors); signed-in people are still sent to their campaign."""
+"""DL-177/DL-179: the home page at /, for visitors and for signed-in people (who get the app menu in its header)."""
 import re
 
 import pytest
@@ -74,19 +74,61 @@ def test_empty_frames_name_their_slot(visitor):
     assert all('aria-hidden="true"' in f for f in re.findall(r'<figure[^>]*data-slot[^>]*>', html))
 
 
-def test_signed_in_people_still_go_to_their_campaign(make_user):
-    u = make_user(); cid = u.new_campaign()
+def test_signed_in_people_get_the_same_page_with_the_app_menu(make_user):
+    """DL-179: / is the home page of the whole site; signed in, the header carries the out-of-campaign menu."""
+    u = make_user(); cid = u.new_campaign('Frostmaiden')
     r = u.get('/')
-    assert r.status_code == 302 and f'/campaigns/' in r.headers['Location']
-    u2 = make_user()                                                              # no campaign yet: the campaigns list
-    assert u2.get('/').status_code == 302
+    html = r.data.decode()
+    assert r.status_code == 200 and 'Your world. Your party. Your adventure.' in html
+    nav = html[html.index('<nav class="nav-menu"'):html.index('</nav>')]
+    for path in ('/campaigns', '/library', '/reference', '/notifications', '/account'):
+        assert f'href="{path}' in nav, path
+    assert 'action="/logout"' in nav and 'name="csrf_token"' in nav
+    assert 'href="/register"' not in html and 'Get started' not in html and 'Log in' not in html
+    for path in ('/campaigns', '/library', '/reference', '/notifications', '/account'):
+        assert u.get(path).status_code == 200, path
+
+
+def test_the_main_button_resumes_or_opens_the_list(make_user):
+    u = make_user()
+    assert 'Open your campaigns' in u.get('/').data.decode()                      # no campaign yet
+    cid = u.new_campaign('Frostmaiden')
+    assert 'Continue to Frostmaiden' in u.get('/').data.decode()                  # the only campaign
+    u.new_campaign('Second')
+    u.get(f'/campaigns/{cid}/home')
+    assert 'Continue to Frostmaiden' in u.get('/').data.decode()                  # the remembered one
+    other = make_user()
+    assert 'Frostmaiden' not in other.get('/').data.decode()                      # never someone else's campaign
+
+
+def test_the_unread_count_shows_in_the_header(make_user):
+    import database
+    u = make_user()
+    assert 'class="nav-badge"' not in u.get('/').data.decode()
+    db = database.get_db()
+    try:
+        uid = db.execute('SELECT id FROM users WHERE username = ?', (u.name,)).fetchone()['id']
+        db.execute("INSERT INTO notifications (user_id, kind, title, body, link) VALUES (?, 'info', 'Hello', 'b', '/campaigns')", (uid,))
+        db.commit()
+    finally:
+        db.close()
+    html = u.get('/').data.decode()
+    assert 'class="nav-badge" aria-label="1 unread"' in html
 
 
 def test_a_signed_out_session_is_a_visitor_again(make_user):
     u = make_user()
-    assert u.get('/').status_code == 302
+    assert 'Log out' in u.get('/').data.decode()
     u.get('/logout'); u.c.post('/logout')
-    assert u.get('/').status_code == 200
+    html = u.get('/').data.decode()
+    assert 'Get started' in html and 'Log out' not in html
+
+
+def test_the_sidebar_links_back_to_home_outside_a_campaign(make_user):
+    u = make_user(); cid = u.new_campaign()
+    out = u.get('/campaigns').data.decode()
+    assert 'class="brand-link" href="/"' in out and 'class="nav-tab nav-home"' in out
+    assert 'nav-home' not in u.get(f'/campaigns/{cid}/home').data.decode()         # inside a campaign the tabs are the campaign's
 
 
 def test_landing_assets_are_served(visitor):

@@ -40,6 +40,7 @@
       <span class="brand-text">
         <span class="brand-title">Oaken</span>
       </span>
+      <a class="brand-link" href="{{ url_for('index') }}" aria-label="Oaken home" title="Home"></a>
       <button type="button" class="sidebar-toggle-btn" id="sidebar-toggle-btn" title="Collapse menu">
         {{ icon('sidebar-collapse') }}
       </button>
@@ -103,6 +104,10 @@
       </form>
       {% endif %}
       {% else %}
+      {# DL-179: out of a campaign the first tab is the site's home page (the landing page, which carries the same menu). #}
+      <a href="{{ url_for('index') }}" data-more class="nav-tab nav-home" title="Home">
+        {{ icon('home') }}<span>Home</span>
+      </a>
       <a href="{{ url_for('campaigns_list') }}" class="nav-tab {{ 'active' if active_page == 'campaigns' else '' }}" title="Campaigns">
         {{ icon('scroll') }}<span>Campaigns</span>
       </a>
@@ -228,6 +233,7 @@
   </div>
   {% elif session.user_id %}
   <div class="more-links">
+    <a href="{{ url_for('index') }}" class="more-link">{{ icon('home') }}<span>Home</span></a>
     <a href="{{ url_for('reference_global') }}" class="more-link {{ 'active' if active_page == 'reference' else '' }}">{{ icon('book-open') }}<span>Reference</span></a>
   </div>
   {% endif %}

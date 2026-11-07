@@ -1,4 +1,5 @@
-{#- DL-177: the public home page, shown at / to anyone who is not signed in.  Copy and structure follow the "Modern Fantasy Journal"
+{#- DL-177/DL-179: the home page of the whole site, shown at / to everyone.  Signed out: sign-in and sign-up links.  Signed in: the app menu
+    (campaigns, your characters, reference, notifications, profile, log out) and a way back into the table.  Copy and structure follow the "Modern Fantasy Journal"
     landing brief.  Standalone on purpose (does not extend base.html): it has its own palette and no app chrome.  No inline styles
     (the Content-Security-Policy forbids them); every size lives in static/css/landing.css. -#}
 {% macro ico(name) -%}
@@ -32,6 +33,10 @@
 <script nonce="{{ csp_nonce() }}">document.documentElement.classList.add('js');</script>
 </head>
 <body>
+{%- set signed_in = session.get('user_id') %}
+{%- set me = my_profile() if signed_in else None %}
+{%- set who = ((me.display_name if me and me.display_name else session.get('username')) or 'You') if signed_in else '' %}
+{%- set unread = unread_notification_count() if signed_in else 0 %}
 <a class="skip" href="#main">Skip to content</a>
 
 <header class="nav" id="top">
@@ -45,6 +50,24 @@
       <span class="vh">Menu</span>
     </button>
     <nav class="nav-menu" id="nav-menu" aria-label="Main" data-nav-menu>
+      <div class="nav-menu-inner">
+      {%- if signed_in %}
+      <ul class="nav-links">
+        <li><a href="{{ url_for('campaigns_list') }}">Campaigns</a></li>
+        <li><a href="{{ url_for('library_list') }}">Your characters</a></li>
+        <li><a href="{{ url_for('reference_global') }}">Reference</a></li>
+        <li><a href="{{ url_for('notifications_page') }}">Notifications{% if unread %} <em class="nav-badge" aria-label="{{ unread }} unread">{{ unread if unread < 100 else '99+' }}</em>{% endif %}</a></li>
+      </ul>
+      <div class="nav-actions">
+        <a class="nav-profile" href="{{ url_for('account') }}" aria-label="Your profile ({{ who }})">
+          {% if me and me.avatar_path %}<img class="nav-avatar" src="{{ url_for('uploaded_file', filename=me.avatar_path) }}" alt="" width="30" height="30">{% else %}<span class="nav-avatar nav-avatar--initial" aria-hidden="true">{{ who[:1]|upper }}</span>{% endif %}
+          <span class="nav-profile-name">{{ who }}</span>
+        </a>
+        <form class="nav-logout" method="POST" action="{{ url_for('logout') }}">{{ csrf_field() }}
+          <button class="nav-login" type="submit">Log out</button>
+        </form>
+      </div>
+      {%- else %}
       <ul class="nav-links">
         <li><a href="#features">Features</a></li>
         <li><a href="#how-it-works">How it works</a></li>
@@ -53,6 +76,8 @@
       <div class="nav-actions">
         <a class="nav-login" href="{{ url_for('login') }}">Log in</a>
         <a class="btn btn-primary btn-sm" href="{{ url_for('register') }}">Get started</a>
+      </div>
+      {%- endif %}
       </div>
     </nav>
   </div>
@@ -68,10 +93,14 @@
       <h1 id="hero-title">Your world. Your party. Your adventure.</h1>
       <p class="lede">Everything you need to bring a tabletop campaign together. Organize your world, manage your characters, prepare encounters, and keep your players connected.</p>
       <div class="cta-row">
+        {%- if signed_in %}
+        <a class="btn btn-primary btn-lg" href="{{ resume.url if resume else url_for('campaigns_list') }}">{{ 'Continue to ' ~ resume.name if resume else 'Open your campaigns' }}</a>
+        {%- else %}
         <a class="btn btn-primary btn-lg" href="{{ url_for('register') }}">Get started</a>
+        {%- endif %}
         <a class="btn btn-ghost btn-lg" href="#features">Explore features</a>
       </div>
-      <p class="reassure">Built for Dungeon Masters and players alike.</p>
+      <p class="reassure">{% if signed_in %}Welcome back, {{ who }}.{% else %}Built for Dungeon Masters and players alike.{% endif %}</p>
     </div>
     <div class="hero-visual">
       <figure class="shot shot--hero shot--empty" data-slot="IMG-01" aria-hidden="true"></figure>{#- IMG-01: hero product preview: campaign overview / dashboard -#}
@@ -236,9 +265,17 @@
     <h2 id="closing-title">Your next adventure starts here.</h2>
     <p class="lede">Bring your campaign, your characters, and your table together. Make Oaken the place where your next story takes shape.</p>
     <div class="cta-row cta-row--center">
+      {%- if signed_in %}
+      <a class="btn btn-primary btn-lg" href="{{ resume.url if resume else url_for('campaigns_list') }}">{{ 'Continue to ' ~ resume.name if resume else 'Open your campaigns' }}</a>
+      {%- else %}
       <a class="btn btn-primary btn-lg" href="{{ url_for('register') }}">Get started</a>
+      {%- endif %}
     </div>
+    {%- if signed_in %}
+    <p class="reassure">Or <a href="{{ url_for('campaigns_list') }}">see all your campaigns</a>.</p>
+    {%- else %}
     <p class="reassure">Have an account already? <a href="{{ url_for('login') }}">Log in</a></p>
+    {%- endif %}
   </div>
 </section>
 

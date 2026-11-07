@@ -162,6 +162,10 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
   transition: gap 0.32s cubic-bezier(0.4, 0, 0.2, 1), justify-content 0.32s;
 }
 :root[data-sidebar="collapsed"] .sidebar-brand { gap: 0; justify-content: center; }
+/* DL-179: the logo and name lead to the home page.  A stretched link over the brand, stopping short of the collapse button. */
+.sidebar-brand { position: relative; }
+.brand-link { position: absolute; inset-block: -4px 14px; inset-inline: -4px 44px; border-radius: 8px; }
+:root[data-sidebar="collapsed"] .brand-link { display: none; }
 
 .brand-mark {
   width: 30px; height: 30px; flex: 0 0 30px;
@@ -2048,6 +2052,7 @@ body.page-leaving .content {
   :root[data-sidebar="collapsed"] .brand-collapse-icon { opacity: 0; }
   :root[data-sidebar="collapsed"] .brand-text,
   :root[data-sidebar="collapsed"] .nav-tab span { opacity: 1; max-width: 160px; }
+  :root[data-sidebar="collapsed"] .brand-link { display: block; }
   :root[data-sidebar="collapsed"] .nav-tab { justify-content: flex-start; gap: 12px; padding: 11px 14px; }
   .sidebar-brand { padding: 0 16px 0 0; }
   .sidebar-nav { flex-direction: row; }
@@ -3524,6 +3529,8 @@ body.page-leaving .content {
   .sidebar, :root[data-sidebar="collapsed"] .sidebar { position: sticky; top: 0; z-index: 60; gap: 10px; padding: 10px 14px; overflow: visible; }
   .sidebar-brand { padding: 0; flex: 0 0 auto; }
   .sidebar-toggle-btn { display: none; }
+  .brand-link { inset: 0; }
+  :root[data-sidebar="collapsed"] .brand-link { display: block; }
   .campaign-chip-top {
     display: inline-flex; align-items: center; gap: 8px; min-width: 0; flex: 0 1 auto;
     padding: 7px 12px; border: 1px solid var(--hairline); border-radius: var(--radius-s);
