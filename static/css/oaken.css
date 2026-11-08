@@ -1,0 +1,257 @@
+/* ==========================================================================
+   Oaken: shared foundations (DL-180)
+   One file for the palette, the semantic tokens of both themes, and the paper / wood / burned-edge materials.
+   Loaded before style.css, which maps its older token names onto the values below.
+
+   1. Palette ramps (raw colours; pages never use these directly, they use the semantic tokens)
+   2. Semantic tokens, dark and light
+   3. Material assets (the only place that names an image file)
+   4. Material classes: .o-paper, .o-burn, .o-surface, .o-wood, .o-wood-frame, .o-backdrop
+   Texture rules: not every surface gets one; no texture behind long text; one texture per surface; overlays never take clicks.
+   ========================================================================== */
+
+/* ---------- 1. Palette ramps ---------- */
+:root {
+  --oak-forest-950: #0f120f;
+  --oak-forest-900: #171b18;          /* Deep Forest */
+  --oak-forest-800: #1b201b;
+  --oak-charcoal-700: #222720;        /* Charcoal */
+  --oak-charcoal-600: #2b3128;
+  --oak-charcoal-500: #363d32;
+
+  --oak-parchment-50: #fbf6e9;
+  --oak-parchment-100: #f5eedc;
+  --oak-parchment-200: #ede4cf;       /* Parchment */
+  --oak-parchment-300: #e4d9bf;
+  --oak-parchment-400: #d6c8a6;
+  --oak-tan: #ebd9b2;                 /* paper tint that the parchment texture multiplies over in the dark theme */
+
+  --oak-brass-300: #d2b574;
+  --oak-brass-500: #b99a57;           /* Antique Brass */
+  --oak-brass-600: #9a7f43;
+  --oak-brass-700: #6e5520;
+
+  --oak-moss-300: #8fa586;
+  --oak-moss-500: #687d60;            /* Muted Moss */
+  --oak-moss-700: #4a5c44;
+
+  --oak-ink-900: #1d211c;
+  --oak-ink-800: #332d25;             /* Warm Ink */
+  --oak-ink-700: #55472f;
+  --oak-ink-600: #5f5139;
+  --oak-ash: #b1aa9a;                 /* Soft Ash (a step lighter than the brief's #A9A294 so it passes 4.5:1 on raised panels) */
+  --oak-ash-dim: #9c9686;
+}
+
+/* ---------- 2. Semantic tokens ----------
+   Dark is the default. [data-theme] on any element re-themes everything inside it, so the showcase can show both side by side. */
+:root,
+[data-theme="dark"] {
+  --o-page: var(--oak-forest-900);
+  --o-page-deep: var(--oak-forest-950);
+  --o-surface: var(--oak-charcoal-700);
+  --o-surface-raised: var(--oak-charcoal-600);
+  --o-surface-inset: var(--oak-forest-800);
+  --o-text: var(--oak-parchment-200);
+  --o-text-muted: var(--oak-ash);
+  --o-text-faint: var(--oak-ash-dim);
+  --o-border: rgba(185, 154, 87, 0.22);
+  --o-border-strong: rgba(185, 154, 87, 0.4);
+  --o-action: var(--oak-brass-500);
+  --o-action-hover: var(--oak-brass-300);
+  --o-action-text: var(--oak-forest-900);
+  --o-accent-ink: var(--oak-brass-500);         /* brass used as text or a small icon */
+  --o-selected: rgba(185, 154, 87, 0.16);
+  --o-focus: var(--oak-brass-300);
+  --o-success: #1e9a52;
+  --o-success-ink: var(--oak-moss-300);
+  --o-warning: var(--oak-brass-500);
+  --o-danger: #e25048;
+  --o-danger-ink: #da716c;
+  --o-info: #7ec8ff;
+  --o-disabled-opacity: 0.45;
+
+  /* paper: the journal-like panels. Same warm paper in both themes; the dark theme tints it a little deeper (as in the references). */
+  --paper-base: var(--oak-tan);
+  --paper-ink: var(--oak-ink-800);
+  --paper-ink-dim: var(--oak-ink-700);
+  --paper-ink-faint: var(--oak-ink-600);
+  --paper-accent-ink: var(--oak-brass-700);
+  --paper-line: rgba(70, 50, 20, 0.24);
+  --paper-line-strong: rgba(70, 50, 20, 0.42);
+  --paper-shadow: 0 2px 0 rgba(0, 0, 0, 0.25), 0 10px 22px rgba(0, 0, 0, 0.4);
+
+  --texture-parchment: var(--tx-parchment-light);
+  --texture-surface: var(--tx-parchment-dark);
+  --texture-wood: var(--tx-oak-dark);
+  --texture-burn-edge: var(--tx-burn-dark);
+  --burn-slice: 80;                              /* source pixels (of the 900 px wide overlay) kept as the border */
+  --burn-w: 12px;                                /* the width the border is drawn at */
+  --burn-opacity: 0.85;
+  --surface-texture-opacity: 0.6;
+  --surface-blend: normal;
+  --backdrop-painting: var(--bg-torrent);
+  --backdrop-scrim: linear-gradient(rgba(23, 27, 24, 0.5), rgba(23, 27, 24, 0.78));
+}
+
+[data-theme="light"] {
+  --o-page: #eee6d2;
+  --o-page-deep: #e6dcc2;
+  --o-surface: #f8f2e3;
+  --o-surface-raised: #f2ead3;
+  --o-surface-inset: #e9dfc6;
+  --o-text: var(--oak-ink-800);
+  --o-text-muted: #5a5043;
+  --o-text-faint: #6b5f4c;
+  --o-border: rgba(90, 65, 20, 0.2);
+  --o-border-strong: rgba(90, 65, 20, 0.34);
+  --o-action: #856820;
+  --o-action-hover: var(--oak-brass-700);
+  --o-action-text: #fbf7ec;
+  --o-accent-ink: var(--oak-brass-700);
+  --o-selected: rgba(133, 104, 32, 0.14);
+  --o-focus: var(--oak-brass-700);
+  --o-success: #1e9a52;
+  --o-success-ink: #3e6c51;
+  --o-warning: #856820;
+  --o-danger: #c3443d;
+  --o-danger-ink: #ab3f37;
+  --o-info: #2b6f9c;
+
+  --paper-base: #fbf6e9;
+  --paper-shadow: 0 1px 0 rgba(255, 255, 255, 0.6), 0 8px 18px rgba(90, 65, 20, 0.16);
+
+  --texture-surface: var(--tx-parchment-light);
+  --texture-wood: var(--tx-oak-light);
+  --texture-burn-edge: var(--tx-burn-light);
+  --burn-slice: 40;
+  --burn-w: 10px;
+  --burn-opacity: 0.8;
+  --surface-texture-opacity: 0.55;
+  --surface-blend: soft-light;
+  --backdrop-painting: var(--bg-river-pale);
+  --backdrop-scrim: linear-gradient(rgba(238, 230, 210, 0.62), rgba(238, 230, 210, 0.86));
+}
+
+/* ---------- 3. Material assets ----------
+   The only place an image file is named.  Paths are relative to this stylesheet.  Swap a file here (or just replace it on disk,
+   keeping the name) and every surface follows. */
+:root {
+  --tx-parchment-light: url("../assets/textures/parchment/parchment-light.webp");
+  --tx-parchment-dark: url("../assets/textures/parchment/parchment-dark.webp");
+  --tx-oak-dark: url("../assets/textures/wood/oak-dark.webp");
+  --tx-oak-light: url("../assets/textures/wood/oak-light.webp");          /* placeholder: re-graded from the dark oak until a light oak is supplied */
+  --tx-burn-light: url("../assets/textures/edges/burn-edge-light.png");
+  --tx-burn-dark: url("../assets/textures/edges/burn-edge-dark.png");
+  --bg-torrent: url("../assets/backgrounds/torrent-storm.webp");
+  --bg-river-pale: url("../assets/backgrounds/river-pale.webp");
+  --bg-river-gold: url("../assets/backgrounds/river-gold.webp");
+  --bg-valley: url("../assets/backgrounds/valley-light.webp");
+  --bg-cliffs: url("../assets/backgrounds/cliff-valley.webp");
+}
+
+/* ---------- 4. Material classes ---------- */
+
+/* Paper: a journal-like panel.  Inside it the older token names (--parchment, --brass-ink, --bg-panel...) are re-pointed at ink-on-paper
+   values, so every existing control placed on a paper panel reads correctly in either theme without per-component rules. */
+.o-paper {
+  --parchment: var(--paper-ink);
+  --parchment-dim: var(--paper-ink-dim);
+  --parchment-faint: var(--paper-ink-faint);
+  --brass-ink: var(--paper-accent-ink);
+  --brass-bright-ink: var(--paper-accent-ink);
+  --brass-dim-ink: var(--paper-ink-dim);
+  --moss-ink: #3e6c51;
+  --blood-ink: #a33a33;
+  --bg-panel: rgba(255, 252, 244, 0.55);
+  --bg-panel-raised: rgba(255, 252, 244, 0.7);
+  --bg-panel-inset: rgba(70, 50, 20, 0.08);
+  --hairline: var(--paper-line);
+  --hairline-strong: var(--paper-line-strong);
+  color: var(--paper-ink);
+  background-color: var(--paper-base);
+  background-image: var(--texture-parchment);
+  background-size: 512px 512px;
+  background-blend-mode: multiply;
+  border-radius: var(--radius-s, 6px);
+  box-shadow: var(--paper-shadow);
+}
+[data-theme="light"] .o-paper { background-blend-mode: normal; }
+
+/* Burned edge: a transparent-centre overlay drawn as a 9-slice border, above the paper and below the content
+   (it sits at z-index -1 inside an isolated stacking context, so it never needs the content to be repositioned). */
+.o-burn { position: relative; isolation: isolate; }
+.o-burn::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  border: var(--burn-w) solid transparent;
+  border-image-source: var(--texture-burn-edge);
+  border-image-slice: var(--burn-slice);
+  border-image-width: var(--burn-w);
+  border-image-repeat: stretch;
+  opacity: var(--burn-opacity, 0.85);
+}
+.o-burn--soft::before { opacity: 0.5; }
+
+/* Surface: a solid app surface with a quiet grain.  Dense cards, forms and controls use this (or no texture at all). */
+.o-surface {
+  position: relative;
+  isolation: isolate;
+  background-color: var(--o-surface);
+  color: var(--o-text);
+  border: 1px solid var(--o-border);
+  border-radius: var(--radius-m, 12px);
+}
+.o-surface::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  pointer-events: none;
+  background-image: var(--texture-surface);
+  background-size: 512px 512px;
+  opacity: var(--surface-texture-opacity);
+  mix-blend-mode: var(--surface-blend, normal);
+}
+
+/* Wood: a structural rail or frame (sidebar edge, header strip).  Kept narrow; never a full card face. */
+.o-wood {
+  background-color: #2a1d14;
+  background-image: var(--texture-wood);
+  background-size: 512px 512px;
+  color: var(--oak-parchment-200);
+}
+[data-theme="light"] .o-wood { background-color: #a07a4c; color: var(--oak-parchment-50); text-shadow: 0 1px 1px rgba(40, 22, 6, 0.55); }   /* light text: the oak is mid-brown, dark ink would sit near 2.4:1 */
+
+/* Wood frame: wood around an inner panel (the battle list).  Put the inner panel inside; the frame is the padding. */
+.o-wood-frame {
+  padding: 8px;
+  border-radius: var(--radius-m, 12px);
+  background-color: #2a1d14;
+  background-image: var(--texture-wood);
+  background-size: 512px 512px;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 10px 22px rgba(0, 0, 0, 0.35);
+}
+[data-theme="light"] .o-wood-frame { background-color: #a07a4c; box-shadow: inset 0 0 0 1px rgba(60, 35, 10, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.25), 0 8px 18px rgba(90, 65, 20, 0.2); }
+.o-wood-frame > .o-paper { border-radius: calc(var(--radius-m, 12px) - 4px); }
+
+/* Backdrop: a painting behind a banner or the page, under a scrim that keeps the text readable.
+   Meant for large, low-density areas (page backdrop, campaign header), never for dense data. */
+.o-backdrop {
+  background-color: var(--o-page);
+  background-image: var(--backdrop-scrim), var(--backdrop-painting);
+  background-size: cover;
+  background-position: center;
+}
+.o-backdrop--clear {
+  background-image: linear-gradient(rgba(10, 12, 10, 0.12), rgba(10, 12, 10, 0.55)), var(--backdrop-painting);
+}
+
+@media (prefers-contrast: more) {
+  .o-surface::before, .o-burn::before { opacity: 0.35; }
+  .o-backdrop { background-image: none; }
+}

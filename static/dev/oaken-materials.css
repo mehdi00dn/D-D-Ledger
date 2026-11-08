@@ -1,0 +1,40 @@
+/* Showcase only (DL-180).  Layout for static/dev/oaken-materials.html; delete with that page. */
+body { background: var(--bg-void); }
+.sc { inline-size: min(1180px, 100% - 40px); margin-inline: auto; padding-block: 28px 64px; }
+.sc-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; flex-wrap: wrap; margin-block-end: 8px; }
+.sc-sec { margin-block-start: 34px; }
+.sc-h { font-family: var(--font-display); font-size: 20px; font-weight: 600; margin: 0 0 14px; color: var(--parchment); }
+.sc-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 22px; align-items: start; }
+.sc-grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.sc-card { padding: 20px 22px; }
+.sc-plain { border-radius: var(--radius-m); }
+.sc-ct { font-family: var(--font-display); font-size: 21px; font-weight: 600; margin: 0 0 8px; color: var(--parchment); }
+.sc-card p { margin: 0 0 8px; font-size: 14px; line-height: 1.5; }
+.sc-card .sc-dim { color: var(--parchment-dim); font-size: 13px; }
+.sc-card .sc-faint { color: var(--parchment-faint); font-size: 12px; }
+.sc-card .sc-dim, .sc-banner .sc-dim { color: var(--parchment-dim); }
+.sc-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-block: 12px; }
+.sc-card .field { margin-block: 10px; }
+.sc-mono { font-family: var(--font-mono); font-size: 12px; }
+.sc-inline { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
+.sc-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-block: 12px; }
+.sc-stats span { display: flex; flex-direction: column; align-items: center; padding: 6px 0; border: 1px solid var(--hairline); border-radius: 6px; font-family: var(--font-mono); font-size: 10px; letter-spacing: .08em; color: var(--parchment-dim); }
+.sc-stats b { font-size: 16px; color: var(--parchment); }
+.sc-rail { padding: 10px 16px; border-radius: 8px; font-size: 13px; margin-block-end: 14px; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .4); }
+.sc-frame { display: grid; gap: 6px; }
+.sc-frame-row { display: flex; align-items: center; gap: 14px; padding: 12px 16px; font-size: 14px; }
+.sc-frame-row b { font-family: var(--font-display); font-size: 20px; }
+.sc-name { font-family: var(--font-display); font-weight: 600; font-size: 17px; flex: 1; }
+.sc-banner { padding: 56px 24px 24px; border-radius: var(--radius-m); border: 1px solid var(--hairline); min-block-size: 220px; }
+.sc-banner-t { font-family: var(--font-display); font-size: 40px; font-weight: 600; margin: 0 0 6px; color: var(--parchment); }
+.sc-swatches { display: grid; grid-template-columns: repeat(7, 1fr); gap: 12px; list-style: none; padding: 0; margin: 0 0 16px; font-size: 12px; color: var(--parchment-dim); }
+.sw { display: block; block-size: 54px; border-radius: 8px; border: 1px solid var(--hairline-strong); margin-block-end: 6px; }
+.sw-forest { background: var(--oak-forest-900); } .sw-charcoal { background: var(--oak-charcoal-700); } .sw-parchment { background: var(--oak-parchment-200); }
+.sw-brass { background: var(--oak-brass-500); } .sw-moss { background: var(--oak-moss-500); } .sw-ink { background: var(--oak-ink-800); } .sw-ash { background: var(--oak-ash); }
+.sc-roles { display: flex; flex-wrap: wrap; gap: 10px; list-style: none; padding: 0; margin: 0; }
+.role { padding: 10px 16px; border-radius: 8px; border: 1px solid var(--o-border-strong); font-size: 12.5px; font-family: var(--font-mono); }
+.role-page { background: var(--o-page); color: var(--o-text); } .role-surface { background: var(--o-surface); color: var(--o-text); }
+.role-raised { background: var(--o-surface-raised); color: var(--o-text); } .role-inset { background: var(--o-surface-inset); color: var(--o-text-muted); }
+.role-action { background: var(--o-action); color: var(--o-action-text); border-color: transparent; } .role-selected { background: var(--o-selected); color: var(--o-accent-ink); }
+.role-success { background: var(--o-success); color: #fff; border-color: transparent; } .role-danger { background: var(--o-danger); color: #fff; border-color: transparent; }
+@media (max-width: 860px) { .sc-grid, .sc-grid-2 { grid-template-columns: 1fr; } .sc-swatches { grid-template-columns: repeat(4, 1fr); } }
