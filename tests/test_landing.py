@@ -41,7 +41,7 @@ def test_every_button_goes_somewhere_real(visitor):
 
 def test_one_primary_label_and_the_cta_links_to_registration(visitor):
     html = visitor.get('/').get_data(as_text=True)
-    ctas = re.findall(r'<a class="btn btn-primary[^"]*" href="([^"]+)">([^<]+)</a>', html)
+    ctas = re.findall(r'<a class="pub-btn pub-btn--primary[^"]*" href="([^"]+)">([^<]+)</a>', html)
     assert len(ctas) >= 3 and {label for _h, label in ctas} == {'Get started'}
     assert {h for h, _l in ctas} == {'/register'}
 
@@ -80,7 +80,7 @@ def test_signed_in_people_get_the_same_page_with_the_app_menu(make_user):
     r = u.get('/')
     html = r.data.decode()
     assert r.status_code == 200 and 'Your world. Your party. Your adventure.' in html
-    nav = html[html.index('<nav class="nav-menu"'):html.index('</nav>')]
+    nav = html[html.index('<nav class="pub-menu"'):html.index('</nav>')]
     for path in ('/campaigns', '/library', '/reference', '/notifications', '/account'):
         assert f'href="{path}' in nav, path
     assert 'action="/logout"' in nav and 'name="csrf_token"' in nav
@@ -104,7 +104,7 @@ def test_the_main_button_resumes_or_opens_the_list(make_user):
 def test_the_unread_count_shows_in_the_header(make_user):
     import database
     u = make_user()
-    assert 'class="nav-badge"' not in u.get('/').data.decode()
+    assert 'class="pub-badge"' not in u.get('/').data.decode()
     db = database.get_db()
     try:
         uid = db.execute('SELECT id FROM users WHERE username = ?', (u.name,)).fetchone()['id']
@@ -113,7 +113,7 @@ def test_the_unread_count_shows_in_the_header(make_user):
     finally:
         db.close()
     html = u.get('/').data.decode()
-    assert 'class="nav-badge" aria-label="1 unread"' in html
+    assert 'class="pub-badge" aria-label="1 unread"' in html
 
 
 def test_a_signed_out_session_is_a_visitor_again(make_user):
@@ -132,8 +132,24 @@ def test_the_sidebar_links_back_to_home_outside_a_campaign(make_user):
 
 
 def test_landing_assets_are_served(visitor):
-    for path in ('/static/css/landing.css', '/static/js/landing.js'):
+    for path in ('/static/css/public.css', '/static/css/landing.css', '/static/js/public.js'):
         assert visitor.get(path).status_code == 200
     css = visitor.get('/static/css/landing.css').get_data(as_text=True)
     for font in re.findall(r"url\('\.\./fonts/([^']+)'\)", css):
         assert visitor.get('/static/fonts/' + font).status_code == 200, font
+    for path in re.findall(r'href="(/static/[^"]+)"', visitor.get('/').get_data(as_text=True)):
+        assert visitor.get(path).status_code == 200, path                             # every stylesheet the page links, in order
+
+
+def test_the_header_and_footer_are_the_shared_ones(visitor):
+    """DL-181: the home page and the text and form pages use the same header and footer partials."""
+    for path in ('/', '/about', '/contact', '/privacy', '/terms', '/cookies', '/login', '/register', '/forgot-password'):
+        html = visitor.get(path).get_data(as_text=True)
+        assert html.count('<header class="pub-header"') == 1 and html.count('<footer class="pub-footer"') == 1, path
+        assert 'class="pub-skip" href="#main"' in html and 'id="main"' in html, path
+        assert 'css/public.css' in html and 'js/public.js' in html, path
+        assert html.count('<h1') == 1, path
+    home = visitor.get('/').get_data(as_text=True)
+    other = visitor.get('/about').get_data(as_text=True)
+    assert 'href="#features"' in home and 'href="/#features"' in other               # anchors on the home page, a way back from the others
+    assert 'aria-current="page">About' in other and 'aria-current="page"' not in home

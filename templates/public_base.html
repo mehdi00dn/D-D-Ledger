@@ -1,0 +1,39 @@
+{#- DL-181: the frame of every public page except the home page (which has its own sections but shares the header and footer partials).
+    Header and footer are the same everywhere; between them is a painted stage whose picture follows the theme.  A child fills `stage`.
+    Blocks: title, stage, scripts_base (scripts that every page of that family needs), scripts (one page's own). -#}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="csrf-token" content="{{ csrf_token() }}">
+<meta name="theme-color" content="#171B18">
+<title>{% block title %}Oaken{% endblock %}</title>
+<script nonce="{{ csp_nonce() }}">
+  (function () {
+    document.documentElement.classList.add('js');
+    var saved = (localStorage.getItem('oaken-theme') || localStorage.getItem('ledger-theme'));
+    if (saved === 'system') saved = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+    if (saved === 'light' || saved === 'dark') {
+      document.documentElement.setAttribute('data-theme', saved);
+    }
+  })();
+</script>
+<script src="{{ url_for('static', filename='js/dyn-style.js') }}"></script>
+<link rel="icon" href="{{ url_for('static', filename='logo/favicon.ico') }}" sizes="any">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/oaken.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/auth.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/public.css') }}">
+</head>
+<body class="pub">
+{% include "_public_header.html" %}
+<main id="main" class="pub-stage o-backdrop">
+  {% block stage %}{% endblock %}
+</main>
+{% include "_public_footer.html" %}
+<script src="{{ url_for('static', filename='js/public.js') }}" defer></script>
+{% block scripts_base %}{% endblock %}
+{% block scripts %}{% endblock %}
+</body>
+</html>

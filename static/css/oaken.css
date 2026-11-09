@@ -76,7 +76,7 @@
   --paper-ink: var(--oak-ink-800);
   --paper-ink-dim: var(--oak-ink-700);
   --paper-ink-faint: var(--oak-ink-600);
-  --paper-accent-ink: var(--oak-brass-700);
+  --paper-accent-ink: #5c4519;               /* brass-700 darkened a step: on the dark theme's tan paper the texture highlights brought it under 4.5:1 */
   --paper-line: rgba(70, 50, 20, 0.24);
   --paper-line-strong: rgba(70, 50, 20, 0.42);
   --paper-shadow: 0 2px 0 rgba(0, 0, 0, 0.25), 0 10px 22px rgba(0, 0, 0, 0.4);

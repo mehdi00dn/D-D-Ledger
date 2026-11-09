@@ -1,8 +1,8 @@
-// DL-177/DL-179: the home page's behaviour -- the phone menu, the nav's scrolled state, and marking the section you are reading.
-// Everything here is polish: without this script the menu simply stays open (the CSS only closes it when the "js" class is on
-// <html>), so nobody is ever locked out of the links.
+// DL-177/DL-179/DL-181: the behaviour of the public header on every public page -- the phone menu, the bar's scrolled state, and (on the home
+// page) marking the section you are reading.  Everything here is polish: without this script the menu simply stays open (the CSS only closes
+// it when the "js" class is on <html>), so nobody is ever locked out of the links.
 (function () {
-  var header = document.getElementById('top');
+  var header = document.querySelector('[data-pub-header]');
   var toggle = document.querySelector('[data-nav-toggle]');
   var menu = document.querySelector('[data-nav-menu]');
   var narrow = window.matchMedia('(max-width: 820px)');
@@ -29,7 +29,7 @@
 
   // -- the bar firms up once the page has moved under it, and the link for the section you are reading is marked -----------------
   // "Features" covers everything from its anchor down to the next anchored section ("How it works"), which is several <section>s.
-  var links = [].slice.call(document.querySelectorAll('.nav-links a[href^="#"]'));
+  var links = [].slice.call(document.querySelectorAll('.pub-links a[href^="#"]'));
   var anchors = links.map(function (a) { return { link: a, el: document.getElementById(a.getAttribute('href').slice(1)) }; })
                      .filter(function (x) { return x.el; });
   var ticking = false;

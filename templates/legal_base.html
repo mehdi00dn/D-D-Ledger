@@ -1,0 +1,9 @@
+{#- DL-181: the text pages (About, Contact, Privacy, Terms, Cookies): one sheet of paper on the painted stage, wide enough to read comfortably.
+    Child templates fill `card` with an <article class="legal">. -#}
+{% extends "public_base.html" %}
+{% block stage %}
+<div class="pub-sheet o-paper o-burn">
+  {% block card %}{% endblock %}
+</div>
+{% endblock %}
+{% block scripts_base %}<script src="{{ url_for('static', filename='js/auth.js') }}"></script>{% endblock %}

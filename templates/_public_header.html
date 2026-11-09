@@ -1,0 +1,54 @@
+{#- DL-181: the one header of every public page (home, About, Contact, legal, log in, sign up, reset).  Signed out: the site links plus log in / get started.
+    Signed in: the out-of-campaign app menu.  On the home page the "Features" and "How it works" links are in-page anchors (public.js marks the
+    section being read); on every other page they point back to the home page.  Styles: static/css/public.css.  Behaviour: static/js/public.js. -#}
+{%- set signed_in = session.get('user_id') %}
+{%- set me = my_profile() if signed_in else None %}
+{%- set who = ((me.display_name if me and me.display_name else session.get('username')) or 'You') if signed_in else '' %}
+{%- set unread = unread_notification_count() if signed_in else 0 %}
+{%- set home = request.endpoint == 'index' %}
+{%- set home_url = '' if home else url_for('index') %}
+<a class="pub-skip" href="#main">Skip to content</a>
+
+<header class="pub-header" id="top" data-pub-header>
+  <div class="pub-wrap pub-bar">
+    <a class="pub-brand" href="{{ url_for('index') }}" aria-label="Oaken, home">
+      <img class="pub-brand-mark" src="{{ url_for('static', filename='logo/logo-128.png') }}" alt="" width="34" height="34">
+      <span class="pub-brand-word">Oaken</span>
+    </a>
+    <button class="pub-toggle" type="button" aria-expanded="false" aria-controls="pub-menu" data-nav-toggle>
+      <span class="pub-toggle-bars" aria-hidden="true"></span>
+      <span class="pub-vh">Menu</span>
+    </button>
+    <nav class="pub-menu" id="pub-menu" aria-label="Main" data-nav-menu>
+      <div class="pub-menu-inner">
+      {%- if signed_in %}
+      <ul class="pub-links">
+        <li><a href="{{ url_for('campaigns_list') }}">Campaigns</a></li>
+        <li><a href="{{ url_for('library_list') }}">Your characters</a></li>
+        <li><a href="{{ url_for('reference_global') }}">Reference</a></li>
+        <li><a href="{{ url_for('notifications_page') }}">Notifications{% if unread %} <em class="pub-badge" aria-label="{{ unread }} unread">{{ unread if unread < 100 else '99+' }}</em>{% endif %}</a></li>
+      </ul>
+      <div class="pub-actions">
+        <a class="pub-profile" href="{{ url_for('account') }}" aria-label="Your profile ({{ who }})">
+          {% if me and me.avatar_path %}<img class="pub-avatar" src="{{ url_for('uploaded_file', filename=me.avatar_path) }}" alt="" width="30" height="30">{% else %}<span class="pub-avatar pub-avatar--initial" aria-hidden="true">{{ who[:1]|upper }}</span>{% endif %}
+          <span class="pub-profile-name">{{ who }}</span>
+        </a>
+        <form class="pub-logout" method="POST" action="{{ url_for('logout') }}">{{ csrf_field() }}
+          <button class="pub-login" type="submit">Log out</button>
+        </form>
+      </div>
+      {%- else %}
+      <ul class="pub-links">
+        <li><a href="{{ home_url }}#features">Features</a></li>
+        <li><a href="{{ home_url }}#how-it-works">How it works</a></li>
+        <li><a href="{{ url_for('about') }}"{% if request.endpoint == 'about' %} aria-current="page"{% endif %}>About</a></li>
+      </ul>
+      <div class="pub-actions">
+        <a class="pub-login" href="{{ url_for('login') }}"{% if request.endpoint == 'login' %} aria-current="page"{% endif %}>Log in</a>
+        <a class="pub-btn pub-btn--primary pub-btn--sm" href="{{ url_for('register') }}">Get started</a>
+      </div>
+      {%- endif %}
+      </div>
+    </nav>
+  </div>
+</header>

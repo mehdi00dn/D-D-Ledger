@@ -1,0 +1,39 @@
+{#- DL-181: the one footer of every public page.  Styles: static/css/public.css. -#}
+{%- set home_url = '' if request.endpoint == 'index' else url_for('index') %}
+<footer class="pub-footer">
+  <div class="pub-wrap pub-foot-grid">
+    <div class="pub-foot-brand">
+      <a class="pub-brand" href="{{ url_for('index') }}" aria-label="Oaken, home">
+        <img class="pub-brand-mark" src="{{ url_for('static', filename='logo/logo-128.png') }}" alt="" width="34" height="34">
+        <span class="pub-brand-word">Oaken</span>
+      </a>
+      <p>A home for your tabletop adventures.</p>
+    </div>
+    <nav class="pub-foot-col" aria-label="Explore">
+      <h3>Explore</h3>
+      <ul>
+        <li><a href="{{ home_url }}#features">Features</a></li>
+        <li><a href="{{ home_url }}#how-it-works">How it works</a></li>
+        <li><a href="{{ url_for('about') }}">About</a></li>
+      </ul>
+    </nav>
+    <nav class="pub-foot-col" aria-label="Resources">
+      <h3>Resources</h3>
+      <ul>
+        <li><a href="{{ url_for('contact') }}">Contact</a></li>
+        <li><a href="{{ url_for('about') }}#credits">SRD attribution</a></li>
+      </ul>
+    </nav>
+    <nav class="pub-foot-col" aria-label="Legal">
+      <h3>Legal</h3>
+      <ul>
+        <li><a href="{{ url_for('privacy') }}">Privacy Policy</a></li>
+        <li><a href="{{ url_for('terms') }}">Terms of Service</a></li>
+        <li><a href="{{ url_for('cookies') }}">Cookie Policy</a></li>
+      </ul>
+    </nav>
+  </div>
+  <div class="pub-wrap pub-foot-base">
+    <p>&copy; Oaken. All rights reserved.</p>
+  </div>
+</footer>
