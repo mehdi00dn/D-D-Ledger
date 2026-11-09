@@ -196,16 +196,16 @@
 }
 .o-burn--soft::before { opacity: 0.5; }
 
-/* Surface: a solid app surface with a quiet grain.  Dense cards, forms and controls use this (or no texture at all). */
+/* Surface: a solid app surface with a quiet grain.  Dense cards, forms and controls use this (or no texture at all).
+   DL-180 part 2: the app's own form panel (.form-panel) takes the same grain, so every form card in the app has it without a markup change. */
+.o-surface, .form-panel { position: relative; isolation: isolate; }
 .o-surface {
-  position: relative;
-  isolation: isolate;
   background-color: var(--o-surface);
   color: var(--o-text);
   border: 1px solid var(--o-border);
   border-radius: var(--radius-m, 12px);
 }
-.o-surface::before {
+.o-surface::before, .form-panel::before {
   content: "";
   position: absolute;
   inset: 0;
@@ -252,6 +252,6 @@
 }
 
 @media (prefers-contrast: more) {
-  .o-surface::before, .o-burn::before { opacity: 0.35; }
+  .o-surface::before, .form-panel::before, .o-burn::before { opacity: 0.35; }
   .o-backdrop { background-image: none; }
 }

@@ -5680,3 +5680,62 @@ a.pager-link:hover { border-color: var(--brass); }
 }
 /* a docked token/shape button row must not sit over a tool menu that opens upward from the dock */
 body:has(.tool-flyout.open) .pin-action-bubble.is-docked { opacity: 0; pointer-events: none; }
+
+/* ==========================================================================
+   DL-180 part 2: the app shell in the Oaken materials
+   The sidebar is a quiet oak surface with a full-strength oak rail on its inner edge; the active tab, the campaign card and the account
+   card get the brass-edged look of the reference screens; the area behind the content carries a faint grain.  Layout, sizes, behaviour
+   and the collapse/expand motion are untouched.  Wood stays a frame: under the sidebar's own colour it is only a grain, so the
+   sidebar is no heavier than the page next to it.  Light theme uses the placeholder light oak (see oaken.css).
+   ========================================================================== */
+
+/* The area behind the content: the page colour with a little grain.  The wash is the page colour at 93%, so the texture shows at ~7%. */
+.app-shell {
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--bg-void) 93%, transparent), color-mix(in srgb, var(--bg-void) 93%, transparent)),
+    var(--texture-surface);
+  background-size: auto, 512px 512px;
+}
+
+/* Desktop sidebar only.  Below 1024px (and on touch tablets) the sidebar is the compact top bar and tab bar, which keep their own material. */
+@media not all and ((max-width: 1024px) or ((pointer: coarse) and (max-width: 1400px)) or ((max-height: 500px) and (orientation: landscape))) {
+  .sidebar {
+    background-color: var(--bg-void-2);
+    background-image:
+      linear-gradient(180deg, color-mix(in srgb, var(--bg-void-2) 82%, transparent), color-mix(in srgb, var(--bg-panel-inset) 90%, transparent)),
+      var(--texture-wood);
+    background-size: auto, 512px 512px;
+    border-inline-end: 0;
+  }
+  /* the oak rail on the inner edge: the one place the wood shows at full strength */
+  .sidebar::after {
+    content: ""; position: absolute; inset-block: 0; inset-inline-end: 0; inline-size: 8px;
+    background-color: #2a1d14; background-image: var(--texture-wood); background-size: 512px 512px;
+    box-shadow: inset 1px 0 0 rgba(0, 0, 0, 0.45), inset -1px 0 0 color-mix(in srgb, var(--brass) 38%, transparent), -10px 0 18px -12px rgba(0, 0, 0, 0.55);
+    pointer-events: none;
+  }
+  [data-theme="light"] .sidebar::after { background-color: #a07a4c; box-shadow: inset 1px 0 0 rgba(60, 36, 10, 0.35), inset -1px 0 0 color-mix(in srgb, var(--brass) 45%, transparent), -10px 0 18px -14px rgba(60, 36, 10, 0.4); }
+
+  /* active tab: a brass-tinted pill with a brass edge, like the reference; the small brass tab on the sidebar edge stays */
+  .nav-tab.active {
+    background: color-mix(in srgb, var(--brass) 16%, transparent);
+    box-shadow: inset 0 0 0 1px var(--hairline-strong), inset 0 1px 0 color-mix(in srgb, #fff 7%, transparent);
+  }
+  /* the campaign card and the account card: raised, edged, with a faint top highlight */
+  .campaign-switcher, .user-row {
+    border: 1px solid var(--hairline-strong);
+    background: color-mix(in srgb, var(--bg-panel) 62%, transparent);
+    box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 6%, transparent), 0 1px 2px color-mix(in srgb, #000 22%, transparent);
+  }
+  .campaign-switcher:hover { background: color-mix(in srgb, var(--brass) 12%, var(--bg-panel) 62%); }
+  .theme-toggle-btn, .foot-bell { border-color: var(--hairline-strong); background: color-mix(in srgb, var(--bg-panel) 50%, transparent); }
+  /* light theme: the sidebar stays a plain surface and the wood shows only in the rail.  The oak for this theme is a placeholder and its
+     grain pulled the small labels (group names, footer line) under 4.5:1; when a real light oak is supplied the grain can come back. */
+  :root[data-theme="light"] .sidebar { background-image: linear-gradient(180deg, var(--bg-void-2), var(--bg-panel-inset)); }
+  /* the active pill is a lighter tint in the light theme, so its label keeps 4.5:1 */
+  :root[data-theme="light"] .nav-tab.active { background: color-mix(in srgb, var(--brass) 8%, transparent); }
+}
+
+/* Primary button, light theme: cream text on the old gradient (top #b8923f) was 2.8:1.  The gradient now starts at a deeper brass, 4.6:1 at its lightest. */
+:root[data-theme="light"] .btn-primary { background: linear-gradient(180deg, #8a6b22, var(--brass)); }
+:root[data-theme="light"] .btn-primary:hover { filter: brightness(0.93); }

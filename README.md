@@ -426,3 +426,16 @@ Every page a visitor can see now shares one header, one footer and one painted s
 - **Contrast.** Measured against the rendered pixels (text hidden, background sampled) on the home page, About, log in and sign up in both themes and at desktop and phone widths: every text line is 4.5:1 or better. The paper accent ink (`--paper-accent-ink`) is one step darker than before so links on the dark theme's tan paper stay above 4.5:1.
 - **Not in this part.** `join_link.html` still extends the app shell. The empty screenshot slots on the home page are unchanged. The app itself (sidebar, Overview, Characters, Battle) is the next parts of the redesign.
 - **Tests.** `tests/test_landing.py` now checks that all public pages carry exactly one shared header and footer, the skip link and `id="main"`, and that every stylesheet the home page links is served.
+
+### Oaken visual identity: the app shell (DL-180, part 3 of the redesign)
+The campaign app's frame now uses the Oaken materials. Layout, sizes, routes, behaviour and the collapse and expand motion are unchanged; this is a restyle only, in a clearly marked block at the end of `static/css/style.css`.
+
+- **Sidebar (desktop).** The sidebar is a quiet oak surface: the supplied oak texture sits under the sidebar's own colour (about 15-18% shows through in the dark theme, so it reads as a faint grain) and an 8px oak rail, the one place the wood shows at full strength, runs down its inner edge with a brass hairline. In the light theme the sidebar stays a plain surface and only the rail is wood, because the light oak is still a placeholder and its grain pulled small labels under 4.5:1. When a real light oak is supplied the grain can come back (see the comment in `style.css`).
+- **Active tab, campaign card, account card.** The active tab is a brass-tinted pill with a brass edge, as in the reference screens (the small brass tab on the sidebar edge stays). The campaign card, the account card and the theme and bell buttons get a brass edge and a faint top highlight.
+- **Behind the content.** `.app-shell` carries the supplied parchment grain at about 7% over the page colour, in both themes.
+- **Form cards.** `.form-panel` (every form card in the app) takes the quiet grain of `.o-surface` through a shared selector in `oaken.css`, with no markup change.
+- **Compact layouts keep their own material.** The wood rules sit in a media query that is the exact complement of the compact shell (up to 1024px wide, touch tablets up to 1400px, short landscape screens), so the phone top bar and tab bar are untouched.
+- **Primary button, light theme.** Its cream text was 2.8:1 on the top of the old gradient; the gradient now starts at a deeper brass (4.6:1 at its lightest) and the hover darkens instead of lightening.
+- **Contrast.** Measured against the rendered pixels (text hidden, background sampled) for tab labels, group labels, the campaign name, the account line, the footer line and the primary button, in both themes: 4.5:1 or better.
+- **Not in this part.** Overview, Characters and Battle layouts against the reference screens (paper cards, banners) are the next part. `join_link.html`, the map and the dice tray are not restyled here.
+
