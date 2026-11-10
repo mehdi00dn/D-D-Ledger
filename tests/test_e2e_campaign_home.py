@@ -55,7 +55,7 @@ def test_long_bio_folds_behind_read_more(shared_server, pw):
     assert toggle.inner_text() == 'Read more'
     # side column sits beside the hero, not under everything
     side_top = page.locator('.home-side').bounding_box()['y']
-    hero_top = page.locator('.home-hero').bounding_box()['y']
+    hero_top = page.locator('.home-hero-frame').bounding_box()['y']                 # the hero sits in its wood frame (Oaken)
     assert abs(side_top - hero_top) < 4
     assert 'Only the DM sees this' in page.locator('.home-notes').inner_text()
     _shot(page, 'home-desktop')

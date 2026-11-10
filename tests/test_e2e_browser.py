@@ -1957,7 +1957,8 @@ def test_battle_log_is_collapsible_small_and_live(pw, shared_server):
     playwright.expect(dpage.locator('#battle-log-sheet')).to_be_visible()
     assert dpage.locator('#battle-log-list .bl-item').count() == 1
     blur = lambda sel: dpage.locator(sel).evaluate('(el) => getComputedStyle(el).backdropFilter || getComputedStyle(el).webkitBackdropFilter')
-    assert blur('#battle-log-sheet') != 'none'                                       # the card itself is frosted glass...
+    sheet_bg = dpage.locator('#battle-log-sheet').evaluate('(el) => getComputedStyle(el).backgroundColor')
+    assert sheet_bg.startswith('rgb(') or sheet_bg.endswith(', 1)')                  # the card itself is solid paper (Oaken, no frosted glass)...
     assert blur('#battle-log-backdrop') in ('none', '')                              # ...and the page behind is NOT blurred
     assert dpage.locator('#battle-log-sheet').bounding_box()['y'] + dpage.locator('#battle-log-sheet').bounding_box()['height'] < dpage.locator('#battle-log-toggle').bounding_box()['y']   # floats above the bar
     dm.post(f'/campaigns/{cid}/api/battle/{pid}/damage', json={'amount': 4})

@@ -5739,3 +5739,186 @@ body:has(.tool-flyout.open) .pin-action-bubble.is-docked { opacity: 0; pointer-e
 /* Primary button, light theme: cream text on the old gradient (top #b8923f) was 2.8:1.  The gradient now starts at a deeper brass, 4.6:1 at its lightest. */
 :root[data-theme="light"] .btn-primary { background: linear-gradient(180deg, #8a6b22, var(--brass)); }
 :root[data-theme="light"] .btn-primary:hover { filter: brightness(0.93); }
+
+/* ==========================================================================
+   DL-182: the core campaign pages in the Oaken materials (Overview, Characters, Battle)
+   Same layouts as before.  What changes is the surface: the campaign header is a painting in an oak frame, the journal-like panels (Overview cards, character
+   dossiers) are paper with a burned edge, and the battle list is a paper panel in an oak frame.  Dense controls (inputs, HP buttons, filters) stay plain.
+   ========================================================================== */
+
+/* ---- A painted banner: the Overview header and the title strip of Characters and Battle ---- */
+.page-header--painted {
+  --header-painting: var(--bg-river-gold);
+  position: relative;
+  padding: 22px 26px;
+  margin-bottom: 18px;
+  border-radius: var(--radius-m);
+  background-color: var(--oak-forest-900);
+  background-image: linear-gradient(90deg, rgba(15, 18, 15, 0.92) 0%, rgba(15, 18, 15, 0.8) 50%, rgba(15, 18, 15, 0.38) 100%), var(--header-painting);
+  background-size: cover;
+  background-position: center 40%;
+  box-shadow: inset 0 0 0 1px rgba(185, 154, 87, 0.28), 0 8px 20px rgba(0, 0, 0, 0.28);
+}
+.page-header--painted .page-title { text-shadow: 0 2px 14px rgba(0, 0, 0, 0.5); }
+.battle-header.page-header--painted { --header-painting: var(--bg-torrent); }
+.page-header--painted .btn-ghost { background: rgba(15, 18, 15, 0.45); }
+.page-header--painted .btn-ghost:hover { background: rgba(185, 154, 87, 0.18); }
+:root[data-theme="light"] .page-header--painted .btn-primary { background: var(--oak-brass-500); color: var(--oak-forest-900); }
+
+.home-hero-frame { margin: 0; }
+.home-main > .home-hero-frame { margin-block-end: 0; }
+.home-hero-frame > .home-hero { margin: 0; border: 0; box-shadow: none; border-radius: calc(var(--radius-m) - 4px); }
+.home-hero.is-painted {
+  display: flex; align-items: flex-end; min-block-size: 280px; padding: 0; overflow: hidden;
+  background-color: var(--oak-forest-900);
+  background-image: linear-gradient(0deg, rgba(15, 18, 15, 0.7) 0%, rgba(15, 18, 15, 0) 52%), linear-gradient(90deg, rgba(15, 18, 15, 0.92) 0%, rgba(15, 18, 15, 0.8) 46%, rgba(15, 18, 15, 0.22) 100%), var(--bg-cliffs);
+  background-size: cover; background-position: center 35%;
+}
+.home-hero.is-painted .home-hero-text { position: relative; inline-size: 100%; padding: 28px 30px 24px; }
+.home-hero.is-painted .home-name, .home-hero.has-banner .home-name { color: var(--parchment); }
+.home-hero.has-banner { background-color: var(--oak-forest-900); }
+.home-status {
+  display: inline-flex; align-items: center; gap: 8px; margin: 10px 0 0; padding: 3px 12px 3px 10px; border-radius: 999px;
+  font: 600 11px var(--font-mono); letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--moss-ink); background: rgba(15, 18, 15, 0.55); box-shadow: inset 0 0 0 1px rgba(143, 165, 134, 0.45);
+}
+.home-status-dot { inline-size: 8px; block-size: 8px; border-radius: 50%; background: currentColor; }
+.home-status--on_hold { color: var(--brass-ink); box-shadow: inset 0 0 0 1px rgba(210, 181, 116, 0.45); }
+.home-status--completed { color: var(--blue-ink); box-shadow: inset 0 0 0 1px rgba(126, 200, 255, 0.4); }
+.home-status--archived { color: var(--parchment-dim); box-shadow: inset 0 0 0 1px rgba(205, 198, 180, 0.35); }
+.home-hero .home-bio { color: var(--parchment); }
+.home-hero .home-tiles { gap: 0; }
+.home-hero .home-tile { padding-inline: 18px; border-inline-start: 1px solid var(--hairline); }
+.home-hero .home-tile:first-child { padding-inline-start: 0; border-inline-start: 0; }
+.home-hero .home-tile b { font-size: 24px; }
+.home-hero .home-tile span { color: var(--parchment-faint); }
+.home-hero .home-tile:hover span, .home-hero .home-tile:focus-visible span { color: var(--brass-bright-ink); }
+.home-hero .btn-ghost { background: rgba(15, 18, 15, 0.5); }
+:root[data-theme="light"] .home-hero .btn-primary { background: var(--oak-brass-500); color: var(--oak-forest-900); }
+
+/* ---- Paper cards (Overview) ---- */
+.cf-card.o-paper {
+  background-color: var(--paper-base); background-image: var(--texture-parchment); background-size: 512px 512px; background-blend-mode: multiply;
+  border: 0; border-radius: var(--radius-m); box-shadow: var(--paper-shadow); padding: 22px 26px 24px;
+}
+:root[data-theme="light"] .cf-card.o-paper { background-blend-mode: normal; }
+.cf-card.o-paper .cf-title {
+  align-items: center; gap: 10px; margin-bottom: 14px; padding-bottom: 10px; border-bottom: 1px solid var(--paper-line-strong);
+  font: 600 19px/1.2 var(--font-display); letter-spacing: 0; text-transform: none; color: var(--paper-ink);
+}
+.cf-title-icon { flex: none; inline-size: 18px; block-size: 18px; color: var(--paper-accent-ink); }
+.cf-card.o-paper .cf-count { font: 600 12px var(--font-mono); color: var(--paper-ink-dim); }
+.home-card .home-empty, .home-card .home-more, .home-card .home-list-main { color: var(--paper-ink); }
+.home-card .home-more, .home-card .home-empty a, .home-card .cd-legend a { color: var(--paper-accent-ink); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px; }
+.home-card .home-more:hover, .home-card .home-empty a:hover { color: var(--paper-ink); }
+.home-card .home-notes-text, .home-notes .clamp { color: var(--paper-ink); }
+.home-card .session-when { color: var(--paper-ink); }
+.home-card .session-rel { color: var(--paper-accent-ink); font-weight: 600; }
+.home-card .rsvp-btn { background: var(--bg-panel); color: var(--paper-ink); }
+.home-card .rsvp-btn.is-on { color: var(--on-brass); }
+.home-card .home-pc { background: var(--bg-panel); border-color: var(--paper-line-strong); }
+.home-card .home-pc:hover, .home-card .home-pc:focus-visible { background: rgba(255, 252, 244, 0.85); border-color: var(--paper-accent-ink); }
+.home-card .home-pc-name, .home-card .home-pc-name > span { color: var(--paper-ink); }
+.home-card .avatar-frame { box-shadow: 0 0 0 3px rgba(255, 252, 244, 0.6), 0 0 0 4px var(--paper-line); background: rgba(255, 252, 244, 0.7); }
+.home-card .role-badge-dm { background: rgba(110, 70, 170, 0.14); color: #4a2d75; }
+.home-card .home-member-chars a { background: var(--bg-panel); color: var(--paper-ink); }
+.home-card .home-member-chars a:hover, .home-card .home-member-chars a:focus-visible { border-color: var(--paper-accent-ink); }
+.home-card .quest-btn { background: var(--bg-panel); color: var(--paper-ink); }
+.home-card .quest-btn:hover, .home-card .quest-btn:focus-visible { border-color: var(--paper-accent-ink); background: rgba(255, 252, 244, 0.9); }
+.home-card .quest-delete { color: var(--blood-ink); }
+.home-card .field input, .home-card .field textarea { background: rgba(255, 252, 244, 0.78); color: var(--paper-ink); border-color: var(--paper-line-strong); }
+.home-card .field input::placeholder, .home-card .field textarea::placeholder { color: var(--paper-ink-faint); }
+.home-card .session-edit summary { color: var(--paper-ink-dim); }
+.home-activity .home-list li::before { background: var(--paper-accent-ink); box-shadow: none; }
+.home-activity .home-list::before { background: var(--paper-line-strong); }
+
+/* quests as a journal list: a circle to tick, filled when the quest is done */
+.quest { position: relative; padding-inline-start: 30px; }
+.quest::before { content: ''; position: absolute; inset-inline-start: 2px; inset-block-start: 3px; inline-size: 17px; block-size: 17px; border: 1.5px solid var(--paper-accent-ink); border-radius: 50%; }
+.quest.is-done::before { background: var(--moss-ink); border-color: var(--moss-ink); }
+.quest.is-done::after { content: ''; position: absolute; inset-inline-start: 8px; inset-block-start: 6px; inline-size: 4px; block-size: 8px; border: solid #fbf6e9; border-width: 0 2px 2px 0; transform: rotate(45deg); }
+.quest.is-hidden .quest-title { font-style: italic; }
+.quest-tag { background: rgba(70, 50, 20, 0.1); color: var(--paper-ink-dim); }
+.quest-tag-dm { color: var(--paper-accent-ink); }
+
+/* ---- Characters: dossier cards on paper ---- */
+.dossier-card.o-paper {
+  background-color: var(--paper-base); background-image: var(--texture-parchment); background-size: 512px 512px; background-blend-mode: multiply;
+  border: 0; border-radius: var(--radius-m); clip-path: none; padding: 22px 22px 20px; box-shadow: var(--paper-shadow);
+  transition: transform 0.15s ease, box-shadow 0.2s ease;
+}
+:root[data-theme="light"] .dossier-card.o-paper { background-blend-mode: normal; }
+.dossier-card.o-paper:hover { border-color: transparent; transform: translateY(-2px); box-shadow: var(--paper-shadow), 0 0 0 1px var(--paper-line-strong); }
+.dossier-card.o-paper .dossier-tag {
+  inset-block-start: 14px; inset-inline-end: 16px; padding: 2px 9px; border-radius: 999px; background: none;
+  box-shadow: inset 0 0 0 1px var(--paper-line-strong); color: var(--paper-accent-ink);
+}
+.dossier-card.o-paper .dossier-tag.npc { color: var(--moss-ink); }
+.dossier-card.o-paper .dossier-name { color: var(--paper-ink); font-size: 19px; }
+.dossier-card.o-paper .dossier-meta { color: var(--paper-ink-dim); }
+.dossier-card.o-paper .avatar-frame { border-color: var(--paper-accent-ink); box-shadow: 0 0 0 3px rgba(255, 252, 244, 0.55), 0 0 0 4px var(--paper-line); background: rgba(255, 252, 244, 0.7); }
+.dossier-card.o-paper .dossier-stats { background: rgba(255, 252, 244, 0.62); box-shadow: inset 0 0 0 1px var(--paper-line); border-radius: 8px; padding: 12px 10px; row-gap: 10px; }
+.dossier-card.o-paper .stat-pill .val { font-size: 16px; color: var(--paper-ink); }
+.dossier-card.o-paper .stat-pill .lbl { color: var(--paper-ink-dim); }
+.dossier-card.o-paper .dossier-vitals { background: rgba(255, 252, 244, 0.62); border-color: var(--paper-line); border-radius: 8px; }
+.dossier-card.o-paper .dossier-vitals .vital + .vital { border-inline-start-color: var(--paper-line); }
+.dossier-card.o-paper .dossier-vitals .vital b { color: var(--paper-ink); }
+.dossier-card.o-paper .dossier-vitals .vital small { color: var(--paper-ink-dim); }
+.dossier-card.o-paper .dossier-notes { color: var(--paper-ink); }
+.dossier-card.o-paper .dossier-actions { border-top-color: var(--paper-line-strong); }
+.dossier-card.o-paper .btn-ghost, .dossier-card.o-paper .btn-icon { background: rgba(255, 252, 244, 0.6); }
+.dossier-card.o-paper .btn-ghost:hover, .dossier-card.o-paper .btn-icon:hover { background: rgba(255, 252, 244, 0.92); border-color: var(--paper-accent-ink); color: var(--paper-ink); }
+.dossier-card.o-paper .btn-icon-danger { color: var(--blood-ink); }
+.dossier-card.o-paper .live-state, .dossier-card.o-paper .live-cond, .dossier-card.o-paper .added-from { color: var(--paper-ink-dim); }
+
+/* ---- Battle: the order of play, a paper panel in an oak frame ---- */
+#battle-root:has(.battle-list) {
+  padding: 8px; border-radius: var(--radius-m);
+  background-color: #2a1d14; background-image: var(--texture-wood); background-size: 512px 512px;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 10px 22px rgba(0, 0, 0, 0.35);
+}
+:root[data-theme="light"] #battle-root:has(.battle-list) { background-color: #a07a4c; box-shadow: inset 0 0 0 1px rgba(60, 35, 10, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.25), 0 8px 18px rgba(90, 65, 20, 0.2); }
+#battle-root:has(.battle-list) .group-heading { color: var(--oak-parchment-100); border-bottom-color: rgba(245, 238, 220, 0.3); text-shadow: 0 1px 1px rgba(0, 0, 0, 0.55); padding-inline: 6px; }
+#battle-root:has(.battle-list) .group-heading .group-dot { box-shadow: 0 0 0 1.5px rgba(245, 238, 220, 0.7); }
+.battle-list.o-paper { gap: 0; padding: 2px 0; border-radius: calc(var(--radius-m) - 4px); background-blend-mode: multiply; }
+:root[data-theme="light"] .battle-list.o-paper { background-blend-mode: normal; }
+.battle-list.o-paper .battle-row {
+  background: transparent; border: 0; border-block-end: 1px solid var(--paper-line); border-radius: 0; padding: 8px 16px 8px 18px;
+}
+.battle-list.o-paper .battle-row:last-child { border-block-end: 0; }
+.battle-list.o-paper .battle-row.is-active { background: rgba(185, 154, 87, 0.24); box-shadow: inset 0 0 0 1px rgba(110, 85, 32, 0.5); }
+.battle-list.o-paper .battle-row::before { inset-inline-start: 0; top: 0; bottom: 0; inline-size: 5px; border-radius: 0; background: var(--paper-accent-ink); }
+.battle-list.o-paper .battle-row.is-foe { background-image: linear-gradient(90deg, rgba(163, 58, 51, 0.1), transparent 46%); }
+.battle-list.o-paper .battle-row.is-foe.is-active { background-image: linear-gradient(90deg, rgba(163, 58, 51, 0.12), transparent 46%); }
+.battle-list.o-paper .battle-row.is-foe .battle-rank { color: #7a2722; }
+.battle-list.o-paper .battle-row.is-active .battle-rank { color: var(--paper-accent-ink); }
+.battle-list.o-paper .battle-name { color: var(--paper-ink); }
+.battle-list.o-paper .battle-avatar { border-color: var(--paper-accent-ink); background: rgba(255, 252, 244, 0.7); }
+.battle-list.o-paper .stat-chip-input, .battle-list.o-paper .hp-controls, .battle-list.o-paper .hp-bar-track { background: rgba(255, 252, 244, 0.62); border-color: var(--paper-line-strong); }
+.battle-list.o-paper .hp-amount-input:focus { background: rgba(255, 252, 244, 0.9); }
+.battle-list.o-paper .hp-readout { color: var(--paper-ink); }
+.battle-list.o-paper .death-saves { border-top-color: var(--paper-line-strong); }
+.battle-list.o-paper .battle-remove { color: var(--paper-ink-dim); }
+.battle-list.o-paper .battle-remove:hover { color: var(--blood-ink); }
+.battle-list.o-paper .battle-meta, .battle-list.o-paper .stat-chip label { color: var(--paper-ink-dim); }
+
+/* the log strip at the foot of the page is a strip of paper too (the open sheet is plain paper: it holds lines of text) */
+.bl-bar.o-paper, .bl-sheet.o-paper { border-color: var(--paper-line-strong); -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: var(--paper-shadow); }
+.bl-bar.o-paper { background-color: var(--paper-base); background-image: var(--texture-parchment); background-size: 512px 512px; background-blend-mode: multiply; }
+.bl-sheet.o-paper { background: var(--paper-base); }
+:root[data-theme="light"] .bl-bar.o-paper { background-blend-mode: normal; }
+.bl-bar.o-paper:hover { border-color: var(--paper-accent-ink); color: var(--paper-ink); }
+
+@media (max-width: 1024px), (pointer: coarse) and (max-width: 1400px) {
+  .page-header--painted { padding: 16px 18px; margin-bottom: 12px; }
+  #battle-root:has(.battle-list) { padding: 4px; }
+}
+@media (max-width: 600px) {
+  .home-hero.is-painted { min-block-size: 240px; }
+  .home-hero.is-painted .home-hero-text { padding: 20px 16px 16px; }
+  .cf-card.o-paper { padding: 18px 18px 20px; }
+  .page-header--painted { padding: 14px 14px; }
+}
+@media (prefers-contrast: more) {
+  .page-header--painted, .home-hero.is-painted { background-image: none; }
+}

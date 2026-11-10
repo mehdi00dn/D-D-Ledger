@@ -161,8 +161,10 @@
   --brass-ink: var(--paper-accent-ink);
   --brass-bright-ink: var(--paper-accent-ink);
   --brass-dim-ink: var(--paper-ink-dim);
-  --moss-ink: #3e6c51;
-  --blood-ink: #a33a33;
+  --moss-ink: #315a43;
+  --blood-ink: #8c2e28;
+  --blood-ink-sm: #92302a;
+  --blue-ink: #1f5f8f;
   --bg-panel: rgba(255, 252, 244, 0.55);
   --bg-panel-raised: rgba(255, 252, 244, 0.7);
   --bg-panel-inset: rgba(70, 50, 20, 0.08);
@@ -177,6 +179,32 @@
   box-shadow: var(--paper-shadow);
 }
 [data-theme="light"] .o-paper { background-blend-mode: normal; }
+.o-paper input[type="datetime-local"], .o-paper input[type="date"], .o-paper input[type="time"] { color-scheme: light; }
+
+/* On dark: a painted banner is dark in both themes (the picture sits under a dark scrim), so the text inside it is light in both.
+   The legacy token names are re-pointed at the dark theme's values, the same way .o-paper re-points them at ink-on-paper.  Surfaces stay opaque
+   so a menu that opens from inside the banner is not see-through. */
+.o-ondark {
+  --parchment: var(--oak-parchment-200);
+  --parchment-dim: #cdc6b4;
+  --parchment-faint: var(--oak-ash);
+  --brass: var(--oak-brass-500);
+  --brass-bright: var(--oak-brass-300);
+  --on-brass: var(--oak-forest-900);
+  --brass-ink: var(--oak-brass-300);
+  --brass-bright-ink: var(--oak-brass-300);
+  --brass-dim-ink: #a68a4b;
+  --moss-ink: var(--oak-moss-300);
+  --blood-ink: #e48a85;
+  --blood-ink-sm: #ee9a95;
+  --blue-ink: #7ec8ff;
+  --bg-panel: var(--oak-charcoal-700);
+  --bg-panel-raised: var(--oak-charcoal-600);
+  --bg-panel-inset: var(--oak-forest-800);
+  --hairline: rgba(185, 154, 87, 0.3);
+  --hairline-strong: rgba(185, 154, 87, 0.5);
+  color: var(--oak-parchment-200);
+}
 
 /* Burned edge: a transparent-centre overlay drawn as a 9-slice border, above the paper and below the content
    (it sits at z-index -1 inside an isolated stacking context, so it never needs the content to be repositioned). */

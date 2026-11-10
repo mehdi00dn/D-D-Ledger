@@ -244,7 +244,7 @@
       ? ' data-action="view" role="button" tabindex="0" title="View details"' : '';
 
     return `
-    <div class="battle-row ${dead ? 'is-dead' : ''} ${p.is_active ? 'is-active' : ''}" data-pid="${p.id}"${hidden ? '' : ` data-hp="${p.current_hp}"`}${p.is_active ? ' aria-current="true"' : ''}>
+    <div class="battle-row ${dead ? 'is-dead' : ''} ${p.is_active ? 'is-active' : ''} ${p.is_npc && !p.is_ally ? 'is-foe' : ''}" data-pid="${p.id}"${hidden ? '' : ` data-hp="${p.current_hp}"`}${p.is_active ? ' aria-current="true"' : ''}>
       ${rank ? `<span class="battle-rank" aria-hidden="true">${rank}</span>` : ''}
       <div class="battle-avatar${openAttrs ? ' is-link' : ''}"${openAttrs} aria-label="${escapeHtml(p.display_name)}: details" data-bc="${safeColor(p.group_color, 'var(--brass)')}">${avatarMarkup(p)}</div>
 
@@ -314,7 +314,7 @@
       if (section.heading) {
         html += `<div class="group-heading"><span class="group-dot" data-bg="${safeColor(section.heading.color, '#c9a24b')}"></span>${escapeHtml(section.heading.name)}</div>`;
       }
-      html += '<div class="battle-list">' + section.items.map((p, i) => rowMarkup(p, isDM && sortMode === 'initiative' ? i + 1 : 0)).join('') + '</div>';
+      html += '<div class="battle-list o-paper">' + section.items.map((p, i) => rowMarkup(p, isDM && sortMode === 'initiative' ? i + 1 : 0)).join('') + '</div>';
     });
     const before = snapshotRows();
     root.innerHTML = html;

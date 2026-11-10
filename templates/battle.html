@@ -4,7 +4,7 @@
 {% block title %}Battle — Oaken{% endblock %}
 
 {% block content %}
-<div class="page-header battle-header">
+<div class="page-header battle-header page-header--painted o-ondark">
   <div>
     <h1 class="page-title">Battle</h1>
     <p class="page-sub">Track initiative, HP, and casualties for the current encounter.</p>
@@ -65,10 +65,10 @@
 <div class="battle-log" id="battle-log" hidden>
   <div class="bl-backdrop" id="battle-log-backdrop"></div>
   <div class="bl-dock">
-    <section class="bl-sheet" id="battle-log-sheet" aria-label="Battle log" hidden>
+    <section class="bl-sheet o-paper" id="battle-log-sheet" aria-label="Battle log" hidden>
       <ol class="bl-list" id="battle-log-list" aria-label="Newest first"></ol>
     </section>
-    <button type="button" class="bl-bar" id="battle-log-toggle" aria-expanded="false" aria-controls="battle-log-sheet">
+    <button type="button" class="bl-bar o-paper" id="battle-log-toggle" aria-expanded="false" aria-controls="battle-log-sheet">
       <span class="bl-title">{{ icon('history') }} Battle log</span>
       <span class="bl-latest" id="battle-log-latest"></span>
       <span class="bl-chev" aria-hidden="true">{{ icon('chevron-down') }}</span>

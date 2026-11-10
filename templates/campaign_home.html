@@ -11,13 +11,16 @@
 
 <div class="home-grid">
 <div class="home-main">
-  <header class="home-hero{{ ' has-banner' if g.campaign.avatar_path else '' }}">
+  <div class="home-hero-frame o-wood-frame">
+  <header class="home-hero o-ondark{{ ' has-banner' if g.campaign.avatar_path else ' is-painted' }}">
     {% if g.campaign.avatar_path %}
     <div class="home-banner"><img src="{{ url_for('uploaded_file', filename=g.campaign.avatar_path) }}" alt=""></div>
     <button type="button" class="btn-icon home-banner-view" data-lightbox-src="{{ url_for('uploaded_file', filename=g.campaign.avatar_path) }}" title="View the campaign image" aria-label="View the campaign image full size">{{ icon('maximize') }}</button>
     {% endif %}
     <div class="home-hero-text">
+      {%- set status = g.campaign.status or 'active' %}
       <h1 class="home-name">{{ g.campaign.name }}</h1>
+      <p class="home-status home-status--{{ status }}"><span class="home-status-dot" aria-hidden="true"></span>{{ {'active': 'Active', 'on_hold': 'On hold', 'completed': 'Completed', 'archived': 'Archived'}.get(status, status|capitalize) }}</p>
       {% if bio_html %}<div class="home-bio">{{ clamped(bio_html, 'home-bio-text') }}</div>{% endif %}
       <div class="home-hero-foot">
         <div class="home-actions">
@@ -32,9 +35,10 @@
       </div>
     </div>
   </header>
+  </div>
 
-  <section class="cf-card home-party" aria-label="The party">
-    <h2 class="cf-title">The party <span class="cf-count">{{ party|length }}</span></h2>
+  <section class="cf-card o-paper o-burn o-burn--soft home-card home-party" aria-label="The party">
+    <h2 class="cf-title">{{ icon('user', 'cf-title-icon') }}The party <span class="cf-count">{{ party|length }}</span></h2>
     {% if party %}
     <ul class="home-party-list">
       {% for c in party[:12] %}
@@ -52,15 +56,15 @@
   </section>
 
   {% if campaign_notes %}
-  <section class="cf-card home-notes" aria-label="Campaign notes">
-    <h2 class="cf-title">Campaign notes</h2>
+  <section class="cf-card o-paper o-burn o-burn--soft home-card home-notes" aria-label="Campaign notes">
+    <h2 class="cf-title">{{ icon('book-open', 'cf-title-icon') }}Campaign notes</h2>
     {{ clamped(campaign_notes, 'home-notes-text') }}
   </section>
   {% endif %}
 
   {% if quests or g.is_dm %}
-  <section class="cf-card home-quests" aria-label="Quests">
-    <h2 class="cf-title">Quests{% if quests %} <span class="cf-count">{{ quests|rejectattr('done')|list|length }}</span>{% endif %}</h2>
+  <section class="cf-card o-paper o-burn o-burn--soft home-card home-quests" aria-label="Quests">
+    <h2 class="cf-title">{{ icon('scroll', 'cf-title-icon') }}Quests{% if quests %} <span class="cf-count">{{ quests|rejectattr('done')|list|length }}</span>{% endif %}</h2>
     {% if quests %}
     <ul class="quest-list">
       {% for q in quests %}
@@ -116,8 +120,8 @@
   </section>
   {% endif %}
 
-  <section class="cf-card home-activity" aria-label="Recent activity">
-    <h2 class="cf-title">Recent activity</h2>
+  <section class="cf-card o-paper o-burn o-burn--soft home-card home-activity" aria-label="Recent activity">
+    <h2 class="cf-title">{{ icon('history', 'cf-title-icon') }}Recent activity</h2>
     {% if events %}
     <ul class="home-list">
       {% for e in events %}
@@ -134,8 +138,8 @@
 <div class="home-side">
   {% set can_schedule = g.real_is_dm or g.campaign_role == 'owner' %}
   {% if next_session or can_schedule %}
-  <section class="cf-card home-session" aria-label="Next session">
-    <h2 class="cf-title">Next session</h2>
+  <section class="cf-card o-paper o-burn o-burn--soft home-card home-session" aria-label="Next session">
+    <h2 class="cf-title">{{ icon('calendar', 'cf-title-icon') }}Next session</h2>
     {% if next_session %}
     <p class="session-when"><time datetime="{{ next_session.iso }}" data-local-time>{{ next_session.at.strftime('%a %d %b %Y, %H:%M') }} UTC</time></p>
     <p class="session-rel" data-local-relative="{{ next_session.iso }}"></p>
@@ -180,8 +184,8 @@
   </section>
   {% endif %}
 
-  <section class="cf-card home-members" aria-label="Players">
-    <h2 class="cf-title">Players <span class="cf-count">{{ members|length }}</span></h2>
+  <section class="cf-card o-paper o-burn o-burn--soft home-card home-members" aria-label="Players">
+    <h2 class="cf-title">{{ icon('user', 'cf-title-icon') }}Players <span class="cf-count">{{ members|length }}</span></h2>
     <ul class="home-member-list">
       {% for m in members %}
       <li>
@@ -196,8 +200,8 @@
     {% if g.real_is_dm or g.campaign_role == 'owner' %}<a class="home-more" href="{{ url_for('campaign_edit') }}#member-list">Attach characters to players</a>{% endif %}
   </section>
 
-  <section class="cf-card" aria-label="Battle">
-    <h2 class="cf-title">Battle</h2>
+  <section class="cf-card o-paper o-burn o-burn--soft home-card home-battle-card" aria-label="Battle">
+    <h2 class="cf-title">{{ icon('swords', 'cf-title-icon') }}Battle</h2>
     {% if battle.count %}
     <p class="home-battle"><b>Round {{ battle.round }}</b> &middot; {{ battle.count }} on the field{% if battle.active %}<br>Up now: <b>{{ battle.active }}</b>{% endif %}</p>
     <a href="{{ url_for('battle_view') }}" class="btn btn-ghost btn-sm">Open battle</a>
@@ -206,8 +210,8 @@
     {% endif %}
   </section>
 
-  <section class="cf-card" aria-label="Latest rolls">
-    <h2 class="cf-title">Latest rolls</h2>
+  <section class="cf-card o-paper o-burn o-burn--soft home-card home-rolls" aria-label="Latest rolls">
+    <h2 class="cf-title">{{ icon('dices', 'cf-title-icon') }}Latest rolls</h2>
     {% if rolls %}
     <ul class="home-list">
       {% for r in rolls %}
