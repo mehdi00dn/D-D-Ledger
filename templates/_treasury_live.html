@@ -7,7 +7,7 @@
   <span class="treasury-summary-label">in all, counting every coin as gold (1 pp = 10 gp, 1 sp = 0.1 gp)</span>
 </div>
 
-<section class="cf-card treasury-purse" aria-label="Party purse">
+<section class="cf-card o-paper treasury-purse" aria-label="Party purse">
   <div class="purse-head">
     <h2 class="cf-title">{{ icon('coins') }} Party purse <span class="cf-count" title="All coins in this purse counted as gold">worth {{ format_gold(total) }}</span></h2>
     <div class="purse-actions">
@@ -23,7 +23,7 @@
   </ul>
 </section>
 
-<section class="cf-card treasury-people" aria-label="Character purses">
+<section class="cf-card o-paper treasury-people" aria-label="Character purses">
   <h2 class="cf-title">{{ icon('user') }} Character purses <span class="cf-count">worth {{ format_gold(grand_total - total) }}</span></h2>
   {% if party %}
   <ul class="people-purses">
@@ -46,7 +46,7 @@
   {% endif %}
 </section>
 
-<section class="cf-card" id="entries" aria-label="Entries">
+<section class="cf-card o-paper" id="entries" aria-label="Entries">
   <h2 class="cf-title">{{ icon('history') }} Entries <span class="cf-count">{{ count }}</span></h2>
   <nav class="treasury-filter" aria-label="Show entries of">
     <a class="chip{{ ' active' if not who }}" href="{{ url_for('treasury_view') }}#entries" data-treasury-nav>Everyone</a>

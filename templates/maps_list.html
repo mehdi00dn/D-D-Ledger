@@ -15,7 +15,7 @@
 {% if maps %}
 <div class="map-grid">
   {% for m in maps %}
-  <div class="map-card">
+  <div class="map-card o-paper o-burn o-burn--soft">
     <a href="{{ url_for('map_editor', map_id=m.id) }}" class="map-card-image-link">
       <div class="map-card-image">
         <img src="{{ url_for('map_image', map_id=m.id, v=m.fog_version) }}" alt="{{ m.name }}">
@@ -36,7 +36,7 @@
   {% endfor %}
 </div>
 {% else %}
-<div class="empty-state">
+<div class="empty-state o-paper o-burn o-burn--soft">
   {{ icon('map') }}
   <h2>No maps yet</h2>
   <p>Import a battle map image to start placing your grid and pins.</p>

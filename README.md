@@ -449,3 +449,13 @@ Overview, Characters and Battle now use the Oaken materials. Layouts, routes, pe
 - **Contrast.** Measured against the rendered pixels in both themes: every text element on these three pages is 4.5:1 or better, except the 46px campaign name over the painting, which is large text (3:1) and measures 4.2:1.
 - **Housekeeping.** `static/dev/` (the material test page) is removed: the look was approved.
 
+### Oaken visual identity: Factions, Treasury, Maps, Dice, Reference, Journal and Activity (DL-182, part 5)
+The next seven campaign pages follow the same rules. Layouts, routes, permissions and workflows are unchanged: this is a restyle with class hooks in the templates and one CSS block ("DL-182 part 2" at the end of `style.css`).
+
+- **Which paper where.** Cards that read like pages get parchment with a soft burned edge (`o-paper o-burn o-burn--soft`): faction cards, map cards, journal sessions, the journal entry, the reference entry, the Dice result stage and empty states. Dense panels are plain paper with no burned edge (`o-paper`): Treasury, the dice picker and options, the reference list, the "how it works" guide. The page behind stays the app background and the controls keep their clean surfaces.
+- **Ruled lists.** The Activity page and the Dice roll log are one paper panel with hairline rows (`.activity-list.o-paper`, `.roll-log-list.o-paper`) instead of a stack of separate cards. An empty roll log hides itself.
+- **Why a shared recipe.** Those components already set their own `background`, which would win over `.o-paper`, so one grouped rule in the new block restores the paper background (parchment texture, multiplied in dark, flat in light). Text colours follow because `.o-paper` re-points the older token names; the new block only fixes the few hard-coded ones (links, chips, steppers, segmented control, ref tables, hidden-note marker).
+- **Reference page.** The list is a paper panel and the entry is a parchment reading page with lighter tints behind the fact block, tables and form fields.
+- **Contrast.** Measured against the rendered pixels in both themes, desktop: every text element on these pages is 4.5:1 or better (lowest 4.58 for die labels). The disabled Roll button is exempt.
+- **Tests.** No assertion changed for this part. Two browser tests that measured positions while the page-enter slide was still running (`test_condition_chip_x_removes_it_on_hover`, `test_phone_characters_battle_and_map_pages_are_compact`) failed about one run in six, with or without this change; they now wait for finite animations to settle first (`_settled` in `tests/test_e2e_browser.py`).
+

@@ -42,7 +42,7 @@
 {% if groups %}
 <div class="group-grid" id="group-grid">
   {% for g in groups %}
-  <div class="group-card" data-name="{{ g.name|lower }}">
+  <div class="group-card o-paper o-burn o-burn--soft" data-name="{{ g.name|lower }}">
     <div class="group-image-block" {% if not g.avatar_path %}data-grad="{{ g.color }}"{% endif %}>
       {% if g.avatar_path %}
         <img src="{{ url_for('uploaded_file', filename=g.avatar_path) }}" alt="{{ g.name }} avatar">
@@ -68,7 +68,7 @@
   {% endfor %}
 </div>
 {% else %}
-<div class="empty-state">
+<div class="empty-state o-paper o-burn o-burn--soft">
   {{ icon('faction') }}
   <h2>No factions yet</h2>
   <p>Create a faction or party to organize your characters.</p>

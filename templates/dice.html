@@ -13,7 +13,7 @@
 
 <div class="dice-layout">
   <div class="dice-bench">
-    <section class="dice-card" aria-label="Pick your dice">
+    <section class="dice-card o-paper" aria-label="Pick your dice">
       <div class="dice-card-head">
         <h2 class="dice-card-title">Your dice</h2>
         <button type="button" class="dice-clear" id="clear-tray-btn">{{ icon('x') }} Clear</button>
@@ -29,7 +29,7 @@
       <p class="dice-formula" id="dice-formula" aria-live="polite">Tap a die to add it</p>
     </section>
 
-    <section class="dice-card dice-options" aria-label="Roll options">
+    <section class="dice-card o-paper dice-options" aria-label="Roll options">
       <div class="dice-opt-row">
         <div class="field dice-mod">
           <label for="modifier">Modifier</label>
@@ -58,14 +58,14 @@
   </div>
 
   <div class="dice-side">
-    <section class="dice-card dice-stage" aria-label="Result">
+    <section class="dice-card o-paper o-burn o-burn--soft dice-stage" aria-label="Result">
       <div id="dice-results"></div>
     </section>
 
     <section class="roll-log" aria-label="Recent rolls">
       <h2 class="roll-log-title">Recent rolls <small>everyone in the campaign sees these</small></h2>
       <p class="roll-log-empty" id="roll-log-empty">No rolls yet.</p>
-      <ol class="roll-log-list" id="roll-log-list"></ol>
+      <ol class="roll-log-list o-paper" id="roll-log-list"></ol>
     </section>
   </div>
 </div>

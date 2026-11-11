@@ -12,7 +12,7 @@
 </div>
 
 {% if events %}
-<ol class="activity-list">
+<ol class="activity-list o-paper">
   {% for e in events %}
   <li class="activity-item activity-{{ e.kind }}">
     <span class="activity-ico">{{ icon('history') }}</span>
@@ -24,7 +24,7 @@
   {% endfor %}
 </ol>
 {% else %}
-<div class="empty-state">
+<div class="empty-state o-paper o-burn o-burn--soft">
   <h2>Nothing yet</h2>
   <p>Joins, new characters, factions and maps show up here as they happen.</p>
 </div>

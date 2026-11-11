@@ -60,6 +60,11 @@ def wait_text(page, needles, timeout=12.0):
     raise AssertionError(f'{needles} never appeared; page said: {text[:300]!r}')
 
 
+def _settled(page):
+    """Wait for the finite animations (the page-enter slide) to finish, so a position is measured where it will stay."""
+    page.evaluate("() => Promise.all(document.getAnimations().filter(a => a.effect && a.effect.getComputedTiming().iterations !== Infinity).map(a => a.finished.catch(() => null)))")
+
+
 def _collect(page):
     bad, errs = [], []
     page.on('response', lambda r: bad.append((r.status, r.url)) if r.status >= 400 else None)
@@ -600,6 +605,7 @@ def test_condition_chip_x_removes_it_on_hover(pw, shared_server):
     chip = dpage.locator('.cond-chip.cond-prone')
     x = chip.locator('.cond-x')
     opacity = lambda: float(x.evaluate("(el) => getComputedStyle(el).opacity"))
+    _settled(dpage)
     before = chip.bounding_box(); row_before = dpage.locator('.cond-row').bounding_box()
     assert opacity() == 0                                                            # invisible until hover
     chip.hover(); dpage.wait_for_timeout(400)
@@ -1127,7 +1133,7 @@ def test_phone_characters_battle_and_map_pages_are_compact(pw, shared_server):
     mid = _map_with_pin(dm, cid, ids[0])
     ctx = _touch_context(pw, dm, base, 390, 844); page = ctx.new_page(); bad, errs = _collect(page)
     # characters: one row of small buttons, a search that is a button until tapped
-    page.goto(base + f'/campaigns/{cid}/characters'); page.wait_for_load_state('load')
+    page.goto(base + f'/campaigns/{cid}/characters'); page.wait_for_load_state('load'); _settled(page)
     ys = {round(page.locator(s).first.bounding_box()['y']) for s in ('.page-actions details.menu summary', '.page-actions .btn-primary')}
     assert max(ys) - min(ys) <= 3, ys                                                                  # the primary button and the more menu share one row
     assert page.locator('#character-search').is_hidden() and page.locator('.search-bar').bounding_box()['width'] <= 44

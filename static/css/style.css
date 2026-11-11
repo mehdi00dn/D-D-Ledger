@@ -5922,3 +5922,127 @@ body:has(.tool-flyout.open) .pin-action-bubble.is-docked { opacity: 0; pointer-e
 @media (prefers-contrast: more) {
   .page-header--painted, .home-hero.is-painted { background-image: none; }
 }
+
+/* ==========================================================================
+   DL-182 part 2: Factions, Treasury, Maps, Dice, Reference, Journal, Activity in the Oaken materials.
+   Parchment is for cards that read like pages (factions, maps, journal, the reference entry); dense panels (treasury, dice, lists) are
+   plain paper with no burned edge.  The page itself stays the app background.  Controls keep their clean surfaces.
+   ========================================================================== */
+
+/* one paper recipe for every component that already has its own background shorthand (it would otherwise win over .o-paper) */
+.group-card.o-paper, .map-card.o-paper, .guide-card.o-paper, .dice-card.o-paper, .empty-state.o-paper, .journal-row.o-paper,
+.activity-list.o-paper, .roll-log-list.o-paper, .ref-detail.o-paper, .cf-card.o-paper {
+  background-color: var(--paper-base); background-image: var(--texture-parchment); background-size: 512px 512px; background-blend-mode: multiply;
+  border: 0; box-shadow: var(--paper-shadow);
+}
+:root[data-theme="light"] :is(.group-card, .map-card, .guide-card, .dice-card, .empty-state, .journal-row, .activity-list, .roll-log-list, .ref-detail, .cf-card).o-paper { background-blend-mode: normal; }
+
+/* Factions and Maps: a paper card with its picture on top */
+.group-card.o-paper, .map-card.o-paper { border-radius: var(--radius-m); transition: transform 0.15s ease, box-shadow 0.2s ease; }
+.group-card.o-paper:hover, .map-card.o-paper:hover { border-color: transparent; box-shadow: var(--paper-shadow), 0 0 0 1px var(--paper-line-strong); }
+.group-card.o-paper .group-bio { color: var(--paper-ink-dim); }
+.group-card.o-paper .group-count, .group-card.o-paper .made-by, .map-card.o-paper .made-by { color: var(--paper-ink-dim); }
+.group-card.o-paper .btn-ghost, .group-card.o-paper .btn-icon { background: var(--bg-panel); border-color: var(--paper-line-strong); color: var(--paper-ink); }
+.group-card.o-paper .btn-ghost:hover, .group-card.o-paper .btn-icon:hover { background: rgba(255, 252, 244, 0.9); border-color: var(--paper-accent-ink); }
+.group-card.o-paper .btn-danger, .map-card.o-paper .btn-danger { color: var(--blood-ink); }
+.map-card.o-paper .map-card-name { color: var(--paper-ink); }
+.map-card.o-paper .btn-icon { color: var(--paper-ink-dim); }
+.map-card.o-paper .btn-icon:hover, .map-card.o-paper .btn-icon:focus-visible { color: var(--blood-ink); }
+.group-card.o-paper .group-image-block, .map-card.o-paper .map-card-image { border-radius: var(--radius-m) var(--radius-m) 0 0; }
+
+/* empty states become a small paper panel instead of a dashed box */
+.empty-state.o-paper { border-radius: var(--radius-m); }
+.empty-state.o-paper > svg:first-child { background: radial-gradient(circle at 50% 30%, rgba(120, 86, 24, 0.14), transparent 72%); border-color: var(--paper-line-strong); color: var(--paper-accent-ink); }
+.empty-state.o-paper p { color: var(--paper-ink-dim); }
+
+/* Treasury */
+.guide-card.o-paper { border-radius: var(--radius-m); }
+.guide-card.o-paper > summary { color: var(--paper-ink); }
+.guide-card.o-paper .guide-steps li, .guide-card.o-paper .guide-note { color: var(--paper-ink-dim); }
+.guide-card.o-paper .guide-steps b, .guide-card.o-paper .guide-note b { color: var(--paper-ink); }
+.cf-card.o-paper .coin { background: rgba(255, 252, 244, 0.5); border-color: var(--paper-line-strong); }
+.cf-card.o-paper .coin-chip { background: rgba(255, 252, 244, 0.5); border-color: var(--paper-line-strong); color: var(--paper-ink-dim); }
+.cf-card.o-paper .chip { background: rgba(255, 252, 244, 0.5); border-color: var(--paper-line-strong); color: var(--paper-ink); }
+.cf-card.o-paper .chip:hover { border-color: var(--paper-accent-ink); }
+.cf-card.o-paper .chip.active { background: var(--brass); border-color: var(--brass); color: var(--on-brass); }
+.cf-card.o-paper .people-purse-name { color: var(--paper-ink); }
+.cf-card.o-paper .pager-link { background: rgba(255, 252, 244, 0.5); border-color: var(--paper-line-strong); color: var(--paper-ink); }
+.cf-card.o-paper .pager-link.is-current { background: var(--brass); border-color: var(--brass); color: var(--on-brass); }
+.cf-card.o-paper .btn-ghost, .cf-card.o-paper .btn-icon { background: rgba(255, 252, 244, 0.5); border-color: var(--paper-line-strong); color: var(--paper-ink); }
+.cf-card.o-paper .btn-ghost:hover, .cf-card.o-paper .btn-icon:hover { background: rgba(255, 252, 244, 0.9); border-color: var(--paper-accent-ink); }
+
+/* Dice: the picker and options are plain paper, the result stage is the focal parchment, the log is a ruled paper list */
+.dice-card.o-paper { border-radius: var(--radius-l); }
+.dice-card.o-paper .dice-card-title { color: var(--paper-ink-dim); }
+.dice-card.o-paper .dice-clear:hover { background: rgba(70, 50, 20, 0.08); }
+.dice-card.o-paper .die-btn { background: rgba(255, 252, 244, 0.5); border-color: var(--paper-line-strong); }
+.dice-card.o-paper .die-selector.has-count .die-btn { background: rgba(160, 112, 20, 0.16); border-color: var(--paper-accent-ink); box-shadow: 0 0 0 3px rgba(120, 86, 24, 0.1); }
+.dice-card.o-paper .die-count-badge { border-color: var(--paper-base); }
+.dice-card.o-paper .dw-body { fill: rgba(160, 112, 20, 0.14); }
+.dice-card.o-paper .die-selector.has-count .dw-body { fill: rgba(160, 112, 20, 0.32); }
+.dice-card.o-paper .dw-num { stroke: var(--paper-base); }
+.dice-card.o-paper .roll-total { text-shadow: none; }
+.dice-card.o-paper .die-tile.rolling { color: var(--paper-ink); }
+.dice-card.o-paper .die-tile.rolling .dw-body { fill: rgba(160, 112, 20, 0.28); }
+.dice-card.o-paper .dice-stepper, .dice-card.o-paper .dice-options .roll-mode, .dice-options.o-paper .roll-mode { background: rgba(70, 50, 20, 0.07); border-color: var(--paper-line-strong); }
+.dice-options.o-paper .roll-mode input:checked + span { background: var(--brass); color: var(--on-brass); }
+.dice-card.o-paper .field input, .dice-card.o-paper .field select { background: rgba(255, 252, 244, 0.78); color: var(--paper-ink); border-color: var(--paper-line-strong); }
+.dice-card.o-paper .field input::placeholder { color: var(--paper-ink-faint); }
+.dice-card.o-paper .dice-stepper input[type="number"] { background: transparent; }
+.roll-log-list.o-paper { gap: 0; padding: 4px 18px; border-radius: var(--radius-m); }
+.roll-log-list.o-paper:empty { display: none; }
+.roll-log-list.o-paper .roll-log-item { background: transparent; border: 0; border-block-end: 1px solid var(--paper-line); border-radius: 0; padding: 10px 0; }
+.roll-log-list.o-paper .roll-log-item:last-child { border-block-end: 0; }
+.roll-log-list.o-paper .roll-log-item.is-private { border-style: dashed; border-block-end-width: 1px; }
+.roll-log-list.o-paper .roll-log-who { color: var(--paper-ink); }
+
+/* Reference: the list is a paper panel, the entry is the reading page */
+.ref-list-card.o-paper .ref-search { background: rgba(255, 252, 244, 0.7); border-color: var(--paper-line-strong); }
+.ref-list-card.o-paper .ref-search:focus-within { border-color: var(--paper-accent-ink); }
+.ref-list-card.o-paper .ref-item { color: var(--paper-ink); }
+.ref-list-card.o-paper .ref-item:hover { background: rgba(120, 86, 24, 0.09); }
+.ref-list-card.o-paper .ref-item.is-active { background: rgba(120, 86, 24, 0.15); border-color: var(--paper-accent-ink); }
+.ref-list-card.o-paper .ref-item-sub, .ref-list-card.o-paper .ref-empty { color: var(--paper-ink-dim); }
+.ref-detail.o-paper { padding: 26px 30px 28px; border-radius: var(--radius-m); }
+.ref-detail.o-paper .ref-text, .ref-detail.o-paper .ref-notes { color: var(--paper-ink); }
+.ref-detail.o-paper .ref-table-wrap { background: rgba(255, 252, 244, 0.45); border-color: var(--paper-line-strong); }
+.ref-detail.o-paper .ref-table tbody tr:nth-child(even) td { background: rgba(70, 50, 20, 0.05); }
+.ref-detail.o-paper .ref-facts { background: rgba(255, 252, 244, 0.5); }
+.ref-detail.o-paper .btn-ghost, .ref-detail.o-paper .btn-icon { background: rgba(255, 252, 244, 0.5); border-color: var(--paper-line-strong); color: var(--paper-ink); }
+.ref-detail.o-paper .btn-ghost:hover { background: rgba(255, 252, 244, 0.9); border-color: var(--paper-accent-ink); }
+.ref-detail.o-paper a { color: var(--paper-accent-ink); }
+.ref-detail.o-paper .field input, .ref-detail.o-paper .field select { background: rgba(255, 252, 244, 0.78); color: var(--paper-ink); border-color: var(--paper-line-strong); }
+
+/* Journal: each session is a paper card; the entry itself is a parchment page */
+.journal-row.o-paper { border-radius: var(--radius-m); transition: transform 0.15s ease, box-shadow 0.2s ease; }
+.journal-row.o-paper:hover, .journal-row.o-paper:focus-within { border-color: transparent; transform: translateY(-1px); box-shadow: var(--paper-shadow), 0 0 0 1px var(--paper-accent-ink); }
+.journal-row.o-paper .journal-title { color: var(--paper-ink); }
+.journal-row.o-paper .journal-meta { color: var(--paper-ink-dim); }
+.journal-row.o-paper .btn-icon { background: transparent; border-color: transparent; color: var(--paper-ink-dim); }
+.journal-row.o-paper .btn-icon:hover, .journal-row.o-paper .btn-icon:focus-visible { background: rgba(70, 50, 20, 0.08); color: var(--paper-ink); }
+.journal-row.o-paper .journal-delete:hover, .journal-row.o-paper .journal-delete:focus-visible { color: var(--blood-ink); }
+.journal-month-title { font-family: var(--font-display); font-size: 15px; font-weight: 600; letter-spacing: 0.01em; }
+.journal-empty.o-paper p { color: var(--paper-ink-dim); }
+.journal-body.o-paper { padding: 30px 36px 34px; border-radius: var(--radius-m); font-size: 16.5px; line-height: 1.7; color: var(--paper-ink); }
+.journal-body.o-paper .note-block-text { color: var(--paper-ink); }
+.journal-body.o-paper .note-block-hidden { border-inline-start: 2px dashed var(--paper-accent-ink); background: rgba(70, 50, 20, 0.05); padding: 8px 12px; border-radius: 0 6px 6px 0; }
+.journal-body.o-paper a { color: var(--paper-accent-ink); }
+
+/* Activity: one ruled paper panel instead of a stack of separate cards */
+.activity-list.o-paper { gap: 0; padding: 6px 22px; border-radius: var(--radius-m); max-width: 720px; }
+.activity-list.o-paper .activity-item { background: transparent; border: 0; border-block-end: 1px solid var(--paper-line); border-radius: 0; padding: 14px 0; }
+.activity-list.o-paper .activity-item:last-child { border-block-end: 0; }
+.activity-list.o-paper .activity-ico { color: var(--paper-accent-ink); border-color: var(--paper-line-strong); background: rgba(255, 252, 244, 0.5); }
+.activity-list.o-paper .activity-text { color: var(--paper-ink); }
+.activity-list.o-paper .activity-text a { color: var(--paper-accent-ink); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px; }
+.activity-list.o-paper .activity-time { color: var(--paper-ink-dim); }
+
+@media (max-width: 1024px), (pointer: coarse) and (max-width: 1400px), (max-height: 500px) and (orientation: landscape) {
+  .ref-detail.o-paper { padding: 20px 18px 22px; }
+  .journal-body.o-paper { padding: 22px 18px 26px; }
+  .activity-list.o-paper { padding: 4px 16px; }
+}
+@media (max-width: 560px) {
+  .journal-body.o-paper { font-size: 16px; }
+  .roll-log-list.o-paper { padding: 2px 14px; }
+}
