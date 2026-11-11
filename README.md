@@ -459,3 +459,14 @@ The next seven campaign pages follow the same rules. Layouts, routes, permission
 - **Contrast.** Measured against the rendered pixels in both themes, desktop: every text element on these pages is 4.5:1 or better (lowest 4.58 for die labels). The disabled Roll button is exempt.
 - **Tests.** No assertion changed for this part. Two browser tests that measured positions while the page-enter slide was still running (`test_condition_chip_x_removes_it_on_hover`, `test_phone_characters_battle_and_map_pages_are_compact`) failed about one run in six, with or without this change; they now wait for finite animations to settle first (`_settled` in `tests/test_e2e_browser.py`).
 
+### Oaken visual identity: campaign settings, character sheet and editor, faction page and form (DL-182, part 6)
+The pages that edit or show one thing in detail follow the same rules. Layouts, routes, permissions and workflows are unchanged: this is a restyle with class hooks in the templates and one CSS block ("DL-182 part 3" at the end of `style.css`).
+
+- **Which paper where.** The character summary and the faction card are parchment with a soft burned edge. The character Notes card gets the burned edge only when it holds notes, so an empty card stays quiet. Every other card on the sheet (vitals, abilities, skills, purse, attacks, sheet viewer) and every form panel is plain paper (`o-paper`). The save bar of the character editor (`.cf-bar`) is a paper strip that rides the bottom of the page.
+- **Forms on paper.** Inside a paper panel the fields are a lighter cream than the page so they read as something to write in, placeholders use the faint ink, and section titles use the serif instead of the mono label. The note editor is a cream writing area under a quiet toolbar. Member rows, access choices, faction picks, the portrait ring, drop zones and the toggle switch are re-inked for paper (brass becomes the dark accent ink), and the DM/Player pill on a member row uses a darker purple on paper.
+- **Fix in the shared material.** `.form-panel::before` is the dark grain layer of `.o-surface`. It sat on top of a paper form panel and tinted it olive, and it also overrode the burned edge. It now applies only to `.form-panel:not(.o-paper)` (in `oaken.css`, and in the `prefers-contrast: more` rule).
+- **Small layout fix.** On the character editor the class field touched the name field because the hidden level hint sat between the two rows; the row now has its normal gap.
+- **Contrast.** Measured against the rendered pixels in both themes, desktop: every text element on these pages is 4.5:1 or better (lowest 4.61 for hint text on dark). Disabled controls (the Ally toggle) are exempt.
+- **Not in this part.** Campaign list, account, notifications, friends, profile, library and the join page, and the dialogs and editors that open on top of pages (Treasury dialogs, journal editor, import dialogs).
+
+

@@ -36,7 +36,7 @@
   {% set prof_skills = character_skill_prof or {} %}
 
   {% if not character and not library %}
-  <section class="cf-card cd-picker" data-monster-picker data-base="{{ url_for('reference_view')|replace('/reference', '') }}/api/reference/" aria-labelledby="cf-monster">
+  <section class="cf-card o-paper cd-picker" data-monster-picker data-base="{{ url_for('reference_view')|replace('/reference', '') }}/api/reference/" aria-labelledby="cf-monster">
     <h2 class="cf-title" id="cf-monster">Start from a monster</h2>
     <div class="ref-search">{{ icon('search') }}<input type="search" data-ref-query placeholder="Search the monster manual (e.g. goblin, owlbear, young red dragon)…" aria-label="Search the monster manual" autocomplete="off"></div>
     <ul class="ref-list ref-list--inline" data-ref-list hidden></ul>
@@ -47,7 +47,7 @@
   <div class="cf-grid">
   <div class="cf-main">
 
-    <section class="cf-card" aria-labelledby="cf-identity">
+    <section class="cf-card o-paper" aria-labelledby="cf-identity">
       <h2 class="cf-title" id="cf-identity">Identity</h2>
       <div class="cf-identity-row">
         <div class="field cf-name">
@@ -114,7 +114,7 @@
       {% endif %}
     </section>
 
-    <section class="cf-card" aria-labelledby="cf-vitals">
+    <section class="cf-card o-paper" aria-labelledby="cf-vitals">
       <h2 class="cf-title" id="cf-vitals">Vitals</h2>
       <div class="cf-vitals">
         <label class="cf-vital" for="max_hp">
@@ -135,7 +135,7 @@
       </div>
     </section>
 
-    <section class="cf-card" id="proficiencies" data-proficiencies aria-labelledby="cf-abilities">
+    <section class="cf-card o-paper" id="proficiencies" data-proficiencies aria-labelledby="cf-abilities">
       <h2 class="cf-title" id="cf-abilities">Abilities &amp; Saving Throws</h2>
       <p class="cf-hint">Modifiers and the proficiency bonus come from the scores and level. Tick <b>Save</b> for the throws this character is trained in.</p>
       <div class="cf-abilities">
@@ -153,7 +153,7 @@
       </div>
     </section>
 
-    <section class="cf-card" aria-labelledby="cf-skills">
+    <section class="cf-card o-paper" aria-labelledby="cf-skills">
       <h2 class="cf-title" id="cf-skills">Skills <span class="cf-count" data-skill-count>{{ prof_skills|length }} trained</span></h2>
       <div class="cf-legend" aria-hidden="true"><span><i class="tri-dot">&#8212;</i> Untrained</span><span><i class="tri-dot">&#9679;</i> Proficient</span><span><i class="tri-dot">&#9670;</i> Expertise (double bonus)</span></div>
       <div class="cf-skills">
@@ -172,7 +172,7 @@
       </div>
     </section>
 
-    <section class="cf-card" aria-labelledby="cf-notes">
+    <section class="cf-card o-paper" aria-labelledby="cf-notes">
       <h2 class="cf-title" id="cf-notes">Notes</h2>
       <div class="field">
       <div class="note-blocks" id="note-blocks">
@@ -186,7 +186,7 @@
   </div>
 
   <aside class="cf-side" aria-label="Portrait, sheets and factions">
-    <section class="cf-card" aria-labelledby="cf-portrait">
+    <section class="cf-card o-paper" aria-labelledby="cf-portrait">
       <h2 class="cf-title" id="cf-portrait">Portrait</h2>
       <div class="field">
         <div class="avatar-preview-row">
@@ -214,7 +214,7 @@
       </div>
     </section>
 
-    <section class="cf-card" aria-labelledby="cf-attacks">
+    <section class="cf-card o-paper" aria-labelledby="cf-attacks">
       <h2 class="cf-title" id="cf-attacks">Attacks <span class="cf-count">to-hit and damage</span></h2>
       <input type="hidden" name="attacks_present" value="1">
       <div class="atk-edit" data-attacks>
@@ -240,7 +240,7 @@
       </template>
     </section>
 
-    <section class="cf-card" aria-labelledby="cf-sheets">
+    <section class="cf-card o-paper" aria-labelledby="cf-sheets">
       <h2 class="cf-title" id="cf-sheets">Character Sheets <span class="cf-count">multiple images</span></h2>
       <div class="field">
         {% if sheets %}
@@ -286,7 +286,7 @@
   </div>
   {% endif %}
 
-  <div class="cf-bar">
+  <div class="cf-bar o-paper">
     {% if library %}
     <a href="{{ url_for('library_detail', char_id=character.id) if character else url_for('library_list') }}" class="btn btn-ghost">Cancel</a>
     {% else %}

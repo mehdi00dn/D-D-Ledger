@@ -16,7 +16,7 @@
 </div>
 
 <div class="campaign-edit-layout">
-<form class="form-panel" method="POST" enctype="multipart/form-data" id="campaign-form">{{ csrf_field() }}
+<form class="form-panel o-paper" method="POST" enctype="multipart/form-data" id="campaign-form">{{ csrf_field() }}
   <div class="form-section">
     <p class="form-section-title">Campaign Identity</p>
     <div class="field u-mb14">
@@ -149,7 +149,7 @@
 {% set owner_count = members|selectattr('role', 'equalto', 'owner')|list|length %}
 {% set can_leave_freely = not is_owner or owner_count > 1 %}
 {% if g.real_is_dm or is_owner %}
-<div class="form-panel">
+<div class="form-panel o-paper">
   <div class="form-section u-mb0">
     <p class="form-section-title">Players &amp; NPCs</p>
     <form method="POST" action="{{ url_for('campaign_npc_visibility', campaign_id=campaign.id) }}" id="npc-visibility-form">{{ csrf_field() }}
@@ -163,7 +163,7 @@
   </div>
 </div>
 {% endif %}
-<div class="form-panel members-panel">
+<div class="form-panel o-paper members-panel">
   <div class="form-section u-mb0">
     <p class="form-section-title">Members</p>
     <div class="member-list" id="member-list">

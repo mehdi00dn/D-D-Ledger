@@ -37,7 +37,7 @@
 
 {% macro side_cards() %}
   {% if purse is not none %}
-  <section class="cf-card cd-purse" aria-label="Purse">
+  <section class="cf-card o-paper cd-purse" aria-label="Purse">
     <h2 class="cf-title">{{ icon('coins') }} Purse <span class="cf-count">{{ format_gold(coins_value(purse)) }}</span></h2>
     <ul class="coin-row">
       {% for c in treasury_coins %}<li class="coin coin-{{ c }}">{{ icon('coin') }}<b>{{ purse[c] }}</b><span>{{ c }}</span></li>{% endfor %}
@@ -57,7 +57,7 @@
   </section>
   {% endif %}
 
-  <section class="cf-card" aria-label="Notes">
+  <section class="cf-card o-paper{{ ' o-burn o-burn--soft' if notes_html else '' }}" aria-label="Notes">
     <h2 class="cf-title">Notes</h2>
     <div class="detail-notes">{% if notes_html %}{{ notes_html | safe }}{% else %}<em>No notes recorded.</em>{% endif %}</div>
   </section>
@@ -66,7 +66,7 @@
 <div class="detail-layout{{ '' if stats_hidden else ' has-viewer' }}">
 <div class="cd-main">
 
-  <section class="cf-card cd-hero{{ ' has-class' if character.class_key and not stats_hidden else '' }}" aria-label="Character summary">
+  <section class="cf-card o-paper o-burn o-burn--soft cd-hero{{ ' has-class' if character.class_key and not stats_hidden else '' }}" aria-label="Character summary">
     {% if character.class_key and not stats_hidden %}
     <div class="class-badge">{{ class_icon(character.class_key) }}</div>
     {% endif %}
@@ -91,14 +91,14 @@
 
   {% if stats_hidden %}
   {# Placeholder digits only -- the real values are never sent to a Player. #}
-  <section class="cf-card" aria-label="Combat stats">
+  <section class="cf-card o-paper" aria-label="Combat stats">
     <h2 class="cf-title">Vitals</h2>
     <div class="cd-vitals stats-fogged" title="The DM hasn't revealed this creature's stats" aria-label="Stats hidden">
       <div class="cd-vital"><span class="cd-vital-label">{{ icon('heart') }} HP</span><span class="cd-vital-val" aria-hidden="true">00</span></div>
       <div class="cd-vital"><span class="cd-vital-label">{{ icon('shield') }} AC</span><span class="cd-vital-val" aria-hidden="true">00</span></div>
     </div>
   </section>
-  <section class="cf-card" aria-label="Abilities">
+  <section class="cf-card o-paper" aria-label="Abilities">
     <h2 class="cf-title">Abilities</h2>
     <div class="cd-abilities stats-fogged" title="The DM hasn't revealed this creature's stats" aria-label="Stats hidden">
       {% for lbl in ['STR','DEX','CON','INT','WIS','CHA'] %}
@@ -107,7 +107,7 @@
     </div>
   </section>
   {% else %}
-  <section class="cf-card" aria-label="Combat stats">
+  <section class="cf-card o-paper" aria-label="Combat stats">
     <h2 class="cf-title">Vitals</h2>
     <div class="cd-vitals">
       <div class="cd-vital cd-vital--hp"><span class="cd-vital-label">{{ icon('heart') }} HP</span><span class="cd-vital-val">{{ character.max_hp }}</span></div>
@@ -119,7 +119,7 @@
     </div>
   </section>
 
-  <section class="cf-card" aria-label="Abilities and saving throws" data-roll-character="{{ character.id }}">
+  <section class="cf-card o-paper" aria-label="Abilities and saving throws" data-roll-character="{{ character.id }}">
     <h2 class="cf-title">Abilities &amp; Saving throws</h2>
     <div class="roll-bar" aria-label="Rolling">
       <span class="roll-bar-hint">Click a bonus to roll it. Everyone in the campaign sees the result.</span>
@@ -143,7 +143,7 @@
   </section>
 
 
-  <section class="cf-card" aria-label="Skills">
+  <section class="cf-card o-paper" aria-label="Skills">
     <h2 class="cf-title">Skills <span class="cf-count">{{ sheet.skills|selectattr('level')|list|length }} trained</span></h2>
     <div class="cd-skills">
       {% for sk in sheet.skills %}
@@ -159,7 +159,7 @@
   </section>
 
   {% if attacks %}
-  <section class="cf-card" aria-label="Attacks">
+  <section class="cf-card o-paper" aria-label="Attacks">
     <h2 class="cf-title">Attacks <span class="cf-count">{{ attacks|length }}</span></h2>
     <ul class="atk-list">
       {% for a in attacks %}
@@ -176,7 +176,7 @@
   {% endif %}
 
   {% if level_history|length > 1 %}
-  <section class="cf-card" aria-label="Stats by level">
+  <section class="cf-card o-paper" aria-label="Stats by level">
     <h2 class="cf-title">Stats by level <span class="cf-count">{{ level_history|length }} saved</span></h2>
     <div class="lv-scroll">
       <table class="lv-table">
@@ -200,7 +200,7 @@
   {% if stats_hidden %}{{ side_cards() }}{% endif %}
 
   {% if not stats_hidden and sheets %}
-  <section class="cf-card" aria-label="Sheets">
+  <section class="cf-card o-paper" aria-label="Sheets">
     <h2 class="cf-title">Sheets <span class="cf-count">{{ sheets|length }}</span></h2>
     <div class="sheet-thumbs" data-sheet-thumbs>
       {% for s in sheets %}
@@ -223,7 +223,7 @@
 
 {% if not stats_hidden %}
 <div class="cd-side">
-<aside class="sheet-viewer-panel" data-sheet-viewer aria-label="Character sheet viewer">
+<aside class="sheet-viewer-panel o-paper" data-sheet-viewer aria-label="Character sheet viewer">
   <div class="sheet-viewer-head">
     <h2 class="cf-title">Character sheet</h2>
     {% if sheets|length > 1 %}

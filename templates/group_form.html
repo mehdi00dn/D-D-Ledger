@@ -11,7 +11,7 @@
   <a href="{{ url_for('faction_detail', group_id=group.id) if group else url_for('factions_list') }}" class="btn btn-ghost">{{ icon('arrow-left') }} {{ 'Back to details' if group else 'Back to list' }}</a>
 </div>
 
-<form class="form-panel" method="POST" enctype="multipart/form-data">{{ csrf_field() }}
+<form class="form-panel o-paper" method="POST" enctype="multipart/form-data">{{ csrf_field() }}
 
   <div class="form-section">
     <p class="form-section-title">Identity</p>

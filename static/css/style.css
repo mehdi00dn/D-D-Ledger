@@ -6046,3 +6046,70 @@ body:has(.tool-flyout.open) .pin-action-bubble.is-docked { opacity: 0; pointer-e
   .journal-body.o-paper { font-size: 16px; }
   .roll-log-list.o-paper { padding: 2px 14px; }
 }
+
+/* ==========================================================================
+   DL-182 part 3: campaign settings, character sheet and editor, faction page and form in the Oaken materials.
+   Same rules as part 2: page-like cards (the character summary, notes, the faction card) are parchment with a soft burned edge,
+   dense panels and every form panel are plain paper, controls keep their clean surfaces.
+   ========================================================================== */
+.form-panel.o-paper, .sheet-viewer-panel.o-paper {
+  background-color: var(--paper-base); background-image: var(--texture-parchment); background-size: 512px 512px; background-blend-mode: multiply;
+  border: 0; box-shadow: var(--paper-shadow);
+}
+:root[data-theme="light"] :is(.form-panel, .sheet-viewer-panel).o-paper { background-blend-mode: normal; }
+/* Fields on paper are a lighter cream than the page, so a field reads as something to write in. */
+:is(.form-panel, .cf-card, .sheet-viewer-panel, .cf-bar).o-paper .field :is(input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"], [type="color"]), select, textarea),
+.form-panel.o-paper :is(.member-add-form input[type="text"], .member-search input[type="text"], .invite-link-copy input, .invite-link-form input, .invite-link-form select) {
+  background-color: rgba(255, 252, 244, 0.78); color: var(--paper-ink); border-color: var(--paper-line-strong);
+}
+:is(.form-panel, .cf-card, .sheet-viewer-panel, .cf-bar).o-paper :is(input, textarea)::placeholder { color: var(--paper-ink-faint); opacity: 1; }
+:is(.form-panel, .cf-card).o-paper .field :is(input, select, textarea):focus-visible { border-color: var(--paper-accent-ink); outline: 2px solid var(--paper-accent-ink); outline-offset: 1px; }
+.form-panel.o-paper .member-search-results { background: #f6efdd; border-color: var(--paper-line-strong); box-shadow: 0 8px 22px rgba(40, 28, 10, 0.28); }
+
+/* Section titles on paper are the serif the rest of the paper uses, not the mono label. */
+:is(.form-panel, .cf-card).o-paper .form-section-title {
+  font-family: var(--font-display); font-size: 18px; font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--paper-ink);
+  border-bottom-color: var(--paper-line);
+}
+
+/* The note editor: a cream writing area under a quiet toolbar. */
+.o-paper .note-block { background: rgba(255, 252, 244, 0.6); border-color: var(--paper-line-strong); }
+.o-paper .note-toolbar { background: rgba(70, 50, 20, 0.07); border-bottom-color: var(--paper-line); }
+.o-paper .note-tool-btn:hover, .o-paper .note-tool-btn:focus-visible { color: var(--paper-ink); background: rgba(70, 50, 20, 0.08); border-color: var(--paper-line-strong); }
+.o-paper .note-editor { color: var(--paper-ink); }
+.o-paper .note-block-hidden { border-inline-start-color: var(--paper-accent-ink); }
+
+/* Members, access choices, faction picks, avatar, drop zones and the toggle on paper */
+.form-panel.o-paper .member-row { background: rgba(255, 252, 244, 0.55); border-color: var(--paper-line); }
+.form-panel.o-paper .status-select-dm { background-color: rgba(106, 63, 160, 0.14); color: #54307f; }
+.form-panel.o-paper .status-select-player { background-color: rgba(70, 50, 20, 0.1); color: var(--paper-ink-dim); }
+.form-panel.o-paper .member-add-feedback.is-success { background: rgba(49, 90, 67, 0.12); border-color: rgba(49, 90, 67, 0.4); }
+.form-panel.o-paper .member-add-feedback.is-error { background: rgba(140, 46, 40, 0.1); border-color: rgba(140, 46, 40, 0.4); }
+.form-panel.o-paper .access-option-card { background: rgba(255, 252, 244, 0.55); border-color: var(--paper-line-strong); }
+.form-panel.o-paper .access-option input:checked + .access-option-card { background: rgba(140, 100, 30, 0.12); border-color: var(--paper-accent-ink); }
+.form-panel.o-paper .access-option input:checked + .access-option-card .access-option-card-check { background: var(--paper-accent-ink); border-color: var(--paper-accent-ink); color: #fff8e8; }
+.form-panel.o-paper .access-option input:focus-visible + .access-option-card { outline: 2px solid var(--paper-accent-ink); outline-offset: 2px; }
+:is(.form-panel, .cf-card).o-paper .faction-pick { background: rgba(255, 252, 244, 0.55); border-color: var(--paper-line-strong); color: var(--paper-ink-dim); }
+:is(.form-panel, .cf-card).o-paper .faction-pick:hover { border-color: var(--paper-accent-ink); color: var(--paper-ink); }
+:is(.form-panel, .cf-card).o-paper .faction-pick:has(input:checked) { border-color: var(--paper-accent-ink); color: var(--paper-ink); background: rgba(140, 100, 30, 0.16); }
+:is(.form-panel, .cf-card).o-paper .faction-pick:has(input:focus-visible) { outline-color: var(--paper-accent-ink); }
+.o-paper .avatar-frame { border-color: var(--paper-accent-ink); box-shadow: 0 0 0 3px rgba(255, 252, 244, 0.7), 0 0 0 4px var(--paper-line); background: rgba(70, 50, 20, 0.08); }
+.o-paper .file-drop { border-color: var(--paper-line-strong); background: rgba(255, 252, 244, 0.4); color: var(--paper-ink-dim); }
+.o-paper .file-drop:hover { border-color: var(--paper-accent-ink); background: rgba(255, 252, 244, 0.7); }
+.o-paper .toggle-switch-track { background: rgba(70, 50, 20, 0.12); border-color: var(--paper-line-strong); }
+.o-paper .toggle-switch-track::after { background: var(--paper-ink-dim); }
+.o-paper .toggle-switch input:checked + .toggle-switch-track { background: var(--paper-accent-ink); border-color: var(--paper-accent-ink); }
+.o-paper .toggle-switch input:checked + .toggle-switch-track::after { background: #fff8e8; }
+.o-paper .toggle-switch input:focus-visible + .toggle-switch-track { box-shadow: 0 0 0 2px rgba(140, 100, 30, 0.5); }
+.o-paper .field-checkbox input, .o-paper .note-hidden-toggle input { accent-color: var(--paper-accent-ink); }
+
+/* The character editor's save bar is a sheet of paper that rides the bottom of the page. */
+.cf-bar.o-paper {
+  background-color: var(--paper-base); background-image: var(--texture-parchment); background-size: 512px 512px; background-blend-mode: multiply;
+  border: 0; box-shadow: var(--paper-shadow), 0 -10px 26px rgba(0, 0, 0, 0.3);
+}
+:root[data-theme="light"] .cf-bar.o-paper { background-blend-mode: normal; box-shadow: var(--paper-shadow), 0 -8px 20px rgba(60, 40, 10, 0.16); }
+
+/* The sheet viewer title is serif like every other paper card title; the hidden level hint no longer lets the class row touch the name field. */
+.sheet-viewer-panel.o-paper .cf-title { font: 600 19px/1.2 var(--font-display); letter-spacing: 0; text-transform: none; color: var(--paper-ink); border-bottom: 0; }
+.char-form .cf-level-hint + .cf-identity-row { margin-top: 14px; }

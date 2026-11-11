@@ -233,7 +233,7 @@
   border: 1px solid var(--o-border);
   border-radius: var(--radius-m, 12px);
 }
-.o-surface::before, .form-panel::before {
+.o-surface::before, .form-panel:not(.o-paper)::before {   /* a paper form panel has its own texture, and its ::before is the burned edge */
   content: "";
   position: absolute;
   inset: 0;
@@ -280,6 +280,6 @@
 }
 
 @media (prefers-contrast: more) {
-  .o-surface::before, .form-panel::before, .o-burn::before { opacity: 0.35; }
+  .o-surface::before, .form-panel:not(.o-paper)::before, .o-burn::before { opacity: 0.35; }
   .o-backdrop { background-image: none; }
 }
