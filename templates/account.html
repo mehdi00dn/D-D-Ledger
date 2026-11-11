@@ -40,7 +40,7 @@
 </nav>
 <div class="account-sections">
 
-<form class="form-panel account-form" method="POST" enctype="multipart/form-data" id="account-form" data-section="profile privacy">{{ csrf_field() }}
+<form class="form-panel o-paper account-form" method="POST" enctype="multipart/form-data" id="account-form" data-section="profile privacy">{{ csrf_field() }}
   <div class="form-section" data-section="profile">
     <p class="form-section-title">Profile</p>
 
@@ -177,7 +177,7 @@
 
 {% set fl = account_friends() %}
 {% if fl is not none %}
-<div class="form-panel account-form" id="friends-panel" data-section="friends">
+<div class="form-panel o-paper account-form" id="friends-panel" data-section="friends">
   <div class="form-section">
     <p class="form-section-title">Add a friend</p>
     <form class="friend-add" method="POST" action="{{ url_for('friend_add') }}">
@@ -203,7 +203,7 @@
 {% endif %}
 
 {% if profile.email_ready %}
-<div class="form-panel account-form" id="email-panel" data-section="security">
+<div class="form-panel o-paper account-form" id="email-panel" data-section="security">
   <div class="form-section">
     <p class="form-section-title">Email</p>
     {% if profile.email %}
@@ -236,7 +236,7 @@
 </div>
 {% endif %}
 
-<form class="form-panel account-form" method="POST" action="{{ url_for('account_username') }}" id="username-form" data-section="security">{{ csrf_field() }}
+<form class="form-panel o-paper account-form" method="POST" action="{{ url_for('account_username') }}" id="username-form" data-section="security">{{ csrf_field() }}
   <div class="form-section">
     <p class="form-section-title">Username</p>
     <p class="hint-text u-m0-12">Your username is what you log in with and what other people use to invite you. You are <b>{{ profile.username }}</b> now. Your password stays the same, and you stay signed in.</p>
@@ -258,7 +258,7 @@
   </div>
 </form>
 
-<form class="form-panel account-form" method="POST" action="{{ url_for('account_password') }}" id="password-form" data-section="security">{{ csrf_field() }}
+<form class="form-panel o-paper account-form" method="POST" action="{{ url_for('account_password') }}" id="password-form" data-section="security">{{ csrf_field() }}
   <div class="form-section">
     <p class="form-section-title">{{ 'Password' if px.has_password else 'Add a password' }}</p>
     {% if px.has_password %}
@@ -284,7 +284,7 @@
   </div>
 </form>
 
-<form class="form-panel account-form" method="POST" action="{{ url_for('account_logout_all') }}" id="sessions-form" data-section="security" data-confirm="Sign out every other browser and device? This one stays signed in.">{{ csrf_field() }}
+<form class="form-panel o-paper account-form" method="POST" action="{{ url_for('account_logout_all') }}" id="sessions-form" data-section="security" data-confirm="Sign out every other browser and device? This one stays signed in.">{{ csrf_field() }}
   <div class="form-section">
     <p class="form-section-title">Sessions</p>
     <p class="hint-text u-m0-12">Lost a phone or used a shared computer? This signs you out everywhere except here. Changing your password does the same.</p>
@@ -292,7 +292,7 @@
   </div>
 </form>
 
-<div class="form-panel account-form" id="appearance-panel" data-section="appearance">
+<div class="form-panel o-paper account-form" id="appearance-panel" data-section="appearance">
   <div class="form-section">
     <p class="form-section-title">Appearance</p>
     <p class="hint-text u-m0-12">Saved on this device. The moon and sun button in the menu changes it too.</p>
@@ -304,7 +304,7 @@
   </div>
 </div>
 
-<form class="form-panel account-form" method="POST" action="{{ url_for('account_export') }}" id="export-form" data-section="data">{{ csrf_field() }}
+<form class="form-panel o-paper account-form" method="POST" action="{{ url_for('account_export') }}" id="export-form" data-section="data">{{ csrf_field() }}
   <div class="form-section">
     <p class="form-section-title">Your data</p>
     <p class="hint-text u-m0-12">Download a copy of what Oaken holds about you: your account details, the campaigns you belong to, and the characters, factions, maps and dice rolls you made. It never includes your password. Read what we keep and why in the <a href="{{ url_for('privacy') }}">privacy page</a>.</p>
@@ -313,7 +313,7 @@
 </form>
 
 {% set owned = owned_campaigns() %}
-<form class="form-panel account-form danger-panel" method="POST" action="{{ url_for('account_delete') }}" id="delete-form" data-section="data" data-confirm="Delete your account for good? Campaigns you own and did not hand to someone else are deleted with it and cannot be recovered.">{{ csrf_field() }}
+<form class="form-panel o-paper account-form danger-panel" method="POST" action="{{ url_for('account_delete') }}" id="delete-form" data-section="data" data-confirm="Delete your account for good? Campaigns you own and did not hand to someone else are deleted with it and cannot be recovered.">{{ csrf_field() }}
   <div class="form-section">
     <p class="form-section-title">Delete account</p>
     <p class="hint-text u-m0-12">This removes your account, profile and memberships for good. Characters, factions and maps you made in other people's campaigns stay there, without your name on them.</p>

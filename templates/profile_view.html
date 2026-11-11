@@ -5,7 +5,7 @@
 
 {% block content %}
 <article class="profile-page">
-  <header class="profile-head">
+  <header class="profile-head o-paper o-burn o-burn--soft">
     <div class="profile-avatar"{% if owner.avatar_path %} data-lightbox-src="{{ url_for('uploaded_file', filename=owner.avatar_path) }}" role="button" tabindex="0" aria-label="View {{ owner.display_name or owner.username }}'s photo larger"{% endif %}>
       {% if owner.avatar_path %}<img src="{{ url_for('uploaded_file', filename=owner.avatar_path) }}" alt="">{% else %}{{ icon('user') }}{% endif %}
     </div>
@@ -40,7 +40,7 @@
   </header>
 
   {% if details and (details.classes or details.style or details.timezone or details.stats.campaigns or details.stats.characters) %}
-  <section class="profile-section" aria-labelledby="profile-details">
+  <section class="profile-section o-paper" aria-labelledby="profile-details">
     <h2 class="profile-section-title" id="profile-details">As a player</h2>
     <dl class="profile-facts">
       {% if details.classes %}<div><dt>Favourite classes</dt><dd>{{ details.classes | join(', ') }}</dd></div>{% endif %}
@@ -53,7 +53,7 @@
   {% endif %}
 
   {% if friends is not none and (friends or is_me) %}
-  <section class="profile-section" aria-labelledby="profile-friends">
+  <section class="profile-section o-paper" aria-labelledby="profile-friends">
     <h2 class="profile-section-title" id="profile-friends">Friends{% if friends %} <span class="cf-count">{{ friends|length }}</span>{% endif %}</h2>
     {% if friends %}
     <ul class="profile-friends">
@@ -70,7 +70,7 @@
   {% endif %}
 
   {% if show_chars %}
-  <section class="profile-section" aria-labelledby="profile-chars">
+  <section class="profile-section o-paper" aria-labelledby="profile-chars">
     <h2 class="profile-section-title" id="profile-chars">Characters</h2>
     {% if showcase %}
     <ul class="profile-chars">

@@ -35,7 +35,7 @@
 <div class="detail-layout has-viewer">
 <div class="cd-main">
 
-  <section class="cf-card cd-hero{{ ' has-class' if character.class_key else '' }}" aria-label="Character summary">
+  <section class="cf-card o-paper o-burn o-burn--soft cd-hero{{ ' has-class' if character.class_key else '' }}" aria-label="Character summary">
     {% if character.class_key %}<div class="class-badge">{{ class_icon(character.class_key) }}</div>{% endif %}
     <div class="avatar-frame cd-avatar">
       {% if character.avatar_path %}
@@ -55,7 +55,7 @@
     </div>
   </section>
 
-  <section class="cf-card lib-actions-card" aria-label="Campaigns">
+  <section class="cf-card o-paper lib-actions-card" aria-label="Campaigns">
     <h2 class="cf-title">Campaigns</h2>
     <div class="lib-placed">
       <span class="lib-placed-label">In campaigns</span>
@@ -80,7 +80,7 @@
     <p class="hint-text lib-hint">Adding makes a separate copy, so changes at a table never alter this sheet.</p>
   </section>
 
-  <section class="cf-card" aria-label="Combat stats">
+  <section class="cf-card o-paper" aria-label="Combat stats">
     <h2 class="cf-title">Vitals</h2>
     <div class="cd-vitals">
       <div class="cd-vital cd-vital--hp"><span class="cd-vital-label">{{ icon('heart') }} HP</span><span class="cd-vital-val">{{ character.max_hp }}</span></div>
@@ -92,7 +92,7 @@
     </div>
   </section>
 
-  <section class="cf-card" aria-label="Abilities and saving throws">
+  <section class="cf-card o-paper" aria-label="Abilities and saving throws">
     <h2 class="cf-title">Abilities &amp; Saving throws</h2>
     <div class="cd-abilities">
       {% for ab in sheet.abilities %}
@@ -107,7 +107,7 @@
     </div>
   </section>
 
-  <section class="cf-card" aria-label="Skills">
+  <section class="cf-card o-paper" aria-label="Skills">
     <h2 class="cf-title">Skills <span class="cf-count">{{ sheet.skills|selectattr('level')|list|length }} trained</span></h2>
     <div class="cd-skills">
       {% for sk in sheet.skills %}
@@ -121,7 +121,7 @@
   </section>
 
   {% if attacks %}
-  <section class="cf-card" aria-label="Attacks">
+  <section class="cf-card o-paper" aria-label="Attacks">
     <h2 class="cf-title">Attacks <span class="cf-count">{{ attacks|length }}</span></h2>
     <ul class="atk-list">
       {% for a in attacks %}
@@ -136,7 +136,7 @@
   {% endif %}
 
   {% if level_history|length > 1 %}
-  <section class="cf-card" aria-label="Stats by level">
+  <section class="cf-card o-paper" aria-label="Stats by level">
     <h2 class="cf-title">Stats by level <span class="cf-count">{{ level_history|length }} saved</span></h2>
     <div class="lv-scroll">
       <table class="lv-table">
@@ -154,13 +154,13 @@
   </section>
   {% endif %}
 
-  <section class="cf-card" aria-label="Notes">
+  <section class="cf-card o-paper" aria-label="Notes">
     <h2 class="cf-title">Notes</h2>
     <div class="detail-notes">{% if notes_html %}{{ notes_html | safe }}{% else %}<em>No notes recorded.</em>{% endif %}</div>
   </section>
 
   {% if sheets %}
-  <section class="cf-card" aria-label="Sheets">
+  <section class="cf-card o-paper" aria-label="Sheets">
     <h2 class="cf-title">Sheets <span class="cf-count">{{ sheets|length }}</span></h2>
     <div class="sheet-thumbs" data-sheet-thumbs>
       {% for s in sheets %}
@@ -178,7 +178,7 @@
   {% endif %}
 </div>
 
-<aside class="sheet-viewer-panel" data-sheet-viewer aria-label="Character sheet viewer">
+<aside class="sheet-viewer-panel o-paper" data-sheet-viewer aria-label="Character sheet viewer">
   <div class="sheet-viewer-head">
     <h2 class="cf-title">Character sheet</h2>
     {% if sheets|length > 1 %}

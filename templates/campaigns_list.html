@@ -15,7 +15,7 @@
 {% if campaigns %}
 <div class="group-grid">
   {% for c in campaigns %}
-  <div class="group-card">
+  <div class="group-card o-paper o-burn o-burn--soft">
     <div class="group-image-block{{ '' if c.avatar_path else ' is-generated' }}" data-hue="{{ (c.id * 53) % 360 }}">
       {% if c.avatar_path %}
         <img src="{{ url_for('uploaded_file', filename=c.avatar_path) }}" alt="{{ c.name }} avatar">
@@ -42,7 +42,7 @@
   {% endfor %}
 </div>
 {% else %}
-<div class="empty-state">
+<div class="empty-state o-paper o-burn o-burn--soft">
   {{ icon('scroll') }}
   <h2>No campaigns yet</h2>
   <p>Create your first campaign to start adding characters, groups, and maps.</p>

@@ -469,4 +469,16 @@ The pages that edit or show one thing in detail follow the same rules. Layouts, 
 - **Contrast.** Measured against the rendered pixels in both themes, desktop: every text element on these pages is 4.5:1 or better (lowest 4.61 for hint text on dark). Disabled controls (the Ally toggle) are exempt.
 - **Not in this part.** Campaign list, account, notifications, friends, profile, library and the join page, and the dialogs and editors that open on top of pages (Treasury dialogs, journal editor, import dialogs).
 
+### Oaken visual identity: campaign list, notifications, friends, account, profile, library and join page (DL-182, part 7)
+The account-level pages follow the same rules. Layouts, routes, permissions and workflows are unchanged: this is a restyle with class hooks in 8 templates and one CSS block ("DL-182 part 4" at the end of `style.css`).
+
+- **Which paper where.** Cards that read like pages are parchment with a soft burned edge: campaign cards (the same card as a faction, with the role badge re-inked), the library cards (the existing dossier card), the library character summary, the profile head, the join-link card and empty states. Dense panels are plain paper: the account panels, the friends sections, the profile sections (as a player, friends, characters) and the other library character cards.
+- **Notifications.** One ruled paper list instead of a stack of cards. Unread rows carry a brass bar on the left and a faint wash; read rows use a lighter title weight.
+- **Account.** All eight panels are paper. The fields, section titles, chips, drop zone and buttons use the paper rules from the settings page. The danger panel keeps a red inner outline, since paper has no border.
+- **Profile.** The head is parchment; "As a player", "Friends" and "Characters" are separate paper panels with lighter tiles inside. Links inside paper panels are underlined so they do not rely on colour alone.
+- **Contrast.** Measured against the rendered pixels in both themes, desktop: every text element on these pages is 4.5:1 or better (lowest 4.53, the owner badge on dark). The member badge was darkened on paper after the first pass measured 3.89.
+- **Tests.** No assertion changed. `test_dice_card_does_not_grow_when_a_die_is_picked` failed once in the full run by 0.1px because it measured before the page-enter slide had finished (same cause as the two tests fixed in part 5); it now waits with `_settled` first and passed 6 of 6 repeats.
+- **Not in this part.** The dialogs and editors that open on top of pages (Treasury dialogs, journal editor and form, import dialogs), empty, loading and error states elsewhere, and the sign-in and register pages.
+
+
 

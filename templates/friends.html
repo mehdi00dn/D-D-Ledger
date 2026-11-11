@@ -23,7 +23,7 @@
 {% if message and notes.get(message) %}<p class="banner-notice" role="status">{{ notes[message] }}</p>{% endif %}
 
 <div class="friends-stack">
-<section class="cf-card" aria-label="Add a friend">
+<section class="cf-card o-paper" aria-label="Add a friend">
   <h2 class="cf-title">Add a friend</h2>
   <form class="friend-add" method="POST" action="{{ url_for('friend_add') }}">
     {{ csrf_field() }}
@@ -33,13 +33,13 @@
 </section>
 
 {% if lists.incoming %}
-<section class="cf-card" aria-label="Requests waiting for you">
+<section class="cf-card o-paper" aria-label="Requests waiting for you">
   <h2 class="cf-title">Waiting for you <span class="cf-count">{{ lists.incoming|length }}</span></h2>
   <ul class="friend-list">{% for p in lists.incoming %}<li>{{ person(p) }}<span class="friend-actions">{{ act(p, 'accept', 'Accept', 'btn btn-primary btn-sm') }}{{ act(p, 'decline', 'Decline') }}</span></li>{% endfor %}</ul>
 </section>
 {% endif %}
 
-<section class="cf-card" aria-label="Your friends">
+<section class="cf-card o-paper" aria-label="Your friends">
   <h2 class="cf-title">Your friends <span class="cf-count">{{ lists.friends|length }}</span></h2>
   {% if lists.friends %}
   <ul class="friend-list">{% for p in lists.friends %}<li>{{ person(p) }}<span class="friend-actions">{{ act(p, 'remove', 'Remove', confirm='Remove ' ~ (p.display_name or p.username) ~ ' from your friends?') }}{{ act(p, 'block', 'Block', 'btn btn-ghost btn-sm', 'Block ' ~ (p.display_name or p.username) ~ '? Neither of you will be able to open the other\'s profile.') }}</span></li>{% endfor %}</ul>
@@ -47,14 +47,14 @@
 </section>
 
 {% if lists.outgoing %}
-<section class="cf-card" aria-label="Requests you sent">
+<section class="cf-card o-paper" aria-label="Requests you sent">
   <h2 class="cf-title">Sent by you <span class="cf-count">{{ lists.outgoing|length }}</span></h2>
   <ul class="friend-list">{% for p in lists.outgoing %}<li>{{ person(p) }}<span class="friend-actions">{{ act(p, 'cancel', 'Cancel request') }}</span></li>{% endfor %}</ul>
 </section>
 {% endif %}
 
 {% if lists.blocked %}
-<section class="cf-card" aria-label="People you blocked">
+<section class="cf-card o-paper" aria-label="People you blocked">
   <h2 class="cf-title">Blocked <span class="cf-count">{{ lists.blocked|length }}</span></h2>
   <ul class="friend-list">{% for p in lists.blocked %}<li>{{ person(p) }}<span class="friend-actions">{{ act(p, 'unblock', 'Unblock') }}</span></li>{% endfor %}</ul>
 </section>

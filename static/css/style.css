@@ -6113,3 +6113,59 @@ body:has(.tool-flyout.open) .pin-action-bubble.is-docked { opacity: 0; pointer-e
 /* The sheet viewer title is serif like every other paper card title; the hidden level hint no longer lets the class row touch the name field. */
 .sheet-viewer-panel.o-paper .cf-title { font: 600 19px/1.2 var(--font-display); letter-spacing: 0; text-transform: none; color: var(--paper-ink); border-bottom: 0; }
 .char-form .cf-level-hint + .cf-identity-row { margin-top: 14px; }
+
+/* ==========================================================================
+   DL-182 part 4: campaign list, notifications, friends, account, profile, library and the join page in the Oaken materials.
+   Same rules again: cards that read like pages are parchment with a soft burned edge, dense panels and lists are plain paper.
+   ========================================================================== */
+.notification-list.o-paper, .profile-head.o-paper, .profile-section.o-paper {
+  background-color: var(--paper-base); background-image: var(--texture-parchment); background-size: 512px 512px; background-blend-mode: multiply;
+  border: 0; box-shadow: var(--paper-shadow);
+}
+:root[data-theme="light"] :is(.notification-list, .profile-head, .profile-section).o-paper { background-blend-mode: normal; }
+
+/* Campaign list: the same paper card as a faction, with the role badge re-inked */
+.group-card.o-paper .role-badge-owner { background: rgba(140, 100, 30, 0.16); color: var(--paper-accent-ink); }
+.group-card.o-paper .role-badge-member { background: rgba(49, 90, 67, 0.14); color: var(--moss-ink); }
+.group-card.o-paper .role-badge-dm { background: rgba(106, 63, 160, 0.14); color: #54307f; }
+.group-card.o-paper .role-badge-player { background: rgba(70, 50, 20, 0.1); color: var(--paper-ink-dim); }
+.group-card.o-paper .group-name { color: var(--paper-ink); }
+
+/* Notifications: one ruled paper list, unread rows carry a brass bar and a faint wash */
+.notification-list.o-paper { gap: 0; padding-block: 2px; border-radius: var(--radius-m); }
+.notification-list.o-paper .notification-card { background: none; border: 0; border-radius: 0; box-shadow: none; border-block-end: 1px solid var(--paper-line); padding: 14px 18px; }
+.notification-list.o-paper .notification-card:last-child { border-block-end: 0; }
+.notification-list.o-paper .notification-card.is-unread { background: rgba(160, 112, 20, 0.1); box-shadow: inset 3px 0 0 var(--paper-accent-ink); }
+.notification-list.o-paper .notification-card:not(.is-unread) .notification-title { font-weight: 500; }
+.notification-list.o-paper .btn-ghost, .notification-list.o-paper .btn-icon { background: rgba(255, 252, 244, 0.5); border-color: var(--paper-line-strong); color: var(--paper-ink); }
+.notification-list.o-paper .btn-ghost:hover, .notification-list.o-paper .btn-icon:hover { background: rgba(255, 252, 244, 0.9); border-color: var(--paper-accent-ink); }
+.notification-list.o-paper .notification-time { opacity: 1; }
+
+/* Friends and the account page */
+.cf-card.o-paper .friend-who a:hover { color: var(--paper-accent-ink); text-decoration: underline; }
+.cf-card.o-paper .friend-avatar, .o-paper .friend-avatar { background: rgba(70, 50, 20, 0.08); border-color: var(--paper-line-strong); color: var(--paper-ink-dim); }
+.form-panel.o-paper .btn-ghost, .form-panel.o-paper .btn-icon { background: rgba(255, 252, 244, 0.5); border-color: var(--paper-line-strong); color: var(--paper-ink); }
+.form-panel.o-paper .btn-ghost:hover, .form-panel.o-paper .btn-icon:hover { background: rgba(255, 252, 244, 0.9); border-color: var(--paper-accent-ink); }
+.form-panel.o-paper.danger-panel { box-shadow: var(--paper-shadow), inset 0 0 0 1px rgba(140, 46, 40, 0.5); }
+.form-panel.o-paper .banner-error { background: rgba(140, 46, 40, 0.1); border-color: rgba(140, 46, 40, 0.4); }
+.form-panel.o-paper .banner-success { background: rgba(49, 90, 67, 0.12); border-color: rgba(49, 90, 67, 0.4); }
+
+/* Profile: the head is parchment, each section is a paper panel */
+.profile-head.o-paper { padding: 28px 30px; border-radius: var(--radius-m); }
+.profile-section.o-paper { margin-block-start: 18px; padding: 22px 26px 24px; border-radius: var(--radius-m); }
+.profile-section.o-paper .profile-section-title { margin-block-end: 14px; }
+.profile-head.o-paper .profile-avatar { border-color: var(--paper-accent-ink); background: rgba(70, 50, 20, 0.08); color: var(--paper-ink-dim); }
+.profile-head.o-paper .profile-handle { color: var(--paper-ink-dim); }
+.profile-section.o-paper .profile-char:hover, .profile-section.o-paper .profile-friend:hover { border-color: var(--paper-accent-ink); }
+.profile-head.o-paper .btn-ghost, .profile-head.o-paper .btn-primary + .btn-ghost { background: rgba(255, 252, 244, 0.5); border-color: var(--paper-line-strong); color: var(--paper-ink); }
+
+/* Library cards reuse the dossier card; the character page reuses the sheet cards */
+.lib-card.o-paper .lib-placed-label { color: var(--paper-ink-dim); }
+.lib-card.o-paper .lib-none { color: var(--paper-ink-dim); }
+.lib-card.o-paper select, .lib-actions-card.o-paper select { background-color: rgba(255, 252, 244, 0.78); color: var(--paper-ink); border-color: var(--paper-line-strong); }
+
+/* The join page is a single parchment card */
+.join-link-card.o-paper { max-inline-size: 480px; border-radius: var(--radius-m); }
+.join-link-card.o-paper .pending-invites-title { color: var(--paper-ink-dim); }
+.profile-section.o-paper a:not(.profile-friend, .btn), .join-link-card.o-paper a:not(.btn) { text-decoration: underline; text-underline-offset: 2px; }
+.group-card.o-paper .role-badge-member { color: #1f4331; }

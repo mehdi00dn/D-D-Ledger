@@ -32,7 +32,7 @@
 {% if items %}
 <div class="card-grid lib-grid">
   {% for c in items %}
-  <div class="dossier-card lib-card" data-id="{{ c.id }}">
+  <div class="dossier-card lib-card o-paper o-burn o-burn--soft" data-id="{{ c.id }}">
     <span class="dossier-tag">{{ 'On profile' if c.featured else 'Yours' }}</span>
     <div class="dossier-head">
       <div class="avatar-frame">
@@ -110,7 +110,7 @@
   {% endfor %}
 </div>
 {% else %}
-<div class="empty-state">
+<div class="empty-state o-paper o-burn o-burn--soft">
   {{ icon('archive') }}
   <h2>No characters kept here yet</h2>
   <p>Build one here, import a file, or open a character from a campaign and choose Save to your characters.</p>

@@ -17,7 +17,7 @@
 </div>
 
 {% if notifications %}
-<div class="notification-list">
+<div class="notification-list o-paper">
   {% for n in notifications %}
   <div class="notification-card {{ '' if n.read_at else 'is-unread' }}" data-notification-id="{{ n.id }}">
     <div class="notification-main">
@@ -50,7 +50,7 @@
   {% endfor %}
 </div>
 {% else %}
-<div class="empty-state">
+<div class="empty-state o-paper o-burn o-burn--soft">
   {{ icon('bell') }}
   <h2>Nothing here yet</h2>
   <p>When someone invites you to a campaign, it will show up here.</p>
