@@ -83,7 +83,7 @@ h3 { font-family: var(--font-body); font-size: 1.05rem; font-weight: 600; line-h
   /* the painting sits under two scrims: one from the left (the copy is there) and one that melts the bottom edge into the page */
   background:
     linear-gradient(to bottom, transparent 65%, var(--forest) 100%),
-    linear-gradient(90deg, rgba(15, 18, 15, 0.92) 0%, rgba(15, 18, 15, 0.86) 46%, rgba(15, 18, 15, 0.35) 70%, rgba(15, 18, 15, 0.1) 100%),
+    linear-gradient(90deg, rgba(1, 26, 17, 0.92) 0%, rgba(1, 26, 17, 0.86) 46%, rgba(1, 26, 17, 0.35) 70%, rgba(1, 26, 17, 0.1) 100%),
     var(--bg-cliffs) center / cover no-repeat,
     var(--forest);
 }
@@ -104,7 +104,7 @@ h3 { font-family: var(--font-body); font-size: 1.05rem; font-weight: 600; line-h
 .shot img { inline-size: 100%; }
 /* An empty frame: the slot for a screenshot that has not been made yet (data-slot names it).  When the image is ready, put an
    <img> inside the figure, drop shot--empty and aria-hidden, and give it real alt text. */
-.shot--empty { aspect-ratio: 16 / 10; background: linear-gradient(160deg, #2a3029, #1d221e); }
+.shot--empty { aspect-ratio: 16 / 10; background: linear-gradient(160deg, #243831, #172720); }
 .shot--float.shot--empty { aspect-ratio: 64 / 44; }
 .shot--inset.shot--empty, .shot--small.shot--empty { aspect-ratio: 8 / 5; }
 .feature--light .shot--empty { background: linear-gradient(160deg, #f3ecda, #e0d4b6); }
@@ -124,7 +124,7 @@ h3 { font-family: var(--font-body); font-size: 1.05rem; font-weight: 600; line-h
   .hero {
     background:
       linear-gradient(to bottom, transparent 78%, var(--forest) 100%),
-      linear-gradient(rgba(15, 18, 15, 0.84), rgba(15, 18, 15, 0.8)),
+      linear-gradient(rgba(1, 26, 17, 0.84), rgba(1, 26, 17, 0.8)),
       var(--bg-cliffs) 62% center / cover no-repeat,
       var(--forest);
   }
@@ -219,7 +219,7 @@ h3 { font-family: var(--font-body); font-size: 1.05rem; font-weight: 600; line-h
   position: relative; overflow: hidden; text-align: center;
   padding-block: clamp(80px, 11vw, 150px);
   background:
-    linear-gradient(to bottom, var(--forest) 0%, rgba(23, 27, 24, 0.8) 28%, rgba(23, 27, 24, 0.8) 72%, var(--forest) 100%),
+    linear-gradient(to bottom, var(--forest) 0%, rgba(2, 48, 32, 0.8) 28%, rgba(2, 48, 32, 0.8) 72%, var(--forest) 100%),
     var(--bg-river-gold) center / cover no-repeat,
     var(--forest);
 }

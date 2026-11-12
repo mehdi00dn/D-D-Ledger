@@ -12,12 +12,12 @@
 
 /* ---------- 1. Palette ramps ---------- */
 :root {
-  --oak-forest-950: #0f120f;
-  --oak-forest-900: #171b18;          /* Deep Forest */
-  --oak-forest-800: #1b201b;
-  --oak-charcoal-700: #222720;        /* Charcoal */
-  --oak-charcoal-600: #2b3128;
-  --oak-charcoal-500: #363d32;
+  --oak-forest-950: #011a11;
+  --oak-forest-900: #023020;          /* Deep Forest (dark green) */
+  --oak-forest-800: #043a27;
+  --oak-charcoal-700: #1b2c26;        /* Charcoal, tinted toward the Deep Forest hue so panels sit on the green page without an olive cast */
+  --oak-charcoal-600: #243831;
+  --oak-charcoal-500: #2f463e;
 
   --oak-parchment-50: #fbf6e9;
   --oak-parchment-100: #f5eedc;
@@ -91,7 +91,7 @@
   --surface-texture-opacity: 0.6;
   --surface-blend: normal;
   --backdrop-painting: var(--bg-torrent);
-  --backdrop-scrim: linear-gradient(rgba(23, 27, 24, 0.5), rgba(23, 27, 24, 0.78));
+  --backdrop-scrim: linear-gradient(rgba(2, 48, 32, 0.5), rgba(2, 48, 32, 0.78));
 }
 
 [data-theme="light"] {
@@ -148,9 +148,18 @@
   --bg-river-gold: url("../assets/backgrounds/river-gold.webp");
   --bg-valley: url("../assets/backgrounds/valley-light.webp");
   --bg-cliffs: url("../assets/backgrounds/cliff-valley.webp");
+  --bg-parchment-green: url("../assets/backgrounds/parchment-green.webp");   /* the dark theme's page: green parchment with burned edges, graded to the Deep Forest green */
 }
 
 /* ---------- 4. Material classes ---------- */
+
+/* The page itself (dark theme): the green parchment sheet, fixed behind everything. It is a fixed layer rather than a background-attachment so
+   phones scale it once and a long page does not stretch it. The light theme keeps its flat parchment page. Panels carry their own surfaces,
+   so no long text is ever set directly on the texture. */
+:root:not([data-theme="light"]) body::before {
+  content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  background: var(--bg-parchment-green) center / cover no-repeat, var(--o-page);
+}
 
 /* Paper: a journal-like panel.  Inside it the older token names (--parchment, --brass-ink, --bg-panel...) are re-pointed at ink-on-paper
    values, so every existing control placed on a paper panel reads correctly in either theme without per-component rules. */
@@ -276,7 +285,7 @@
   background-position: center;
 }
 .o-backdrop--clear {
-  background-image: linear-gradient(rgba(10, 12, 10, 0.12), rgba(10, 12, 10, 0.55)), var(--backdrop-painting);
+  background-image: linear-gradient(rgba(1, 20, 13, 0.12), rgba(1, 20, 13, 0.55)), var(--backdrop-painting);
 }
 
 @media (prefers-contrast: more) {
