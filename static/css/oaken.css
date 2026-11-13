@@ -1,6 +1,6 @@
 /* ==========================================================================
    Oaken: shared foundations (DL-180)
-   One file for the palette, the semantic tokens of both themes, and the paper / wood / burned-edge materials.
+   One file for the palette, the semantic tokens of both themes, and the paper / wood materials (with a hover scorch on paper panels, drawn in CSS).
    Loaded before style.css, which maps its older token names onto the values below.
 
    1. Palette ramps (raw colours; pages never use these directly, they use the semantic tokens)
@@ -84,10 +84,10 @@
   --texture-parchment: var(--tx-parchment-light);
   --texture-surface: var(--tx-parchment-dark);
   --texture-wood: var(--tx-oak-dark);
-  --texture-burn-edge: var(--tx-burn-dark);
-  --burn-slice: 80;                              /* source pixels (of the 900 px wide overlay) kept as the border */
-  --burn-w: 12px;                                /* the width the border is drawn at */
-  --burn-opacity: 0.85;
+  --burn-rim: rgba(74, 45, 18, 0.26);             /* the scorch that burns in along a panel's edge on hover (.o-burn) */
+  --burn-glow: rgba(90, 58, 24, 0.36);
+  --burn-blot: rgba(90, 58, 24, 0.42);
+  --burn-blot-deep: rgba(62, 36, 14, 0.58);
   --surface-texture-opacity: 0.6;
   --surface-blend: normal;
   --backdrop-painting: var(--bg-torrent);
@@ -123,10 +123,10 @@
 
   --texture-surface: var(--tx-parchment-light);
   --texture-wood: var(--tx-oak-light);
-  --texture-burn-edge: var(--tx-burn-light);
-  --burn-slice: 40;
-  --burn-w: 10px;
-  --burn-opacity: 0.8;
+  --burn-rim: rgba(133, 96, 42, 0.2);
+  --burn-glow: rgba(150, 112, 58, 0.3);
+  --burn-blot: rgba(150, 112, 58, 0.36);
+  --burn-blot-deep: rgba(120, 82, 34, 0.5);
   --surface-texture-opacity: 0.55;
   --surface-blend: soft-light;
   --backdrop-painting: var(--bg-river-pale);
@@ -141,8 +141,6 @@
   --tx-parchment-dark: url("../assets/textures/parchment/parchment-dark.webp");
   --tx-oak-dark: url("../assets/textures/wood/oak-dark.webp");
   --tx-oak-light: url("../assets/textures/wood/oak-light.webp");          /* placeholder: re-graded from the dark oak until a light oak is supplied */
-  --tx-burn-light: url("../assets/textures/edges/burn-edge-light.png");
-  --tx-burn-dark: url("../assets/textures/edges/burn-edge-dark.png");
   --bg-torrent: url("../assets/backgrounds/torrent-storm.webp");
   --bg-river-pale: url("../assets/backgrounds/river-pale.webp");
   --bg-river-gold: url("../assets/backgrounds/river-gold.webp");
@@ -215,8 +213,12 @@
   color: var(--oak-parchment-200);
 }
 
-/* Burned edge: a transparent-centre overlay drawn as a 9-slice border, above the paper and below the content
-   (it sits at z-index -1 inside an isolated stacking context, so it never needs the content to be repositioned). */
+/* Burn on hover (the .o-burn class, kept under its old name so no template changes).  A panel rests with a clean edge; when the pointer is on it,
+   a faint scorch burns in along the edge: a thin dark rim, a soft glow, and a few uneven blotches of char.  It is all CSS (gradients and an inset
+   shadow, no image, no filter) on one pseudo-element that sits above the paper and below the content, so text and controls are never touched and
+   nothing inside the panel has to repaint.  The pseudo-element is the only thing that animates.  Touch screens have no hover, so they never see it;
+   keyboard focus on the panel itself shows it too.  --soft is the quieter version used for cards inside the app; the plain class is the stronger
+   one for the sign-in card and the legal sheets. */
 .o-burn { position: relative; isolation: isolate; }
 .o-burn::before {
   content: "";
@@ -224,14 +226,45 @@
   inset: 0;
   z-index: -1;
   pointer-events: none;
-  border: var(--burn-w) solid transparent;
-  border-image-source: var(--texture-burn-edge);
-  border-image-slice: var(--burn-slice);
-  border-image-width: var(--burn-w);
-  border-image-repeat: stretch;
-  opacity: var(--burn-opacity, 0.85);
+  border-radius: inherit;
+  opacity: 0;
+  box-shadow: inset 0 0 0 0 transparent, inset 0 0 0 0 transparent;
+  background-image:
+    radial-gradient(ellipse 52px 7px at 3% 0, var(--burn-blot), transparent),
+    radial-gradient(ellipse 20px 9px at 20% 0, var(--burn-blot), transparent),
+    radial-gradient(ellipse 47px 5px at 32% 0, var(--burn-blot-deep), transparent),
+    radial-gradient(ellipse 68px 7px at 44% 0, var(--burn-blot), transparent),
+    radial-gradient(ellipse 64px 4px at 54% 0, var(--burn-blot), transparent),
+    radial-gradient(ellipse 67px 10px at 71% 0, var(--burn-blot), transparent),
+    radial-gradient(ellipse 22px 9px at 84% 0, var(--burn-blot), transparent),
+    radial-gradient(ellipse 64px 5px at 94% 0, var(--burn-blot), transparent),
+    radial-gradient(ellipse 45px 11px at 10% 100%, var(--burn-blot-deep), transparent),
+    radial-gradient(ellipse 62px 4px at 15% 100%, var(--burn-blot), transparent),
+    radial-gradient(ellipse 72px 7px at 33% 100%, var(--burn-blot-deep), transparent),
+    radial-gradient(ellipse 32px 7px at 40% 100%, var(--burn-blot), transparent),
+    radial-gradient(ellipse 71px 5px at 59% 100%, var(--burn-blot-deep), transparent),
+    radial-gradient(ellipse 50px 10px at 65% 100%, var(--burn-blot-deep), transparent),
+    radial-gradient(ellipse 29px 10px at 78% 100%, var(--burn-blot-deep), transparent),
+    radial-gradient(ellipse 48px 10px at 96% 100%, var(--burn-blot), transparent),
+    radial-gradient(ellipse 4px 51px at 0 10%, var(--burn-blot), transparent),
+    radial-gradient(ellipse 7px 55px at 0 27%, var(--burn-blot), transparent),
+    radial-gradient(ellipse 5px 40px at 0 55%, var(--burn-blot-deep), transparent),
+    radial-gradient(ellipse 9px 30px at 0 65%, var(--burn-blot), transparent),
+    radial-gradient(ellipse 9px 41px at 0 93%, var(--burn-blot), transparent),
+    radial-gradient(ellipse 9px 47px at 100% 16%, var(--burn-blot-deep), transparent),
+    radial-gradient(ellipse 7px 22px at 100% 26%, var(--burn-blot), transparent),
+    radial-gradient(ellipse 4px 30px at 100% 45%, var(--burn-blot), transparent),
+    radial-gradient(ellipse 10px 51px at 100% 76%, var(--burn-blot), transparent),
+    radial-gradient(ellipse 6px 35px at 100% 85%, var(--burn-blot), transparent);
+  background-repeat: no-repeat;
+  transition: opacity 0.4s ease, box-shadow 0.4s ease;
 }
-.o-burn--soft::before { opacity: 0.5; }
+@media (hover: hover) and (pointer: fine) {
+  .o-burn:hover::before { opacity: var(--burn-on, 1); box-shadow: inset 0 0 0 1px var(--burn-rim), inset 0 0 14px 2px var(--burn-glow); }
+}
+.o-burn:focus-visible::before { opacity: var(--burn-on, 1); box-shadow: inset 0 0 0 1px var(--burn-rim), inset 0 0 14px 2px var(--burn-glow); }
+.o-burn--soft { --burn-on: 0.75; }
+@media (prefers-reduced-motion: reduce) { .o-burn::before { transition: none; } }
 
 /* Surface: a solid app surface with a quiet grain.  Dense cards, forms and controls use this (or no texture at all).
    DL-180 part 2: the app's own form panel (.form-panel) takes the same grain, so every form card in the app has it without a markup change. */
@@ -242,7 +275,7 @@
   border: 1px solid var(--o-border);
   border-radius: var(--radius-m, 12px);
 }
-.o-surface::before, .form-panel:not(.o-paper)::before {   /* a paper form panel has its own texture, and its ::before is the burned edge */
+.o-surface::before, .form-panel:not(.o-paper)::before {   /* a paper form panel has its own texture */
   content: "";
   position: absolute;
   inset: 0;
@@ -254,6 +287,8 @@
   opacity: var(--surface-texture-opacity);
   mix-blend-mode: var(--surface-blend, normal);
 }
+
+@media print { .o-burn::before { display: none; } }
 
 /* Wood: a structural rail or frame (sidebar edge, header strip).  Kept narrow; never a full card face. */
 .o-wood {
@@ -289,6 +324,7 @@
 }
 
 @media (prefers-contrast: more) {
-  .o-surface::before, .form-panel:not(.o-paper)::before, .o-burn::before { opacity: 0.35; }
+  .o-surface::before, .form-panel:not(.o-paper)::before { opacity: 0.35; }
+  .o-burn::before { display: none; }
   .o-backdrop { background-image: none; }
 }
