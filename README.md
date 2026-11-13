@@ -480,17 +480,6 @@ The account-level pages follow the same rules. Layouts, routes, permissions and 
 - **Tests.** No assertion changed. `test_dice_card_does_not_grow_when_a_die_is_picked` failed once in the full run by 0.1px because it measured before the page-enter slide had finished (same cause as the two tests fixed in part 5); it now waits with `_settled` first and passed 6 of 6 repeats.
 - **Not in this part.** The dialogs and editors that open on top of pages (Treasury dialogs, journal editor and form, import dialogs), empty, loading and error states elsewhere, and the sign-in and register pages.
 
-### Oaken visual identity: the green page and its parchment background (DL-180, part 4)
-The dark theme's green is now `#023020` and its page is a sheet of green parchment with burned edges. The light theme is unchanged.
-
-- **The green.** `--oak-forest-900` (Deep Forest, the dark page colour) is `#023020`. The deeper and lighter steps of the ramp moved with it, `--oak-forest-950` to `#011a11` and `--oak-forest-800` to `#043a27`, so panels, insets and scrims keep the same relationships. The hard-coded copies of the old green (`rgba(23, 27, 24, …)` and `rgba(15, 18, 15, …)` in `style.css`, `landing.css` and `public.css`, the backdrop scrim and overlay in `oaken.css`) and the `theme-color` meta tag on the landing and public pages follow the new value.
-- **The texture.** `static/assets/backgrounds/parchment-green.webp` (76 KB) is the supplied parchment re-graded to the Deep Forest green: the brightness of the original is kept as the grain and the interior averages `#023020`, so flat green and texture meet without a seam. It is the `--bg-parchment-green` token. `oaken.css` lays it behind the whole page as a fixed layer (`body::before`, dark theme only) instead of using `background-attachment: fixed`, which phones handle badly; the colour `--o-page` is the fallback while the image loads.
-- **What lets it show.** `.app-shell` no longer paints its own grain wash in the dark theme, and the public footer is transparent there, so the sheet and its torn edge appear behind the app and under the public pages. The public header stays a solid green bar, because it slides over light sections.
-- **Light theme.** No green sheet. The footer keeps its solid Deep Forest band so its cream text stays readable on the parchment page.
-- **Charcoal.** The Charcoal ramp (`--oak-charcoal-700/600/500`) is tinted toward the green hue (`#1b2c26`, `#243831`, `#2f463e`) so dark panels and the dark landing sections no longer look olive next to the new green. The placeholder screenshot frames on the landing page use the same tint. To undo only this, restore the three values `#222720`, `#2b3128` and `#363d32`.
-- **Contrast.** Measured against rendered pixels in the dark theme at desktop width: every text element that sits directly on the page (page titles and subtitles, filters, hints, the round badge, the public footer) is 4.5:1 or better, large text 3:1. The lowest is 4.79:1.
-- **Not changed.** Text on paper panels, the sidebar material and the light theme.
-
 ### Oaken visual identity: the burn on hover, drawn in CSS (DL-180, part 5)
 The burned-edge images are gone. A paper panel (`.o-burn`, on about 25 templates) now rests with a clean edge, and a faint scorch burns in along its edge only while the pointer is on it. It is deliberately quiet: the first attempt, a roughened outline on every panel, was dropped.
 
