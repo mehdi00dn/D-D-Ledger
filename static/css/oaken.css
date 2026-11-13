@@ -57,6 +57,8 @@
   --o-text-faint: var(--oak-ash-dim);
   --o-border: rgba(185, 154, 87, 0.22);
   --o-border-strong: rgba(185, 154, 87, 0.4);
+  --o-scrim: rgba(8, 10, 8, 0.62);                /* behind a dialog: warm near-black, never blue */
+  --o-dialog-edge: rgba(255, 244, 214, 0.07);      /* the faint top highlight on a dialog's edge */
   --o-action: var(--oak-brass-500);
   --o-action-hover: var(--oak-brass-300);
   --o-action-text: var(--oak-forest-900);
@@ -105,6 +107,8 @@
   --o-text-faint: #6b5f4c;
   --o-border: rgba(90, 65, 20, 0.2);
   --o-border-strong: rgba(90, 65, 20, 0.34);
+  --o-scrim: rgba(40, 30, 14, 0.5);
+  --o-dialog-edge: rgba(255, 255, 255, 0.7);
   --o-action: #856820;
   --o-action-hover: var(--oak-brass-700);
   --o-action-text: #fbf7ec;

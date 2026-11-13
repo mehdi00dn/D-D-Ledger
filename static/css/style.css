@@ -5406,10 +5406,11 @@ a.pager-link:hover { border-color: var(--brass); }
 .rest-menu > summary > svg:last-child { inline-size: 14px; block-size: 14px; margin-inline-start: -2px; }
 .rest-menu[open] > summary > svg:last-child { transform: rotate(180deg); }
 .rest-menu .menu-list { inset-inline-end: auto; inset-inline-start: 0; z-index: 60; }
-.treasury-dialog .btn-in { background: var(--moss, #3f7d4e); border-color: var(--moss, #3f7d4e); color: #fff; }
-.treasury-dialog .btn-in:hover:not(:disabled) { background: color-mix(in srgb, var(--moss, #3f7d4e) 84%, #fff); }
-.treasury-dialog .btn-out { background: var(--blood, #a63a3a); border-color: var(--blood, #a63a3a); color: #fff; }
-.treasury-dialog .btn-out:hover:not(:disabled) { background: color-mix(in srgb, var(--blood, #a63a3a) 84%, #fff); }
+/* Coins in and Coins out carry white text, so their fills are fixed deep tones (6.4:1) rather than the theme's moss and blood, which are tuned for use as text and measured 3.6:1 and 3.8:1 under white.  Hover darkens. */
+.treasury-dialog .btn-in { background: #2f6b3e; border-color: #2f6b3e; color: #fff; }
+.treasury-dialog .btn-in:hover:not(:disabled) { background: color-mix(in srgb, #2f6b3e 86%, #000); }
+.treasury-dialog .btn-out { background: #a63a3a; border-color: #a63a3a; color: #fff; }
+.treasury-dialog .btn-out:hover:not(:disabled) { background: color-mix(in srgb, #a63a3a 86%, #000); }
 @media (max-width: 640px) {
   .battle-actions { grid-auto-rows: 42px; gap: 5px; }
   .battle-actions .btn, .battle-actions > * { height: 42px; min-height: 42px; padding: 3px 2px; gap: 2px; font-size: 10.5px; border-radius: 9px; }
@@ -6169,3 +6170,43 @@ body:has(.tool-flyout.open) .pin-action-bubble.is-docked { opacity: 0; pointer-e
 .join-link-card.o-paper .pending-invites-title { color: var(--paper-ink-dim); }
 .profile-section.o-paper a:not(.profile-friend, .btn), .join-link-card.o-paper a:not(.btn) { text-decoration: underline; text-underline-offset: 2px; }
 .group-card.o-paper .role-badge-member { color: #1f4331; }
+
+/* ==========================================================================
+   Dialogs and editors (DL-182 part 8)
+   One surface for the three dialog systems the app has: the panels that open over the battle, maps, confirm and crop screens (.modal-panel),
+   the native pickers and Treasury dialogs (.pick-dialog) and the encounter confirm (.enc-dialog).  Same radius, edge, shadow, quiet grain,
+   warm scrim, display-font titles and the same open motion, so a dialog reads as part of the Oaken set whichever one it is.
+   ========================================================================== */
+.modal-panel, .pick-dialog, .enc-dialog {
+  background-color: var(--o-surface);
+  border: 1px solid var(--o-border-strong);
+  border-radius: var(--radius-m);
+  box-shadow: var(--shadow-deep), inset 0 1px 0 var(--o-dialog-edge);
+  isolation: isolate;
+}
+.modal-panel { position: relative; }   /* a <dialog> is already positioned by the browser */
+.modal-panel::before, .pick-dialog::before, .enc-dialog::before {   /* the quiet grain of .o-surface, behind the content */
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  pointer-events: none;
+  background-image: var(--texture-surface);
+  background-size: 512px 512px;
+  opacity: var(--surface-texture-opacity);
+  mix-blend-mode: var(--surface-blend, normal);
+}
+.modal-overlay { background: var(--o-scrim); }
+.pick-dialog::backdrop, .enc-dialog::backdrop { background: var(--o-scrim, rgba(8, 10, 8, 0.62)); backdrop-filter: blur(2px); }   /* the fallback is for browsers whose ::backdrop does not inherit custom properties */
+.pick-dialog[open], .enc-dialog[open] { animation: panel-pop-in 0.26s cubic-bezier(0.34, 1.56, 0.64, 1); }   /* the motion the overlay panels already have */
+.pick-dialog[open]::backdrop, .enc-dialog[open]::backdrop { animation: overlay-fade-in 0.2s ease; }
+.pick-head h2, .enc-dialog h2 { font-family: var(--font-display); font-weight: 600; }
+.pick-head { padding-block-end: 12px; border-block-end: 1px solid var(--hairline); }
+.pick-head + .pick-tools { padding-block-start: 12px; }
+@media (prefers-contrast: more) {
+  .modal-panel::before, .pick-dialog::before, .enc-dialog::before { opacity: 0.35; }
+}
+/* The note editor is a contenteditable box with no outline of its own, so the box shows where the cursor is */
+.note-block:focus-within { border-color: var(--brass); box-shadow: 0 0 0 1px var(--brass); }
+.o-paper .note-block:focus-within { border-color: var(--paper-accent-ink); box-shadow: 0 0 0 1px var(--paper-accent-ink); }
