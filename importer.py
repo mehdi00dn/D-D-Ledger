@@ -77,8 +77,9 @@ def _image_ref(value):
     return value if isinstance(value, str) and _IMAGE_REF.match(value) else None
 
 
-def open_zip(data):
-    """Validate the archive envelope and return (ZipFile, raw manifest dict)."""
+def open_zip(data, manifest_limit=MAX_MANIFEST_BYTES):
+    """Validate the archive envelope and return (ZipFile, raw manifest dict).  `manifest_limit` is the most
+    manifest.json may hold once unpacked (a whole-campaign export needs more than a characters one)."""
     if len(data) > MAX_ZIP_BYTES:
         raise ImportRejected('The file is too large (limit %d MB).' % (MAX_ZIP_BYTES // (1024 * 1024)))
     try:
@@ -95,7 +96,7 @@ def open_zip(data):
         total += info.file_size
     if total > MAX_TOTAL_UNCOMPRESSED:
         raise ImportRejected('The archive expands to too much data.')
-    raw = read_member(zf, 'manifest.json', MAX_MANIFEST_BYTES)
+    raw = read_member(zf, 'manifest.json', manifest_limit)
     if raw is None:
         raise ImportRejected('manifest.json is missing - this is not a Oaken export.')
     try:

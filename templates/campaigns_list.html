@@ -9,8 +9,19 @@
     <h1 class="page-title">Campaigns</h1>
     <p class="page-sub">{{ campaigns|length }} {{ 'campaign' if campaigns|length == 1 else 'campaigns' }}. Each keeps its own characters, groups, battle, and maps.</p>
   </div>
-  <a href="{{ url_for('campaign_new') }}" class="btn btn-primary">{{ icon('plus') }} New Campaign</a>
+  <div class="u-row-wrap">
+    <form method="POST" action="{{ url_for('campaign_import') }}" enctype="multipart/form-data" class="import-form" title="Start a new campaign from a file made by Export whole campaign">{{ csrf_field() }}
+      <label class="btn btn-ghost import-label">
+        {{ icon('download') }} <span class="btn-label">Import a campaign</span>
+        <input type="file" name="import_file" accept=".zip" data-auto-submit-request>
+      </label>
+      <div class="upload-progress" hidden><div class="upload-progress-bar"></div></div>
+    </form>
+    <a href="{{ url_for('campaign_new') }}" class="btn btn-primary">{{ icon('plus') }} New Campaign</a>
+  </div>
 </div>
+
+{% if import_note %}<div class="banner-notice banner-error" role="alert">{{ import_note }}</div>{% endif %}
 
 {% if campaigns %}
 <div class="group-grid">
@@ -30,6 +41,9 @@
       <p class="group-bio">{{ c.description | notes_preview }}</p>
       <div class="group-actions">
         <a href="{{ url_for('campaign_home', campaign_id=c.id) }}" class="btn btn-primary btn-sm">{{ icon('scroll') }} Enter</a>
+        {% if c.my_status == 'dm' %}
+        <a href="{{ url_for('campaign_export', campaign_id=c.id) }}" class="btn-icon" title="Export whole campaign" aria-label="Export whole campaign {{ c.name }}">{{ icon('upload') }}</a>
+        {% endif %}
         {% if c.my_role == 'owner' %}
         <a href="{{ url_for('campaign_edit', campaign_id=c.id) }}" class="btn-icon" title="Edit campaign">{{ icon('pencil') }}</a>
         <form method="POST" action="{{ url_for('campaign_delete', campaign_id=c.id) }}" data-confirm="Delete campaign '{{ c.name }}'? This permanently deletes all its characters, groups, and maps. This cannot be undone.">{{ csrf_field() }}

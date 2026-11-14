@@ -163,6 +163,18 @@
   </div>
 </div>
 {% endif %}
+{% if g.is_dm %}
+<div class="form-panel o-paper">
+  <div class="form-section u-mb0">
+    <p class="form-section-title">Back up or move this campaign</p>
+    {% if request.args.get('export_error') == 'size' %}
+    <div class="banner-notice banner-error" role="alert">The images in this campaign add up to more than 50 MB, which is too much for one export file. Delete some images you no longer need and try again.</div>
+    {% endif %}
+    <a href="{{ url_for('campaign_export', campaign_id=campaign.id) }}" class="btn btn-ghost">{{ icon('upload') }} Export whole campaign</a>
+    <p class="field-hint">One file with the campaign settings and image, characters and NPCs, factions, maps with their tokens, drawings and fog, quests, the session journal and the treasury. Players, invitations, the activity feed, dice rolls and the live battle are not included. The file holds your hidden notes, so keep it to yourself. Import it from the Campaigns page to start a new campaign from it.</p>
+  </div>
+</div>
+{% endif %}
 <div class="form-panel o-paper members-panel">
   <div class="form-section u-mb0">
     <p class="form-section-title">Members</p>

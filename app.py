@@ -34,6 +34,7 @@ import fog
 import dnd5e
 import srd
 import importer
+import campaign_transfer
 import quotas
 import public_ids
 from storage import get_storage, StorageError, UPLOADS, TEMP
@@ -1956,11 +1957,18 @@ def require_can_delete(created_by):
 
 # ---------------- CAMPAIGNS (Phase D) ----------------
 
+CAMPAIGN_IMPORT_NOTES = {                      # ?import_error=<code> on the campaigns list (codes only, so nothing typed in a URL is echoed back)
+    'file': "That file couldn't be read as a campaign export. Upload a .zip made by Export whole campaign (50 MB at most).",
+    'characters': 'That file holds characters and factions, not a whole campaign. Import it from a campaign\'s Characters page instead.',
+    'quota': 'That campaign\'s images would pass your image storage limit, so nothing was imported. Delete images you no longer need or import a smaller file.',
+}
+
+
 @app.route('/campaigns')
 def campaigns_list():
     db = get_db()
     campaigns = db.execute('''
-        SELECT c.*, cm.role AS my_role,
+        SELECT c.*, cm.role AS my_role, cm.status AS my_status,
                (SELECT COUNT(*) FROM characters WHERE campaign_id = c.id AND is_temp_familiar = 0) AS character_count,
                (SELECT COUNT(*) FROM groups WHERE campaign_id = c.id) AS group_count,
                (SELECT COUNT(*) FROM maps WHERE campaign_id = c.id) AS map_count
@@ -1969,7 +1977,25 @@ def campaigns_list():
         ORDER BY c.created_at DESC
     ''', (session['user_id'],)).fetchall()
     db.close()
-    return render_template('campaigns_list.html', campaigns=campaigns)
+    return render_template('campaigns_list.html', campaigns=campaigns, import_note=CAMPAIGN_IMPORT_NOTES.get(request.args.get('import_error')))
+
+
+def _campaign_create_block(db):
+    """None when this account may start another campaign right now (the attempt is counted against the rate limit and
+    committed); otherwise the 429 response to send back (the db handle is already committed and closed)."""
+    owned = db.execute("SELECT COUNT(*) AS n FROM campaign_members WHERE user_id = ? AND role = 'owner'", (session['user_id'],)).fetchone()['n']
+    wait = 0 if owned >= security.MAX_OWNED_CAMPAIGNS else security.hit(db, app.secret_key, 'campaign-create', session['user_id'])
+    if owned >= security.MAX_OWNED_CAMPAIGNS or wait:
+        db.commit()
+        db.close()
+        msg = ('You already own %d campaigns, the most one account can have. Delete one you no longer use first.' % security.MAX_OWNED_CAMPAIGNS
+               if owned >= security.MAX_OWNED_CAMPAIGNS else 'You are creating campaigns too fast. Try again in a little while.')
+        resp = Response(msg, status=429, mimetype='text/plain')
+        if wait:
+            resp.headers['Retry-After'] = str(wait)
+        return resp
+    db.commit()
+    return None
 
 
 @app.route('/campaigns/new', methods=['GET', 'POST'])
@@ -1985,18 +2011,9 @@ def campaign_new():
         status = _campaign_status_field(request.form)
         access_mode = _campaign_access_field(request.form)
         db = get_db()
-        owned = db.execute("SELECT COUNT(*) AS n FROM campaign_members WHERE user_id = ? AND role = 'owner'", (session['user_id'],)).fetchone()['n']
-        wait = 0 if owned >= security.MAX_OWNED_CAMPAIGNS else security.hit(db, app.secret_key, 'campaign-create', session['user_id'])
-        if owned >= security.MAX_OWNED_CAMPAIGNS or wait:
-            db.commit()
-            db.close()
-            msg = ('You already own %d campaigns, the most one account can have. Delete one you no longer use first.' % security.MAX_OWNED_CAMPAIGNS
-                   if owned >= security.MAX_OWNED_CAMPAIGNS else 'You are creating campaigns too fast. Try again in a little while.')
-            resp = Response(msg, status=429, mimetype='text/plain')
-            if wait:
-                resp.headers['Retry-After'] = str(wait)
-            return resp
-        db.commit()
+        blocked = _campaign_create_block(db)
+        if blocked:
+            return blocked
         cur = db.execute('''
             INSERT INTO campaigns (name, description, avatar_path, setting, status, access_mode)
             VALUES (?, ?, ?, ?, ?, ?)
@@ -6349,39 +6366,44 @@ def _build_export_zip(campaign_id, group_ids=None, character_ids=None, download_
     return _send_manifest_zip(manifest, download_name)
 
 
-def _send_manifest_zip(manifest, download_name):
-    """Pack a manifest and every image it points at into a zip and hand it to the browser (big ones via a signed link)."""
+def _pack_manifest_zip(manifest, refs):
+    """The bytes of a zip holding `manifest` and every stored image in `refs` (keys like 'avatars/<id>.webp')."""
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
         zf.writestr('manifest.json', json.dumps(manifest, indent=2))
         seen = set()
-        referenced_paths = set()
-        for grp in manifest['groups']:
-            if grp['avatar_file']:
-                referenced_paths.add(grp['avatar_file'])
-        for c in manifest['characters']:
-            if c['avatar_file']:
-                referenced_paths.add(c['avatar_file'])
-            for sp in c['sheet_files']:
-                referenced_paths.add(sp)
         st = get_storage()
-        wanted = sorted(p for p in referenced_paths if _UPLOAD_KEY_RE.match(p))
+        wanted = sorted(p for p in refs if _UPLOAD_KEY_RE.match(p))
         with ThreadPoolExecutor(8) as pool:                    # fetch the images concurrently
             blobs = list(pool.map(lambda rel: (rel, st.get(UPLOADS, rel)), wanted))
         for rel_path, blob in blobs:
             if blob is not None and rel_path not in seen:
                 zf.writestr(f'images/{rel_path}', blob)
                 seen.add(rel_path)
+    return buf.getvalue()
 
+
+def _deliver_zip(payload, download_name):
+    """Hand a finished zip to the browser (big ones via a signed link)."""
     filename = _dated_filename(download_name)
-    payload = buf.getvalue()
     if len(payload) <= DIRECT_INLINE_LIMIT:
         return send_file(io.BytesIO(payload), mimetype='application/zip', as_attachment=True, download_name=filename)
     # Too big to return through a serverless function (4.5 MB response cap): park it in
     # private temp storage and send the browser to a short-lived signed download link.
+    st = get_storage()
     key = f"exports/{session['user_id']}/{uuid.uuid4().hex}.zip"
     st.put(TEMP, key, payload, 'application/zip')
     return redirect(st.signed_download_url(TEMP, key, filename, 120))
+
+
+def _send_manifest_zip(manifest, download_name):
+    """Pack a characters-and-factions manifest and every image it points at into a zip and hand it to the browser."""
+    refs = {grp['avatar_file'] for grp in manifest['groups'] if grp['avatar_file']}
+    for c in manifest['characters']:
+        if c['avatar_file']:
+            refs.add(c['avatar_file'])
+        refs.update(c['sheet_files'])
+    return _deliver_zip(_pack_manifest_zip(manifest, refs), download_name)
 
 
 def _dated_filename(base_name):
@@ -6436,6 +6458,8 @@ def _read_import_zip():
         if not data:
             return None
         zf, raw_manifest = importer.open_zip(data)
+        if raw_manifest.get('format') == campaign_transfer.FORMAT:
+            raise campaign_transfer.WrongFile('This file holds a whole campaign.')
         return zf, importer.normalize_manifest(raw_manifest, sanitize_notes_payload)
     finally:
         if temp_key:
@@ -6563,6 +6587,8 @@ def import_data():
     dest = 'factions_list' if 'groups' in (request.referrer or '') else 'characters_list'
     try:
         opened = _read_import_zip()
+    except campaign_transfer.WrongFile:
+        return redirect(url_for(dest, import_error='campaign'))
     except importer.ImportRejected:
         return redirect(url_for(dest, import_error=1))
     if opened is None:
@@ -6572,6 +6598,241 @@ def import_data():
     if _import_manifest(db, zf, manifest, g.campaign_id) is None:
         return redirect(url_for(dest, import_error='quota'))
     return redirect(url_for(dest, imported=1))
+
+
+# ---------------- WHOLE-CAMPAIGN EXPORT AND IMPORT (DL-183) ----------------
+# The DM exports everything they built as one ZIP (campaign_transfer.py says what is in it); anyone can import such a file from
+# the campaigns list, which always makes a NEW campaign owned by the person importing.  Nothing is ever merged into an existing one.
+
+CAMPAIGN_TRANSFER_LIMITS = {                        # the forms' own limits, so an imported campaign can never hold more than a hand-made one
+    'quests': QUEST_LIMIT, 'quest_title': QUEST_TITLE_MAX, 'quest_details': QUEST_DETAILS_MAX,
+    'journal': JOURNAL_LIMIT, 'journal_title': JOURNAL_TITLE_MAX, 'journal_body': JOURNAL_BODY_MAX,
+    'treasury': TREASURY_LIMIT, 'treasury_note': TREASURY_NOTE_MAX, 'coin': TREASURY_COIN_MAX,
+}
+
+
+@app.route('/campaigns/<campaign:campaign_id>/export/campaign')
+@campaign_access_required
+@dm_required
+def campaign_export():
+    """Everything the DM built in this campaign, as one ZIP.  DM only: it carries hidden notes, hidden quests and DM-only tokens."""
+    db = get_db()
+    try:
+        manifest = campaign_transfer.build_manifest(db, g.campaign_id, datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+    finally:
+        db.close()
+    payload = _pack_manifest_zip(manifest, campaign_transfer.image_refs(manifest))
+    if len(payload) > importer.MAX_ZIP_BYTES:           # a file the import would turn away (and storage would not hold) is no backup
+        return redirect(url_for('campaign_edit', export_error='size'))
+    return _deliver_zip(payload, '%s-campaign.zip' % _slugify(g.campaign['name']))
+
+
+def _decode_zip_images(zf, jobs):
+    """{image name: images.Processed} for the images in `jobs` ({name: (kind, longest-edge cap or None)}) that are really images.
+    A missing or bad one is simply absent, so it never blocks the rest.  Read a few at a time and re-encoded in parallel."""
+    names = list(jobs)
+    out = {}
+
+    def work(item):
+        name, blob = item
+        kind, cap = jobs[name]
+        try:
+            return name, images.process_image(blob, kind, cap)
+        except images.ImageError:
+            return name, None
+    with ThreadPoolExecutor(4) as pool:
+        for i in range(0, len(names), 8):
+            blobs = []
+            for name in names[i:i + 8]:
+                try:
+                    blob = importer.read_member(zf, 'images/' + name, images.KIND_MAX_BYTES[jobs[name][0]])
+                except importer.ImportRejected:
+                    blob = None
+                if blob:
+                    blobs.append((name, blob))
+            for name, processed in pool.map(work, blobs):
+                if processed is not None:
+                    out[name] = processed
+    return out
+
+
+def _import_campaign(db, zf, c):
+    """Make a NEW campaign, owned by the signed-in person, from campaign_transfer.normalize_manifest's output `c`.
+    Returns its id, or None when the images would pass a storage limit (nothing is kept).  Every image is validated and
+    re-encoded like any upload, stored under a fresh key and uploaded before the commit, so a failure keeps nothing."""
+    me = session['user_id']
+    camp = c['campaign']
+
+    jobs = {}
+    if camp['avatar_file']:
+        jobs[camp['avatar_file']] = ('avatars', CAMPAIGN_BANNER_PX)
+    for f in c['factions']:
+        if f['avatar_file']:
+            jobs.setdefault(f['avatar_file'], ('avatars', None))
+    for ch in c['characters']:
+        if ch['avatar_file']:
+            jobs.setdefault(ch['avatar_file'], ('avatars', None))
+        for sheet in ch['sheet_files']:
+            jobs.setdefault(sheet, ('sheets', None))
+    for m in c['maps']:
+        if m['image_file']:
+            jobs.setdefault(m['image_file'], ('maps', None))
+    decoded = _decode_zip_images(zf, jobs)
+
+    pending = []                                   # (key, Processed), uploaded just before the commit
+
+    def keep(name, folder):
+        """A fresh stored key for this use of an image (every use gets its own file, so deleting one never breaks another)."""
+        processed = decoded.get(name) if name else None
+        if processed is None:
+            return None
+        key = f"{folder}/{uuid.uuid4().hex}.{processed.ext}"
+        pending.append((key, processed))
+        return key
+
+    banner = keep(camp['avatar_file'], 'avatars')
+    cur = db.execute("INSERT INTO campaigns (name, description, avatar_path, setting, status, access_mode, hide_npcs, notes) "
+                     "VALUES (?, ?, ?, ?, ?, 'private', ?, ?)",
+                     (camp['name'], camp['description'], banner, camp['setting'], camp['status'], camp['hide_npcs'], camp['notes']))
+    campaign_id = cur.lastrowid
+    db.execute('INSERT INTO campaign_members (campaign_id, user_id, role, status) VALUES (?, ?, ?, ?)', (campaign_id, me, 'owner', 'dm'))
+
+    faction_ids = {}
+    for f in c['factions']:
+        cur = db.execute('INSERT INTO groups (name, avatar_path, bio, color, campaign_id, created_by) VALUES (?, ?, ?, ?, ?, ?)',
+                         (f['name'], keep(f['avatar_file'], 'avatars'), f['bio'], f['color'], campaign_id, me))
+        faction_ids[f['ref']] = cur.lastrowid
+
+    char_ids = {}
+    for ch in c['characters']:
+        cur = db.execute('''
+            INSERT INTO characters
+            (name, is_npc, is_ally, level, max_hp, str_score, dex_score, con_score, int_score, wis_score, cha_score, armor_class,
+             avatar_path, notes, class_key, campaign_id, created_by, speed, skill_prof, save_prof)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (ch['name'], ch['is_npc'], ch['is_ally'], ch['level'], ch['max_hp'],
+              ch['str_score'], ch['dex_score'], ch['con_score'], ch['int_score'], ch['wis_score'], ch['cha_score'], ch['armor_class'],
+              keep(ch['avatar_file'], 'avatars'), ch['notes'], ch['class_key'], campaign_id, me,
+              ch['speed'], json.dumps(ch['skill_prof']), json.dumps(ch['save_prof'])))
+        new_id = cur.lastrowid
+        char_ids[ch['ref']] = new_id
+        _save_attacks(db, new_id, ch['attacks'])
+        member_of = [faction_ids[r] for r in ch['faction_refs']]
+        if member_of:
+            _set_character_factions(db, new_id, member_of)          # the first one is the main faction
+        for pos, sheet in enumerate(ch['sheet_files']):
+            key = keep(sheet, 'sheets')
+            if key:
+                db.execute('INSERT INTO character_sheets (character_id, image_path, sort_order) VALUES (?, ?, ?)', (new_id, key, pos))
+        for lv in ch['levels']:
+            _save_level_stats(db, new_id, lv['level'], lv['max_hp'], lv['armor_class'], lv['scores'], lv['speed'],
+                              json.dumps(lv['skill_prof']), json.dumps(lv['save_prof']))
+
+    for m in c['maps']:
+        processed = decoded.get(m['image_file']) if m['image_file'] else None
+        if processed is not None:
+            image_path, width, height = keep(m['image_file'], 'maps'), processed.width, processed.height
+        else:                                       # the picture is missing or unusable: keep the map (and its tokens) on a blank canvas
+            width = max(200, min(2000, m['image_width'] or 1500))
+            height = max(200, min(2000, m['image_height'] or 1000))
+            image_path = f"maps/{uuid.uuid4().hex}.png"
+            pending.append((image_path, images.blank_canvas(width, height)))
+        k = width / m['image_width'] if m['image_width'] else 1.0         # tokens and drawings follow the picture if it came back at another size
+        if abs(k - 1.0) < 0.01:
+            k = 1.0
+        fogged = campaign_transfer.fog_for(m['fog'], width, height)
+        cur = db.execute('''
+            INSERT INTO maps (name, image_path, image_width, image_height, campaign_id, created_by, grid_size, grid_offset_x, grid_offset_y,
+                              grid_color, grid_visible, grid_setup_done, snap_to_grid, locked_for_players, feet_per_square, fog_mask, fog_cols, fog_rows)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (m['name'], image_path, width, height, campaign_id, me, m['grid_size'], m['grid_offset_x'], m['grid_offset_y'],
+              m['grid_color'], m['grid_visible'], m['grid_setup_done'], m['snap_to_grid'], m['locked_for_players'], m['feet_per_square'],
+              fogged[0] if fogged else None, fogged[1] if fogged else 0, fogged[2] if fogged else 0))
+        map_id = cur.lastrowid
+        pin_ids = {}
+        for pin in m['pins']:
+            holder = char_ids.get(pin['character_ref']) if pin['pin_type'] == 'character' else None
+            if pin['pin_type'] == 'character' and holder is None:
+                continue
+            cur = db.execute('INSERT INTO map_pins (map_id, pin_type, icon_key, custom_name, x, y, scale, rotation, locked, character_id, dm_only) '
+                             'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                             (map_id, pin['pin_type'], pin['icon_key'], pin['custom_name'], pin['x'] * k, pin['y'] * k, pin['scale'],
+                              pin['rotation'], pin['locked'], holder, pin['dm_only']))
+            pin_ids[pin['ref']] = cur.lastrowid
+        for order, d in enumerate(m['drawings']):
+            db.execute('INSERT INTO map_drawings (map_id, kind, data, cx, cy, w, h, rotation, color, fill, fill_opacity, sort_order, locked, dm_only, attached_pin_id) '
+                       'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                       (map_id, d['kind'], json.dumps(d['data']), d['cx'] * k, d['cy'] * k, d['w'] * k, d['h'] * k, d['rotation'], d['color'],
+                        d['fill'], d['fill_opacity'], order, d['locked'], d['dm_only'], pin_ids.get(d['attached_pin_ref'])))
+
+    for q in c['quests']:
+        db.execute('INSERT INTO quests (campaign_id, title, details, done, hidden) VALUES (?, ?, ?, ?, ?)',
+                   (campaign_id, q['title'], q['details'], q['done'], q['hidden']))
+    for j in c['journal']:
+        db.execute('INSERT INTO session_journal (campaign_id, title, played_on, body, created_by) VALUES (?, ?, ?, ?, ?)',
+                   (campaign_id, j['title'], j['played_on'], j['body'], me))
+    for t in c['treasury']:
+        db.execute('INSERT INTO treasury_entries (campaign_id, created_by, character_id, cp, sp, ep, gp, pp, note, created_at, batch) '
+                   'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(CAST(? AS timestamp), ' + _UTC_NOW + '), ?)',
+                   (campaign_id, me, char_ids.get(t['holder_ref'])) + tuple(t['coins'][coin] for coin in COINS) + (t['note'], t['created_at'], t['batch']))
+
+    # Upload every queued image BEFORE committing, so a storage failure rolls the whole import back
+    # instead of leaving rows that point at missing files.
+    try:
+        quotas.check(db, me, campaign_id, sum(len(p.data) for _, p in pending))
+    except quotas.QuotaExceeded:
+        db.rollback()
+        db.close()
+        return None
+    st = get_storage()
+    try:
+        with ThreadPoolExecutor(6) as pool:
+            list(pool.map(lambda item: st.put(UPLOADS, item[0], item[1].data, item[1].content_type), pending))
+    except Exception:
+        db.rollback()
+        db.close()
+        try:
+            st.delete_many(UPLOADS, [key for key, _ in pending])
+        except StorageError:
+            pass
+        raise
+    for key, processed in pending:
+        quotas.record(db, key, me, campaign_id, key.split('/')[0], len(processed.data))
+    db.commit()
+    db.close()
+    return campaign_id
+
+
+@app.route('/campaigns/import', methods=['POST'])
+def campaign_import():
+    """Start a new campaign from a whole-campaign export.  The person importing becomes its owner and DM."""
+    gate = _confirm_gate()
+    if gate:
+        return gate
+    data, temp_key = _read_upload_source(request.files.get('import_file'), request.form.get('import_file__key'))
+    try:
+        if not data:
+            return redirect(url_for('campaigns_list'))
+        zf, raw_manifest = importer.open_zip(data, manifest_limit=campaign_transfer.MANIFEST_LIMIT)
+        clean = campaign_transfer.normalize_manifest(
+            raw_manifest, sanitize_notes=sanitize_notes_payload, sanitize_bio=sanitize_bio, icon_keys=PIN_ICON_KEYS, class_keys=CLASS_KEYS,
+            statuses=CAMPAIGN_STATUS_CHOICES, limits=CAMPAIGN_TRANSFER_LIMITS)
+    except campaign_transfer.WrongFile:
+        return redirect(url_for('campaigns_list', import_error='characters'))
+    except importer.ImportRejected:
+        return redirect(url_for('campaigns_list', import_error='file'))
+    finally:
+        if temp_key:
+            get_storage().delete(TEMP, temp_key)
+    db = get_db()
+    blocked = _campaign_create_block(db)
+    if blocked:
+        return blocked
+    campaign_id = _import_campaign(db, zf, clean)
+    if campaign_id is None:
+        return redirect(url_for('campaigns_list', import_error='quota'))
+    session['last_campaign_id'] = campaign_id
+    return redirect(url_for('campaign_home', campaign_id=campaign_id))
 
 
 # ---------------- MAPS ----------------
