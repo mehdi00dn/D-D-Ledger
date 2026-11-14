@@ -6210,3 +6210,27 @@ body:has(.tool-flyout.open) .pin-action-bubble.is-docked { opacity: 0; pointer-e
 /* The note editor is a contenteditable box with no outline of its own, so the box shows where the cursor is */
 .note-block:focus-within { border-color: var(--brass); box-shadow: 0 0 0 1px var(--brass); }
 .o-paper .note-block:focus-within { border-color: var(--paper-accent-ink); box-shadow: 0 0 0 1px var(--paper-accent-ink); }
+
+/* ==========================================================================
+   Sign-in cards, the error page and empty states on paper (DL-182 part 9)
+   The sign-in, sign-up and reset cards are paper, but their error, hint and link colours were written for the dark card (pale red, pale
+   green, bright brass) and went faint on tan (about 2:1).  Inside paper they take the ink tones the rest of the app's paper uses, and links
+   are underlined so they do not rely on colour alone.
+   ========================================================================== */
+.o-paper .auth-error { background: rgba(140, 46, 40, 0.08); border-color: rgba(140, 46, 40, 0.45); color: #7a2620; }
+.o-paper .auth-note { background: rgba(255, 252, 244, 0.45); border-color: var(--paper-line-strong); color: var(--paper-ink); }
+.o-paper .auth-hint.is-bad { color: var(--blood-ink-sm); }
+.o-paper .auth-hint.is-good { color: var(--moss-ink); }
+.o-paper .auth-field input.is-bad { border-color: rgba(140, 46, 40, 0.75); }
+.o-paper .auth-check a, .o-paper .auth-consent a, .o-paper .auth-switch a, .o-paper .auth-link { color: var(--brass-ink); }
+.o-paper .auth-check a, .o-paper .auth-consent a, .o-paper .auth-switch a, .o-paper .auth-legal a, .o-paper .auth-link {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* The error page (templates/error.html): a short paper card on the painting, as the sign-in card is */
+.err-code { margin: 0 0 10px; font: 500 12px/1 var(--font-mono); letter-spacing: 0.14em; text-transform: uppercase; color: var(--paper-ink-dim); }
+.err-card .auth-sub { margin-block-end: 0; }
+.err-card .auth-note { margin-block: 16px 0; }
+.err-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-block-start: 24px; }
+.err-actions .btn { text-decoration: none; }

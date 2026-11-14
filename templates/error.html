@@ -1,0 +1,29 @@
+{#- DL-182 part 9: the page for a request that could not be answered (not found, not allowed, too many requests, a fault on our side ...).
+    It sits on the public frame, so the header shows the right menu for a signed-in or signed-out visitor, and says what happened and
+    where to go next on a paper card in an oak frame, as the log-in card does.  Variables: code, hero, title, message, retry (seconds, optional). -#}
+{% extends "public_base.html" %}
+{% block title %}{{ title }} — Oaken{% endblock %}
+{% block stage %}
+<div class="pub-stage-inner pub-auth">
+  <div class="pub-intro auth-aside-body">
+    <p class="auth-hero">{{ hero }}</p>
+  </div>
+  <div class="pub-card o-wood-frame">
+    <div class="auth-card o-paper o-burn err-card">
+      <p class="err-code">Error {{ code }}</p>
+      <h1 class="auth-title">{{ title }}</h1>
+      <p class="auth-sub">{{ message }}</p>
+      {% if retry %}<p class="auth-note" role="status">You can try again in about {{ retry }} seconds.</p>{% endif %}
+      <div class="err-actions">
+        {% if session.get('user_id') %}
+        <a class="btn btn-primary" href="{{ url_for('campaigns_list') }}">Go to your campaigns</a>
+        <a class="btn btn-ghost" href="{{ url_for('index') }}">Home</a>
+        {% else %}
+        <a class="btn btn-primary" href="{{ url_for('index') }}">Back to home</a>
+        <a class="btn btn-ghost" href="{{ url_for('login') }}">Log in</a>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

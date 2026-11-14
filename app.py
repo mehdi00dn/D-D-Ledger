@@ -239,11 +239,60 @@ def csrf_protect():
     if not expected or not sent or not hmac.compare_digest(str(sent), expected):
         if request.endpoint in _AUTH_FORM_ENDPOINTS and session.get('user_id'):
             return redirect(url_for('campaigns_list'))      # the page was submitted again after signing in succeeded: nothing to do
-        return _reject_request('Your session expired or the form was not valid. Reload the page and try again.', 403)
+        return _reject_request('Your session expired or the form was not valid. Reload the page and try again.', 403, title='That form expired')
 
 
 def _wants_json():
     return request.is_json or '/api/' in request.path or request.path.startswith('/uploads/sign')
+
+
+def _is_navigation():
+    """A browser page load or form post (it asks for HTML first).  Script requests (fetch, XHR) ask for */* or JSON, and a bare client
+    (a test, curl) sends nothing, so they keep the plain answers they always had."""
+    return not _wants_json() and request.accept_mimetypes.best == 'text/html'
+
+
+# DL-182 part 9: what a person sees when a page cannot be shown.  (hero line, title, what to do) per status; anything not listed
+# falls back to the 400 text for a client error and the 500 text for a server error.
+ERROR_PAGES = {
+    400: ('Something was off with that request.', 'That request did not work', 'Something in what was sent could not be read. Go back, check the form and try again.'),
+    403: ('That door is closed to you.', 'You can\'t open this', 'You do not have permission to do that. If you think you should, ask the campaign\'s DM.'),
+    404: ('This page wandered off the map.', 'Page not found', 'The link may be old, or the page was removed. Check the address, or head back.'),
+    405: ('That is not how this door opens.', 'That did not work', 'This page cannot be used that way. Go back and use the buttons on the page.'),
+    413: ('That is too much to carry.', 'That is too large', 'What you sent is larger than Oaken accepts. Try something smaller.'),
+    429: ('One moment, adventurer.', 'Slow down a little', 'There were too many requests in a short time. Wait a moment and try again.'),
+    500: ('That one is on us.', 'Something went wrong', 'The fault is ours, not yours. Try again in a moment.'),
+    503: ('Back in a moment.', 'Temporarily unavailable', 'This is not available right now. Try again in a moment.'),
+}
+
+
+def error_page(status, message=None, title=None, headers=None):
+    """The Oaken error page for `status`, or None when it cannot be drawn (the caller then answers in plain text).  `message` and `title`
+    replace the generic wording; `headers` (Retry-After, Allow ...) are copied onto the response."""
+    hero, default_title, default_message = ERROR_PAGES.get(status) or ERROR_PAGES[400 if status < 500 else 500]
+    headers = dict(headers or {})
+    try:
+        html = render_template('error.html', code=status, hero=hero, title=title or default_title, message=message or default_message,
+                               retry=headers.get('Retry-After'))
+    except Exception:                                  # drawing the page must never be what turns one error into two
+        app.logger.exception('could not draw the error page for %s', status)
+        return None
+    resp = Response(html, status=status, mimetype='text/html')
+    for name, value in headers.items():
+        resp.headers[name] = value
+    return resp
+
+
+def _plain_error(message, status, headers=None, title=None):
+    """An error for a page request: the Oaken error page when a browser is asking, otherwise the plain-text answer scripts always got."""
+    if _is_navigation():
+        page = error_page(status, message=message, title=title, headers=headers)
+        if page is not None:
+            return page
+    resp = Response(message, status=status, mimetype='text/plain')
+    for name, value in (headers or {}).items():
+        resp.headers[name] = value
+    return resp
 
 
 # One error shape for every AJAX/JSON route:  {"error": "<sentence safe to show>", "code": "<stable slug>", "request_id": "..."}
@@ -272,22 +321,24 @@ def api_error(message, status, code=None, **extra):
     return resp
 
 
-def _reject_request(message, status):
+def _reject_request(message, status, title=None):
     if _wants_json():
         return api_error(message, status)
-    return Response(message, status=status, mimetype='text/plain')
+    return _plain_error(message, status, title=title)
 
 
 @app.errorhandler(HTTPException)
 def http_error(exc):
     """abort(403), a 404 on an unknown id, a wrong method, an oversized body ... on an AJAX route answers in the standard
     JSON shape instead of an HTML page the frontend cannot read.  Normal pages keep Flask's HTML error pages."""
-    if not _wants_json() or exc.code is None or exc.code < 400:
+    if exc.code is None or exc.code < 400:
         return exc
+    extra = {name: value for name, value in exc.get_headers() if name.lower() not in ('content-type', 'content-length')}   # Allow on a 405, Retry-After on a 429, ...
+    if not _wants_json():
+        return error_page(exc.code, headers=extra) or exc
     resp = api_error(API_ERROR_MESSAGES.get(exc.code), exc.code)
-    for name, value in exc.get_headers():                      # keep Allow on a 405, Retry-After on a 429, ...
-        if name.lower() not in ('content-type', 'content-length'):
-            resp.headers[name] = value
+    for name, value in extra.items():
+        resp.headers[name] = value
     return resp
 
 
@@ -319,10 +370,11 @@ def limit_writes():
     finally:
         db.close()
     if wait:
-        resp = api_error('You are doing that too fast. Wait a moment and try again.', 429) if _wants_json() \
-            else Response('You are doing that too fast. Wait a moment and try again.', status=429, mimetype='text/plain')
-        resp.headers['Retry-After'] = str(wait)
-        return resp
+        if _wants_json():
+            resp = api_error('You are doing that too fast. Wait a moment and try again.', 429)
+            resp.headers['Retry-After'] = str(wait)
+            return resp
+        return _plain_error('You are doing that too fast. Wait a moment and try again.', 429, headers={'Retry-After': str(wait)})
 
 
 def _session_is_current():
@@ -1990,10 +2042,7 @@ def _campaign_create_block(db):
         db.close()
         msg = ('You already own %d campaigns, the most one account can have. Delete one you no longer use first.' % security.MAX_OWNED_CAMPAIGNS
                if owned >= security.MAX_OWNED_CAMPAIGNS else 'You are creating campaigns too fast. Try again in a little while.')
-        resp = Response(msg, status=429, mimetype='text/plain')
-        if wait:
-            resp.headers['Retry-After'] = str(wait)
-        return resp
+        return _plain_error(msg, 429, headers={'Retry-After': str(wait)} if wait else None)
     db.commit()
     return None
 
@@ -3131,7 +3180,7 @@ def quota_exceeded(exc):
     if request.method == 'POST' and ref.netloc == request.host and ref.path:
         sep = '&' if ref.query else '?'
         return redirect(f"{ref.path}{'?' + ref.query if ref.query else ''}{sep}quota_error={exc.scope}")
-    return Response(str(exc), status=413, mimetype='text/plain')
+    return _plain_error(str(exc), 413)
 
 
 @app.errorhandler(StorageError)
@@ -3139,8 +3188,7 @@ def storage_unavailable(exc):
     app.logger.error('storage error: %s', exc)
     if request.is_json or '/api/' in request.path or request.path.startswith('/uploads/sign'):
         return api_error('File storage is temporarily unavailable. Try again in a moment.', 503, code='storage_unavailable')
-    return Response('File storage is temporarily unavailable. Please try again in a moment.', status=503,
-                    mimetype='text/plain')
+    return _plain_error('File storage is temporarily unavailable. Please try again in a moment.', 503)
 
 
 @app.route('/')
