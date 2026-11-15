@@ -798,6 +798,9 @@ body.page-leaving .content {
 .detail-notes { font-size: 13px; color: var(--parchment-dim); line-height: 1.6; margin-top: 14px; }
 .detail-notes .note-block-text { margin-bottom: 8px; }
 .detail-notes .note-block-text:last-child { margin-bottom: 0; }
+/* A line between one note and the next (DL-182): each note is its own entry, so they read as separate notes */
+.detail-notes .note-block-text + .note-block-text { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--hairline); }
+.o-paper .detail-notes .note-block-text + .note-block-text { border-top-color: var(--hairline-strong); }
 /* A note only the DM / creator can see (Players never receive it). */
 .note-block-hidden { border-inline-start: 2px dashed var(--brass-dim); padding-inline-start: 10px; }
 .note-hidden-label {
