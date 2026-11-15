@@ -16,6 +16,9 @@ sys.path.insert(0, APP_DIR)
 BACKEND = os.environ.get('OAKEN_TEST_BACKEND', 'sqlite')
 SECRET = 'test-secret-key-not-for-production'
 os.environ['SECRET_KEY'] = SECRET
+# DL-184: every account would get the tutorial campaign on its first visit to the list; most tests count campaigns, so it is off here
+# (tests/test_tutorial_campaign.py switches it on for itself).
+os.environ['OAKEN_TUTORIAL_CAMPAIGN'] = '0'
 # The suite registers/logs in hundreds of times from one address; production limits would trip.
 # (tests/test_login_throttle.py lowers them explicitly to prove they work.)
 os.environ.update(REGISTER_LIMIT_IP='1000000', LOGIN_LIMIT_PAIR='1000000', LOGIN_LIMIT_USER='1000000', LOGIN_LIMIT_IP='1000000',

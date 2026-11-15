@@ -19,6 +19,7 @@ This is the working inventory behind "only collect what is necessary" (DL-84). I
 | `email_confirm_required` | Whether this account still has to confirm its email before it can create or join a campaign. Set at sign-up, never changed by the person. | Nobody. |
 | `cookies_accepted_at` | When the "I accept the cookies" box was ticked at sign-up (the site only sets its one sign-in cookie). | Nobody. |
 | `terms_accepted_at` | When the account was made, which counts as agreeing to the Terms and Privacy page (the first tick box on the sign-up page). | Nobody. |
+| `tutorial_campaign_at` | Remembers that the account has been given its copy of the Tutorial campaign, so deleting it does not bring it back. | Nobody. |
 | `session_version` | Lets "sign out everywhere" end other devices' sessions. | Nobody. |
 | `created_at` | When the account was made. | Nobody. |
 

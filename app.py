@@ -1,6 +1,7 @@
 import os
 import re
 import uuid
+import time
 import io
 import json
 import zipfile
@@ -2018,6 +2019,7 @@ CAMPAIGN_IMPORT_NOTES = {                      # ?import_error=<code> on the cam
 
 @app.route('/campaigns')
 def campaigns_list():
+    give_tutorial_campaign(session['user_id'])         # DL-184: once per account, before the list is read
     db = get_db()
     campaigns = db.execute('''
         SELECT c.*, cm.role AS my_role, cm.status AS my_status,
@@ -6704,13 +6706,9 @@ def _decode_zip_images(zf, jobs):
     return out
 
 
-def _import_campaign(db, zf, c):
-    """Make a NEW campaign, owned by the signed-in person, from campaign_transfer.normalize_manifest's output `c`.
-    Returns its id, or None when the images would pass a storage limit (nothing is kept).  Every image is validated and
-    re-encoded like any upload, stored under a fresh key and uploaded before the commit, so a failure keeps nothing."""
-    me = session['user_id']
+def _campaign_image_jobs(c):
+    """{image name in the file: (kind, longest-edge cap or None)} for every picture a normalised campaign manifest refers to."""
     camp = c['campaign']
-
     jobs = {}
     if camp['avatar_file']:
         jobs[camp['avatar_file']] = ('avatars', CAMPAIGN_BANNER_PX)
@@ -6725,7 +6723,20 @@ def _import_campaign(db, zf, c):
     for m in c['maps']:
         if m['image_file']:
             jobs.setdefault(m['image_file'], ('maps', None))
-    decoded = _decode_zip_images(zf, jobs)
+    return jobs
+
+
+def _import_campaign(db, zf, c, *, owner_id=None, enforce_quota=True, decoded=None):
+    """Make a NEW campaign, owned by the signed-in person (or `owner_id`), from campaign_transfer.normalize_manifest's output `c`.
+    Returns its id, or None when the images would pass a storage limit (nothing is kept).  Every image is validated and
+    re-encoded like any upload, stored under a fresh key and uploaded before the commit, so a failure keeps nothing.
+    `enforce_quota=False` (the tutorial) records the images against the owner but never turns the campaign away; `decoded` is a
+    ready-made {image name: images.Processed}, so the same file is not decoded again for every copy."""
+    me = owner_id if owner_id is not None else session['user_id']
+    camp = c['campaign']
+
+    if decoded is None:
+        decoded = _decode_zip_images(zf, _campaign_image_jobs(c))
 
     pending = []                                   # (key, Processed), uploaded just before the commit
 
@@ -6826,12 +6837,13 @@ def _import_campaign(db, zf, c):
 
     # Upload every queued image BEFORE committing, so a storage failure rolls the whole import back
     # instead of leaving rows that point at missing files.
-    try:
-        quotas.check(db, me, campaign_id, sum(len(p.data) for _, p in pending))
-    except quotas.QuotaExceeded:
-        db.rollback()
-        db.close()
-        return None
+    if enforce_quota:
+        try:
+            quotas.check(db, me, campaign_id, sum(len(p.data) for _, p in pending))
+        except quotas.QuotaExceeded:
+            db.rollback()
+            db.close()
+            return None
     st = get_storage()
     try:
         with ThreadPoolExecutor(6) as pool:
@@ -6881,6 +6893,75 @@ def campaign_import():
         return redirect(url_for('campaigns_list', import_error='quota'))
     session['last_campaign_id'] = campaign_id
     return redirect(url_for('campaign_home', campaign_id=campaign_id))
+
+
+# ---------------- TUTORIAL CAMPAIGN (DL-184) ----------------
+# Every account gets its own copy of the DM's Tutorial campaign, once.  The campaign is kept in the repo as the whole-campaign
+# export it was made from (tutorial/tutorial-campaign.zip), so it is updated by replacing that file.  The copy is made with the same
+# code as "Import a campaign", so the account is its owner and DM and nothing but what the file holds is in it: the activity feed,
+# the dice rolls and the battle log are not part of an export and start empty.  users.tutorial_campaign_at records that the account
+# has had its copy, so deleting it does not bring it back.  OAKEN_TUTORIAL_CAMPAIGN=0 turns the whole thing off.
+TUTORIAL_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'tutorial', 'tutorial-campaign.zip')
+TUTORIAL_RETRY_SECONDS = 300                        # after a failed copy, this process leaves that account alone for a while
+_tutorial_cache = {}                                # 'data' (the file) and 'decoded' (its images), read once per process
+_tutorial_retry = {}                                # {user id: time.monotonic() before which no new attempt is made}
+
+
+def _tutorial_source():
+    """(ZipFile, normalised manifest, decoded images) for one copy of the stored tutorial, or None when the file is missing or unusable.
+    The file is read and its pictures decoded once per process; the manifest is normalised for every copy, because a copy is built from it."""
+    try:
+        if 'data' not in _tutorial_cache:
+            with open(TUTORIAL_FILE, 'rb') as fh:
+                _tutorial_cache['data'] = fh.read()
+        zf, raw = importer.open_zip(_tutorial_cache['data'], manifest_limit=campaign_transfer.MANIFEST_LIMIT)
+        clean = campaign_transfer.normalize_manifest(
+            raw, sanitize_notes=sanitize_notes_payload, sanitize_bio=sanitize_bio, icon_keys=PIN_ICON_KEYS, class_keys=CLASS_KEYS,
+            statuses=CAMPAIGN_STATUS_CHOICES, limits=CAMPAIGN_TRANSFER_LIMITS)
+    except (OSError, importer.ImportRejected):
+        _tutorial_cache.clear()
+        app.logger.error('the tutorial campaign file is missing or unusable: %s', TUTORIAL_FILE, exc_info=True)
+        return None
+    for entry in clean['treasury']:                 # the starting coins are dated when the copy is made, not when the DM wrote them
+        entry['created_at'] = None
+    if 'decoded' not in _tutorial_cache:
+        _tutorial_cache['decoded'] = _decode_zip_images(zf, _campaign_image_jobs(clean))
+    return zf, clean, _tutorial_cache['decoded']
+
+
+def give_tutorial_campaign(user_id):
+    """Make the tutorial campaign for this account if it has not had it yet.  Returns the new campaign's id, or None when nothing was made
+    (already had it, switched off, the file or column is missing, or the copy failed).  A failure is logged and never raised: the page the
+    person asked for must still open, and the next visit tries again."""
+    if os.environ.get('OAKEN_TUTORIAL_CAMPAIGN', '1') == '0' or time.monotonic() < _tutorial_retry.get(user_id, 0):
+        return None
+    db = get_db()
+    try:
+        row = db.execute('SELECT tutorial_campaign_at FROM users WHERE id = ?', (user_id,)).fetchone()
+    except pgerr.UndefinedColumn:                       # code deployed before migration 0059 was applied: carry on without it
+        db.rollback()
+        app.logger.error('users.tutorial_campaign_at is missing: apply migration 0059_tutorial_campaign.sql')
+        return None
+    if row is None or row['tutorial_campaign_at'] is not None:
+        return None
+    try:
+        source = _tutorial_source()
+        if source is None:
+            _tutorial_retry[user_id] = time.monotonic() + TUTORIAL_RETRY_SECONDS
+            return None
+        zf, clean, decoded = source
+        # The claim and the copy are one transaction: a failed copy leaves the account unclaimed, and two requests at once
+        # cannot both make one (the second waits on this row, then finds it claimed).
+        if not db.execute('UPDATE users SET tutorial_campaign_at = ' + _UTC_NOW + ' WHERE id = ? AND tutorial_campaign_at IS NULL',
+                          (user_id,)).rowcount:
+            db.rollback()
+            return None
+        return _import_campaign(db, zf, clean, owner_id=user_id, enforce_quota=False, decoded=decoded)
+    except Exception:                                   # noqa: BLE001 - see the docstring
+        db.rollback()
+        _tutorial_retry[user_id] = time.monotonic() + TUTORIAL_RETRY_SECONDS
+        app.logger.exception('could not give account %s the tutorial campaign', user_id)
+        return None
 
 
 # ---------------- MAPS ----------------
