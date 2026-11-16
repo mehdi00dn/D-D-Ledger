@@ -156,7 +156,7 @@ body.pub .pub-header, body.pub .pub-header.is-scrolled { background: var(--pub-f
 .pub-footer { background: var(--pub-forest); color: var(--pub-text); border-block-start: 1px solid rgba(185, 154, 87, 0.28); padding-block-start: 52px; font-family: var(--pub-font-body); line-height: 1.6; }
 .pub-foot-grid { display: grid; grid-template-columns: 1.4fr repeat(3, 1fr); gap: 32px; }
 .pub-foot-brand p { margin: 14px 0 0; font-size: 14.5px; color: var(--pub-text-2); max-inline-size: 26ch; }
-.pub-foot-col h3 { margin: 0 0 14px; font-family: var(--pub-font-mono); font-size: 12px; font-weight: 500; letter-spacing: 0.13em; text-transform: uppercase; color: var(--pub-moss-hi); }
+.pub-foot-col h2 { margin: 0 0 14px; font-family: var(--pub-font-mono); font-size: 12px; font-weight: 500; letter-spacing: 0.13em; text-transform: uppercase; color: var(--pub-moss-hi); }
 .pub-foot-col ul { display: grid; gap: 4px; }
 .pub-foot-col a { display: inline-block; padding-block: 4px; font-size: 14.5px; color: var(--pub-text-2); text-decoration: none; transition: color 160ms ease; }
 @media (hover: hover) and (pointer: fine) { .pub-foot-col a:hover { color: var(--pub-text); text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--pub-brass); } }
@@ -179,7 +179,7 @@ body.pub .pub-header, body.pub .pub-header.is-scrolled { background: var(--pub-f
 .pub-sheet .auth-title { font-size: clamp(28px, 4vw, 38px); line-height: 1.12; margin-block-end: 8px; }
 .pub-sheet .auth-sub { font-size: 16px; margin-block-end: 26px; max-inline-size: 60ch; }
 .pub-sheet .legal h2 { font: 600 19px/1.3 var(--pub-font-display); margin: 30px 0 8px; }
-.pub-sheet .legal p, .pub-sheet .legal li { font-size: 16px; line-height: 1.7; max-inline-size: 68ch; }
+.pub-sheet .legal p, .pub-sheet .legal li { font-size: 16px; line-height: 1.7; max-inline-size: 68ch; overflow-wrap: anywhere; }   /* DL-182 part 10: a long address on the About page pushed the phone 68px sideways */
 .pub-sheet .legal li { margin-block: 4px; }
 .pub-sheet .legal a { color: var(--paper-accent-ink); }                                  /* brass is too pale on paper; the ink variant passes 4.5:1 */
 .pub-sheet .legal-nav a[aria-current="page"] { color: var(--paper-accent-ink); border-color: var(--paper-line-strong); }

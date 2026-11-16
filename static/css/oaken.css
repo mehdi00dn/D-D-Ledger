@@ -76,9 +76,9 @@
   /* paper: the journal-like panels. Same warm paper in both themes; the dark theme tints it a little deeper (as in the references). */
   --paper-base: var(--oak-tan);
   --paper-ink: var(--oak-ink-800);
-  --paper-ink-dim: var(--oak-ink-700);
-  --paper-ink-faint: var(--oak-ink-600);
-  --paper-accent-ink: #5c4519;               /* brass-700 darkened a step: on the dark theme's tan paper the texture highlights brought it under 4.5:1 */
+  --paper-ink-dim: #4a3d28;                  /* DL-182 part 10: a step darker than ink-700 and ink-600; the small labels (9 to 12px) on the dark theme's deeper tan */
+  --paper-ink-faint: #54462f;                /* measured 4.0 to 4.2:1 against the texture's darker patches, now 4.8:1 or better */
+  --paper-accent-ink: #513b17;               /* brass-700 darkened two steps: on the dark theme's tan paper the texture's darker patches kept it near 4.3:1 */
   --paper-line: rgba(70, 50, 20, 0.24);
   --paper-line-strong: rgba(70, 50, 20, 0.42);
   --paper-shadow: 0 2px 0 rgba(0, 0, 0, 0.25), 0 10px 22px rgba(0, 0, 0, 0.4);
@@ -103,7 +103,7 @@
   --o-surface-inset: #e9dfc6;
   --o-text: var(--oak-ink-800);
   --o-text-muted: #5a5043;
-  --o-text-faint: #6b5f4c;
+  --o-text-faint: #645943;                 /* DL-182 part 10: was #6b5f4c, 4.4:1 for the 10.5px tab labels on the light sidebar and tab bar */
   --o-border: rgba(90, 65, 20, 0.2);
   --o-border-strong: rgba(90, 65, 20, 0.34);
   --o-scrim: rgba(40, 30, 14, 0.5);
@@ -161,7 +161,7 @@
   --brass-ink: var(--paper-accent-ink);
   --brass-bright-ink: var(--paper-accent-ink);
   --brass-dim-ink: var(--paper-ink-dim);
-  --moss-ink: #315a43;
+  --moss-ink: #27503a;                       /* DL-182 part 10: the NPC tag measured 4.1 to 4.4:1 */
   --blood-ink: #8c2e28;
   --blood-ink-sm: #92302a;
   --blue-ink: #1f5f8f;

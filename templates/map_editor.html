@@ -23,7 +23,7 @@
       <span class="toggle-switch-label">Link to current battle</span>
     </label>
     {% endif %}
-    <a href="{{ url_for('maps_list', browse=1) }}" class="btn btn-ghost map-back-btn">{{ icon('arrow-left') }} <span>Back to maps</span></a>
+    <a href="{{ url_for('maps_list', browse=1) }}" class="btn btn-ghost map-back-btn" aria-label="Back to maps">{{ icon('arrow-left') }} <span>Back to maps</span></a>
   </div>
 </div>
 

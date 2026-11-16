@@ -66,6 +66,9 @@
 .auth-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-block: 2px 4px; font-size: 13px; }
 .auth-link { color: var(--brass-ink); font-weight: 500; }
 .auth-link:hover { text-decoration: underline; }
+/* DL-182 part 10: standalone links are at least 24px tall to hit */
+.auth-row .auth-link { display: inline-flex; align-items: center; min-block-size: 24px; }
+.auth-switch a { display: inline-block; padding-block: 4px; margin-block: -4px; }
 
 .pw-wrap { position: relative; }
 .pw-wrap input { padding-inline-end: 44px; }

@@ -49,7 +49,7 @@ def test_treasury_updates_without_reloading(pw, shared_server):
     page.click('.treasury-filter a:has-text("Frodo")'); expect(page.locator('.treasury-entry')).to_have_count(1)
     page.once('dialog', lambda d: d.accept())
     page.locator('.treasury-entry button.quest-delete').first.click()
-    page.click('.modal-confirm, [data-confirm-ok], button:has-text("Confirm"), button:has-text("Remove")') if page.locator('.confirm-modal, [role=alertdialog]').count() else None
+    page.click('#confirm-modal-yes') if page.locator('#confirm-modal:not([hidden])').count() else None      # the styled question, only if it is open (the panel always exists, and has a dialog role)
     expect(page.locator('.treasury-entry')).to_have_count(0)
     assert loads == [] , loads                      # nothing was a page load
     assert not [b for b in bad if b[0] != 400] and not errs, (bad, errs)       # the one 400 is the refused overspend
