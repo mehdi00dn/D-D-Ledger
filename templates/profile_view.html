@@ -5,7 +5,7 @@
 
 {% block content %}
 <article class="profile-page">
-  <header class="profile-head o-paper o-burn o-burn--soft">
+  <header class="profile-head o-paper">
     <div class="profile-avatar"{% if owner.avatar_path %} data-lightbox-src="{{ url_for('uploaded_file', filename=owner.avatar_path) }}" role="button" tabindex="0" aria-label="View {{ owner.display_name or owner.username }}'s photo larger"{% endif %}>
       {% if owner.avatar_path %}<img src="{{ url_for('uploaded_file', filename=owner.avatar_path) }}" alt="">{% else %}{{ icon('user') }}{% endif %}
     </div>

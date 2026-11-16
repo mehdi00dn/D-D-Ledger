@@ -35,7 +35,7 @@
 <div class="detail-layout has-viewer">
 <div class="cd-main">
 
-  <section class="cf-card o-paper o-burn o-burn--soft cd-hero{{ ' has-class' if character.class_key else '' }}" aria-label="Character summary">
+  <section class="cf-card o-paper cd-hero{{ ' has-class' if character.class_key else '' }}" aria-label="Character summary">
     {% if character.class_key %}<div class="class-badge">{{ class_icon(character.class_key) }}</div>{% endif %}
     <div class="avatar-frame cd-avatar">
       {% if character.avatar_path %}

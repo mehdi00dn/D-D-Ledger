@@ -1,12 +1,12 @@
 /* ==========================================================================
    Oaken: shared foundations (DL-180)
-   One file for the palette, the semantic tokens of both themes, and the paper / wood materials (with a hover scorch on paper panels, drawn in CSS).
+   One file for the palette, the semantic tokens of both themes, and the paper / wood materials (and the quiet lift that clickable paper cards take on hover).
    Loaded before style.css, which maps its older token names onto the values below.
 
    1. Palette ramps (raw colours; pages never use these directly, they use the semantic tokens)
    2. Semantic tokens, dark and light
    3. Material assets (the only place that names an image file)
-   4. Material classes: .o-paper, .o-burn, .o-surface, .o-wood, .o-wood-frame, .o-backdrop
+   4. Material classes: .o-paper, .o-lift, .o-surface, .o-wood, .o-wood-frame, .o-backdrop
    Texture rules: not every surface gets one; no texture behind long text; one texture per surface; overlays never take clicks.
    ========================================================================== */
 
@@ -82,13 +82,12 @@
   --paper-line: rgba(70, 50, 20, 0.24);
   --paper-line-strong: rgba(70, 50, 20, 0.42);
   --paper-shadow: 0 2px 0 rgba(0, 0, 0, 0.25), 0 10px 22px rgba(0, 0, 0, 0.4);
+  --paper-lift-ring: rgba(185, 154, 87, 0.55);   /* brass: the brown paper line is invisible against the dark page */
+  --paper-shadow-lift: 0 2px 0 rgba(0, 0, 0, 0.25), 0 16px 30px rgba(0, 0, 0, 0.46), 0 0 0 1px var(--paper-lift-ring);   /* the same shadow, deeper, with a hairline ring */
 
   --texture-parchment: var(--tx-parchment-light);
   --texture-surface: var(--tx-parchment-dark);
   --texture-wood: var(--tx-oak-dark);
-  --burn-stain: rgba(150, 92, 30, 0.22);         /* the scorch that burns in along a panel's edge on hover (.o-burn): amber stain, */
-  --burn-scorch: rgba(96, 54, 20, 0.42);          /* brown band, */
-  --burn-char: rgba(34, 18, 8, 0.66);             /* and the ragged char at the very edge */
   --surface-texture-opacity: 0.6;
   --surface-blend: normal;
   --backdrop-painting: var(--bg-torrent);
@@ -123,12 +122,11 @@
 
   --paper-base: #fbf6e9;
   --paper-shadow: 0 1px 0 rgba(255, 255, 255, 0.6), 0 8px 18px rgba(90, 65, 20, 0.16);
+  --paper-lift-ring: var(--paper-line-strong);
+  --paper-shadow-lift: 0 1px 0 rgba(255, 255, 255, 0.6), 0 14px 26px rgba(90, 65, 20, 0.22), 0 0 0 1px var(--paper-lift-ring);
 
   --texture-surface: var(--tx-parchment-light);
   --texture-wood: var(--tx-oak-light);
-  --burn-stain: rgba(176, 118, 48, 0.2);
-  --burn-scorch: rgba(120, 70, 26, 0.36);
-  --burn-char: rgba(58, 30, 10, 0.58);
   --surface-texture-opacity: 0.55;
   --surface-blend: soft-light;
   --backdrop-painting: var(--bg-river-pale);
@@ -206,71 +204,25 @@
   color: var(--oak-parchment-200);
 }
 
-/* Burn on hover (the .o-burn class, kept under its old name so no template changes).  A panel rests with a clean edge; when the pointer is on it,
-   the edge scorches the way paper does: a faint amber stain, a brown band and, right at the edge, a ragged line of char.  Two pseudo-elements make it,
-   both above the paper and below the content, so text and controls are never touched and nothing inside the panel repaints.  ::before holds the soft
-   part (stain and brown), ::after the char.  Each is an edge gradient on all four sides plus a heavier corner, broken up by a tiled noise mask, so the
-   band is wider in one place and gone in another and never runs as a clean line.  The noise is two tiny inline SVGs (feTurbulence), rasterised once,
-   the first time a panel is hovered: no file to fetch and no filter on the panel.  Only opacity animates, and the char follows the stain by a beat,
-   as heat does.  Touch screens have no hover, so they never see it; keyboard focus on the panel itself shows it too.  --soft is the quieter version
-   used for cards inside the app; the plain class is the stronger one for the sign-in card and the legal sheets. */
-:root {
-  --burn-noise-soft: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='560' height='480'%3E%3Cfilter id='n' x='0' y='0' width='100%25' height='100%25' color-interpolation-filters='sRGB'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.012' numOctaves='4' seed='11' stitchTiles='stitch' result='a'/%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.11' numOctaves='2' seed='5' stitchTiles='stitch' result='b'/%3E%3CfeColorMatrix in='a' values='1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 0 0 0 0 1' result='ag'/%3E%3CfeColorMatrix in='b' values='1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 0 0 0 0 1' result='bg'/%3E%3CfeComposite in='ag' in2='bg' operator='arithmetic' k1='0' k2='1' k3='.3' k4='-.15'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 3 0 0 0 -0.9'/%3E%3C/filter%3E%3Crect width='560' height='480' filter='url(%23n)'/%3E%3C/svg%3E");
-  --burn-noise-char: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='512' height='448'%3E%3Cfilter id='n' x='0' y='0' width='100%25' height='100%25' color-interpolation-filters='sRGB'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.011' numOctaves='3' seed='4' stitchTiles='stitch' result='a'/%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.13' numOctaves='2' seed='9' stitchTiles='stitch' result='b'/%3E%3CfeColorMatrix in='a' values='1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 0 0 0 0 1' result='ag'/%3E%3CfeColorMatrix in='b' values='1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 0 0 0 0 1' result='bg'/%3E%3CfeComposite in='ag' in2='bg' operator='arithmetic' k1='0' k2='1' k3='.38' k4='-.19'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 5.5 0 0 0 -2.35'/%3E%3C/filter%3E%3Crect width='512' height='448' filter='url(%23n)'/%3E%3C/svg%3E");
-}
-.o-burn { position: relative; isolation: isolate; }
-.o-burn::before, .o-burn::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  pointer-events: none;
-  border-radius: inherit;
-  opacity: 0;
-  background-repeat: no-repeat;
-  -webkit-mask-repeat: repeat;
-  mask-repeat: repeat;
-  transition: opacity 0.5s ease;
-}
-.o-burn::before {
-  background:
-    radial-gradient(circle farthest-side at 0 0, var(--burn-scorch), var(--burn-stain) 45%, transparent) 0 0 / 42px 42px no-repeat,
-    radial-gradient(circle farthest-side at 100% 0, var(--burn-scorch), var(--burn-stain) 45%, transparent) 100% 0 / 32px 32px no-repeat,
-    radial-gradient(circle farthest-side at 0 100%, var(--burn-scorch), var(--burn-stain) 45%, transparent) 0 100% / 38px 38px no-repeat,
-    radial-gradient(circle farthest-side at 100% 100%, var(--burn-scorch), var(--burn-stain) 45%, transparent) 100% 100% / 46px 46px no-repeat,
-    linear-gradient(to bottom, var(--burn-scorch), var(--burn-stain) 38%, transparent) 0 0 / 100% 30px no-repeat,
-    linear-gradient(to top, var(--burn-scorch), var(--burn-stain) 38%, transparent) 0 100% / 100% 36px no-repeat,
-    linear-gradient(to right, var(--burn-scorch), var(--burn-stain) 38%, transparent) 0 0 / 30px 100% no-repeat,
-    linear-gradient(to left, var(--burn-scorch), var(--burn-stain) 38%, transparent) 100% 0 / 34px 100% no-repeat;
-  -webkit-mask-image: var(--burn-noise-soft);
-  mask-image: var(--burn-noise-soft);
-  -webkit-mask-size: 560px 480px;
-  mask-size: 560px 480px;
-}
-.o-burn::after {
-  background:
-    radial-gradient(circle farthest-side at 0 0, var(--burn-char), transparent) 0 0 / 18px 18px no-repeat,
-    radial-gradient(circle farthest-side at 100% 0, var(--burn-char), transparent) 100% 0 / 16px 16px no-repeat,
-    radial-gradient(circle farthest-side at 0 100%, var(--burn-char), transparent) 0 100% / 17px 17px no-repeat,
-    radial-gradient(circle farthest-side at 100% 100%, var(--burn-char), transparent) 100% 100% / 22px 22px no-repeat,
-    linear-gradient(to bottom, var(--burn-char), var(--burn-char) 22%, transparent) 0 0 / 100% 7px no-repeat,
-    linear-gradient(to top, var(--burn-char), var(--burn-char) 22%, transparent) 0 100% / 100% 9px no-repeat,
-    linear-gradient(to right, var(--burn-char), var(--burn-char) 22%, transparent) 0 0 / 6px 100% no-repeat,
-    linear-gradient(to left, var(--burn-char), var(--burn-char) 22%, transparent) 100% 0 / 10px 100% no-repeat;
-  -webkit-mask-image: var(--burn-noise-char);
-  mask-image: var(--burn-noise-char);
-  -webkit-mask-size: 512px 448px;
-  mask-size: 512px 448px;
-  -webkit-mask-position: 83px 41px;
-  mask-position: 83px 41px;
-  transition-delay: 0.12s;
+/* Lift on hover (.o-lift, on a paper card that is a thing to open: a character, a faction, a map, a journal session, a library entry).
+   At rest the card is flat.  When a mouse is over it, it rises 2px, its shadow deepens and a hairline ring draws in; nothing else on the card moves.
+   180ms with --ease-out, so it answers at once and settles softly; a mouse leaving mid-way turns it round from where it is, because these are
+   transitions, not keyframes.  Only a pointer that can hover gets the movement (touch screens never see it), keyboard focus inside the card shows
+   the ring without the movement, and with reduced motion the card stays put and only the shadow and ring change.  Panels that are not clickable
+   (the Overview cards, the sign-in card, the legal sheets, empty states) have no hover at all. */
+:root { --ease-out: cubic-bezier(0.23, 1, 0.32, 1); }
+.o-paper.o-lift {
+  position: relative;
+  transition: transform 180ms var(--ease-out), box-shadow 180ms var(--ease-out), border-color 180ms var(--ease-out);
 }
 @media (hover: hover) and (pointer: fine) {
-  .o-burn:hover::before, .o-burn:hover::after { opacity: var(--burn-on, 1); }
+  .o-paper.o-lift:hover { transform: translateY(-2px); box-shadow: var(--paper-shadow-lift); border-color: transparent; }
 }
-.o-burn:focus-visible::before, .o-burn:focus-visible::after { opacity: var(--burn-on, 1); }
-.o-burn--soft { --burn-on: 0.8; }
-@media (prefers-reduced-motion: reduce) { .o-burn::before, .o-burn::after { transition: none; } }
+.o-paper.o-lift:has(:focus-visible) { box-shadow: var(--paper-shadow-lift); border-color: transparent; }
+@media (prefers-reduced-motion: reduce) {
+  .o-paper.o-lift { transition: box-shadow 180ms ease, border-color 180ms ease; }
+  .o-paper.o-lift:hover { transform: none; }
+}
 
 /* Surface: a solid app surface with a quiet grain.  Dense cards, forms and controls use this (or no texture at all).
    DL-180 part 2: the app's own form panel (.form-panel) takes the same grain, so every form card in the app has it without a markup change. */
@@ -293,8 +245,6 @@
   opacity: var(--surface-texture-opacity);
   mix-blend-mode: var(--surface-blend, normal);
 }
-
-@media print { .o-burn::before, .o-burn::after { display: none; } }
 
 /* Wood: a structural rail or frame (sidebar edge, header strip).  Kept narrow; never a full card face. */
 .o-wood {
@@ -331,6 +281,5 @@
 
 @media (prefers-contrast: more) {
   .o-surface::before, .form-panel:not(.o-paper)::before { opacity: 0.35; }
-  .o-burn::before, .o-burn::after { display: none; }
   .o-backdrop { background-image: none; }
 }

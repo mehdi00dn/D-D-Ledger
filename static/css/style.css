@@ -679,7 +679,6 @@ body.page-leaving .content {
   transition: border-color 0.15s ease, transform 0.15s ease, background-color 0.4s ease, box-shadow 0.4s ease;
   clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 0 100%);
 }
-.dossier-card:hover { border-color: var(--hairline-strong); transform: translateY(-2px); }
 
 .dossier-tag {
   position: absolute;
@@ -922,7 +921,6 @@ body.page-leaving .content {
   box-shadow: var(--shadow-deep);
   transition: transform 0.15s ease, border-color 0.15s ease, background-color 0.4s ease, box-shadow 0.4s ease;
 }
-.group-card:hover { transform: translateY(-2px); border-color: var(--hairline-strong); }
 
 .group-image-block {
   width: 100%;
@@ -2220,7 +2218,6 @@ body.page-leaving .content {
   transition: transform 0.15s ease, border-color 0.15s ease;
   color: inherit;
 }
-.map-card:hover { transform: translateY(-2px); border-color: var(--hairline-strong); }
 .map-card-image-link { display: block; }
 .map-card-image { position: relative; width: 100%; height: 150px; background: var(--bg-panel-inset); overflow: hidden; }
 .map-card-image img { width: 100%; height: 100%; object-fit: cover; display: block; }
@@ -5653,7 +5650,6 @@ a.pager-link:hover { border-color: var(--brass); }
 .journal-month-title { margin: 0 0 10px; font: 600 13px var(--font-body); letter-spacing: 0.02em; color: var(--parchment-dim); }
 .journal-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
 .journal-row { display: grid; grid-template-columns: 1fr auto; align-items: start; background: var(--bg-panel); border: 1px solid var(--hairline); border-radius: var(--radius-m); transition: border-color 0.18s ease; }
-.journal-row:hover, .journal-row:focus-within { border-color: var(--brass); }
 .journal-item { display: grid; grid-template-columns: 64px 1fr; gap: 6px 16px; align-items: baseline; padding: 14px 6px 14px 18px; min-inline-size: 0; color: var(--parchment); text-decoration: none; border-radius: var(--radius-m); }
 .journal-date { font: 600 14px var(--font-mono); color: var(--brass-ink, var(--parchment-dim)); white-space: nowrap; }
 .journal-main { display: grid; gap: 4px; min-inline-size: 0; }
@@ -5670,7 +5666,6 @@ a.pager-link:hover { border-color: var(--brass); }
 .journal-empty p { margin: 0; color: var(--parchment-dim); max-inline-size: 60ch; }
 .journal-body { max-inline-size: 760px; display: grid; gap: 14px; font-size: 15.5px; line-height: 1.65; overflow-wrap: anywhere; }
 @media (max-width: 600px) { .journal-item { grid-template-columns: 1fr; padding-inline-end: 4px; } .journal-actions { flex-direction: column; } }
-@media (prefers-reduced-motion: reduce) { .journal-row { transition: none; } }
 
 
 /* Avatars that open the lightbox when clicked (character page, Characters list, Overview party, profile, peek) */
@@ -5754,7 +5749,7 @@ body:has(.tool-flyout.open) .pin-action-bubble.is-docked { opacity: 0; pointer-e
 /* ==========================================================================
    DL-182: the core campaign pages in the Oaken materials (Overview, Characters, Battle)
    Same layouts as before.  What changes is the surface: the campaign header is a painting in an oak frame, the journal-like panels (Overview cards, character
-   dossiers) are paper with a burned edge, and the battle list is a paper panel in an oak frame.  Dense controls (inputs, HP buttons, filters) stay plain.
+   dossiers) are paper, and the battle list is a paper panel in an oak frame.  Dense controls (inputs, HP buttons, filters) stay plain.
    ========================================================================== */
 
 /* ---- A painted banner: the Overview header and the title strip of Characters and Battle ---- */
@@ -5856,10 +5851,8 @@ body:has(.tool-flyout.open) .pin-action-bubble.is-docked { opacity: 0; pointer-e
 .dossier-card.o-paper {
   background-color: var(--paper-base); background-image: var(--texture-parchment); background-size: 512px 512px; background-blend-mode: multiply;
   border: 0; border-radius: var(--radius-m); clip-path: none; padding: 22px 22px 20px; box-shadow: var(--paper-shadow);
-  transition: transform 0.15s ease, box-shadow 0.2s ease;
 }
 :root[data-theme="light"] .dossier-card.o-paper { background-blend-mode: normal; }
-.dossier-card.o-paper:hover { border-color: transparent; transform: translateY(-2px); box-shadow: var(--paper-shadow), 0 0 0 1px var(--paper-line-strong); }
 .dossier-card.o-paper .dossier-tag {
   inset-block-start: 14px; inset-inline-end: 16px; padding: 2px 9px; border-radius: 999px; background: none;
   box-shadow: inset 0 0 0 1px var(--paper-line-strong); color: var(--paper-accent-ink);
@@ -5937,7 +5930,7 @@ body:has(.tool-flyout.open) .pin-action-bubble.is-docked { opacity: 0; pointer-e
 /* ==========================================================================
    DL-182 part 2: Factions, Treasury, Maps, Dice, Reference, Journal, Activity in the Oaken materials.
    Parchment is for cards that read like pages (factions, maps, journal, the reference entry); dense panels (treasury, dice, lists) are
-   plain paper with no burned edge.  The page itself stays the app background.  Controls keep their clean surfaces.
+   plain paper.  The page itself stays the app background.  Controls keep their clean surfaces.
    ========================================================================== */
 
 /* one paper recipe for every component that already has its own background shorthand (it would otherwise win over .o-paper) */
@@ -5949,8 +5942,7 @@ body:has(.tool-flyout.open) .pin-action-bubble.is-docked { opacity: 0; pointer-e
 :root[data-theme="light"] :is(.group-card, .map-card, .guide-card, .dice-card, .empty-state, .journal-row, .activity-list, .roll-log-list, .ref-detail, .cf-card).o-paper { background-blend-mode: normal; }
 
 /* Factions and Maps: a paper card with its picture on top */
-.group-card.o-paper, .map-card.o-paper { border-radius: var(--radius-m); transition: transform 0.15s ease, box-shadow 0.2s ease; }
-.group-card.o-paper:hover, .map-card.o-paper:hover { border-color: transparent; box-shadow: var(--paper-shadow), 0 0 0 1px var(--paper-line-strong); }
+.group-card.o-paper, .map-card.o-paper { border-radius: var(--radius-m); }
 .group-card.o-paper .group-bio { color: var(--paper-ink-dim); }
 .group-card.o-paper .group-count, .group-card.o-paper .made-by, .map-card.o-paper .made-by { color: var(--paper-ink-dim); }
 .group-card.o-paper .btn-ghost, .group-card.o-paper .btn-icon { background: var(--bg-panel); border-color: var(--paper-line-strong); color: var(--paper-ink); }
@@ -6025,8 +6017,7 @@ body:has(.tool-flyout.open) .pin-action-bubble.is-docked { opacity: 0; pointer-e
 .ref-detail.o-paper .field input, .ref-detail.o-paper .field select { background: rgba(255, 252, 244, 0.78); color: var(--paper-ink); border-color: var(--paper-line-strong); }
 
 /* Journal: each session is a paper card; the entry itself is a parchment page */
-.journal-row.o-paper { border-radius: var(--radius-m); transition: transform 0.15s ease, box-shadow 0.2s ease; }
-.journal-row.o-paper:hover, .journal-row.o-paper:focus-within { border-color: transparent; transform: translateY(-1px); box-shadow: var(--paper-shadow), 0 0 0 1px var(--paper-accent-ink); }
+.journal-row.o-paper { border-radius: var(--radius-m); }
 .journal-row.o-paper .journal-title { color: var(--paper-ink); }
 .journal-row.o-paper .journal-meta { color: var(--paper-ink-dim); }
 .journal-row.o-paper .btn-icon { background: transparent; border-color: transparent; color: var(--paper-ink-dim); }
@@ -6060,7 +6051,7 @@ body:has(.tool-flyout.open) .pin-action-bubble.is-docked { opacity: 0; pointer-e
 
 /* ==========================================================================
    DL-182 part 3: campaign settings, character sheet and editor, faction page and form in the Oaken materials.
-   Same rules as part 2: page-like cards (the character summary, notes, the faction card) are parchment with a soft burned edge,
+   Same rules as part 2: page-like cards (the character summary, notes, the faction card) are parchment,
    dense panels and every form panel are plain paper, controls keep their clean surfaces.
    ========================================================================== */
 .form-panel.o-paper, .sheet-viewer-panel.o-paper {
@@ -6127,7 +6118,7 @@ body:has(.tool-flyout.open) .pin-action-bubble.is-docked { opacity: 0; pointer-e
 
 /* ==========================================================================
    DL-182 part 4: campaign list, notifications, friends, account, profile, library and the join page in the Oaken materials.
-   Same rules again: cards that read like pages are parchment with a soft burned edge, dense panels and lists are plain paper.
+   Same rules again: cards that read like pages are parchment, dense panels and lists are plain paper.
    ========================================================================== */
 .notification-list.o-paper, .profile-head.o-paper, .profile-section.o-paper {
   background-color: var(--paper-base); background-image: var(--texture-parchment); background-size: 512px 512px; background-blend-mode: multiply;

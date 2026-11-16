@@ -57,7 +57,7 @@
   </section>
   {% endif %}
 
-  <section class="cf-card o-paper{{ ' o-burn o-burn--soft' if notes_html else '' }}" aria-label="Notes">
+  <section class="cf-card o-paper" aria-label="Notes">
     <h2 class="cf-title">Notes</h2>
     <div class="detail-notes">{% if notes_html %}{{ notes_html | safe }}{% else %}<em>No notes recorded.</em>{% endif %}</div>
   </section>
@@ -66,7 +66,7 @@
 <div class="detail-layout{{ '' if stats_hidden else ' has-viewer' }}">
 <div class="cd-main">
 
-  <section class="cf-card o-paper o-burn o-burn--soft cd-hero{{ ' has-class' if character.class_key and not stats_hidden else '' }}" aria-label="Character summary">
+  <section class="cf-card o-paper cd-hero{{ ' has-class' if character.class_key and not stats_hidden else '' }}" aria-label="Character summary">
     {% if character.class_key and not stats_hidden %}
     <div class="class-badge">{{ class_icon(character.class_key) }}</div>
     {% endif %}
