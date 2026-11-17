@@ -494,6 +494,29 @@ The hover burn (DL-180 parts 5 and 7, a scorch drawn in CSS along a panel's edge
 - **Tests.** `tests/test_card_hover.py` (17): no template, script or style sheet mentions the burn; each of the six cards carries `o-lift`; the movement sits inside the hover media query and nowhere else; the transition uses `--ease-out` and stays under 300 ms; and, in a real browser, a hovered card moves -2px and shows the ring, the card stays still with reduced motion and on a touch screen, and keyboard focus rings without moving.
 - **Not done.** Checked in Chromium only (desktop mouse, emulated phone, reduced motion); not in Firefox, Safari or on a real device. In a browser without `:has()` the card ring does not show on keyboard focus, but the focused control still has its own focus ring. The library card was checked in the stylesheet and test only: the tutorial account has no library entries to hover.
 
+### Oaken visual identity: one type scale (DL-180, part 12)
+The three typefaces were already right (Fraunces for headings, Inter for body and interface, IBM Plex Mono for numbers and metadata, all self-hosted in `static/fonts/` with their licence text), and every page rendered in them. What was missing was a scale: the style sheets set text in 30 different pixel sizes, many only half a pixel apart (8.75, 9, 9.5, 10, 10.5, 11, 11.5, 12, 12.5...), 58 of the text styles on the audited pages were under 11px, and nothing named a size. Now there are 11 size tokens in `static/css/oaken.css` (section 4) and `style.css`, `auth.css` and `public.css` use only those.
+
+| Token | Size | Used for |
+| --- | --- | --- |
+| `--fs-2xs` | 10px | uppercase mono labels, phone tab labels, tiny tags |
+| `--fs-xs` | 11px | meta lines, chips, captions |
+| `--fs-sm` | 12px | secondary text, table cells, small buttons |
+| `--fs-md` | 13px | compact body, controls, list rows |
+| `--fs-base` | 14px | body text, navigation, form labels |
+| `--fs-lg` | 16px | emphasised and reading text, form fields on a phone |
+| `--fs-xl` | 18px | card and dialog titles |
+| `--fs-2xl` | 20px | section headings, large numerals |
+| `--fs-3xl` | 24px | phone page titles, vital numbers |
+| `--fs-4xl` | 28px | page titles |
+| `--fs-5xl` | 34px | the big result of a roll |
+
+- **How the old sizes were mapped.** Each went to the nearest step, ties upward (so 10.5 became 11, 12.5 became 13, 13.5 became 14), with four exceptions chosen so titles and numerals do not grow: 19px card titles became 18 (not 20), 26px titles and numerals became 24, and 30px became 28. The phone tab-bar labels and the phone battle buttons stay at 10 (they were 10.5 and would not fit at 11). The character name in a battle row (`.battle-name`, was 15px) stays at 14, because 16 makes the compact row taller than the 62px that `tests/test_e2e_battle_rows.py` allows. In practice body and label text is up to half a pixel larger, nothing is more than 2px different, and no size set in the style sheets is under 10px any more (a few `<small>` elements, which are sized relative to their parent, still render at 9 to 11px, and the dice SVG numbers are drawn in the dice's own units).
+- **What was left alone.** Fluid display type (`clamp()` on the Overview name, profile name and the public pages' titles), the 60px and 76px roll totals, the landing page (its own rem and `clamp()` sizes), `<small>` elements and `0.7em` on the pin chip (relative to their parent), and the SVG numbers in the dice art.
+- **How it was checked.** Before and after screenshots of 17 pages in both themes at 1440 and 390px. A script that counts the lines of every text element on 22 pages at 360, 390, 820 and 1440px, before and after: no page scrolls sideways that did not before, nothing new is cut off with an ellipsis, and 10 long paragraphs gain one line because their text is a little larger. It found two real problems that were fixed: the phone tab label "Your characters" was cut off and the phone battle button "Add Character" wrapped onto two lines.
+- **Tests.** `tests/test_type_scale.py` (11): the scale is defined once and ascends; no style sheet sets a text size in loose pixels (display type of 40px and up and the dice SVG are the only exceptions); every token used exists; every page that loads one of the sheets also loads `oaken.css`; and in a real browser the rendered text of 11 app pages (at 390 and 1440px) and 6 public pages uses only the scale (display type and `<small>` excepted). The tests fail on the old style sheets.
+- **Not done.** The symbols `●`, `○` and `◆` (the skill marks) and `✓` are not in the self-hosted font subsets, so each system draws them in its own symbol font; replacing them with drawn shapes would touch five templates and a script, so it was left. The landing page's own sizes were not folded into the scale. Chromium only.
+
 ### Oaken visual identity: dialogs and editors (DL-182, part 8)
 The three kinds of dialog the app has now share one surface. Markup, layouts, routes, permissions and workflows are unchanged: this is CSS only, in one block at the end of `style.css` ("Dialogs and editors (DL-182 part 8)") plus two tokens in `oaken.css`.
 

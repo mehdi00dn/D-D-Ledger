@@ -6,7 +6,8 @@
    1. Palette ramps (raw colours; pages never use these directly, they use the semantic tokens)
    2. Semantic tokens, dark and light
    3. Material assets (the only place that names an image file)
-   4. Material classes: .o-paper, .o-lift, .o-surface, .o-wood, .o-wood-frame, .o-backdrop
+   4. Type scale: the --fs-* sizes every stylesheet uses for text
+   5. Material classes: .o-paper, .o-lift, .o-surface, .o-wood, .o-wood-frame, .o-backdrop
    Texture rules: not every surface gets one; no texture behind long text; one texture per surface; overlays never take clicks.
    ========================================================================== */
 
@@ -148,7 +149,27 @@
   --bg-cliffs: url("../assets/backgrounds/cliff-valley.webp");
 }
 
-/* ---------- 4. Material classes ---------- */
+/* ---------- 4. Type scale ----------
+   Every text size in style.css, auth.css and public.css is one of these (DL-180 part 12).  Before, the app used 33 different sizes in
+   half-pixel steps, from 8.75px to 73.6px; now it uses these 11 for text and leaves the fluid display sizes (clamp(), the big dice total) alone.
+   Each old size went to the nearest step, ties upward, except 26px and 30px, which go down so that titles and numerals do not grow.
+   The smallest step is 10px, for the uppercase mono labels; there is no step below it.  Body text is --fs-base (14px); form fields on a
+   phone stay --fs-lg (16px) so iOS does not zoom into them.  Change a step here and everything that uses it follows. */
+:root {
+  --fs-2xs: 10px;     /* uppercase mono labels, tab labels, tiny tags */
+  --fs-xs: 11px;      /* meta lines, chips, captions */
+  --fs-sm: 12px;     /* secondary text, table cells, small buttons */
+  --fs-md: 13px;     /* compact body, controls, list rows */
+  --fs-base: 14px;    /* body text, navigation, form labels */
+  --fs-lg: 16px;      /* emphasised text, reading text, phone form fields */
+  --fs-xl: 18px;      /* card and dialog titles */
+  --fs-2xl: 20px;     /* section headings, large numerals */
+  --fs-3xl: 24px;     /* page and sheet titles on a phone, vital numbers */
+  --fs-4xl: 28px;     /* page titles */
+  --fs-5xl: 34px;     /* the big result of a roll */
+}
+
+/* ---------- 5. Material classes ---------- */
 
 /* Paper: a journal-like panel.  Inside it the older token names (--parchment, --brass-ink, --bg-panel...) are re-pointed at ink-on-paper
    values, so every existing control placed on a paper panel reads correctly in either theme without per-component rules. */
