@@ -5884,14 +5884,17 @@ body:has(.tool-flyout.open) .pin-action-bubble.is-docked { opacity: 0; pointer-e
 :root[data-theme="light"] #battle-root:has(.battle-list) { background-color: #a07a4c; box-shadow: inset 0 0 0 1px rgba(60, 35, 10, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.25), 0 8px 18px rgba(90, 65, 20, 0.2); }
 #battle-root:has(.battle-list) .group-heading { color: var(--oak-parchment-100); border-bottom-color: rgba(245, 238, 220, 0.3); text-shadow: 0 1px 1px rgba(0, 0, 0, 0.55); padding-inline: 6px; }
 #battle-root:has(.battle-list) .group-heading .group-dot { box-shadow: 0 0 0 1.5px rgba(245, 238, 220, 0.7); }
-.battle-list.o-paper { gap: 0; padding: 2px 0; border-radius: calc(var(--radius-m) - 4px); background-blend-mode: multiply; }
+.battle-list.o-paper { gap: 8px; padding: 8px; border-radius: calc(var(--radius-m) - 4px); background-blend-mode: multiply; }   /* DL-180 part 14: each row is its own rounded card on the paper */
 :root[data-theme="light"] .battle-list.o-paper { background-blend-mode: normal; }
 .battle-list.o-paper .battle-row {
-  background: transparent; border: 0; border-block-end: 1px solid var(--paper-line); border-radius: 0; padding: 8px 16px 8px 18px;
+  background-color: rgba(255, 252, 244, 0.42); border: 1px solid var(--paper-line); border-radius: var(--radius-m); padding: 7px 14px 7px 18px;
 }
-.battle-list.o-paper .battle-row:last-child { border-block-end: 0; }
+@media (max-width: 760px) {
+  .battle-list.o-paper { gap: 8px; padding: 6px; }
+  .battle-list.o-paper .battle-row { padding: 10px 10px 10px 14px; }
+}
 .battle-list.o-paper .battle-row.is-active { background: rgba(185, 154, 87, 0.24); box-shadow: inset 0 0 0 1px rgba(110, 85, 32, 0.5); }
-.battle-list.o-paper .battle-row::before { inset-inline-start: 0; top: 0; bottom: 0; inline-size: 5px; border-radius: 0; background: var(--paper-accent-ink); }
+.battle-list.o-paper .battle-row::before { inset-inline-start: 0; top: 9px; bottom: 9px; inline-size: 4px; border-radius: 0; border-start-end-radius: 4px; border-end-end-radius: 4px; background: var(--paper-accent-ink); }   /* the turn marker is a tab inside the rounded corners */
 .battle-list.o-paper .battle-row.is-foe { background-image: linear-gradient(90deg, rgba(163, 58, 51, 0.1), transparent 46%); }
 .battle-list.o-paper .battle-row.is-foe.is-active { background-image: linear-gradient(90deg, rgba(163, 58, 51, 0.12), transparent 46%); }
 .battle-list.o-paper .battle-row.is-foe .battle-rank { color: #7a2722; }
@@ -6235,3 +6238,20 @@ body:has(.tool-flyout.open) .pin-action-bubble.is-docked { opacity: 0; pointer-e
 .err-card .auth-note { margin-block: 16px 0; }
 .err-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-block-start: 24px; }
 .err-actions .btn { text-decoration: none; }
+
+/* ==========================================================================
+   DL-180 part 14: battle rows on a touch screen
+   - A field under 16px makes iOS zoom the page when it takes focus: INIT, AC and the HP amount were 13px.
+   - A second quick tap on Heal or Damage is read as a double-tap zoom unless the control says it is only a button.
+   - The icon buttons at the end of the row (Died?, Remove) were 34px; INIT and AC keep the compact boxes of DL-169.
+   Applies to any touch screen, upright or sideways, and to any narrow window.
+   ========================================================================== */
+.battle-row :is(button, input, [role="button"]) { touch-action: manipulation; }
+@media (pointer: coarse), (max-width: 760px) {
+  .battle-row .battle-stats .stat-chip-input, .battle-row .hp-amount-input { font-size: var(--fs-lg); }
+  .battle-row .battle-stats .stat-chip-input { min-height: 32px; height: 32px; width: 44px; }   /* still the compact boxes of DL-169 (32px by 44px at most); only the text grows */
+}
+@media (pointer: coarse) {
+  .battle-row .battle-end .btn-icon { width: 40px; height: 40px; min-width: 40px; min-height: 40px; }
+  .battle-row .battle-end .btn-sm { min-height: 40px; }
+}
