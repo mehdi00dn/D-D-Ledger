@@ -865,7 +865,7 @@ body.page-leaving .content {
   border: 1px solid var(--hairline);
   color: var(--parchment-dim);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: border-color 0.15s ease, color 0.15s ease, background-color 0.15s ease;
   background: transparent;
   display: inline-flex;
   align-items: center;
@@ -1453,7 +1453,7 @@ body.page-leaving .content {
   padding: 6px 16px;
   border-radius: 999px;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: color 0.15s ease, background-color 0.15s ease;
 }
 .sort-option.active { background: var(--brass); color: #21170a; }
 :root[data-theme="light"] .sort-option.active { color: var(--on-brass); }
@@ -1859,7 +1859,7 @@ body.page-leaving .content {
   flex-direction: column;
   box-shadow: var(--shadow-deep);
   transition: background-color 0.4s ease, border-color 0.4s ease;
-  animation: panel-pop-in 0.26s cubic-bezier(0.34, 1.56, 0.64, 1);
+  animation: panel-pop-in 0.22s var(--ease-out);
 }
 
 .modal-header {
@@ -1960,7 +1960,7 @@ body.page-leaving .content {
   border-radius: var(--radius-m);
   border: 1px solid var(--hairline-strong);
   box-shadow: var(--shadow-deep);
-  animation: panel-pop-in 0.28s cubic-bezier(0.34, 1.56, 0.64, 1);
+  animation: panel-pop-in 0.22s var(--ease-out);
 }
 #lightbox-img {
   display: block;
@@ -2690,7 +2690,7 @@ body.page-leaving .content {
   gap: 12px;
   max-width: 92vw;
   max-height: 92vh;
-  animation: panel-pop-in 0.28s cubic-bezier(0.34, 1.56, 0.64, 1);
+  animation: panel-pop-in 0.22s var(--ease-out);
 }
 .map-setup-preview-box {
   position: relative;
@@ -6200,7 +6200,7 @@ body:has(.tool-flyout.open) .pin-action-bubble.is-docked { opacity: 0; pointer-e
 }
 .modal-overlay { background: var(--o-scrim); }
 .pick-dialog::backdrop, .enc-dialog::backdrop { background: var(--o-scrim, rgba(8, 10, 8, 0.62)); backdrop-filter: blur(2px); }   /* the fallback is for browsers whose ::backdrop does not inherit custom properties */
-.pick-dialog[open], .enc-dialog[open] { animation: panel-pop-in 0.26s cubic-bezier(0.34, 1.56, 0.64, 1); }   /* the motion the overlay panels already have */
+.pick-dialog[open], .enc-dialog[open] { animation: panel-pop-in 0.22s var(--ease-out); }   /* the motion the overlay panels already have */
 .pick-dialog[open]::backdrop, .enc-dialog[open]::backdrop { animation: overlay-fade-in 0.2s ease; }
 .pick-head h2, .enc-dialog h2 { font-family: var(--font-display); font-weight: 600; }
 .pick-head { padding-block-end: 12px; border-block-end: 1px solid var(--hairline); }
