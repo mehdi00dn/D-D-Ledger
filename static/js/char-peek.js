@@ -1,5 +1,5 @@
 /* The small character card that opens from a map pin or a battle row.  A compact version of the details page:
- * who it is, the vitals, the six abilities with their checks and saves, skills, notes and sheet images.
+ * who it is, the vitals, the six abilities with their checks and saves, skills, notes and additional images.
  * Every bonus is click-to-roll (see character-rolls.js), exactly like on the full page.
  *
  *   CharPeek.open(characterId, participantId?)      fills and shows #detail-modal
@@ -117,7 +117,7 @@
 
     if (!fogged && c.sheets && c.sheets.length) {
       var canDelete = !!c.can_delete;
-      html += '<details class="peek-more"><summary>Sheets <span class="cf-count">' + c.sheets.length + '</span></summary><div class="sheet-thumbs">' +
+      html += '<details class="peek-more"><summary>Additional images <span class="cf-count">' + c.sheets.length + '</span></summary><div class="sheet-thumbs">' +
         c.sheets.map(function (sh) {
           var src = '/uploads/' + esc(sh.image_path);
           return '<div class="sheet-thumb"><img src="' + src + '" alt="Sheet" data-lightbox-src="' + src + '"' +

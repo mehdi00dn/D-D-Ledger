@@ -1,10 +1,11 @@
-/* Character details page: the thumbnails in the card pick which sheet the big viewer on the right shows.
-   Clicking the viewer opens the shared lightbox on the same sheet, with every sheet one arrow away. */
+/* Character details page: the "Additional images" viewer on the right (a character sheet, a portrait variant, a map, a reference: anything).
+   The arrows step through the images; clicking the picture opens the shared lightbox on the same image, with every image one arrow away.
+   The images come from a hidden list in the page ([data-sheet-list]); there is no thumbnail strip. */
 (function () {
   'use strict';
   var panel = document.querySelector('[data-sheet-viewer]');
   var img = document.getElementById('sheet-viewer-img');
-  var thumbs = Array.prototype.slice.call(document.querySelectorAll('[data-sheet-thumbs] img[data-sheet-src]'));
+  var thumbs = Array.prototype.slice.call(document.querySelectorAll('[data-sheet-list] [data-sheet-src]'));
   if (!panel || !img || !thumbs.length) return;
   var count = panel.querySelector('[data-sheet-count]');
   var prev = panel.querySelector('[data-sheet-prev]');
@@ -30,19 +31,12 @@
     var changed = index !== before;
     img.src = thumbs[index].dataset.sheetSrc;
     if (changed) pageTurn(index > before ? 1 : -1);
-    thumbs.forEach(function (t, n) { t.parentNode.classList.toggle('is-active', n === index); });
-    img.alt = 'Character sheet ' + (index + 1) + ' of ' + thumbs.length;
+    img.alt = 'Additional image ' + (index + 1) + ' of ' + thumbs.length;
     if (count) count.textContent = (index + 1) + ' / ' + thumbs.length;
     if (prev) prev.disabled = index === 0;
     if (next) next.disabled = index === thumbs.length - 1;
   }
 
-  thumbs.forEach(function (t, n) {
-    t.addEventListener('click', function () { show(n); });
-    t.addEventListener('keydown', function (e) {
-      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); show(n); }
-    });
-  });
   if (prev) prev.addEventListener('click', function () { show(index - 1); });
   if (next) next.addEventListener('click', function () { show(index + 1); });
 

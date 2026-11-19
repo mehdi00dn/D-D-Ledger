@@ -1,5 +1,6 @@
 """Map ruler (DL-153): feet per square is a per-map setting, and the ruler measures in squares and feet."""
 import os
+import re
 import pytest
 if os.path.isdir('/opt/pw-browsers'):
     os.environ.setdefault('PLAYWRIGHT_BROWSERS_PATH', '/opt/pw-browsers')
@@ -68,8 +69,10 @@ def test_ruler_reads_squares_and_feet_and_follows_the_setting(shared_server, pw)
     ruler_layer = page.locator('#ruler-canvas')                      # the line lives on a layer above the tokens and the fog
     playwright.expect(ruler_layer).to_have_css('pointer-events', 'none')
     assert page.evaluate("() => { const z = (id) => parseInt(getComputedStyle(document.getElementById(id)).zIndex, 10) || 0; return z('ruler-canvas') > z('map-fog-layer') && z('ruler-canvas') > z('map-pin-layer'); }") is True
-    _drag(page, 3, 2)                                                # a diagonal step counts as one square (5e)
-    playwright.expect(readout).to_have_text('3 squares · 15 ft')
+    _drag(page, 3, 2)                                                # a diagonal is longer than a straight run: sqrt(3² + 2²) = 3.6 squares
+    playwright.expect(readout).to_have_text(re.compile(r'^3\.6 squares · 18(\.\d)? ft$'))          # the mouse lands on whole screen pixels, so the last digit can wobble
+    _drag(page, 3, 3)                                                # 3 across and 3 down is 4.2 squares, not 3
+    playwright.expect(readout).to_have_text(re.compile(r'^4\.[23] squares · 21(\.\d)? ft$'))
     _drag(page, 1)
     playwright.expect(readout).to_have_text('1 square · 5 ft')
     page.keyboard.press('Escape')

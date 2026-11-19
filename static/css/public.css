@@ -139,6 +139,12 @@ body.pub > .pub-stage { flex: 1 0 auto; }
   .pub-actions { justify-content: space-between; padding-block-start: 12px; }
   .pub-login { font-size: var(--fs-lg); }
 }
+/* the closed menu is a second, empty row of the wrapped bar: no gap above it, or the logo sits at the top of a band with dead space under it */
+@media (max-width: 820px) {
+  .pub-bar { row-gap: 0; min-block-size: 0; }
+  .pub-brand { min-block-size: var(--pub-nav-h); }
+  .js .pub-menu[data-open] .pub-menu-inner { padding-block-start: 4px; }
+}
 @media (max-width: 820px) and (prefers-reduced-motion: no-preference) {
   .js .pub-menu { transition: grid-template-rows 260ms var(--pub-ease), opacity 180ms ease, visibility 0s 260ms; }
   .js .pub-menu[data-open] { transition: grid-template-rows 260ms var(--pub-ease), opacity 180ms ease, visibility 0s; }

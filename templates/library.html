@@ -37,7 +37,7 @@
     <div class="dossier-head">
       <div class="avatar-frame">
         {% if c.avatar_path %}
-          <img src="{{ url_for('uploaded_file', filename=c.avatar_path) }}" alt="{{ c.name }} avatar">
+          <img src="{{ url_for('uploaded_file', filename=c.avatar_path) }}" alt="{{ c.name }} avatar" loading="lazy" decoding="async">
         {% elif c.class_key and c.class_key in class_labels %}
           <span class="avatar-class" title="{{ class_labels[c.class_key] }}" role="img" aria-label="{{ class_labels[c.class_key] }}"><svg aria-hidden="true"><use href="/static/icons/classes.svg#{{ c.class_key }}"></use></svg></span>
         {% else %}

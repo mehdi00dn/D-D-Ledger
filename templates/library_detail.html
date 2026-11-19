@@ -160,41 +160,30 @@
   </section>
 
   {% if sheets %}
-  <section class="cf-card o-paper" aria-label="Sheets">
-    <h2 class="cf-title">Sheets <span class="cf-count">{{ sheets|length }}</span></h2>
-    <div class="sheet-thumbs" data-sheet-thumbs>
-      {% for s in sheets %}
-      <div class="sheet-thumb{{ ' is-active' if loop.first else '' }}">
-        <img src="{{ url_for('uploaded_file', filename=s.image_path) }}" alt="Sheet {{ loop.index }}"
-             role="button" tabindex="0" aria-label="Show sheet {{ loop.index }}"
-             data-sheet-src="{{ url_for('uploaded_file', filename=s.image_path) }}">
-        <button type="button" class="btn-icon" title="Remove" aria-label="Remove sheet {{ loop.index }}"
-                data-sheet-delete-url="{{ url_for('library_sheet_delete', char_id=character.id, sheet_id=s.id) }}"
-                data-confirm-msg="Remove this sheet image?">{{ icon('x') }}</button>
-      </div>
-      {% endfor %}
-    </div>
-  </section>
+  <ul hidden data-sheet-list>
+    {% for s in sheets %}<li data-sheet-src="{{ url_for('uploaded_file', filename=s.image_path) }}"></li>
+    {% endfor %}
+  </ul>
   {% endif %}
 </div>
 
-<aside class="sheet-viewer-panel o-paper" data-sheet-viewer aria-label="Character sheet viewer">
+<aside class="sheet-viewer-panel o-paper" data-sheet-viewer aria-label="Additional images">
   <div class="sheet-viewer-head">
-    <h2 class="cf-title">Character sheet</h2>
+    <h2 class="cf-title">Additional images</h2>
     {% if sheets|length > 1 %}
     <span class="sheet-viewer-nav">
-      <button type="button" class="btn-icon" data-sheet-prev title="Previous sheet" aria-label="Previous sheet">&#8249;</button>
+      <button type="button" class="btn-icon" data-sheet-prev title="Previous image" aria-label="Previous image">&#8249;</button>
       <span class="sheet-viewer-count" data-sheet-count>1 / {{ sheets|length }}</span>
-      <button type="button" class="btn-icon" data-sheet-next title="Next sheet" aria-label="Next sheet">&#8250;</button>
+      <button type="button" class="btn-icon" data-sheet-next title="Next image" aria-label="Next image">&#8250;</button>
     </span>
     {% endif %}
   </div>
   {% if sheets %}
   <div class="sheet-viewer-stage">
-    <img id="sheet-viewer-img" src="{{ url_for('uploaded_file', filename=sheets[0].image_path) }}" alt="Character sheet" title="Click to enlarge">
+    <img id="sheet-viewer-img" src="{{ url_for('uploaded_file', filename=sheets[0].image_path) }}" alt="Additional image" title="Click to enlarge">
   </div>
   {% else %}
-  <p class="hint-text">No sheet images attached.</p>
+  <p class="hint-text">No additional images attached.</p>
   {% endif %}
 </aside>
 </div>

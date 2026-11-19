@@ -3666,8 +3666,9 @@ body.page-leaving .content {
   .map-head-actions { display: contents; }
   .map-head-actions .toggle-switch { order: 1; font-size: var(--fs-md); }
   .map-head-actions .toggle-switch-label { font-size: var(--fs-md); }
-  .map-back-btn { order: 2; margin-inline-start: auto; padding: 8px 10px; }
-  .map-back-btn span { display: none; }
+  .map-back-btn, .map-help-btn { order: 2; padding: 8px 10px; }
+  .map-help-btn { margin-inline-start: auto; }
+  .map-back-btn span, .map-help-btn span { display: none; }
   .map-toolbar { gap: 8px 10px; padding: 8px 10px; margin-bottom: 12px; }
   .map-toolbar-toggle { display: inline-flex; align-items: center; gap: 6px; }
   .map-toolbar-toggle .icon:last-child { transition: transform 0.18s ease; }
@@ -3688,8 +3689,9 @@ body.page-leaving .content {
 }
 
 @media (max-width: 640px) {
-  .page-header:has(.map-head-actions) > div:first-child { flex-basis: calc(100% - 64px); }
-  .map-back-btn { order: 0; }
+  .page-header:has(.map-head-actions) > div:first-child { flex-basis: calc(100% - 136px); }
+  .map-back-btn, .map-help-btn { order: 0; }
+  .map-help-btn { margin-inline-start: 0; }
   .map-head-actions .toggle-switch { order: 2; }
   /* characters page */
   .page-header { gap: 10px; margin-bottom: 12px; }
@@ -5937,12 +5939,12 @@ body:has(.tool-flyout.open) .pin-action-bubble.is-docked { opacity: 0; pointer-e
    ========================================================================== */
 
 /* one paper recipe for every component that already has its own background shorthand (it would otherwise win over .o-paper) */
-.group-card.o-paper, .map-card.o-paper, .guide-card.o-paper, .dice-card.o-paper, .empty-state.o-paper, .journal-row.o-paper,
+.group-card.o-paper, .map-card.o-paper, .dice-card.o-paper, .empty-state.o-paper, .journal-row.o-paper,
 .activity-list.o-paper, .roll-log-list.o-paper, .ref-detail.o-paper, .cf-card.o-paper {
   background-color: var(--paper-base); background-image: var(--texture-parchment); background-size: 512px 512px; background-blend-mode: multiply;
   border: 0; box-shadow: var(--paper-shadow);
 }
-:root[data-theme="light"] :is(.group-card, .map-card, .guide-card, .dice-card, .empty-state, .journal-row, .activity-list, .roll-log-list, .ref-detail, .cf-card).o-paper { background-blend-mode: normal; }
+:root[data-theme="light"] :is(.group-card, .map-card, .dice-card, .empty-state, .journal-row, .activity-list, .roll-log-list, .ref-detail, .cf-card).o-paper { background-blend-mode: normal; }
 
 /* Factions and Maps: a paper card with its picture on top */
 .group-card.o-paper, .map-card.o-paper { border-radius: var(--radius-m); }
@@ -5961,11 +5963,39 @@ body:has(.tool-flyout.open) .pin-action-bubble.is-docked { opacity: 0; pointer-e
 .empty-state.o-paper > svg:first-child { background: radial-gradient(circle at 50% 30%, rgba(120, 86, 24, 0.14), transparent 72%); border-color: var(--paper-line-strong); color: var(--paper-accent-ink); }
 .empty-state.o-paper p { color: var(--paper-ink-dim); }
 
-/* Treasury */
-.guide-card.o-paper { border-radius: var(--radius-m); }
-.guide-card.o-paper > summary { color: var(--paper-ink); }
-.guide-card.o-paper .guide-steps li, .guide-card.o-paper .guide-note { color: var(--paper-ink-dim); }
-.guide-card.o-paper .guide-steps b, .guide-card.o-paper .guide-note b { color: var(--paper-ink); }
+/* Treasury: "How the treasury works" is a dark panel with light text in both themes (DL-180 part 15; .o-ondark re-points the text and brass tokens at their dark-theme values) */
+.guide-card.o-ondark { border-radius: var(--radius-m); background-color: var(--oak-charcoal-700); border: 1px solid var(--hairline); box-shadow: var(--paper-shadow); }
+.guide-card.o-ondark > summary { color: var(--parchment); }
+.guide-card.o-ondark .guide-steps li, .guide-card.o-ondark .guide-note { color: var(--parchment-dim); }
+.guide-card.o-ondark .guide-steps b, .guide-card.o-ondark .guide-note b { color: var(--parchment); }
+.guide-card kbd { display: inline-block; padding: 0 6px; border: 1px solid var(--hairline); border-radius: var(--radius-s, 4px); background: rgba(255, 255, 255, 0.06); color: var(--parchment); font: inherit; font-size: var(--fs-sm, 0.8em); line-height: 1.5; }
+.map-guide-dialog { inline-size: min(44rem, calc(100vw - 24px)); }
+.map-guide-dialog[open] { flex-direction: column; }
+.map-guide-dialog .guide-steps { grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); }
+.map-guide-body { overflow-y: auto; padding: 4px 18px 16px; min-block-size: 0; }
+.map-guide-dialog .guide-card { margin: 0; padding-block: 12px 4px; box-shadow: none; }      /* stays dark so its light text reads in the light theme too */
+.map-guide-dialog .pick-foot { justify-content: flex-end; }
+
+/* DL-180 part 15: the shapes menu now holds six buttons (the sixth puts a picture on the map).  Centred on its button it ran off the left edge
+   of a phone, so on small screens it grows rightwards from its button instead */
+@media (max-width: 640px), (max-height: 500px) {
+  #shapes-flyout .tool-flyout-menu { left: 0; /* phys */ transform: translate(0, 4px); }
+  #shapes-flyout:hover .tool-flyout-menu, #shapes-flyout.open .tool-flyout-menu { transform: translate(0, 0); }
+}
+
+/* DL-180 part 15: on a phone a quest is its text across the full width, then one tidy row of buttons under it (done, hide, edit, and
+   delete set apart at the end) instead of a column of buttons squeezing the text and the edit button dropping onto a line of its own */
+@media (max-width: 640px) {
+  .quest-main { flex-basis: 100%; }
+  .quest-actions { display: flex; flex: 1 1 100%; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .quest-actions .quest-btn { inline-size: 40px; block-size: 40px; }
+  .quest-edit:not([open]) { order: 1; display: flex; }   /* no line box around the button, which sat it 2px low */
+  .quest-actions form[data-confirm] { order: 2; margin-inline-start: auto; }
+}
+
+/* DL-180 part 15: a campaign card's picture keeps one shape (2:1) at every width, so a phone crops the banner the way the PC does
+   (it used to be a fixed 170px tall, which cut a wide phone card differently from a narrow desktop one) */
+.campaign-grid .group-image-block { block-size: auto; aspect-ratio: 2 / 1; }
 .cf-card.o-paper .coin { background: rgba(255, 252, 244, 0.5); border-color: var(--paper-line-strong); }
 .cf-card.o-paper .coin-chip { background: rgba(255, 252, 244, 0.5); border-color: var(--paper-line-strong); color: var(--paper-ink-dim); }
 .cf-card.o-paper .chip { background: rgba(255, 252, 244, 0.5); border-color: var(--paper-line-strong); color: var(--paper-ink); }

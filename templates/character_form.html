@@ -241,19 +241,19 @@
     </section>
 
     <section class="cf-card o-paper" aria-labelledby="cf-sheets">
-      <h2 class="cf-title" id="cf-sheets">Character Sheets <span class="cf-count">multiple images</span></h2>
+      <h2 class="cf-title" id="cf-sheets">Additional images <span class="cf-count">sheets, maps, references, anything</span></h2>
       <div class="field">
         {% if sheets %}
         <div class="sheet-thumbs">
           {% for s in sheets %}
           <div class="sheet-thumb">
-            <img src="{{ url_for('uploaded_file', filename=s.image_path) }}" alt="Sheet {{ loop.index }}"
+            <img src="{{ url_for('uploaded_file', filename=s.image_path) }}" alt="Image {{ loop.index }}"
                  data-lightbox-src="{{ url_for('uploaded_file', filename=s.image_path) }}"
                  {% if can_delete_sheets %}data-delete-url="{{ url_for('library_sheet_delete' if library else 'sheet_delete', char_id=character.id, sheet_id=s.id) }}"{% endif %}>
             {% if can_delete_sheets %}
             <button type="button" class="btn-icon" title="Remove"
                     data-sheet-delete-url="{{ url_for('library_sheet_delete' if library else 'sheet_delete', char_id=character.id, sheet_id=s.id) }}"
-                    data-confirm-msg="Remove this sheet image?">{{ icon('x') }}</button>
+                    data-confirm-msg="Remove this image?">{{ icon('x') }}</button>
             {% endif %}
           </div>
           {% endfor %}
@@ -263,7 +263,7 @@
           {{ icon('images') }}
           <div>Click or drop image(s)</div>
           <span class="file-name"></span>
-          <input type="file" name="sheets" aria-label="Choose character sheet images" accept="image/*" multiple data-multi-input>
+          <input type="file" name="sheets" aria-label="Choose additional images" accept="image/*" multiple data-multi-input>
         </div>
       </div>
     </section>
