@@ -138,3 +138,30 @@ def test_painting_fog_with_a_finger_leaves_no_brush_ring(pw, shared_server):
     expect(page.locator('#fog-brush-ring')).to_be_hidden()
     assert not errors, errors
     ctx.close()
+
+
+def test_ruler_still_draws_when_zoomed_in_on_a_sharp_phone_screen(pw, shared_server):
+    """DL-180 part 15: the ruler's canvas covers the zoomed map.  At 6x zoom on a 3x screen it was 6480 by 4525 pixels, more than iOS Safari
+    will draw on (about 16 million), so the ruler vanished.  It is now capped, and it still draws."""
+    base, dm, api, mid, ctx0 = _map(pw, shared_server, 'Touch ruler zoom')
+    ctx0.close()
+    ctx = pw.new_context(viewport={'width': 390, 'height': 844}, has_touch=True, is_mobile=True, device_scale_factor=3)
+    ctx.add_cookies([{'name': SESSION_COOKIE, 'value': dm.s.cookies.get(SESSION_COOKIE), 'url': base}])
+    page = ctx.new_page(); errors = _open(page, base, api); page.wait_for_timeout(500)
+    page.locator('#map-toolbar [data-tool="ruler"]').click(); page.wait_for_timeout(300)
+    f = Finger(page)
+    box = page.locator('#map-canvas').bounding_box(); cx, cy = box['x'] + box['width'] / 2, box['y'] + box['height'] / 2
+    for _ in range(3):                                                                    # pinch out three times
+        f._send('touchStart', [(cx - 30, cy), (cx + 30, cy)])
+        for i in range(1, 9):
+            f._send('touchMove', [(cx - 30 - i * 12, cy), (cx + 30 + i * 12, cy)]); page.wait_for_timeout(16)
+        f._send('touchEnd', []); page.wait_for_timeout(200)
+    assert page.locator('#map-canvas').bounding_box()['width'] > 1500, 'the map is zoomed in'
+    f.drag((200, 300), (330, 300))
+    info = page.evaluate("""() => { const c = document.getElementById('ruler-canvas'); const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+                           let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i]) n++; return {w: c.width, h: c.height, drawn: n}; }""")
+    assert info['w'] * info['h'] <= 8_100_000 and max(info['w'], info['h']) <= 4100, info      # a canvas a phone can draw
+    assert info['drawn'] > 500, info                                                          # and the line is on it
+    assert page.locator('#ruler-readout').text_content()
+    assert not errors, errors
+    ctx.close()

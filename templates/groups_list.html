@@ -47,7 +47,7 @@
   <div class="group-card o-paper o-lift" data-name="{{ g.name|lower }}">
     <div class="group-image-block" {% if not g.avatar_path %}data-grad="{{ g.color }}"{% endif %}>
       {% if g.avatar_path %}
-        <img src="{{ url_for('uploaded_file', filename=g.avatar_path) }}" alt="{{ g.name }} avatar">
+        <img src="{{ url_for('uploaded_file', filename=g.avatar_path) }}" alt="{{ g.name }} avatar" loading="lazy" decoding="async">
       {% else %}
         <div class="group-image-placeholder">{{ icon('faction') }}</div>
       {% endif %}

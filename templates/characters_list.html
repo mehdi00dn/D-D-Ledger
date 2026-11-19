@@ -59,7 +59,7 @@
       <li class="pick-row" data-pick-row data-name="{{ o.name|lower }}">
         <label>
           <input type="checkbox" name="char_ids" value="{{ o.id }}">
-          <span class="avatar-frame">{% if o.avatar_path %}<img src="{{ url_for('uploaded_file', filename=o.avatar_path) }}" alt="">{% else %}<span class="avatar-initial" aria-hidden="true">{{ (o.name or '?')[:1]|upper }}</span>{% endif %}</span>
+          <span class="avatar-frame">{% if o.avatar_path %}<img src="{{ url_for('uploaded_file', filename=o.avatar_path) }}" alt="" loading="lazy" decoding="async">{% else %}<span class="avatar-initial" aria-hidden="true">{{ (o.name or '?')[:1]|upper }}</span>{% endif %}</span>
           <span class="pick-name"><b>{{ o.name }}</b><small>{{ o.class_label or 'No class' }} &middot; Lvl {{ o.level }}</small></span>
         </label>
       </li>
@@ -120,7 +120,7 @@
     <div class="dossier-head">
       <div class="avatar-frame"{% if c.avatar_path %} data-lightbox-src="{{ url_for('uploaded_file', filename=c.avatar_path) }}" role="button" tabindex="0" aria-label="View {{ c.name }}'s avatar larger"{% endif %}>
         {% if c.avatar_path %}
-          <img src="{{ url_for('uploaded_file', filename=c.avatar_path) }}" alt="{{ c.name }} avatar">
+          <img src="{{ url_for('uploaded_file', filename=c.avatar_path) }}" alt="{{ c.name }} avatar" loading="lazy" decoding="async">
         {% elif c.class_key and c.class_key in class_labels and not npc_hidden %}
           <span class="avatar-class" title="{{ class_labels[c.class_key] }}" role="img" aria-label="{{ class_labels[c.class_key] }}"><svg aria-hidden="true"><use href="/static/icons/classes.svg#{{ c.class_key }}"></use></svg></span>
         {% else %}

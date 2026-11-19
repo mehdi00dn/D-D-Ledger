@@ -52,7 +52,7 @@ _IMAGE_REF = re.compile(r'^(avatars|sheets|maps)/[A-Za-z0-9_\-]{1,80}\.(png|jpe?
 _COLOR = re.compile(r'^#[0-9a-fA-F]{6}$')
 _BATCH = re.compile(r'^[A-Za-z0-9_\-]{1,40}$')
 _GRID_COLORS = ('gray', 'white', 'black')
-_DRAWING_KINDS = ('line', 'rect', 'oval', 'pen', 'angle')
+_DRAWING_KINDS = ('line', 'rect', 'oval', 'pen', 'angle', 'image')
 _REF_MAX = 2_147_483_647
 _COORD = 1_000_000.0
 _COINS = ('cp', 'sp', 'ep', 'gp', 'pp')
@@ -118,8 +118,13 @@ def build_manifest(db, campaign_id, exported_at):
             geometry = json.loads(d['data'])
         except (TypeError, ValueError):
             geometry = {}
+        image_file = None
+        if d['kind'] == 'image':                        # a picture on the map travels as a file in the zip, not as a storage key
+            image_file, geometry = geometry.get('path'), {}
+            if not image_file:
+                continue
         drawings_by_map.setdefault(d['map_id'], []).append({
-            'kind': d['kind'], 'data': geometry, 'cx': d['cx'], 'cy': d['cy'], 'w': d['w'], 'h': d['h'], 'rotation': d['rotation'],
+            'kind': d['kind'], 'image_file': image_file, 'data': geometry, 'cx': d['cx'], 'cy': d['cy'], 'w': d['w'], 'h': d['h'], 'rotation': d['rotation'],
             'color': d['color'], 'fill': d['fill'], 'fill_opacity': d['fill_opacity'], 'locked': d['locked'], 'dm_only': d['dm_only'],
             'attached_pin_ref': d['attached_pin_id']})
 
@@ -185,6 +190,8 @@ def image_refs(manifest):
             add(s)
     for m in manifest['maps']:
         add(m.get('image_file'))
+        for d in m.get('drawings') or []:
+            add(d.get('image_file'))
     return refs
 
 
@@ -392,8 +399,13 @@ def normalize_manifest(raw, *, sanitize_notes, sanitize_bio, icon_keys, class_ke
                 continue
             color = d.get('color')
             attached = _ref(d.get('attached_pin_ref'))
+            picture = None
+            if d['kind'] == 'image':
+                picture = image(d.get('image_file'), 'maps')
+                if picture is None:
+                    continue                                # a picture without its file would be an empty frame
             drawings.append({
-                'kind': d['kind'], 'data': _geometry(d.get('data')),
+                'kind': d['kind'], 'image_file': picture, 'data': {} if picture else _geometry(d.get('data')),
                 'cx': _num(d.get('cx'), 0.0, -_COORD, _COORD), 'cy': _num(d.get('cy'), 0.0, -_COORD, _COORD),
                 'w': _num(d.get('w'), 0.0, 0.0, _COORD), 'h': _num(d.get('h'), 0.0, 0.0, _COORD),
                 'rotation': _num(d.get('rotation'), 0.0, -3600.0, 3600.0),

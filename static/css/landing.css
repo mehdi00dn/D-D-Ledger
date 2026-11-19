@@ -92,6 +92,8 @@ h3 { font-family: var(--font-body); font-size: 1.05rem; font-weight: 600; line-h
 .hero .lede { color: var(--on-dark-2); margin-block-end: 34px; }
 .cta-row { display: flex; flex-wrap: wrap; gap: 12px; }
 .cta-row--center { justify-content: center; }
+/* a phone stacks the two buttons at one full width, instead of two different widths */
+@media (max-width: 480px) { .cta-row { flex-direction: column; } .cta-row .pub-btn { inline-size: 100%; } }
 .reassure { margin-block-start: 22px; font-size: 14.5px; color: var(--on-dark-2); }
 .reassure a { color: var(--on-dark); text-decoration-color: var(--brass); text-underline-offset: 3px; }
 .hero-visual { position: relative; padding-block-end: 8%; }

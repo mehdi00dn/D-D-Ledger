@@ -24,12 +24,12 @@
 {% if import_note %}<div class="banner-notice banner-error" role="alert">{{ import_note }}</div>{% endif %}
 
 {% if campaigns %}
-<div class="group-grid">
+<div class="group-grid campaign-grid">
   {% for c in campaigns %}
   <div class="group-card o-paper o-lift">
     <div class="group-image-block{{ '' if c.avatar_path else ' is-generated' }}" data-hue="{{ (c.id * 53) % 360 }}">
       {% if c.avatar_path %}
-        <img src="{{ url_for('uploaded_file', filename=c.avatar_path) }}" alt="{{ c.name }} avatar">
+        <img src="{{ url_for('uploaded_file', filename=c.avatar_path) }}" alt="{{ c.name }} avatar" loading="lazy" decoding="async">
       {% else %}
         {% set words = c.name.split() %}
         <div class="cover-monogram" aria-hidden="true">{{ ((words[0][:1] ~ (words[1][:1] if words|length > 1 else '')) if words else '?')|upper }}</div>

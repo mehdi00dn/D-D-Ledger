@@ -123,8 +123,8 @@
   // ---------------------------------------------------------------------
   canvas.width = naturalWidth;
   canvas.height = naturalHeight;
-  rulerCanvas.width = naturalWidth;
-  rulerCanvas.height = naturalHeight;
+  rulerCanvas.width = 1;       // drawRuler() sizes it to the screen (a full-size canvas for a big map is too much for a phone)
+  rulerCanvas.height = 1;
   bgImage.onload = () => { bgLoaded = true; redraw(); };
   // The picture comes from the fog-aware route (a Player's copy has fogged areas painted out).
   const mapImageUrl = (v) => initData.image_url + (v ? '?v=' + v : '');
@@ -328,6 +328,7 @@
     const hw = d.w / 2, hh = d.h / 2;
     const pad = Math.max(6, canvas.width / 300);
     const hasFill = (d.fill_opacity || 0) > 0.001;
+    if (d.kind === 'image') return lx >= -hw && lx <= hw && ly >= -hh && ly <= hh;
     if (d.kind === 'rect') {
       if (hasFill) return lx >= -hw - pad && lx <= hw + pad && ly >= -hh - pad && ly <= hh + pad;
       const nearVert = Math.abs(Math.abs(lx) - hw) < pad && ly >= -hh - pad && ly <= hh + pad;
@@ -427,7 +428,8 @@
   }
 
   // ---- Measuring: the ruler and the cone / sphere / line / cube templates (DL-153) ----
-  // The ruler counts squares the 5e way (a diagonal step is one square, like a straight one) and turns them into feet.
+  // The ruler shows the real distance: a diagonal is longer than a straight run of the same squares (3 across and 2 down reads 3.6 squares,
+  // 18 ft, not 3).  It is the straight-line length between the two ends, in squares and in feet, to one decimal place (DL-180 part 15).
   // Templates use the same square-to-feet maths: a cone is as wide at its far end as it is long, a sphere is measured from
   // its centre, a line is one square wide, and a cube grows from its corner towards where you drag.
   const MEASURE_NAMES = { cone: 'Cone', sphere: 'Sphere', line: 'Line', cube: 'Cube' };
@@ -437,8 +439,9 @@
     const dx = Math.abs(b.x - a.x), dy = Math.abs(b.y - a.y), len = Math.hypot(dx, dy);
     const sq = (px) => (gridSize > 0 ? Math.round(px / gridSize) : 0);
     if (kind === 'ruler') {
-      const n = sq(Math.max(dx, dy));
-      return { squares: n, text: `${n} ${n === 1 ? 'square' : 'squares'} · ${n * feetPerSquare} ft` };
+      const exact = gridSize > 0 ? len / gridSize : 0;
+      const n = Math.round(exact * 10) / 10, ft = Math.round(exact * feetPerSquare * 10) / 10;
+      return { squares: Math.floor(exact + 1e-9), text: `${n} ${n === 1 ? 'square' : 'squares'} · ${ft} ft` };
     }
     const n = kind === 'cube' ? sq(Math.max(dx, dy)) : sq(len), ft = n * feetPerSquare;
     const text = kind === 'sphere' ? `Sphere · ${ft} ft radius`
@@ -492,11 +495,12 @@
       rctx.strokeStyle = 'rgba(14,16,24,0.7)'; rctx.lineWidth = 4 * unit; rctx.stroke();       // a dark edge keeps it readable on a pale map
       rctx.shadowBlur = 0;
       rctx.strokeStyle = colour; rctx.lineWidth = 2 * unit; rctx.stroke();
-      if (len > 0 && squares > 1 && squares <= 60) {                 // a small tick at every square
+      if (len > 0 && squares >= 1 && squares <= 60) {                // a small tick at every whole square along the line
         const nx = -(b.y - a.y) / len, ny = (b.x - a.x) / len;
         rctx.lineWidth = 1.25 * unit;
-        for (let i = 1; i < squares; i++) {
-          const t = i / squares, tx = a.x + (b.x - a.x) * t, ty = a.y + (b.y - a.y) * t, h = 3.5 * unit;
+        for (let i = 1; i <= squares; i++) {
+          const t = (i * gridSize) / len, tx = a.x + (b.x - a.x) * t, ty = a.y + (b.y - a.y) * t, h = 3.5 * unit;
+          if (t >= 1) break;
           rctx.beginPath(); rctx.moveTo(tx - nx * h, ty - ny * h); rctx.lineTo(tx + nx * h, ty + ny * h); rctx.stroke();
         }
       }
@@ -535,7 +539,11 @@
     const readout = document.getElementById('ruler-readout');
     const rect = rulerCanvas.getBoundingClientRect();
     const dpr = window.devicePixelRatio || 1;
-    const px = Math.max(1, Math.round(rect.width * dpr)), py = Math.max(1, Math.round(rect.height * dpr));
+    // The canvas covers the whole zoomed map, so at 6x zoom on a 3x screen it would be 6000+ pixels wide.  Phones refuse a canvas over about
+    // 16 million pixels (iOS Safari draws nothing at all), which is why the ruler vanished when you zoomed in.  Keep it under 8 million pixels
+    // and 4096 on a side; the line and its label are drawn in screen-sized units, so they only get a little softer.
+    const scale = Math.min(dpr, 4096 / Math.max(rect.width, 1), 4096 / Math.max(rect.height, 1), Math.sqrt(8000000 / Math.max(rect.width * rect.height, 1)));
+    const px = Math.max(1, Math.round(rect.width * scale)), py = Math.max(1, Math.round(rect.height * scale));
     if (rulerCanvas.width !== px || rulerCanvas.height !== py) { rulerCanvas.width = px; rulerCanvas.height = py; }
     rctx.setTransform(1, 0, 0, 1, 0, 0);
     rctx.clearRect(0, 0, rulerCanvas.width, rulerCanvas.height);
@@ -623,6 +631,21 @@
     redraw();
   }
 
+  // Pictures placed on the map: one Image per file, kept for the life of the page and drawn once it has loaded.
+  const shapeImages = new Map();
+  function mapImageFor(d) {
+    if (!d.url) return null;
+    let img = shapeImages.get(d.url);
+    if (!img) {
+      img = new Image();
+      img.decoding = 'async';
+      img.onload = () => redraw();
+      img.src = d.url;
+      shapeImages.set(d.url, img);
+    }
+    return img;
+  }
+
   function drawShape(d) {
     ctx.save();
     ctx.translate(d.cx, d.cy);
@@ -639,7 +662,15 @@
     const w = d.w, h = d.h;
 
     const hasFill = (d.fill_opacity || 0) > 0.001;
-    if (d.kind === 'rect') {
+    if (d.kind === 'image') {
+      const img = mapImageFor(d);
+      if (img && img.complete && img.naturalWidth) {
+        ctx.drawImage(img, -w / 2, -h / 2, w, h);
+      } else {                                           // still loading: a dashed frame holds the place
+        ctx.setLineDash([Math.max(6, canvas.width / 160), Math.max(5, canvas.width / 200)]);
+        ctx.strokeRect(-w / 2, -h / 2, w, h);
+      }
+    } else if (d.kind === 'rect') {
       if (hasFill) { ctx.globalAlpha = d.fill_opacity * base; ctx.fillRect(-w / 2, -h / 2, w, h); ctx.globalAlpha = base; }
       ctx.strokeRect(-w / 2, -h / 2, w, h);
     } else if (d.kind === 'oval') {
@@ -2005,6 +2036,57 @@
     if (e.target.closest('.tool-flyout')) return;
     document.querySelectorAll('.tool-flyout').forEach((f) => f.classList.remove('open'));
   });
+
+  // ---- Add image: a picture becomes a map object ----
+  const MAP_IMAGE_MAX_SIDE = 1600, MAP_IMAGE_SEND_LIMIT = 3 * 1024 * 1024;     // the server keeps 1600 px; Vercel takes ~4.5 MB a request
+  async function fitForUpload(file) {
+    if (file.type === 'image/gif' || (file.size <= MAP_IMAGE_SEND_LIMIT && !/^image\/(png|jpeg|webp)$/.test(file.type))) return file;
+    let bitmap;
+    try { bitmap = await createImageBitmap(file); } catch (e) { return file; }
+    const scale = Math.min(1, MAP_IMAGE_MAX_SIDE / Math.max(bitmap.width, bitmap.height));
+    if (scale === 1 && file.size <= MAP_IMAGE_SEND_LIMIT) { bitmap.close && bitmap.close(); return file; }
+    const c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round(bitmap.width * scale));
+    c.height = Math.max(1, Math.round(bitmap.height * scale));
+    c.getContext('2d').drawImage(bitmap, 0, 0, c.width, c.height);
+    bitmap.close && bitmap.close();
+    const blob = await new Promise((resolve) => c.toBlob(resolve, 'image/webp', 0.9));
+    return blob || file;
+  }
+
+  const addImageBtn = document.getElementById('map-add-image-btn');
+  const addImageInput = document.getElementById('map-image-input');
+  if (addImageBtn && addImageInput) {
+    if (readOnly()) addImageBtn.hidden = true;
+    addImageBtn.addEventListener('click', () => { if (!readOnly()) addImageInput.click(); });
+    addImageInput.addEventListener('change', async () => {
+      const file = addImageInput.files && addImageInput.files[0];
+      addImageInput.value = '';
+      if (!file) return;
+      addImageBtn.disabled = true;
+      try {
+        const body = new FormData();
+        body.append('image', await fitForUpload(file), file.name);
+        const r = stageWrap.getBoundingClientRect();
+        const c = getNaturalPos(r.left + r.width / 2, r.top + r.height / 2);          // the middle of what is on screen
+        body.append('cx', Math.max(0, Math.min(naturalWidth, c.x)));
+        body.append('cy', Math.max(0, Math.min(naturalHeight, c.y)));
+        if (window.IS_DM && newObjectsHidden) body.append('dm_only', '1');
+        const res = await mapWrite(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/images`, { method: 'POST', body });
+        const shape = await res.json();
+        drawings.push(shape);
+        redraw();
+        pushCommand(makeAddShapeCommand(shape));
+        const selectBtn = document.querySelector('.map-tool-btn[data-tool="select"]');
+        if (selectBtn) selectBtn.click();
+        selectShape(shape.id);
+      } catch (err) {
+        /* mapWrite already told the person why */
+      } finally {
+        addImageBtn.disabled = false;
+      }
+    });
+  }
 
   function getColor() { return document.getElementById('map-color-input').value; }
   function getFillOpacity() { return parseInt(document.getElementById('fill-opacity').value, 10) / 100; }

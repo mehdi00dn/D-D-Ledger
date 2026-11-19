@@ -36,7 +36,7 @@
     <div class="faction-member">
       <a class="faction-member-link" href="{{ url_for('character_detail', char_id=m.id) }}">
         <span class="avatar-frame">
-          {% if m.avatar_path %}<img src="{{ url_for('uploaded_file', filename=m.avatar_path) }}" alt="">{% else %}{{ icon('user') }}{% endif %}
+          {% if m.avatar_path %}<img src="{{ url_for('uploaded_file', filename=m.avatar_path) }}" alt="" loading="lazy" decoding="async">{% else %}{{ icon('user') }}{% endif %}
         </span>
         <span class="faction-member-name" title="{{ m.name }}">{% if g.is_dm or not m.is_npc %}{{ class_icon(m.class_key) }}{% endif %}{{ m.name }}</span>
         <span class="dossier-tag {{ 'npc' if m.is_npc else '' }}">{{ 'NPC' if m.is_npc else 'PC' }}</span>

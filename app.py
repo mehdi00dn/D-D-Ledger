@@ -2653,6 +2653,17 @@ def campaign_member_remove(user_id):
     return redirect(url_for('campaign_edit', campaign_id=g.campaign_id))
 
 
+def _drawing_image_paths(db, where, params):
+    """The stored files of the pictures placed on maps (kind 'image'), for the drawings matching `where`."""
+    out = []
+    for r in db.execute("SELECT data FROM map_drawings WHERE kind = 'image' AND " + where, params).fetchall():
+        try:
+            out.append(json.loads(r['data']).get('path'))
+        except (TypeError, ValueError, AttributeError):
+            pass
+    return [p for p in out if p]
+
+
 def _delete_campaign_rows(db, campaign_id):
     """Delete a campaign and everything in it inside the caller's transaction; returns the uploaded files to remove
     after the caller commits (once the rows are gone the files could no longer be found).  The explicit deletes are
@@ -2670,6 +2681,7 @@ def _delete_campaign_rows(db, campaign_id):
     ''', (campaign_id,))]
     map_paths = [r['image_path'] for r in db.execute(
         'SELECT image_path FROM maps WHERE campaign_id = ? AND image_path IS NOT NULL', (campaign_id,))]
+    map_paths += _drawing_image_paths(db, 'map_id IN (SELECT id FROM maps WHERE campaign_id = ?)', (campaign_id,))
 
     db.execute('DELETE FROM battle_participants WHERE campaign_id = ?', (campaign_id,))
     db.execute('DELETE FROM character_sheets WHERE character_id IN (SELECT id FROM characters WHERE campaign_id = ?)', (campaign_id,))
@@ -3135,9 +3147,18 @@ def realtime_ping(resp):
 
 
 @app.after_request
-def cache_fonts(resp):
-    if request.path.startswith('/static/fonts/') and resp.status_code == 200:
-        resp.headers['Cache-Control'] = 'public, max-age=2592000'        # the font files never change; a month is plenty
+def cache_static(resp):
+    """Browser and CDN caching for /static (without it every stylesheet, script and texture was re-checked on every page).
+    A URL carrying ?v=<content hash> (what url_for('static') adds) can never change meaning, so it is kept for a year.  Fonts never
+    change.  Files the stylesheets name themselves (textures, backgrounds, the logo) have no hash in the URL, so they are kept for a
+    day and may be shown stale for up to a week while the browser re-checks in the background."""
+    if request.path.startswith('/static/') and resp.status_code in (200, 304):
+        if request.args.get('v'):
+            resp.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
+        elif request.path.startswith('/static/fonts/'):
+            resp.headers['Cache-Control'] = 'public, max-age=2592000'
+        else:
+            resp.headers['Cache-Control'] = 'public, max-age=86400, stale-while-revalidate=604800'
     return resp
 
 
@@ -6723,6 +6744,9 @@ def _campaign_image_jobs(c):
     for m in c['maps']:
         if m['image_file']:
             jobs.setdefault(m['image_file'], ('maps', None))
+        for d in m['drawings']:
+            if d.get('image_file'):
+                jobs.setdefault(d['image_file'], ('maps', None))
     return jobs
 
 
@@ -6819,9 +6843,15 @@ def _import_campaign(db, zf, c, *, owner_id=None, enforce_quota=True, decoded=No
                               pin['rotation'], pin['locked'], holder, pin['dm_only']))
             pin_ids[pin['ref']] = cur.lastrowid
         for order, d in enumerate(m['drawings']):
+            geometry = d['data']
+            if d['kind'] == 'image':
+                picture = keep(d.get('image_file'), 'maps')
+                if picture is None:
+                    continue
+                geometry = {'path': picture}
             db.execute('INSERT INTO map_drawings (map_id, kind, data, cx, cy, w, h, rotation, color, fill, fill_opacity, sort_order, locked, dm_only, attached_pin_id) '
                        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                       (map_id, d['kind'], json.dumps(d['data']), d['cx'] * k, d['cy'] * k, d['w'] * k, d['h'] * k, d['rotation'], d['color'],
+                       (map_id, d['kind'], json.dumps(geometry), d['cx'] * k, d['cy'] * k, d['w'] * k, d['h'] * k, d['rotation'], d['color'],
                         d['fill'], d['fill_opacity'], order, d['locked'], d['dm_only'], pin_ids.get(d['attached_pin_ref'])))
 
     for q in c['quests']:
@@ -7065,6 +7095,7 @@ def map_delete(map_id):
         abort(403)
     if m:
         _cleanup_familiar_participants(db, map_id)
+        delete_uploads(_drawing_image_paths(db, 'map_id = ?', (map_id,)))
         delete_upload(m['image_path'])
         db.execute('DELETE FROM maps WHERE id = ? AND campaign_id = ?', (map_id, g.campaign_id))
         log_activity(db, g.campaign_id, 'map_deleted', 'removed the map %s' % m['name'])
@@ -7148,7 +7179,17 @@ def map_image(map_id):
         abort(404)
     raw, cols, rows, version, image_path, _w, _h = info
     km = _UPLOAD_KEY_RE.match(image_path or '')
-    data = get_storage().get(UPLOADS, image_path) if km else None
+    if not km:
+        abort(404)
+    etag = '%s-%s-%s' % (version, 'dm' if g.is_dm else 'pl', hashlib.sha1(image_path.encode()).hexdigest()[:8])
+    if request.if_none_match.contains(etag):
+        # Unchanged since the browser last looked: answer from the database row alone, without fetching the file from storage
+        # or painting the fog again.
+        resp = Response(status=304)
+        resp.headers['ETag'] = '"%s"' % etag
+        resp.headers['Cache-Control'] = 'private, no-cache'
+        return resp
+    data = get_storage().get(UPLOADS, image_path)
     if data is None:
         abort(404)
     if g.is_dm or raw is None:
@@ -7161,9 +7202,9 @@ def map_image(map_id):
     resp = Response(data, mimetype=mimetype)
     # Revalidate every time: the URL is the same before and after the DM changes the fog.
     resp.headers['Cache-Control'] = 'private, no-cache'
-    resp.headers['ETag'] = '"%s-%s-%s"' % (version, 'dm' if g.is_dm else 'pl', hashlib.sha1(image_path.encode()).hexdigest()[:8])
+    resp.headers['ETag'] = '"%s"' % etag
     resp.headers['X-Content-Type-Options'] = 'nosniff'
-    return resp.make_conditional(request)
+    return resp
 
 
 @app.route('/campaigns/<campaign:campaign_id>/api/maps/<gamemap:map_id>/fog')
@@ -7313,6 +7354,9 @@ def _map_drawings_payload(db, map_id):
     for r in rows:
         d = dict(r)
         d['data'] = json.loads(d['data'])
+        if d['kind'] == 'image':
+            path = (d['data'] or {}).get('path')
+            d['url'] = url_for('uploaded_file', filename=path) if path and _UPLOAD_KEY_RE.match(path) else None
         if d.get('attached_pin_id') in hidden_pins:
             d['attached_pin_id'] = None                    # a Player is never told a hidden token exists
         result.append(d)
@@ -7350,9 +7394,18 @@ def api_map_drawings_add(map_id):
     rotation = float(data.get('rotation', 0))
     locked = 1 if data.get('locked') else 0
     dm_only = 1 if (g.is_dm and data.get('dm_only')) else 0        # only the DM can hide an object
-    if kind not in ('line', 'rect', 'oval', 'pen', 'angle'):
+    if kind not in ('line', 'rect', 'oval', 'pen', 'angle', 'image'):
         return api_error('Unknown kind of drawing.', 400)
     db = get_db()
+    if kind == 'image':
+        # Only to put back an image this campaign already holds (undo of a delete); new pictures come in through the upload route.
+        path = (geometry or {}).get('path')
+        owned = bool(path) and _UPLOAD_KEY_RE.match(path) and path.startswith('maps/') and db.execute(
+            'SELECT 1 FROM stored_files WHERE key = ? AND campaign_id = ?', (path, g.campaign_id)).fetchone()
+        if not owned:
+            db.close()
+            return api_error('Unknown image.', 400)
+        geometry = {'path': path}
     try:
         attached = _attach_target(db, map_id, data.get('attached_pin_id'))
     except ValueError as e:
@@ -7367,6 +7420,56 @@ def api_map_drawings_add(map_id):
     db.commit()
     db.close()
     return jsonify({'id': cur.lastrowid})
+
+
+MAP_IMAGE_PX = 1600                    # longest edge of a picture placed on a map (the map itself keeps up to OPTIMIZE_MAX_DIM)
+MAX_IMAGES_PER_MAP = 40
+
+
+@app.route('/campaigns/<campaign:campaign_id>/api/maps/<gamemap:map_id>/images', methods=['POST'])
+@campaign_access_required
+@map_edit_allowed
+def api_map_image_add(map_id):
+    """Put a picture on the map as a new object (move, resize, rotate, lock, hide, delete like any shape)."""
+    db = get_db()
+    m = db.execute('SELECT image_width, image_height FROM maps WHERE id = ? AND campaign_id = ?', (map_id, g.campaign_id)).fetchone()
+    if m is None:
+        db.close()
+        abort(404)
+    count = db.execute("SELECT COUNT(*) AS n FROM map_drawings WHERE map_id = ? AND kind = 'image'", (map_id,)).fetchone()['n']
+    if count >= MAX_IMAGES_PER_MAP:
+        db.close()
+        return api_error('This map already has %d pictures. Delete one first.' % MAX_IMAGES_PER_MAP, 400, code='too_many_images')
+    db.close()
+    try:
+        stored = store_upload('image', 'maps', cap_dimension=MAP_IMAGE_PX)
+    except quotas.QuotaExceeded as exc:
+        return api_error(str(exc), 413, code='quota_exceeded', scope=exc.scope)
+    if not stored:
+        return api_error('That file is not an image we can use (PNG, JPEG, GIF or WebP).', 400, code='bad_image')
+    map_w, map_h = float(m['image_width'] or 1000), float(m['image_height'] or 1000)
+    try:
+        cx = min(max(float(request.form.get('cx', map_w / 2)), 0), map_w)
+        cy = min(max(float(request.form.get('cy', map_h / 2)), 0), map_h)
+    except ValueError:
+        cx, cy = map_w / 2, map_h / 2
+    # Land at its own size, shrunk to at most half the map each way, never enlarged.
+    scale = min(1.0, (map_w * 0.5) / stored.width, (map_h * 0.5) / stored.height)
+    w, h = round(stored.width * scale, 2), round(stored.height * scale, 2)
+    dm_only = 1 if (g.is_dm and request.form.get('dm_only') in ('1', 'true', 'on')) else 0
+    db = get_db()
+    max_order = db.execute('SELECT COALESCE(MAX(sort_order), -1) AS m FROM map_drawings WHERE map_id = ?', (map_id,)).fetchone()['m']
+    cur = db.execute(
+        '''INSERT INTO map_drawings (map_id, kind, data, cx, cy, w, h, rotation, color, fill, fill_opacity, sort_order, locked, dm_only, attached_pin_id)
+           VALUES (?, 'image', ?, ?, ?, ?, ?, 0, '#ffffff', 0, 0, ?, 0, ?, NULL)''',
+        (map_id, json.dumps({'path': stored.path}), cx, cy, w, h, max_order + 1, dm_only))
+    db.commit()
+    row = db.execute('SELECT * FROM map_drawings WHERE id = ?', (cur.lastrowid,)).fetchone()
+    db.close()
+    d = dict(row)
+    d['data'] = json.loads(d['data'])
+    d['url'] = url_for('uploaded_file', filename=stored.path)
+    return jsonify(d)
 
 
 @app.route('/campaigns/<campaign:campaign_id>/api/maps/<gamemap:map_id>/drawings/<int:drawing_id>/update', methods=['POST'])

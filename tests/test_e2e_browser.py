@@ -235,7 +235,7 @@ def test_lightbox_arrows_sit_beside_the_image(pw, shared_server):
     char_id = next(c['id'] for c in api.get(f'/campaigns/{cid}/api/characters').json() if c['name'] == 'Gallery')
     ctx = api.context(pw, base); page = ctx.new_page(); bad, errs = _collect(page)
     page.goto(base + f'/campaigns/{cid}/characters/{char_id}'); page.wait_for_load_state('networkidle')
-    page.locator('.sheet-thumbs img[data-sheet-src]').nth(1).click()           # the thumbnail picks the sheet in the viewer ...
+    page.locator('[data-sheet-next]').click()                                  # the arrow steps to the next image in the viewer ...
     page.click('#sheet-viewer-img')                                            # ... and the viewer opens the lightbox on it
     page.wait_for_selector('#image-lightbox:not([hidden])'); page.wait_for_timeout(400)
     img, prev, nxt = (page.locator(s).bounding_box() for s in ('#lightbox-img', '#lightbox-prev-btn', '#lightbox-next-btn'))
@@ -1572,7 +1572,7 @@ def test_lightbox_turns_the_page_quickly_and_calms_down_for_reduced_motion(pw, s
         ctx = api.context(pw, base); page = ctx.new_page(); bad, errs = _collect(page)
         page.emulate_media(reduced_motion=reduced)
         page.goto(base + f'/campaigns/{cid}/characters/{char_id}'); page.wait_for_load_state('networkidle')
-        page.locator('.sheet-thumbs img[data-sheet-src]').nth(0).click(); page.click('#sheet-viewer-img')
+        page.click('#sheet-viewer-img')
         page.wait_for_selector('#image-lightbox:not([hidden])'); page.wait_for_timeout(500)
         assert page.evaluate("() => document.getElementById('lightbox-img').getAnimations().length") == 0     # opening is not a page turn
         before = page.locator('#lightbox-img').get_attribute('src')
