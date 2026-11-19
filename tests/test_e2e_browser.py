@@ -406,7 +406,7 @@ def test_class_dropdown_hover_guide_select_clear_and_icons(pw, shared_server):
     assert page.input_value('#class_key') == '' and page.inner_text('#class-trigger-text') == 'No class'
     page.mouse.move(5, 5)                                                      # a resting pointer over the menu would hover-select over the keys
     page.focus('#class-trigger'); page.keyboard.press('ArrowDown')            # keyboard: open, move, choose
-    page.keyboard.press('ArrowDown'); page.keyboard.press('ArrowDown'); page.keyboard.press('ArrowDown'); page.keyboard.press('Enter')
+    page.keyboard.press('ArrowDown'); page.keyboard.press('ArrowDown'); page.keyboard.press('Enter')       # the menu has two columns: down moves a row
     assert page.input_value('#class_key') == 'bard'
     page.click('#class-trigger')
     page.evaluate("() => document.documentElement.setAttribute('data-theme', 'light')")

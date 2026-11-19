@@ -25,11 +25,33 @@
     turn.onfinish = turn.oncancel = function () { turn = null; };
   }
 
+  // On a slow connection a new <img src> keeps painting the OLD picture until the new one has arrived, so the arrows looked like they
+  // repeated one image.  Now the old picture is hidden (and a spinner shown) while the next one loads; a failed load says so and a click retries.
+  var stage = img.parentElement, wait = null;
+  function setSource(url, force) {
+    clearTimeout(wait);
+    stage.classList.remove('is-failed');
+    if (!force && img.getAttribute('src') === url) { stage.classList.remove('is-loading'); return; }
+    if (force) img.removeAttribute('src');
+    img.src = url;
+    wait = setTimeout(function () { if (!img.complete) stage.classList.add('is-loading'); }, 120);   // quick loads never flash a spinner
+  }
+  img.addEventListener('load', function () {
+    clearTimeout(wait);
+    stage.classList.remove('is-loading', 'is-failed');
+    [index - 1, index + 1].forEach(function (n) { if (thumbs[n]) (new Image()).src = thumbs[n].dataset.sheetSrc; });   // the next arrow press is instant
+  });
+  img.addEventListener('error', function () {
+    clearTimeout(wait);
+    stage.classList.remove('is-loading');
+    stage.classList.add('is-failed');
+  });
+
   function show(i) {
     var before = index;
     index = Math.max(0, Math.min(thumbs.length - 1, i));
     var changed = index !== before;
-    img.src = thumbs[index].dataset.sheetSrc;
+    setSource(thumbs[index].dataset.sheetSrc);
     if (changed) pageTurn(index > before ? 1 : -1);
     img.alt = 'Additional image ' + (index + 1) + ' of ' + thumbs.length;
     if (count) count.textContent = (index + 1) + ' / ' + thumbs.length;
@@ -40,8 +62,11 @@
   if (prev) prev.addEventListener('click', function () { show(index - 1); });
   if (next) next.addEventListener('click', function () { show(index + 1); });
 
+  stage.addEventListener('click', function () {
+    if (stage.classList.contains('is-failed')) setSource(thumbs[index].dataset.sheetSrc, true);   // retry the picture that did not arrive
+  });
   img.addEventListener('click', function () {
-    if (!window.openLightbox) return;
+    if (!window.openLightbox || stage.classList.contains('is-failed')) return;
     var items = thumbs.map(function (t) { return { src: t.dataset.sheetSrc, deleteUrl: t.dataset.viewerDeleteUrl || null }; });
     window.openLightbox(items[index].src, items[index].deleteUrl, items);
   });

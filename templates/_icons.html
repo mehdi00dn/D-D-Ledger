@@ -1,5 +1,5 @@
 {% macro class_icon(key) -%}
-{%- if key and key in class_labels -%}<span class="class-icon" title="{{ class_labels[key] }}" role="img" aria-label="{{ class_labels[key] }}"><svg aria-hidden="true"><use href="/static/icons/classes.svg#{{ key }}"></use></svg></span>{%- endif -%}
+{%- if key and key in class_labels -%}<span class="class-icon" data-class="{{ key }}" title="{{ class_labels[key] }}" role="img" aria-label="{{ class_labels[key] }}"><svg aria-hidden="true"><use href="/static/icons/classes.svg#{{ key }}"></use></svg></span>{%- endif -%}
 {%- endmacro %}
 {% macro icon(name, cls='') %}
 {%- if name == 'eye' -%} <!-- view details -->

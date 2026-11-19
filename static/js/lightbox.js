@@ -57,6 +57,28 @@
     nextBtn.classList.toggle('is-off', !hasNext);
   }
 
+  // Same guard as the details page viewer: while the next picture loads, the previous one is hidden (spinner after 120 ms), never shown as if it were the new one.
+  let loadWait = null;
+  function setSource(url, force) {
+    clearTimeout(loadWait);
+    stage.classList.remove('is-failed');
+    if (!force && img.getAttribute('src') === url) { stage.classList.remove('is-loading'); return; }
+    if (force) img.removeAttribute('src');
+    img.src = url;
+    loadWait = setTimeout(() => { if (!img.complete) stage.classList.add('is-loading'); }, 120);
+  }
+  img.addEventListener('load', () => {
+    clearTimeout(loadWait);
+    stage.classList.remove('is-loading', 'is-failed');
+    [currentIndex - 1, currentIndex + 1].forEach(n => { if (currentImages[n]) (new Image()).src = currentImages[n].src; });
+  });
+  img.addEventListener('error', () => {
+    if (!img.getAttribute('src')) return;                 // close() clears the source: not a failure
+    clearTimeout(loadWait);
+    stage.classList.remove('is-loading');
+    stage.classList.add('is-failed');
+  });
+
   function open(src, deleteUrl, images) {
     currentImages = Array.isArray(images) ? images : [];
     currentIndex = currentImages.findIndex(item => item.src === src);
@@ -64,7 +86,7 @@
       currentImages = [{ src, deleteUrl: deleteUrl || null }];
       currentIndex = 0;
     }
-    img.src = src;
+    setSource(src, true);
     currentDeleteUrl = deleteUrl || null;
     deleteBtn.hidden = !currentDeleteUrl;
     updateNavigation();
@@ -95,7 +117,7 @@
     if (nextIndex < 0 || nextIndex >= currentImages.length) return;
     const item = currentImages[nextIndex];
     currentIndex = nextIndex;
-    img.src = item.src;
+    setSource(item.src);
     currentDeleteUrl = item.deleteUrl || null;
     deleteBtn.hidden = !currentDeleteUrl;
     updateNavigation();
@@ -106,7 +128,9 @@
   function close() {
     if (turn) { turn.cancel(); turn = null; }
     overlay.hidden = true;
-    img.src = '';
+    clearTimeout(loadWait);
+    stage.classList.remove('is-loading', 'is-failed');
+    img.removeAttribute('src');
     currentDeleteUrl = null;
     currentImages = [];
     currentIndex = -1;
@@ -168,7 +192,11 @@
   });
 
   // ---- Click to zoom, drag to pan (unified via mousedown/move/up) ----
+  stage.addEventListener('click', () => {
+    if (stage.classList.contains('is-failed') && currentImages[currentIndex]) setSource(currentImages[currentIndex].src, true);
+  });
   img.addEventListener('mousedown', (e) => {
+    if (stage.classList.contains('is-failed')) return;
     dragging = true;
     movedDistance = 0;
     dragStart = { x: e.clientX, y: e.clientY };
