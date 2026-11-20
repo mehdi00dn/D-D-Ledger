@@ -2904,24 +2904,16 @@ body.page-leaving .content {
 .preview-banner form { margin: 0; }
 
 /* DL-43: character classes */
-/* One colour per class (the icon is the only coloured thing, so it reads at a glance).  --cc-p is for paper and light surfaces, --cc-d for the dark ones. */
-[data-class="artificer"] { --cc-p: #9b4f1a; --cc-d: #f08a4b; }
-[data-class="barbarian"] { --cc-p: #a1261c; --cc-d: #ff6458; }
-[data-class="bard"]      { --cc-p: #b0285f; --cc-d: #ff82b2; }
-[data-class="cleric"]    { --cc-p: #8a6400; --cc-d: #ffd34d; }
-[data-class="druid"]     { --cc-p: #27762c; --cc-d: #67d66d; }
-[data-class="fighter"]   { --cc-p: #2c5f94; --cc-d: #86beff; }
-[data-class="monk"]      { --cc-p: #0d7471; --cc-d: #45d9d2; }
-[data-class="paladin"]   { --cc-p: #3a43b5; --cc-d: #9aa6ff; }
-[data-class="ranger"]    { --cc-p: #55740f; --cc-d: #b0e04a; }
-[data-class="rogue"]     { --cc-p: #6b36b8; --cc-d: #c09bff; }
-[data-class="sorcerer"]  { --cc-p: #c0420a; --cc-d: #ff9440; }
-[data-class="warlock"]   { --cc-p: #8f1f8f; --cc-d: #f08cf0; }
-[data-class="wizard"]    { --cc-p: #0b6aa8; --cc-d: #5cc8ff; }
-[data-class] { --cc: var(--cc-d); }
-:root[data-theme="light"] [data-class], .o-paper [data-class], .o-paper[data-class] { --cc: var(--cc-p); }
-.o-ondark [data-class] { --cc: var(--cc-d); }
+/* Class icons: one restrained accent, in a small framed tile so they are not just more text.  Brass on the dark surfaces, bronze on paper and light ones. */
+[data-class] { --cc: var(--brass-bright); }
+:root[data-theme="light"] [data-class], .o-paper [data-class], .o-paper[data-class] { --cc: #8f5f12; }          /* bronze: warm and clearly lighter than the brown text */
+.o-ondark [data-class] { --cc: var(--brass-bright); }
 .class-icon[data-class], .avatar-class[data-class], .avatar-frame .avatar-class[data-class], .class-trigger-icon[data-class], .class-badge .class-icon[data-class] { color: var(--cc); }
+.class-icon[data-class] {
+  inline-size: 1.5em; block-size: 1.5em; padding: 0.28em; margin-inline-end: 8px; vertical-align: -0.38em; box-sizing: border-box; border-radius: 0.42em;
+  border: 1px solid color-mix(in srgb, var(--cc) 55%, transparent); background: color-mix(in srgb, var(--cc) 12%, transparent);
+}
+.class-badge .class-icon[data-class], .profile-char-ph .class-icon[data-class], .map-pin-label .class-icon[data-class] { padding: 0; border: 0; border-radius: 0; background: none; vertical-align: baseline; }
 .map-pin-label .class-icon[data-class] { color: inherit; }
 .class-icon { display: inline-flex; align-items: center; justify-content: center; width: 1.05em; height: 1.05em; margin-inline-end: 6px; vertical-align: -0.12em; color: var(--brass-ink); flex-shrink: 0; }
 .class-icon svg { width: 100%; height: 100%; fill: currentColor; }
@@ -2935,7 +2927,10 @@ body.page-leaving .content {
 .class-trigger:hover, .class-trigger[aria-expanded="true"] { border-color: var(--brass); color: var(--parchment); }
 .class-trigger:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
 .class-select.has-value .class-trigger { color: var(--parchment); }
-.class-trigger-icon { display: inline-flex; width: 24px; height: 24px; color: var(--brass-ink); flex-shrink: 0; }
+.class-trigger-icon {
+  display: inline-flex; inline-size: 32px; block-size: 32px; padding: 5px; box-sizing: border-box; border-radius: 9px; color: var(--brass-ink); flex-shrink: 0;
+  border: 1px solid color-mix(in srgb, var(--cc, var(--brass-ink)) 55%, transparent); background: color-mix(in srgb, var(--cc, var(--brass-ink)) 12%, transparent);
+}
 .class-trigger-icon:empty { display: none; }
 .class-trigger-icon svg, .class-option-icon svg { width: 100%; height: 100%; fill: currentColor; }
 .class-trigger-text { flex: 1; }
@@ -2956,14 +2951,15 @@ body.page-leaving .content {
   transition: background-color 0.12s ease-out, border-color 0.12s ease-out;
 }
 .class-option-icon {
-  display: inline-flex; align-items: center; justify-content: center; inline-size: 34px; block-size: 34px; padding: 6px; border-radius: 9px; flex-shrink: 0;
-  color: var(--cc, var(--paper-accent-ink)); background: color-mix(in srgb, var(--cc, var(--paper-accent-ink)) 14%, transparent);
+  display: inline-flex; align-items: center; justify-content: center; inline-size: 36px; block-size: 36px; padding: 6px; border-radius: 10px; flex-shrink: 0;
+  color: var(--cc, var(--paper-accent-ink)); background: color-mix(in srgb, var(--cc, var(--paper-accent-ink)) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--cc, var(--paper-accent-ink)) 55%, transparent); box-sizing: border-box;
 }
 .class-option:hover, .class-option.active { background: color-mix(in srgb, var(--cc, var(--paper-accent-ink)) 12%, transparent); border-color: color-mix(in srgb, var(--cc, var(--paper-accent-ink)) 38%, transparent); }
 .class-option.active .class-option-icon { background: color-mix(in srgb, var(--cc, var(--paper-accent-ink)) 24%, transparent); }
 .class-option[aria-selected="true"] { font-weight: 600; border-color: var(--cc, var(--paper-line-strong)); }
 .class-option-none { grid-column: 1 / -1; color: var(--paper-ink-dim); border-block-end: 1px solid var(--paper-line); border-radius: 10px; margin-block-end: 2px; min-block-size: 40px; }
-.class-option-none .class-option-icon { background: transparent; }
+.class-option-none .class-option-icon { background: transparent; border-style: dashed; }
 .class-option-none .class-option-icon::before { content: ""; inline-size: 14px; block-size: 14px; border: 2px dashed currentColor; border-radius: 50%; opacity: 0.6; }
 @media (prefers-reduced-motion: reduce) { .class-option { transition: none; } }
 .class-tip {
