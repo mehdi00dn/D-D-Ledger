@@ -134,3 +134,26 @@ def test_class_picker_fits_a_phone(pw, shared_server):
     page.tap('.class-option[data-value=wizard]')
     assert page.input_value('#class_key') == 'wizard'
     ctx.close()
+
+
+def test_dialogs_ease_out_before_they_go(pw, shared_server):
+    """DL-180 part 20: a dialog stays on screen while it fades and settles (160 ms), instead of vanishing the instant it closes."""
+    base = shared_server.url; api = Api(base); cid = api.campaign('Dialogs')
+    ctx = api.context(pw, base); page = ctx.new_page()
+    page.goto(base + f'/campaigns/{cid}/battle'); page.wait_for_load_state('networkidle')
+    dlg = page.locator('dialog.pick-dialog').first
+    page.evaluate("() => document.querySelector('dialog.pick-dialog').showModal()")
+    page.wait_for_timeout(400)
+    assert dlg.evaluate('e => getComputedStyle(e).opacity') == '1'
+    page.keyboard.press('Escape')
+    assert dlg.evaluate('e => e.open') is False                                              # closed for the logic at once ...
+    page.evaluate('() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))')     # let the page draw the first frame of the exit
+    page.wait_for_timeout(40)
+    mid = dlg.evaluate('e => [getComputedStyle(e).display, parseFloat(getComputedStyle(e).opacity)]')
+    assert mid[0] != 'none' and mid[1] < 1, mid                                              # ... but still on screen and fading
+    page.wait_for_timeout(400)
+    assert dlg.evaluate('e => getComputedStyle(e).display') == 'none'                       # and gone once the exit has played
+    page.evaluate("() => document.querySelector('dialog.pick-dialog').showModal()")          # opening again works as before
+    page.wait_for_timeout(400)
+    assert dlg.evaluate('e => e.open && getComputedStyle(e).opacity') == '1'
+    ctx.close()

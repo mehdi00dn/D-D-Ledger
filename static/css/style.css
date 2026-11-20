@@ -6281,8 +6281,25 @@ body:has(.tool-flyout.open) .pin-action-bubble.is-docked { opacity: 0; pointer-e
 }
 .modal-overlay { background: var(--o-scrim); }
 .pick-dialog::backdrop, .enc-dialog::backdrop { background: var(--o-scrim, rgba(8, 10, 8, 0.62)); backdrop-filter: blur(2px); }   /* the fallback is for browsers whose ::backdrop does not inherit custom properties */
-.pick-dialog[open], .enc-dialog[open] { animation: panel-pop-in 0.22s var(--ease-out); }   /* the motion the overlay panels already have */
-.pick-dialog[open]::backdrop, .enc-dialog[open]::backdrop { animation: overlay-fade-in 0.2s ease; }
+/* Dialogs ease in over 220 ms and ease out faster (160 ms), so closing never feels slower than the press that asked for it.  Transitions, not keyframes:
+   a dialog opened again mid-exit turns round from where it is.  `display` and `overlay` are transitioned as discrete values so the dialog stays on screen
+   (and in the top layer) until the exit has played; a browser without that support just closes at once. */
+@media (prefers-reduced-motion: no-preference) {
+  .pick-dialog, .enc-dialog {
+    opacity: 0; transform: scale(0.97) translateY(6px);
+    transition: opacity var(--dur) var(--ease-out), transform var(--dur) var(--ease-out), overlay var(--dur) allow-discrete, display var(--dur) allow-discrete;
+  }
+  .pick-dialog[open], .enc-dialog[open] {
+    opacity: 1; transform: none;
+    transition: opacity 0.22s var(--ease-out), transform 0.22s var(--ease-out), overlay 0.22s allow-discrete, display 0.22s allow-discrete;
+  }
+  @starting-style { .pick-dialog[open], .enc-dialog[open] { opacity: 0; transform: scale(0.94) translateY(8px); } }
+  .pick-dialog::backdrop, .enc-dialog::backdrop {
+    opacity: 0; transition: opacity var(--dur) ease, overlay var(--dur) allow-discrete, display var(--dur) allow-discrete;
+  }
+  .pick-dialog[open]::backdrop, .enc-dialog[open]::backdrop { opacity: 1; transition-duration: 0.2s; }
+  @starting-style { .pick-dialog[open]::backdrop, .enc-dialog[open]::backdrop { opacity: 0; } }
+}
 .pick-head h2, .enc-dialog h2 { font-family: var(--font-display); font-weight: 600; }
 .pick-head { padding-block-end: 12px; border-block-end: 1px solid var(--hairline); }
 .pick-head + .pick-tools { padding-block-start: 12px; }
