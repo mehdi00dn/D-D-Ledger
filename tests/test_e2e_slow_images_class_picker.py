@@ -62,8 +62,8 @@ def test_viewer_says_when_a_picture_fails_and_retries_on_click(pw, shared_server
     assert 'try again' in page.eval_on_selector('.sheet-viewer-stage', "e => getComputedStyle(e, '::after').content").lower()
     page.unroute('**/uploads/**')
     page.click('.sheet-viewer-stage')                                                       # the connection is back: one click retries
-    page.wait_for_selector('.sheet-viewer-stage:not(.is-failed):not(.is-loading)')
-    assert page.eval_on_selector('#sheet-viewer-img', 'e => e.complete && e.naturalWidth > 0')
+    page.wait_for_function("() => { const e = document.getElementById('sheet-viewer-img'); return e.complete && e.naturalWidth > 0; }")
+    assert page.eval_on_selector('.sheet-viewer-stage', 'e => !e.classList.contains("is-failed") && !e.classList.contains("is-loading")')
     ctx.close()
 
 
@@ -90,15 +90,19 @@ def test_fast_loads_never_flash_a_spinner(pw, shared_server):
     ctx.close()
 
 
-def test_class_picker_is_solid_paper_with_a_colour_per_class(pw, shared_server):
+def test_class_picker_is_solid_paper_with_framed_icons(pw, shared_server):
     base = shared_server.url; api = Api(base); cid = api.campaign('Picker')
     ctx = api.context(pw, base); page = ctx.new_page()
     page.goto(base + f'/campaigns/{cid}/characters/new'); page.wait_for_selector('#class-trigger')
     page.click('#class-trigger'); page.wait_for_selector('#class-menu:not([hidden])')
     bg = page.eval_on_selector('#class-menu', 'e => getComputedStyle(e).backgroundColor')
     assert bg.startswith('rgb(') or bg.endswith(', 1)'), bg                                  # opaque: the page behind never shows through
-    colours = page.eval_on_selector_all('.class-option[data-class] .class-option-icon', 'els => els.map(e => getComputedStyle(e).color)')
-    assert len(colours) == 13 and len(set(colours)) == 13, colours                         # every class has its own colour
+    icons = page.eval_on_selector_all('.class-option[data-class] .class-option-icon', 'els => els.map(e => { const c = getComputedStyle(e); return [c.color, c.borderTopWidth, c.borderTopStyle]; })')
+    assert len(icons) == 13 and all(w == '1px' and st == 'solid' for _, w, st in icons), icons   # every icon sits in a visible frame
+    assert len({c for c, _, _ in icons}) == 1                                                  # one calm accent, not a rainbow
+    text = page.eval_on_selector('.class-option[data-class]', 'e => getComputedStyle(e).color')
+    assert icons[0][0] != text                                                                   # and it is not just the text colour
+    assert page.eval_on_selector('#class-trigger-icon', 'e => getComputedStyle(e).borderTopWidth') in ('1px', '0px')
     boxes = page.eval_on_selector_all('.class-option', 'els => els.map(e => { const r = e.getBoundingClientRect(); return [Math.round(r.x), Math.round(r.y), Math.round(r.width)]; })')
     assert len({b[0] for b in boxes[1:]}) == 2                                              # two columns
     menu = page.locator('#class-menu').bounding_box()
