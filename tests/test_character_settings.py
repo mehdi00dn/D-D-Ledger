@@ -109,7 +109,7 @@ def test_details_page_and_api_show_the_derived_sheet(make_user):
     ch = dm.new_character(cid, name='Ranger', level=5, wis_score=16, dex_score=14, speed=35,
                           skill_perception=1, skill_stealth=2, save_wis='on')
     page = dm.get(f'/campaigns/{cid}/characters/{ch}').get_data(as_text=True)
-    for needle in ('35 ft', 'Passive Perc.', '>16<', 'Saving throws', 'Stealth', '+8', 'Prof.', '+3'):
+    for needle in ('35 ft', 'Passive perc.', '>16<', 'saving throws', 'Stealth', '+8', 'Prof.', '+3'):
         assert needle in page, needle
     api = dm.get(f'/campaigns/{cid}/api/characters/{ch}/detail').get_json()
     assert '35 ft' in api['sheet_html'] and 'Perception' in api['sheet_html'] and api['speed'] == 35
@@ -123,7 +123,7 @@ def test_players_never_get_an_npcs_new_numbers(make_user):
     page = player.get(f'/campaigns/{cid}/characters/{npc}').get_data(as_text=True)
     api = player.get(f'/campaigns/{cid}/api/characters/{npc}/detail').get_json()
     for blob in (page, json.dumps(api)):
-        for secret in ('45 ft', 'Saving throws', 'Passive Perc', 'skill_prof', 'save_prof', 'sheet_html', '"speed"'):
+        for secret in ('45 ft', 'saving throws', 'Passive perc', 'skill_prof', 'save_prof', 'sheet_html', '"speed"'):
             assert secret not in blob, secret
     assert 'hidden_stats' in api
     # a Player's own party member is fully visible, and so is the NPC to the DM

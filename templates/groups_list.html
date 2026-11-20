@@ -20,7 +20,7 @@
       <div class="upload-progress" hidden><div class="upload-progress-bar"></div></div>
     </form>
     {% if is_dm %}
-    <a href="{{ url_for('faction_new') }}" class="btn btn-primary">{{ icon('plus') }} New Faction</a>
+    <a href="{{ url_for('faction_new') }}" class="btn btn-primary">{{ icon('plus') }} New faction</a>
     {% endif %}
   </div>
 </div>
@@ -75,7 +75,7 @@
   <h2>No factions yet</h2>
   <p>Create a faction or party to organize your characters.</p>
   {% if is_dm %}
-  <a href="{{ url_for('faction_new') }}" class="btn btn-primary">{{ icon('plus') }} New Faction</a>
+  <a href="{{ url_for('faction_new') }}" class="btn btn-primary">{{ icon('plus') }} New faction</a>
   {% endif %}
 </div>
 {% endif %}

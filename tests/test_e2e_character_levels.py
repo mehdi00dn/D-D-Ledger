@@ -48,7 +48,7 @@ def test_level_change_loads_saved_stats(shared_server, pw):
     page.fill('#level', '9'); page.press('#level', 'Tab')
     assert page.input_value('#max_hp') == '11' and 'No stats saved for level 9' in page.inner_text('#level-hint')
     _shot(page, 'levels-form')
-    page.get_by_role('button', name='Save Changes').click()
+    page.get_by_role('button', name='Save changes').click()
     end = time.time() + 15
     while time.time() < end and page.url.rstrip('/').endswith('/edit'):
         time.sleep(0.2)

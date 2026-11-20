@@ -18,14 +18,14 @@
 <div class="campaign-edit-layout">
 <form class="form-panel o-paper" method="POST" enctype="multipart/form-data" id="campaign-form">{{ csrf_field() }}
   <div class="form-section">
-    <p class="form-section-title">Campaign Identity</p>
+    <p class="form-section-title">Campaign identity</p>
     <div class="field u-mb14">
       <label for="name">Name</label>
       <input type="text" id="name" name="name" value="{{ campaign.name if campaign else '' }}" placeholder="e.g. The Ashfall Chronicles" required {{ 'disabled' if not is_owner }}>
     </div>
 
     <div class="field u-mb14">
-      <label>Campaign Image</label>
+      <label>Campaign image</label>
       <div class="avatar-preview-row">
         <div class="avatar-frame-wrap">
           <div class="avatar-frame avatar-frame--banner">
@@ -79,10 +79,10 @@
   {% endif %}
 
   <div class="form-section">
-    <p class="form-section-title">Campaign Details</p>
+    <p class="form-section-title">Campaign details</p>
     <div class="field-row-2">
       <div class="field" id="setting-field">
-        <label for="setting-preset">Setting / World <span class="field-optional">optional</span></label>
+        <label for="setting-preset">Setting / world <span class="field-optional">optional</span></label>
         <select id="setting-preset" name="setting_preset" {{ 'disabled' if not is_owner }}>
           <option value="" {{ 'selected' if setting_preset == '' else '' }}>Not set</option>
           {% for preset in ('Forgotten Realms', 'Eberron', 'Homebrew') %}
@@ -96,12 +96,12 @@
       </div>
 
       <div class="field">
-        <label for="status">Campaign Status <span class="field-optional">optional</span></label>
+        <label for="status">Campaign status <span class="field-optional">optional</span></label>
         <div class="status-field">
           <span class="status-dot" id="status-dot" data-status="{{ cur_status }}"></span>
           <select id="status" name="status" {{ 'disabled' if not is_owner }}>
             <option value="active" {{ 'selected' if cur_status == 'active' else '' }}>Active</option>
-            <option value="on_hold" {{ 'selected' if cur_status == 'on_hold' else '' }}>On Hold</option>
+            <option value="on_hold" {{ 'selected' if cur_status == 'on_hold' else '' }}>On hold</option>
             <option value="completed" {{ 'selected' if cur_status == 'completed' else '' }}>Completed</option>
             <option value="archived" {{ 'selected' if cur_status == 'archived' else '' }}>Archived</option>
           </select>
@@ -111,7 +111,7 @@
   </div>
 
   <div class="form-section">
-    <p class="form-section-title">Access &amp; Privacy</p>
+    <p class="form-section-title">Access &amp; privacy</p>
     <div class="access-options">
       <label class="access-option">
         <input type="radio" name="access_mode" value="private" {{ 'checked' if cur_access == 'private' else '' }} {{ 'disabled' if not is_owner }}>
@@ -127,7 +127,7 @@
         <input type="radio" name="access_mode" value="invite_link" {{ 'checked' if cur_access == 'invite_link' else '' }} {{ 'disabled' if not is_owner }}>
         <span class="access-option-card">
           <span class="access-option-card-header">
-            <span class="access-option-card-title">{{ icon('globe') }} Invite Link</span>
+            <span class="access-option-card-title">{{ icon('globe') }} Invite link</span>
             <span class="access-option-card-check">{{ icon('check') }}</span>
           </span>
           <p class="access-option-card-desc">Anyone with a valid invite link can join as a Player. Create links after saving.</p>
@@ -139,7 +139,7 @@
   {% if is_owner %}
   <div class="form-actions">
     <a href="{{ url_for('campaigns_list') }}" class="btn btn-ghost">Cancel</a>
-    <button type="submit" class="btn btn-primary">{{ icon('check') }} {{ 'Save Changes' if campaign else 'Create Campaign' }}</button>
+    <button type="submit" class="btn btn-primary">{{ icon('check') }} {{ 'Save changes' if campaign else 'Create campaign' }}</button>
   </div>
   {% endif %}
 </form>
@@ -156,7 +156,7 @@
       <label class="toggle-switch">
         <input type="checkbox" name="hide_npcs" {{ 'checked' if campaign.hide_npcs else '' }} data-auto-submit>
         <span class="toggle-switch-track"></span>
-        <span class="toggle-switch-label">Hide NPCs from Players</span>
+        <span class="toggle-switch-label">Hide NPCs from players</span>
       </label>
       <p class="field-hint">While this is on, Players don't see NPC cards in the character list. NPCs still show on the map and in the battle, with their stats hidden as usual. An NPC a Player made themselves stays in their list. The DM sees everything.</p>
     </form>
@@ -321,7 +321,7 @@
     <div class="leave-campaign-row">
       {% if can_leave_freely %}
       <form method="POST" action="{{ url_for('campaign_leave', campaign_id=campaign.id) }}" data-confirm="Leave '{{ campaign.name }}'? You'll need a new invite to get back in.">{{ csrf_field() }}
-        <button type="submit" class="btn btn-ghost btn-sm">{{ icon('arrow-left') }} Leave Campaign</button>
+        <button type="submit" class="btn btn-ghost btn-sm">{{ icon('arrow-left') }} Leave campaign</button>
       </form>
       {% elif members|length > 1 %}
       <p class="hint-text">You're the only owner — promote another member to Owner before you can leave.</p>
