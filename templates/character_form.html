@@ -124,7 +124,7 @@
         </label>
         <label class="cf-vital" for="armor_class">
           <span class="cf-vital-icon">{{ icon('shield') }}</span>
-          <span class="cf-vital-label">Armor Class</span>
+          <span class="cf-vital-label">Armor class</span>
           <input type="number" id="armor_class" name="armor_class" min="0" value="{{ character.armor_class if character else 10 }}">
         </label>
         <label class="cf-vital" for="speed">
@@ -136,7 +136,7 @@
     </section>
 
     <section class="cf-card o-paper" id="proficiencies" data-proficiencies aria-labelledby="cf-abilities">
-      <h2 class="cf-title" id="cf-abilities">Abilities &amp; Saving Throws</h2>
+      <h2 class="cf-title" id="cf-abilities">Abilities &amp; saving throws</h2>
       <p class="cf-hint">Modifiers and the proficiency bonus come from the scores and level. Tick <b>Save</b> for the throws this character is trained in.</p>
       <div class="cf-abilities">
         {% for key, short, name in sheet_abilities %}
@@ -178,7 +178,7 @@
       <div class="note-blocks" id="note-blocks">
         {% for e in notes_entries %}{{ note_block(e.t, e.h) }}{% endfor %}
       </div>
-      <button type="button" class="btn btn-ghost btn-sm btn-add-note" id="add-note-btn">{{ icon('plus') }} Add Note</button>
+      <button type="button" class="btn btn-ghost btn-sm btn-add-note" id="add-note-btn">{{ icon('plus') }} Add note</button>
       <input type="hidden" name="notes" id="notes-hidden-input">
       <template id="note-block-template">{{ note_block('') }}</template>
       </div>
@@ -292,7 +292,7 @@
     {% else %}
     <a href="{{ url_for('battle_view') if from_battle else url_for('characters_list') }}" class="btn btn-ghost">Cancel</a>
     {% endif %}
-    <button type="submit" class="btn btn-primary">{{ icon('check') }} {{ 'Save Changes' if character else ('Save to Your characters' if library else 'Add Character') }}</button>
+    <button type="submit" class="btn btn-primary">{{ icon('check') }} {{ 'Save changes' if character else ('Save to Your characters' if library else 'Add character') }}</button>
   </div>
 </form>
 {% endblock %}

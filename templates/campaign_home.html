@@ -24,7 +24,7 @@
       {% if bio_html %}<div class="home-bio">{{ clamped(bio_html, 'home-bio-text') }}</div>{% endif %}
       <div class="home-hero-foot">
         <div class="home-actions">
-          <a href="{{ url_for('character_new') }}" class="btn btn-primary">{{ icon('plus') }} New Character</a>
+          <a href="{{ url_for('character_new') }}" class="btn btn-primary">{{ icon('plus') }} New character</a>
           <a href="{{ url_for('battle_view') }}" class="btn btn-ghost">{{ icon('swords') }} Battle</a>
         </div>
         <nav class="home-tiles" aria-label="Campaign contents">

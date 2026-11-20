@@ -12,7 +12,7 @@
   {% if g.is_dm %}
   <div class="page-actions battle-actions">
     <div class="roll-menu" id="roll-menu">
-      <button type="button" class="btn btn-ghost" id="roll-initiative-btn" aria-haspopup="menu" aria-expanded="false" aria-controls="roll-menu-list" title="Roll d20 + Dexterity. Hover for the player characters or the NPCs only.">{{ icon('dices') }} <span>Roll Initiative</span> {{ icon('chevron-down') }}</button>
+      <button type="button" class="btn btn-ghost" id="roll-initiative-btn" aria-haspopup="menu" aria-expanded="false" aria-controls="roll-menu-list" title="Roll d20 + Dexterity. Hover for the player characters or the NPCs only.">{{ icon('dices') }} <span>Roll initiative</span> {{ icon('chevron-down') }}</button>
       <div class="roll-menu-list" id="roll-menu-list" role="menu" aria-label="Roll initiative for">
         <div class="roll-menu-panel">
           <button type="button" role="menuitem" data-roll-scope="all">Everyone <small></small></button>
@@ -25,13 +25,13 @@
       <button type="button" class="btn btn-ghost" id="rest-menu-btn" aria-haspopup="menu" aria-expanded="false" aria-controls="rest-menu-list" title="Short rest or long rest for the player characters. Hover to choose.">{{ icon('moon') }} <span>Rest</span> {{ icon('chevron-down') }}</button>
       <div class="roll-menu-list" id="rest-menu-list" role="menu" aria-label="Rest">
         <div class="roll-menu-panel">
-          <button type="button" role="menuitem" id="short-rest-btn" data-open-dialog="short-rest-dialog" title="Type how many HP each player character regained from Hit Dice. Nothing else changes.">{{ icon('sun') }} <span>Short rest</span></button>
+          <button type="button" role="menuitem" id="short-rest-btn" data-open-dialog="short-rest-dialog" title="Type how many HP each player character regained from Hit dice. Nothing else changes.">{{ icon('sun') }} <span>Short rest</span></button>
           <button type="button" role="menuitem" id="long-rest-btn" title="Full HP, no temporary HP, death saves cleared. NPCs and monsters are left as they are.">{{ icon('moon') }} <span>Long rest</span></button>
         </div>
       </div>
     </div>
-    <button type="button" class="btn btn-ghost" id="open-add-modal">{{ icon('user') }} <span>Add Character</span></button>
-    <button type="button" class="btn btn-danger" id="clear-battle-btn">{{ icon('trash-2') }} <span>Clear Battle</span></button>
+    <button type="button" class="btn btn-ghost" id="open-add-modal">{{ icon('user') }} <span>Add character</span></button>
+    <button type="button" class="btn btn-danger" id="clear-battle-btn">{{ icon('trash-2') }} <span>Clear battle</span></button>
   </div>
   {% endif %}
 </div>
@@ -88,7 +88,7 @@
 <div class="modal-overlay" id="add-modal" hidden>
   <div class="modal-panel">
     <div class="modal-header">
-      <h3>Add to Battle</h3>
+      <h3>Add to battle</h3>
       <button type="button" class="btn-icon" id="close-add-modal" aria-label="Close">{{ icon('x') }}</button>
     </div>
     <div class="modal-body">
@@ -148,7 +148,7 @@
   <form class="treasury-form" id="short-rest-form" method="dialog">
     <div class="pick-head"><h2 id="short-rest-title">Short rest</h2><button type="button" class="btn-icon" data-close-dialog aria-label="Close">{{ icon('x') }}</button></div>
     <div class="treasury-dialog-body">
-      <p class="treasury-hint">After a short rest each player character can spend Hit Dice. Type the HP each one regained (leave blank for none). Hit Dice are not tracked here.</p>
+      <p class="treasury-hint">After a short rest each player character can spend Hit dice. Type the HP each one regained (leave blank for none). Hit dice are not tracked here.</p>
       <ul class="short-rest-list" id="short-rest-list"></ul>
       <p class="home-empty" id="short-rest-empty" hidden>There are no player characters in the battle.</p>
     </div>

@@ -251,7 +251,7 @@
       <div class="battle-name-block">
         <div class="battle-name${openAttrs ? ' is-link' : ''}"${openAttrs}>${classIconHtml(p.class_key)}${escapeHtml(p.display_name)}</div>
         <div class="battle-sub">
-          <div class="battle-meta">${groupDot}${p.group_name ? escapeHtml(p.group_name) : 'No Faction'} &middot; ${p.is_npc ? 'NPC' : 'PC'}</div>
+          <div class="battle-meta">${groupDot}${p.group_name ? escapeHtml(p.group_name) : 'No faction'} &middot; ${p.is_npc ? 'NPC' : 'PC'}</div>
           ${conditionChips(p)}
         </div>
       </div>
@@ -287,7 +287,7 @@
     const groups = new Map();
     arr.forEach((p) => {
       const key = p.gid || 'none';
-      if (!groups.has(key)) groups.set(key, { name: p.group_name || 'No Faction', color: p.group_color, items: [] });
+      if (!groups.has(key)) groups.set(key, { name: p.group_name || 'No faction', color: p.group_color, items: [] });
       groups.get(key).items.push(p);
     });
     groups.forEach((g) => g.items.sort((a, b) => b.initiative - a.initiative || a.sort_order - b.sort_order));
@@ -747,7 +747,7 @@
         <div class="battle-avatar battle-avatar-sm" data-bc="${safeColor(c.group_color, 'var(--brass)')}">${c.avatar_path ? `<img src="/uploads/${escapeHtml(c.avatar_path)}" alt="">` : ICONS.user}</div>
         <div class="battle-name-block">
           <div class="battle-name battle-name-sm">${classIconHtml(c.class_key)}${escapeHtml(c.name)}</div>
-          <div class="battle-meta">${(c.factions || []).length ? escapeHtml(c.factions.map((f) => f.name).join(', ')) : 'No Faction'}</div>
+          <div class="battle-meta">${(c.factions || []).length ? escapeHtml(c.factions.map((f) => f.name).join(', ')) : 'No faction'}</div>
         </div>
         <button type="button" class="btn btn-primary btn-sm" data-add-char="${c.id}">Add</button>
       </div>

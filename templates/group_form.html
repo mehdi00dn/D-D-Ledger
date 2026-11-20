@@ -85,7 +85,7 @@
 
   <div class="form-actions">
     <a href="{{ url_for('faction_detail', group_id=group.id) if group else url_for('factions_list') }}" class="btn btn-ghost">Cancel</a>
-    <button type="submit" class="btn btn-primary">{{ icon('check') }} {{ 'Save Changes' if group else 'Add Faction' }}</button>
+    <button type="submit" class="btn btn-primary">{{ icon('check') }} {{ 'Save changes' if group else 'Add faction' }}</button>
   </div>
 </form>
 {% endblock %}

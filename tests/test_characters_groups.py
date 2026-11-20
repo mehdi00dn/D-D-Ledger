@@ -27,11 +27,11 @@ def test_only_dm_manages_groups(make_user):
     assert player.get(f'/campaigns/{cid}/factions/{gid}/edit').status_code == 403
     # Neither control renders for a Player: no New button on the list, no Edit link on the list or Details page.
     listing = player.get(f'/campaigns/{cid}/factions').data
-    assert b'New Faction' not in listing and b'>Edit<' not in listing
+    assert b'New faction' not in listing and b'>Edit<' not in listing
     assert f'/factions/{gid}/edit'.encode() not in player.get(f'/campaigns/{cid}/factions/{gid}').data
     # ...and the DM does get them (Edit now lives inside the Details view), so the checks above can actually fail.
     dm_listing = dm.get(f'/campaigns/{cid}/factions').data
-    assert b'New Faction' in dm_listing and b'Details' in dm_listing
+    assert b'New faction' in dm_listing and b'Details' in dm_listing
     assert f'/factions/{gid}/edit'.encode() in dm.get(f'/campaigns/{cid}/factions/{gid}').data
 
     # The DM can still do all of it.

@@ -2296,7 +2296,7 @@ def invite_link_create():
     # link on the spot without saving the whole form first.  Without it, a private campaign refuses.
     enable = str(data.get('enable') or '').lower() in ('1', 'true', 'yes', 'on')
     if g.campaign['access_mode'] != 'invite_link' and not enable:
-        return _reject_request('Switch Access & Privacy to "Invite Link" before creating links.', 400)
+        return _reject_request('Switch Access & privacy to "Invite link" before creating links.', 400)
     lifetime = INVITE_LINK_LIFETIMES.get(data.get('expires_in', '7d'))
     if lifetime is None:
         return _reject_request('Pick how long the link should last.', 400)

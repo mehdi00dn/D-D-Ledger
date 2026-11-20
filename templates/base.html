@@ -183,7 +183,7 @@
     {% if g.previewing %}
     <div class="preview-banner" role="status">
       {{ icon('eye') }}
-      <span><b>Viewing as a Player.</b> You are seeing exactly what the server sends your Players. DM tools are off.</span>
+      <span><b>Viewing as a player.</b> You are seeing exactly what the server sends your Players. DM tools are off.</span>
       <form method="POST" action="{{ url_for('preview_as_player') }}">{{ csrf_field() }}
         <input type="hidden" name="on" value="0">
         <button type="submit" class="btn btn-sm btn-primary">Exit player view</button>
@@ -282,7 +282,7 @@
 <div class="modal-overlay" id="crop-modal" hidden>
   <div class="modal-panel crop-modal-panel">
     <div class="modal-header">
-      <h3 id="crop-modal-title">Position Avatar</h3>
+      <h3 id="crop-modal-title">Position avatar</h3>
       <button type="button" class="btn-icon" id="crop-cancel-btn" aria-label="Cancel crop">{{ icon('x') }}</button>
     </div>
     <div class="modal-body">
@@ -297,7 +297,7 @@
       </div>
       <div class="form-actions">
         <button type="button" class="btn btn-ghost" id="crop-cancel-btn-2">Cancel</button>
-        <button type="button" class="btn btn-primary" id="crop-apply-btn">{{ icon('check') }} Apply Crop</button>
+        <button type="button" class="btn btn-primary" id="crop-apply-btn">{{ icon('check') }} Apply crop</button>
       </div>
     </div>
   </div>
