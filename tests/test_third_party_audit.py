@@ -42,3 +42,12 @@ def test_known_tracker_names_are_absent():
     hits = [str(p.relative_to(ROOT)) for p in list((ROOT / 'templates').glob('*.html')) + list((ROOT / 'static' / 'js').glob('*.js'))
             if names.search(p.read_text(errors='ignore'))]
     assert not hits, hits
+
+
+def test_skull_pin_is_the_credited_game_icons_skull_not_a_gpl_svg_repo_file():
+    """DL-180 part 21: the previous skull pin was a GPL icon from SVG Repo; the replacement is CC BY 3.0 and credited on the About page."""
+    import pathlib
+    svg = pathlib.Path('static/icons/pins/skull.svg').read_text()
+    assert 'svgrepo' not in svg.lower() and 'Lorc' in svg and 'CC BY 3.0' in svg
+    about = pathlib.Path('templates/about.html').read_text()
+    assert 'Fanged Skull' in about and 'Lorc' in about
