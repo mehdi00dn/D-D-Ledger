@@ -52,7 +52,8 @@ belongs to DL-80 (applicable local laws) and DL-82.
 |---|---|---|
 | Fraunces, Inter, IBM Plex Mono fonts | `static/fonts/` | Verified: SIL OFL 1.1, bundled licence text |
 | lottie-web | `static/vendor/` | Verified: MIT, licence file bundled |
-| Map pin icons: skull, sword, hand, paw | `static/icons/pins/` | Source per owner: SVG Repo (the files carry SVG Repo headers). **Open:** SVG Repo licences are per icon (CC0, MIT, CC BY, ...) and the original author and licence of each were not recorded |
+| Map pin icon: skull | `static/icons/pins/skull.svg` | Replaced on 20 Nov 2026 (DL-180 part 21): "Fanged Skull" by Lorc, [game-icons.net](https://game-icons.net/1x1/lorc/fanged-skull.html), CC BY 3.0, credited on the About page. The icon it replaced (SVG Repo, title `monster-skull`, id 499291) is listed on SVG Repo under the GPL, author nagoshiashumari, collection "Rpg Game Filled Icons", which does not suit a closed app |
+| Map pin icons: sword, hand, paw | `static/icons/pins/` | Source per owner: SVG Repo (the files carry SVG Repo headers). **Open:** SVG Repo licences are per icon (CC0, MIT, CC BY, ...) and the original author and licence of each were not recorded |
 | Class icons (13) | `static/icons/classes.svg` | Source per owner: SVG Repo or Flaticon, otherwise drawn by Claude. **Open:** the SVG files carry no author or licence, so which icon came from where is not recorded |
 | Condition icons (15) | `static/icons/conditions.svg` | [game-icons.net](https://game-icons.net), Creative Commons Attribution 3.0 (DL-173). Credited by author on the About page: Lorc, Delapouite, Skoll, Cathelineau, Sbed. The SVG paths come from the `@iconify-json/game-icons` package, recoloured with `currentColor`; the sprite also holds the app's own `custom` and `plus` symbols |
 | Fog animation | `static/fog/fog-smoke.json` | [Fog / Smoke Animation by Ladon Sklyarov, LottieFiles](https://lottiefiles.com/free-animation/fog-smoke-gcgRd1137Q), under the Lottie Simple License: commercial use and changes allowed, no attribution required but strongly encouraged (if given, it must be visible to users). Owner plans to replace it with his own work later |
@@ -91,3 +92,10 @@ Record the answers in the table above. Until the Flaticon and SVG Repo licences 
 - Links out (licences, sources) are allowed on the About and Rules Reference pages only, as plain links that load nothing
   until clicked; `tests/test_third_party_audit.py` still fails on any external script, style, font, image or embed.
 
+
+### Update of 20 Nov 2026 (DL-180 part 21, licence check of the pin icons)
+
+- **Skull pin: the licence was a problem, now fixed.** The SVG Repo page of the skull (`monster-skull`, svgrepo.com/svg/499291) shows the **GPL** licence, author nagoshiashumari. A copyleft licence is not a fit for the app, so the icon was swapped for "Fanged Skull" by Lorc (game-icons.net, CC BY 3.0, the same set and author already credited for the condition icons). The credit is on `/about#credits`.
+- **Sword, hand and paw pins: still open.** The files carry the SVG Repo header but no title, so the page cannot be found from here. To close them: on svgrepo.com search the icon, open its page and read the licence and author. A GPL icon should be replaced; CC0 and MIT need nothing; CC BY needs a credit line. Or replace all three from game-icons.net (CC BY 3.0, already credited), which also makes the four pins one style.
+- **Interface icons with an SVG Repo header** (in `templates/_icons.html`, files that kept their 800 px size and `<?xml` line): `scroll-text`, `swords`, `dices`. Same check, same remedy. The other icons in that file are drawn on the 24 px stroke grid used by the rest of the app.
+- **Background paintings** (`static/assets/backgrounds/`): the file names point to Unsplash downloads of Birmingham Museums Trust, Boston Public Library and Europeana items, which those institutions publish as public domain or CC0. No credit is required; a line on the About page naming the museums would be a courtesy. The owner should confirm each original on the Unsplash page before launch.
