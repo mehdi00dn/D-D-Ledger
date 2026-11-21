@@ -5,10 +5,10 @@
  * A short soft trail behind the dot, as long as the dot is fast, gives the motion blur.  Nothing here is saved: when the button is released (or
  * the messages stop for a few seconds) the dot shrinks away.
  *
- * Positions travel in map coordinates (the same ones pins use), so the dot lands on the same spot of the map for everyone whatever their zoom or pan.
+ * Each person has one colour, taken from their user id.  Positions travel in map coordinates (the same ones pins use), so the dot lands on the same spot of the map for everyone whatever their zoom or pan.
  * The dot itself keeps its size on screen.  Only transform and opacity are animated; with reduced motion there is no trail and no grow/shrink.
  *
- *   var pointer = MapPointer.create({ stage, inner, natural: () => ({ w, h }), toNatural: (clientX, clientY) => ({ x, y }), send: (msg) => {}, myId: () => liveUid });
+ *   var pointer = MapPointer.create({ stage, inner, natural: () => ({ w, h }), toNatural: (clientX, clientY) => ({ x, y }), send: (msg) => {}, myId: () => userId });
  *   pointer.receive(senderId, { x, y, end })
  */
 (function () {
@@ -20,13 +20,13 @@
   var MAX_DOTS = 40;
   var SPEED_FOR_TRAIL = 90;   // px per second below which there is no trail
   var TRAIL_PX = 96;          // length of the trail element at full speed (the trail is scaled from this; keep in step with .map-ptr-trail in style.css)
-  var COLORS = ['#f0b64d', '#6fc7dd', '#ef8470', '#9fd67a', '#c9a1f5', '#f292c3'];
+  var COLORS = ['#f0b64d', '#4cc3e0', '#ef6f5e', '#8fd14f', '#b98cf5', '#f27fb8', '#3fd0a6', '#6f8cf5', '#e05ad8', '#f0e07a'];   // ten that stay apart on light and dark maps
 
   function num(v, fallback) { v = Number(v); return isFinite(v) ? v : fallback; }
   function now() { return (window.performance && performance.now) ? performance.now() : Date.now(); }
-  function colorFor(id) {
-    var h = 0, s = String(id);
-    for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  function colorFor(id) {                 // the same person gets the same colour on every screen, and on every visit
+    var h = 2166136261, s = String(id);
+    for (var i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
     return COLORS[h % COLORS.length];
   }
 
@@ -131,7 +131,7 @@
       if (!isFinite(x) || !isFinite(y)) return;
       var t = now();
       if (d && d.ending) { d.el.remove(); dots.delete(from); d = null; }
-      if (!d) { d = addDot(from, colorFor(from), false); if (!d) return; d.x = x; d.y = y; }
+      if (!d) { d = addDot(from, colorFor(msg.w || from), false); if (!d) return; d.x = x; d.y = y; }   // coloured by the person (msg.w), by the page only as a fallback
       d.at = t;
       if (!d.samples.length) d.samples.push({ t: t - DELAY_MS - 1, x: d.x, y: d.y });   // the first dot appears where it starts, it does not glide in from the corner
       d.samples.push({ t: t, x: x, y: y });

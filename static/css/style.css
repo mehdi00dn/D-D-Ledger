@@ -2495,14 +2495,14 @@ body.page-leaving .content {
 .map-ptr { position: absolute; left: 0; top: 0; inline-size: 0; block-size: 0; will-change: transform; }   /* phys */   /* placed with a screen-space translate from the stage top left */
 .map-ptr-dot, .map-ptr-trail { position: absolute; display: block; }
 .map-ptr-dot {
-  inline-size: 14px; block-size: 14px; margin: -7px 0 0 -7px; border-radius: 50%; box-sizing: border-box;
-  background: var(--ptr, #f0b64d); border: 2px solid rgba(255, 255, 255, 0.92);
-  box-shadow: 0 0 0 1px rgba(20, 14, 6, 0.55), 0 2px 8px rgba(20, 14, 6, 0.5), 0 0 14px color-mix(in srgb, var(--ptr, #f0b64d) 65%, transparent);
+  inline-size: 10px; block-size: 10px; margin: -5px 0 0 -5px; border-radius: 50%;
+  background: var(--ptr, #f0b64d);                               /* a plain dot: no ring, no outline */
+  box-shadow: 0 0 9px 2px color-mix(in srgb, var(--ptr, #f0b64d) 55%, transparent), 0 1px 3px rgba(20, 14, 6, 0.3);   /* a subtle glow */
   opacity: 0; transform: scale(0.35);
 }
 .map-ptr.is-on .map-ptr-dot { opacity: 1; transform: scale(1); }
 .map-ptr-trail {
-  inset-inline-end: 0; inset-block-start: 0; inline-size: 96px; block-size: 12px; margin: -6px 0 0 0; border-radius: 999px; opacity: 0;
+  inset-inline-end: 0; inset-block-start: 0; inline-size: 96px; block-size: 10px; margin: -5px 0 0 0; border-radius: 999px; opacity: 0;
   transform-origin: 100% 50%;                                /* the dot's centre; script rotates it against the direction of travel and scales it with speed */
   background: linear-gradient(to left, color-mix(in srgb, var(--ptr, #f0b64d) 85%, transparent) 0%, color-mix(in srgb, var(--ptr, #f0b64d) 35%, transparent) 45%, transparent);
   filter: blur(2px);

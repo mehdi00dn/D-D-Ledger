@@ -128,7 +128,7 @@
       if (!rt) return;
       if (m.end) { flush('ptr'); delete lastSent.ptr; raw({ k: 'ptr', end: 1 }); return; }
       var x = Math.round(m.x), y = Math.round(m.y);
-      throttled('ptr', function () { return { k: 'ptr', x: x, y: y }; });
+      throttled('ptr', function () { return { k: 'ptr', x: x, y: y, w: host.userId }; });
     }
 
     // ---- fog being painted or erased
@@ -308,7 +308,7 @@
           else host.fog.liveStroke(from, msg.mode === 'erase' ? 'erase' : 'paint', num(msg.brush, 100), Array.isArray(msg.pts) ? msg.pts.slice(0, MAX_POINTS) : []);
           break;
         case 'ptr':
-          if (host.pointer) host.pointer(from, { x: num(msg.x, NaN), y: num(msg.y, NaN), end: msg.end ? 1 : 0 });
+          if (host.pointer) host.pointer(from, { x: num(msg.x, NaN), y: num(msg.y, NaN), end: msg.end ? 1 : 0, w: String(msg.w || '').slice(0, 40) });
           break;
         case 'measure':
           if (host.measure) host.measure({ w: String(msg.w || ''), kind: String(msg.kind || ''), end: num(msg.end, 0),

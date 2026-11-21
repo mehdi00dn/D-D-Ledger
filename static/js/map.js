@@ -2226,7 +2226,7 @@
     natural: () => ({ w: naturalWidth, h: naturalHeight }),
     toNatural: (cx, cy) => getNaturalPos(cx, cy),
     send: (m) => { if (live) live.pointer(m); },
-    myId: () => (live ? live.uid : 'mine'),
+    myId: () => window.USER_ID,
   }) : null;
 
   if (window.OAKEN_REALTIME && window.OakenRealtime) {
