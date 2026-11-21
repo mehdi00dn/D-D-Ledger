@@ -27,6 +27,7 @@ def test_a_held_right_click_shows_a_dot_to_the_other_person_that_follows_live(wo
         x, y = to_screen(page_dm, 200 + i * 60, 200 + i * 20); page_dm.mouse.move(x, y); pump(page_dm, sock_dm, sock_pl, w.channel, 70)
     # while it is still moving fast the other page shows a trail
     assert page_pl.evaluate("() => parseFloat(document.querySelector('.map-ptr-trail').style.opacity || 0)") > 0.2
+    pump(page_dm, sock_dm, sock_pl, w.channel, 160)             # the sender's trailing message for the last position goes out up to 100 ms later
     page_pl.wait_for_timeout(500)
     target = to_screen(page_pl, 200 + 8 * 60, 200 + 8 * 20)
     got = dot_center(page_pl)
@@ -130,3 +131,35 @@ def test_without_realtime_the_own_dot_still_shows_and_nothing_breaks(pw, shared_
     page.mouse.up(button='right'); page.wait_for_function("() => document.querySelectorAll('.map-ptr').length === 0", timeout=2000)
     assert not errors
     ctx.close()
+
+
+def ptr_color(page):
+    return page.evaluate("() => document.querySelector('.map-ptr').style.getPropertyValue('--ptr')")
+
+
+def test_each_person_has_their_own_colour_the_same_on_every_screen_and_the_dot_is_plain(world):
+    w = world
+    page_dm, sock_dm, err_dm, page_pl, sock_pl, err_pl = open_pages(w)
+    # two different people (different user ids) are different colours; the same person is the same colour whichever page sends it
+    for uid, user in (('a1', '1'), ('a2', '2'), ('a3', '3')):
+        sock_pl.deliver(w.channel, {'k': 'ptr', 'm': w.mid, 'u': uid, 'x': 100 + int(user) * 50, 'y': 100, 'w': user})
+    page_pl.wait_for_function("() => document.querySelectorAll('.map-ptr').length === 3")
+    colours = page_pl.evaluate("() => [...document.querySelectorAll('.map-ptr')].map(e => e.style.getPropertyValue('--ptr'))")
+    assert len(set(colours)) == 3, colours
+    for uid in ('a1', 'a2', 'a3'):
+        sock_pl.deliver(w.channel, {'k': 'ptr', 'm': w.mid, 'u': uid, 'end': 1})
+    page_pl.wait_for_function("() => document.querySelectorAll('.map-ptr').length === 0", timeout=3000)
+    # the colour the DM sees on their own dot is the colour the player sees for the DM
+    sx, sy = to_screen(page_dm, 300, 300); page_dm.mouse.move(sx, sy); page_dm.mouse.down(button='right'); page_dm.mouse.move(sx + 40, sy, steps=3)
+    own = ptr_color(page_dm); pump(page_dm, sock_dm, sock_pl, w.channel, 120)
+    page_pl.wait_for_timeout(300)
+    seen = page_pl.evaluate("() => [...document.querySelectorAll('.map-ptr')].map(e => e.style.getPropertyValue('--ptr'))")
+    assert seen == [own], (own, seen)
+    msg = [m for m in sock_dm.sent if m.get('k') == 'ptr' and not m.get('end')][-1]
+    assert set(msg) <= {'k', 'x', 'y', 'w', 'm', 'u'}, 'the message carries a position and who it is for colour, nothing else (no name)'
+    # a plain dot: no ring, no outline, no text anywhere in it
+    st = page_dm.evaluate("() => { const e = document.querySelector('.map-ptr-dot'); const c = getComputedStyle(e); return [c.borderTopWidth, c.boxShadow, document.querySelector('.map-ptr').innerText]; }")
+    assert st[0] == '0px' and 'rgb' in st[1] and st[2] == '', st
+    assert page_dm.evaluate("() => getComputedStyle(document.querySelector('.map-ptr-dot')).boxShadow.split('), ').length") <= 2
+    page_dm.mouse.up(button='right')
+    assert not err_dm and not err_pl
