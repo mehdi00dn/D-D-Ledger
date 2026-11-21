@@ -51,3 +51,16 @@ def test_skull_pin_is_the_credited_game_icons_skull_not_a_gpl_svg_repo_file():
     assert 'svgrepo' not in svg.lower() and 'Lorc' in svg and 'CC BY 3.0' in svg
     about = pathlib.Path('templates/about.html').read_text()
     assert 'Fanged Skull' in about and 'Lorc' in about
+
+
+def test_pins_and_interface_icons_are_credited_game_icons_not_svg_repo_files():
+    """DL-180 part 22: the sword, hand and paw pins and the characters, battle and dice icons are game-icons.net (CC BY 3.0), credited on the About page."""
+    import pathlib
+    for name, title in (('sword', 'Broadsword'), ('hand', 'Hand'), ('paw', 'Flat paw print')):
+        svg = pathlib.Path(f'static/icons/pins/{name}.svg').read_text()
+        assert 'svgrepo' not in svg.lower() and 'svg repo' not in svg.lower() and 'Lorc' in svg and 'CC BY 3.0' in svg, name
+    icons = pathlib.Path('templates/_icons.html').read_text()
+    assert 'svgrepo' not in icons.lower() and 'svg repo' not in icons.lower() and '800px' not in icons and '<?xml' not in icons
+    about = pathlib.Path('templates/about.html').read_text()
+    for credit in ('Broadsword', 'Hand', 'Flat paw print', 'Crossed swords', 'Dice twenty faces twenty', 'Delapouite', 'Lorc'):
+        assert credit in about, credit
