@@ -173,7 +173,8 @@
 
 /* Paper: a journal-like panel.  Inside it the older token names (--parchment, --brass-ink, --bg-panel...) are re-pointed at ink-on-paper
    values, so every existing control placed on a paper panel reads correctly in either theme without per-component rules. */
-.o-paper {
+.o-paper,
+[data-theme="light"] .guide-card-paper.o-ondark {      /* the treasury guide is paper in the light theme (DL-180 part 24) */
   --parchment: var(--paper-ink);
   --parchment-dim: var(--paper-ink-dim);
   --parchment-faint: var(--paper-ink-faint);
@@ -197,7 +198,7 @@
   border-radius: var(--radius-s, 6px);
   box-shadow: var(--paper-shadow);
 }
-[data-theme="light"] .o-paper { background-blend-mode: normal; }
+[data-theme="light"] .o-paper, [data-theme="light"] .guide-card-paper.o-ondark { background-blend-mode: normal; }
 .o-paper input[type="datetime-local"], .o-paper input[type="date"], .o-paper input[type="time"] { color-scheme: light; }
 
 /* On dark: a painted banner is dark in both themes (the picture sits under a dark scrim), so the text inside it is light in both.

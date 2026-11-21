@@ -123,6 +123,14 @@
       throttled('measure', build);
     }
 
+    // ---- the right-click pointer dot (map-pointer.js): {x, y} while the button is held, {end: 1} when it is let go
+    function pointer(m) {
+      if (!rt) return;
+      if (m.end) { flush('ptr'); delete lastSent.ptr; raw({ k: 'ptr', end: 1 }); return; }
+      var x = Math.round(m.x), y = Math.round(m.y);
+      throttled('ptr', function () { return { k: 'ptr', x: x, y: y }; });
+    }
+
     // ---- fog being painted or erased
     var fogBuf = [], fogOpts = null, fogOn = false;
     function fogMoved(mode, brush, x, y) {
@@ -299,6 +307,9 @@
           if (msg.end) host.fog.liveEnd(from);
           else host.fog.liveStroke(from, msg.mode === 'erase' ? 'erase' : 'paint', num(msg.brush, 100), Array.isArray(msg.pts) ? msg.pts.slice(0, MAX_POINTS) : []);
           break;
+        case 'ptr':
+          if (host.pointer) host.pointer(from, { x: num(msg.x, NaN), y: num(msg.y, NaN), end: msg.end ? 1 : 0 });
+          break;
         case 'measure':
           if (host.measure) host.measure({ w: String(msg.w || ''), kind: String(msg.kind || ''), end: num(msg.end, 0),
             a: msg.a && typeof msg.a === 'object' ? { x: num(msg.a.x, 0), y: num(msg.a.y, 0) } : null,
@@ -315,6 +326,7 @@
       draftMoved: draftMoved, draftEnded: draftEnded,
       fogMoved: fogMoved, fogEnded: fogEnded,
       measure: measure,
+      pointer: pointer,
       // Used by the canvas redraw: the shape as it should look right now (mid-glide), plus other people's unfinished drawings.
       shapeView: function (d) {
         var e = liveShapes.size ? liveShapes.get(d.id) : null;

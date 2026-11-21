@@ -15,7 +15,7 @@ def read(*parts):
 
 
 def test_the_treasury_guide_is_dark_with_light_text():
-    assert 'class="guide-card o-ondark"' in read('templates', 'treasury.html')
+    assert 'class="guide-card guide-card-paper o-ondark"' in read('templates', 'treasury.html')   # paper in the light theme (DL-180 part 24)
     css = read('static', 'css', 'style.css')
     assert re.search(r'\.guide-card\.o-ondark \{[^}]*background-color: var\(--oak-charcoal-700\)', css)
     assert re.search(r'\.guide-card\.o-ondark \.guide-steps li[^{]*\{ color: var\(--parchment-dim\)', css)

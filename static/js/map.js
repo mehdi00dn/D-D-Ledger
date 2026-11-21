@@ -2220,6 +2220,15 @@
   }, { base: 3000, max: 12000 });
 
   // Real-time: a ping from the server means "something changed" -> refresh right now.  Polling above stays as the safety net.
+  // Right-click and hold: your cursor becomes a small dot that everyone on the map sees live (map-pointer.js; sent over the live channel, never saved).
+  const pointerUi = window.MapPointer ? window.MapPointer.create({
+    stage: stageWrap, inner: stageInner,
+    natural: () => ({ w: naturalWidth, h: naturalHeight }),
+    toNatural: (cx, cy) => getNaturalPos(cx, cy),
+    send: (m) => { if (live) live.pointer(m); },
+    myId: () => (live ? live.uid : 'mine'),
+  }) : null;
+
   if (window.OAKEN_REALTIME && window.OakenRealtime) {
     if (window.MapLive) {
       live = window.MapLive.create({
@@ -2242,6 +2251,7 @@
           setRemoteMeasure(msg.w, msg.kind, msg.a, msg.b, msg.end ? MEASURE_HOLD_MS : 5000, '', true);
         },
         redraw: () => redraw(),
+        pointer: (from, m) => { if (pointerUi) pointerUi.receive(from, m); },
       });
     }
     const conn = OakenRealtime.connect(window.OAKEN_REALTIME, (p) => { if (p.s !== 'dice') syncPoll.poke(); }, live ? (m) => live.receive(m) : null);
