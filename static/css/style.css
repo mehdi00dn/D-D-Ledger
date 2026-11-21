@@ -6347,3 +6347,11 @@ body:has(.tool-flyout.open) .pin-action-bubble.is-docked { opacity: 0; pointer-e
   .battle-row .battle-end .btn-icon { width: 40px; height: 40px; min-width: 40px; min-height: 40px; }
   .battle-row .battle-end .btn-sm { min-height: 40px; }
 }
+
+/* Proficiency marks (DL-180 part 23).  The bundled fonts have no circle, diamond or check glyphs, so each system drew them from its own fallback font at its own size.
+   .pm keeps the glyph in the text (screen readers and copy still get it) at font-size 0 and draws the same shape in CSS in the current colour. */
+.pm, .mark.pm { display: inline-block; position: relative; flex: none; inline-size: var(--pm-size, 9px); block-size: var(--pm-size, 9px); font-size: 0; line-height: 0; font-style: normal; vertical-align: middle; pointer-events: none; }   /* clicks fall through to the radio or row underneath */
+.pm::before { content: ""; position: absolute; inset: 0; box-sizing: border-box; }
+.pm-0::before { border: 1.5px solid currentColor; border-radius: 50%; }
+.pm-1::before { background: currentColor; border-radius: 50%; }
+.pm-2::before { background: currentColor; transform: rotate(45deg) scale(0.72); }

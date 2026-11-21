@@ -12,7 +12,7 @@
   <div class="sheet-saves">
     {% for s in d.saves %}
     <div class="sheet-save{{ ' is-prof' if s.proficient }}" title="{{ s.label }} saving throw{{ ' (proficient)' if s.proficient }}">
-      <span class="mark" aria-hidden="true">{{ '●' if s.proficient else '○' }}</span><span class="lbl">{{ s.label }}</span><span class="val">{{ s.text }}</span>
+      <span class="mark pm pm-{{ 1 if s.proficient else 0 }}" aria-hidden="true">{{ '●' if s.proficient else '○' }}</span><span class="lbl">{{ s.label }}</span><span class="val">{{ s.text }}</span>
     </div>
     {% endfor %}
   </div>
@@ -23,11 +23,11 @@
       {% for s in d.skills %}
       <div class="sheet-skill{{ ' is-prof' if s.level == 1 }}{{ ' is-expert' if s.level == 2 }}"
            title="{{ s.label }} ({{ s.ability }}){{ ' - proficient' if s.level == 1 }}{{ ' - expertise' if s.level == 2 }}">
-        <span class="mark" aria-hidden="true">{{ '◆' if s.level == 2 else ('●' if s.level == 1 else '○') }}</span>
+        <span class="mark pm pm-{{ s.level }}" aria-hidden="true">{{ '◆' if s.level == 2 else ('●' if s.level == 1 else '○') }}</span>
         <span class="lbl">{{ s.label }} <small>{{ s.ability }}</small></span><span class="val">{{ s.text }}</span>
       </div>
       {% endfor %}
     </div>
-    <p class="hint-text sheet-legend">○ untrained &nbsp;● proficient &nbsp;◆ expertise (double proficiency)</p>
+    <p class="hint-text sheet-legend"><i class="pm pm-0" aria-hidden="true">○</i> untrained &nbsp;<i class="pm pm-1" aria-hidden="true">●</i> proficient &nbsp;<i class="pm pm-2" aria-hidden="true">◆</i> expertise (double proficiency)</p>
   </details>
 </div>

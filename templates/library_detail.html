@@ -101,7 +101,7 @@
         <span class="lbl cd-ab-name">{{ ab.label }}</span>
         <span class="val">{{ ab.score }}</span>
         <span class="mod cd-ab-mod">{{ ab.text }}</span>
-        <span class="cd-ab-save{{ ' is-prof' if sv.proficient }}" title="{{ ab.name }} saving throw{{ ' (proficient)' if sv.proficient }}"><span class="mark" aria-hidden="true">{{ '●' if sv.proficient else '○' }}</span> Save <b>{{ sv.text }}</b></span>
+        <span class="cd-ab-save{{ ' is-prof' if sv.proficient }}" title="{{ ab.name }} saving throw{{ ' (proficient)' if sv.proficient }}"><span class="mark pm pm-{{ 1 if sv.proficient else 0 }}" aria-hidden="true">{{ '●' if sv.proficient else '○' }}</span> Save <b>{{ sv.text }}</b></span>
       </div>
       {% endfor %}
     </div>
@@ -112,12 +112,12 @@
     <div class="cd-skills">
       {% for sk in sheet.skills %}
       <div class="sheet-skill{{ ' is-prof' if sk.level == 1 }}{{ ' is-expert' if sk.level == 2 }}" title="{{ sk.label }} ({{ sk.ability }}){{ ' - proficient' if sk.level == 1 }}{{ ' - expertise' if sk.level == 2 }}">
-        <span class="mark" aria-hidden="true">{{ '◆' if sk.level == 2 else ('●' if sk.level == 1 else '○') }}</span>
+        <span class="mark pm pm-{{ sk.level }}" aria-hidden="true">{{ '◆' if sk.level == 2 else ('●' if sk.level == 1 else '○') }}</span>
         <span class="lbl">{{ sk.label }} <small>{{ sk.ability }}</small></span><span class="val">{{ sk.text }}</span>
       </div>
       {% endfor %}
     </div>
-    <p class="cd-legend">○ untrained &nbsp; ● proficient &nbsp; ◆ expertise (double proficiency)</p>
+    <p class="cd-legend"><i class="pm pm-0" aria-hidden="true">○</i> untrained &nbsp; <i class="pm pm-1" aria-hidden="true">●</i> proficient &nbsp; <i class="pm pm-2" aria-hidden="true">◆</i> expertise (double proficiency)</p>
   </section>
 
   {% if attacks %}

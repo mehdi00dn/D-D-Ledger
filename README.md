@@ -504,6 +504,12 @@ The hover burn (DL-180 parts 5 and 7, a scorch drawn in CSS along a panel's edge
 - The Died? and Remove buttons were 34px; on a touch screen they are 40px. INIT and AC keep their deliberately small boxes (at most 32px by 44px, a DL-169 rule that `tests/test_e2e_battle_responsive.py` holds); only their text grows, to 16px.
 Not changed: a phone held sideways (844 by 390) still has very little room, and the Battle log bar and the floating buttons sit over the rows while you scroll, as they do upright. `tests/test_battle_rows_cards.py` has 3 style sheet tests and a touch-phone browser test at 390x844, 360x640 and 844x390 (rounded corners, gaps between cards, 16px fields, `manipulation`, 40px end buttons, no sideways scroll); all six fail on the old style sheet.
 
+### Proficiency marks drawn in CSS (DL-180, part 23)
+
+- **Why.** The circle, diamond and check marks (● ○ ◆ ✓) are not in Inter, Fraunces or IBM Plex Mono, so every device drew them from its own fallback font, at a different size and height. They now share one drawing: `.pm` keeps the glyph in the text (screen readers and copy still get it) at font size 0 and draws a ring, a disc or a diamond in CSS, in the current text colour. Level 0, 1 and 2 are `pm-0`, `pm-1` and `pm-2`.
+- **Where.** Saving throw and skill marks on the character sheet, the character detail page, the library detail page and the character peek; the skill legend and the three-state skill selector on the character form. The "Avatar cropped" label lost its check mark. The marks ignore the pointer, so a click still reaches the radio or the row underneath.
+- **Tests.** `tests/test_glyph_marks.py` fails if one of these symbols appears in a template or script outside a `.pm` shape; `tests/test_type_scale.py` allows the size-0 glyph text on `.pm`.
+
 ### Icons from one licensed set, class icons without frames (DL-180, part 22)
 
 - **Pins and interface icons.** The sword, hand and paw map pins and the Characters, Battle and Dice icons came from SVG Repo with no author or licence on record. They are now "Broadsword", "Hand" and "Flat paw print" (Lorc), "Character" and "Dice twenty faces twenty" (Delapouite) and "Crossed swords" (Lorc) from game-icons.net, CC BY 3.0, the set already credited for the condition icons and the skull pin. The four pins now share one style, the three interface icons are filled glyphs that take the text colour, and `/about#credits` lists the authors. Details and what is still open: `THIRD_PARTY.md`.

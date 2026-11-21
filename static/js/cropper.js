@@ -162,7 +162,7 @@
         if (placeholder) placeholder.style.display = 'none';
       }
       const nameLabel = activeInput.parentElement.querySelector('.file-name');
-      if (nameLabel) nameLabel.textContent = 'Avatar cropped ✓';
+      if (nameLabel) nameLabel.textContent = 'Avatar cropped';
 
       // A fresh avatar was chosen, so cancel any pending "remove" request and show the remove button
       if (activeInput.dataset.removeInput) {

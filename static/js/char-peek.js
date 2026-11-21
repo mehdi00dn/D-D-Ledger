@@ -84,7 +84,7 @@
           roll(ab.mod, ab.name + ' check', 'peek-ab-mod', ab.text, 'Roll ' + ab.name + ' check') +
           '<span class="peek-ab-score">' + esc(ab.score) + '</span>' +
           roll(sv.bonus, ab.name + ' saving throw', 'peek-ab-save' + (sv.proficient ? ' is-prof' : ''),
-            '<span class="mark" aria-hidden="true">' + (sv.proficient ? '●' : '○') + '</span> Save <b>' + sv.text + '</b>',
+            '<span class="mark pm pm-' + (sv.proficient ? 1 : 0) + '" aria-hidden="true">' + (sv.proficient ? '●' : '○') + '</span> Save <b>' + sv.text + '</b>',
             'Roll ' + ab.name + ' saving throw' + (sv.proficient ? ' (proficient)' : '')) + '</div>';
       }).join('') + '</div>';
 
