@@ -80,6 +80,7 @@ OFF_SCALE = '''(scale) => {
     const cs = getComputedStyle(e);
     if (cs.display === 'none' || cs.visibility === 'hidden') continue;
     const px = parseFloat(cs.fontSize);
+    if (px === 0 && e.classList.contains('pm')) continue;                      // proficiency marks draw their shape in CSS; the glyph text is kept at size 0 on purpose (DL-180 part 23)
     if (px >= 29) continue;                                                     // display type is fluid on purpose
     if (!scale.some(s => Math.abs(s - px) < 0.05)) bad.push([e.tagName.toLowerCase() + '.' + String(e.className).slice(0, 30), n.textContent.trim().slice(0, 20), px]);
   }
