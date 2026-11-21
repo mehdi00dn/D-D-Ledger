@@ -4,7 +4,7 @@ import re
 
 TITLE_CASE_BUTTON = re.compile(r">\s*(?:\{\{[^}]*\}\}\s*)?([A-Z][a-z]+ (?:[A-Z][a-z]+))\s*<")
 # Words a label may carry in capitals: a name, a place or a product.
-KEEP = ('Oaken', 'Dungeon Master', 'Your characters', 'Creative Commons', 'Open Font', 'Lottie', 'System Reference', 'Plex Mono')
+KEEP = ('Oaken', 'Dungeon Master', 'Your characters', 'Creative Commons', 'Open Font', 'Lottie', 'System Reference', 'Newsreader', 'Lato')
 
 
 def _visible_labels(path):

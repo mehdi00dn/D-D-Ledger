@@ -147,9 +147,8 @@ def test_dialogs_ease_out_before_they_go(pw, shared_server):
     assert dlg.evaluate('e => getComputedStyle(e).opacity') == '1'
     page.keyboard.press('Escape')
     assert dlg.evaluate('e => e.open') is False                                              # closed for the logic at once ...
-    page.evaluate('() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))')     # let the page draw the first frame of the exit
-    page.wait_for_timeout(40)
-    mid = dlg.evaluate('e => [getComputedStyle(e).display, parseFloat(getComputedStyle(e).opacity)]')
+    # let the page draw the first frame of the exit and read it in the same step, so a busy machine cannot let the 160 ms run out in between
+    mid = dlg.evaluate('e => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(() => r([getComputedStyle(e).display, parseFloat(getComputedStyle(e).opacity)]))))')
     assert mid[0] != 'none' and mid[1] < 1, mid                                              # ... but still on screen and fading
     page.wait_for_timeout(400)
     assert dlg.evaluate('e => getComputedStyle(e).display') == 'none'                       # and gone once the exit has played

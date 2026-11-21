@@ -17,9 +17,9 @@
   --pub-brass-ink: var(--oak-brass-700);
   --pub-moss-hi: var(--oak-moss-300);
   --pub-line: rgba(237, 228, 207, 0.14);
-  --pub-font-display: 'Fraunces', Georgia, serif;
-  --pub-font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --pub-font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+  --pub-font-display: 'Newsreader', Georgia, 'Times New Roman', serif;
+  --pub-font-body: 'Lato', 'Segoe UI', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif;
+  --pub-font-mono: 'Lato', 'Segoe UI', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif;   /* kept as a name only: numbers use Lato's tabular figures */
   --pub-ease: cubic-bezier(0.23, 1, 0.32, 1);
   --pub-nav-h: 68px;
 }
@@ -32,7 +32,7 @@ body.pub > .pub-stage { flex: 1 0 auto; }
 
 .pub-wrap { inline-size: min(1200px, 100% - 48px); margin-inline: auto; }
 .pub-vh { position: absolute; inline-size: 1px; block-size: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-.pub-skip { position: absolute; inset-inline-start: 12px; inset-block-start: -60px; z-index: 100; padding: 10px 16px; background: var(--pub-brass); color: var(--pub-forest); font-weight: 600; border-radius: 8px; text-decoration: none; }
+.pub-skip { position: absolute; inset-inline-start: 12px; inset-block-start: -60px; z-index: 100; padding: 10px 16px; background: var(--pub-brass); color: var(--pub-forest); font-weight: 500; border-radius: 8px; text-decoration: none; }
 .pub-skip:focus { inset-block-start: 12px; }
 .pub-header :focus-visible, .pub-footer :focus-visible { outline: 2px solid var(--pub-brass); outline-offset: 3px; border-radius: 4px; }
 
@@ -41,7 +41,7 @@ body.pub > .pub-stage { flex: 1 0 auto; }
   display: inline-flex; align-items: center; justify-content: center;
   min-block-size: 44px; padding: 0 22px;
   border-radius: 10px; border: 1px solid transparent;
-  font: 600 var(--fs-lg)/1 var(--pub-font-body); letter-spacing: 0.005em;
+  font: 500 var(--fs-lg)/1 var(--pub-font-body); letter-spacing: 0.005em;
   text-decoration: none; cursor: pointer;
   transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease, transform 160ms var(--pub-ease);
 }
@@ -77,7 +77,7 @@ body.pub > .pub-stage { flex: 1 0 auto; }
 .pub-bar { display: flex; align-items: center; justify-content: space-between; gap: 24px; min-block-size: var(--pub-nav-h); flex-wrap: wrap; }
 .pub-brand { display: inline-flex; align-items: center; gap: 10px; text-decoration: none; color: var(--pub-text); }
 .pub-brand-mark { display: block; inline-size: 34px; block-size: 34px; }
-.pub-brand-word { font-family: var(--pub-font-display); font-size: var(--fs-3xl); font-weight: 600; letter-spacing: -0.01em; }
+.pub-brand-word { font-family: var(--pub-font-display); font-size: var(--fs-3xl); font-weight: 500; letter-spacing: -0.01em; }
 .pub-menu { display: flex; align-items: center; justify-content: space-between; flex: 1; gap: 24px; }
 .pub-menu-inner { display: contents; }
 .pub-links, .pub-foot-col ul { margin: 0; padding: 0; list-style: none; }
@@ -98,12 +98,12 @@ body.pub > .pub-stage { flex: 1 0 auto; }
 @media (prefers-reduced-motion: no-preference) { .pub-links a::after { transition: transform 240ms var(--pub-ease); } }
 .pub-badge {
   display: inline-block; min-inline-size: 18px; padding: 1px 6px; margin-inline-start: 4px; border-radius: 999px;
-  background: var(--pub-brass); color: var(--pub-forest); font-style: normal; font-size: var(--fs-sm); font-weight: 700; line-height: 16px; text-align: center;
+  background: var(--pub-brass); color: var(--pub-forest); font-style: normal; font-size: var(--fs-sm); font-weight: 600; line-height: 16px; text-align: center;
 }
 .pub-profile { display: inline-flex; align-items: center; gap: 10px; text-decoration: none; color: var(--pub-text); font-size: var(--fs-lg); font-weight: 500; border-radius: 999px; padding: 3px 12px 3px 3px; border: 1px solid var(--pub-line); transition: border-color 160ms ease, background-color 160ms ease, transform 160ms var(--pub-ease); }
 .pub-profile-name { max-inline-size: 16ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pub-avatar { display: block; inline-size: 30px; block-size: 30px; border-radius: 50%; object-fit: cover; flex: none; }
-.pub-avatar--initial { display: inline-grid; place-items: center; background: var(--oak-moss-700); color: var(--pub-text); font-size: var(--fs-base); font-weight: 600; }
+.pub-avatar--initial { display: inline-grid; place-items: center; background: var(--oak-moss-700); color: var(--pub-text); font-size: var(--fs-base); font-weight: 500; }
 @media (hover: hover) and (pointer: fine) { .pub-profile:hover { border-color: var(--pub-brass); background: rgba(185, 154, 87, 0.08); } }
 .pub-profile:active { transform: scale(0.97); }
 .pub-toggle { display: none; }
@@ -184,7 +184,7 @@ body.pub .pub-header, body.pub .pub-header.is-scrolled { background: var(--pub-f
 .pub-sheet .legal-nav { flex-wrap: wrap; margin-block-end: 22px; }
 .pub-sheet .auth-title { font-size: clamp(28px, 4vw, 38px); line-height: 1.12; margin-block-end: 8px; }
 .pub-sheet .auth-sub { font-size: var(--fs-lg); margin-block-end: 26px; max-inline-size: 60ch; }
-.pub-sheet .legal h2 { font: 600 var(--fs-xl)/1.3 var(--pub-font-display); margin: 30px 0 8px; }
+.pub-sheet .legal h2 { font: 500 var(--fs-xl)/1.3 var(--pub-font-display); margin: 30px 0 8px; }
 .pub-sheet .legal p, .pub-sheet .legal li { font-size: var(--fs-lg); line-height: 1.7; max-inline-size: 68ch; overflow-wrap: anywhere; }   /* DL-182 part 10: a long address on the About page pushed the phone 68px sideways */
 .pub-sheet .legal li { margin-block: 4px; }
 .pub-sheet .legal a { color: var(--paper-accent-ink); }                                  /* brass is too pale on paper; the ink variant passes 4.5:1 */

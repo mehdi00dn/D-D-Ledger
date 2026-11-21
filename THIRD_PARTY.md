@@ -8,7 +8,7 @@ It is the factual input for the Privacy Policy, Cookies Policy and cookie-consen
 
 - No external script, stylesheet, font, image, iframe, embed or tracking pixel in any template, stylesheet or script
   (the test fails if one is added).
-- Fonts (Fraunces, Inter, IBM Plex Mono) are self-hosted in `static/fonts/` (SIL Open Font License, text in `LICENSES.txt`).
+- Fonts (Newsreader and Lato; Fraunces, Inter and IBM Plex Mono until DL-180 part 26) are self-hosted in `static/fonts/` (SIL Open Font License, text in `LICENSES.txt`).
 - The one library, lottie-web (map fog animation), is vendored in `static/vendor/` (MIT, licence file next to it).
 - The Content-Security-Policy enforces this: `default-src 'self'`; scripts, images, fonts and media only from the app itself.
   The only extra origin the page may *connect* to is your Supabase project (direct-to-storage uploads and Realtime).
@@ -50,7 +50,7 @@ belongs to DL-80 (applicable local laws) and DL-82.
 
 | Asset | Where | Status |
 |---|---|---|
-| Fraunces, Inter, IBM Plex Mono fonts | `static/fonts/` | Verified: SIL OFL 1.1, bundled licence text |
+| Newsreader and Lato fonts | `static/fonts/` | Verified: SIL OFL 1.1, bundled licence text. Newsreader from `@fontsource-variable/newsreader` 5.3.0, Lato 2.015 from `lato-font` 3.0.0, both used unmodified (Lato has a Reserved Font Name, so the files are not subset or renamed). Replaced Fraunces, Inter and IBM Plex Mono on 21 Nov 2026 (DL-180 part 26) |
 | lottie-web | `static/vendor/` | Verified: MIT, licence file bundled |
 | Map pin icon: skull | `static/icons/pins/skull.svg` | Replaced on 20 Nov 2026 (DL-180 part 21): "Fanged Skull" by Lorc, [game-icons.net](https://game-icons.net/1x1/lorc/fanged-skull.html), CC BY 3.0, credited on the About page. The icon it replaced (SVG Repo, title `monster-skull`, id 499291) is listed on SVG Repo under the GPL, author nagoshiashumari, collection "Rpg Game Filled Icons", which does not suit a closed app |
 | Map pin icons: sword, hand, paw | `static/icons/pins/` | Replaced on 21 Nov 2026 (DL-180 part 22): "Broadsword", "Hand" and "Flat paw print" by Lorc, [game-icons.net](https://game-icons.net), CC BY 3.0, credited on the About page. The files they replaced came from SVG Repo with no author or licence recorded |
@@ -107,3 +107,9 @@ Record the answers in the table above. Until the Flaticon and SVG Repo licences 
 - **Closed:** the sword, hand and paw pins and the three interface icons that still carried SVG Repo headers (`scroll-text` for Characters, `swords` for Battle, `dices` for Dice) were replaced with game-icons.net icons (CC BY 3.0, the set and licence already used for the condition icons and the skull pin). All four pins are now one style. The authors are credited on `/about#credits`: Lorc (Fanged Skull, Broadsword, Hand, Flat paw print, Crossed swords) and Delapouite (Character, Dice twenty faces twenty). Each file or icon block also carries a short credit comment.
 - **No SVG Repo icon is left in the pins or in `templates/_icons.html`.** `tests/test_third_party_audit.py` fails if an SVG Repo header comes back in either place.
 - **Still open for the owner:** (1) the class icons in `static/icons/classes.svg` (SVG Repo or Flaticon, no author recorded); (2) the original of each background painting on Unsplash.
+
+
+### Update of 21 Nov 2026 (DL-180 part 26, typefaces)
+
+- Fraunces, Inter and IBM Plex Mono are replaced by **Newsreader** (titles and headings) and **Lato** (everything else). Both are under the SIL Open Font License 1.1 and self-hosted in `static/fonts/` with the licence text in `LICENSES.txt`; no request goes to a font service. Newsreader files come from the `@fontsource-variable/newsreader` package (Latin, weight and optical size axes). Lato files are Lato 2.015 from the `lato-font` package (Regular, Italic, Medium, Semibold; Lato 2 is used because Google's Lato 1 has no Medium or Semibold). Lato carries a Reserved Font Name, so its files are used exactly as published, not subset or renamed. The credit is on `/about#credits`.
+

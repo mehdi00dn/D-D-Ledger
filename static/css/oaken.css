@@ -305,3 +305,11 @@
   .o-surface::before, .form-panel:not(.o-paper)::before { opacity: 0.35; }
   .o-backdrop { background-image: none; }
 }
+
+/* Typography (DL-180 part 26).  Newsreader for titles, headings, campaign names and other prominent text; Lato for everything else.
+   Regular and medium weights; bold is kept to Lato Semibold (600) for real emphasis.  No fixed-width face.  The tokens are in style.css and landing.css. */
+h1, h2, h3, h4, h5, h6 { font-family: var(--font-display, 'Newsreader', Georgia, serif); font-weight: 500; }
+b, strong { font-weight: 600; }
+th { font-weight: 500; }
+button, input, select, textarea { font-family: inherit; }
+

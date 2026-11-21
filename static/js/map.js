@@ -514,7 +514,7 @@
     if (len > 14 * unit) {
       const full = label ? `${label} · ${text}` : text;
       const size = 12 * unit;
-      rctx.font = `600 ${size}px Inter, system-ui, sans-serif`;
+      rctx.font = `500 ${size}px Lato, "Segoe UI", sans-serif`;
       rctx.textAlign = 'center'; rctx.textBaseline = 'middle';
       const w = rctx.measureText(full).width + 16 * unit, h = size + 10 * unit;
       const mx = Math.min(Math.max(anchor.x, w / 2 + 2 * unit), naturalWidth - w / 2 - 2 * unit);
