@@ -89,6 +89,11 @@ def test_the_treasury_guide_is_dark_with_light_text(pw, shared_server):
     guide.locator('summary').click()
     fg = guide.locator('.guide-steps li').first.evaluate('e => getComputedStyle(e).color')
     assert _luma(bg) < 70 and _luma(fg) > 150, (bg, fg)
+    # DL-180 part 24: in the light theme the guide is a light paper panel with dark ink
+    page.evaluate("document.documentElement.setAttribute('data-theme', 'light')")
+    bg = guide.evaluate('e => getComputedStyle(e).backgroundColor')
+    fg = guide.locator('.guide-steps li').first.evaluate('e => getComputedStyle(e).color')
+    assert _luma(bg) > 190 and _luma(fg) < 110, (bg, fg)
     ctx.close()
 
 

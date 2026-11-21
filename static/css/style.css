@@ -2488,6 +2488,29 @@ body.page-leaving .content {
   inset: 0;
   transform-origin: 0 0;
 }
+/* Right-click pointer (map-pointer.js).  One small dot per person who is holding the right button; it keeps its size at any zoom.
+   Position is set from script with transform, the grow-in and the trail use only transform and opacity. */
+.map-stage-wrap.is-pointing, .map-stage-wrap.is-pointing * { cursor: none !important; }
+.map-ptr-layer { position: absolute; inset: 0; z-index: 90; overflow: hidden; pointer-events: none; }
+.map-ptr { position: absolute; left: 0; top: 0; inline-size: 0; block-size: 0; will-change: transform; }   /* phys */   /* placed with a screen-space translate from the stage top left */
+.map-ptr-dot, .map-ptr-trail { position: absolute; display: block; }
+.map-ptr-dot {
+  inline-size: 14px; block-size: 14px; margin: -7px 0 0 -7px; border-radius: 50%; box-sizing: border-box;
+  background: var(--ptr, #f0b64d); border: 2px solid rgba(255, 255, 255, 0.92);
+  box-shadow: 0 0 0 1px rgba(20, 14, 6, 0.55), 0 2px 8px rgba(20, 14, 6, 0.5), 0 0 14px color-mix(in srgb, var(--ptr, #f0b64d) 65%, transparent);
+  opacity: 0; transform: scale(0.35);
+}
+.map-ptr.is-on .map-ptr-dot { opacity: 1; transform: scale(1); }
+.map-ptr-trail {
+  inset-inline-end: 0; inset-block-start: 0; inline-size: 96px; block-size: 12px; margin: -6px 0 0 0; border-radius: 999px; opacity: 0;
+  transform-origin: 100% 50%;                                /* the dot's centre; script rotates it against the direction of travel and scales it with speed */
+  background: linear-gradient(to left, color-mix(in srgb, var(--ptr, #f0b64d) 85%, transparent) 0%, color-mix(in srgb, var(--ptr, #f0b64d) 35%, transparent) 45%, transparent);
+  filter: blur(2px);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .map-ptr-dot { transition: transform 200ms var(--ease-out), opacity 160ms var(--ease-out); }
+  .map-ptr:not(.is-on) .map-ptr-dot { transition-duration: 160ms; }
+}
 .map-stage-wrap.panning, .map-stage-wrap.panning * { cursor: grab !important; }
 .map-stage-wrap.panning-active, .map-stage-wrap.panning-active * { cursor: grabbing !important; }
 #map-canvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
@@ -6008,7 +6031,7 @@ body:has(.tool-flyout.open) .pin-action-bubble.is-docked { opacity: 0; pointer-e
 .empty-state.o-paper > svg:first-child { background: radial-gradient(circle at 50% 30%, rgba(120, 86, 24, 0.14), transparent 72%); border-color: var(--paper-line-strong); color: var(--paper-accent-ink); }
 .empty-state.o-paper p { color: var(--paper-ink-dim); }
 
-/* Treasury: "How the treasury works" is a dark panel with light text in both themes (DL-180 part 15; .o-ondark re-points the text and brass tokens at their dark-theme values) */
+/* Treasury: "How the treasury works" is a dark panel with light text in the dark theme and a paper panel with ink in the light theme (DL-180 parts 15 and 24, see .guide-card-paper in oaken.css; .o-ondark re-points the text and brass tokens at their dark-theme values) */
 .guide-card.o-ondark { border-radius: var(--radius-m); background-color: var(--oak-charcoal-700); border: 1px solid var(--hairline); box-shadow: var(--paper-shadow); }
 .guide-card.o-ondark > summary { color: var(--parchment); }
 .guide-card.o-ondark .guide-steps li, .guide-card.o-ondark .guide-note { color: var(--parchment-dim); }
