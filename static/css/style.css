@@ -2514,6 +2514,10 @@ body.page-leaving .content {
 .map-stage-wrap.panning, .map-stage-wrap.panning * { cursor: grab !important; }
 .map-stage-wrap.panning-active, .map-stage-wrap.panning-active * { cursor: grabbing !important; }
 #map-canvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
+/* With pictures beside the map the canvas is bigger than the map: script sets its place and size (as a share of the map) and this takes it out of the flow. */
+#map-canvas.on-world { position: absolute; max-inline-size: none; }
+/* A picture on the canvas only has a position, a size, a turn and a remove button. */
+.pin-action-bubble.is-picture #shape-hide-btn, .pin-action-bubble.is-picture #shape-attach-btn, .pin-action-bubble.is-picture #shape-lock-btn, .pin-action-bubble.is-picture #shape-angle-toggle { display: none; }
 /* Fog of war: sits above the map picture AND the tokens. Both children are cut to the fog mask. */
 .map-fog-layer { position: absolute; inset: 0; z-index: 5; pointer-events: none; overflow: hidden; }
 .map-fog-layer[hidden] { display: none; }

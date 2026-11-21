@@ -8,7 +8,7 @@
  * Each person has one colour, taken from their user id.  Positions travel in map coordinates (the same ones pins use), so the dot lands on the same spot of the map for everyone whatever their zoom or pan.
  * The dot itself keeps its size on screen.  Only transform and opacity are animated; with reduced motion there is no trail and no grow/shrink.
  *
- *   var pointer = MapPointer.create({ stage, inner, natural: () => ({ w, h }), toNatural: (clientX, clientY) => ({ x, y }), send: (msg) => {}, myId: () => userId });
+ *   var pointer = MapPointer.create({ stage, inner, natural: () => ({ w, h }), bounds: () => ({ x0, y0, x1, y1 }) (optional: where a dot may go), toNatural: (clientX, clientY) => ({ x, y }), send: (msg) => {}, myId: () => userId });
  *   pointer.receive(senderId, { x, y, end })
  */
 (function () {
@@ -64,6 +64,13 @@
       d.ending = true;
       d.el.classList.remove('is-on');
       d.gone = now() + 240;       // the shrink-away runs 160 ms; leave a little margin before the element goes
+    }
+
+    // the part of the canvas a dot may be on: the map, and any pictures beside it (host.bounds), else just the map
+    function bounds() {
+      if (host.bounds) return host.bounds();
+      var n = host.natural();
+      return { x0: 0, y0: 0, x1: n.w, y1: n.h };
     }
 
     // ---- where a map position is on screen right now (recomputed every frame, so zoom and pan carry the dots along)
@@ -126,8 +133,8 @@
       if (!from || !msg) return;
       var d = dots.get(from);
       if (msg.end) { if (d && !d.ending) removeDot(d); schedule(); return; }
-      var n = host.natural();
-      var x = Math.max(0, Math.min(n.w, num(msg.x, NaN))), y = Math.max(0, Math.min(n.h, num(msg.y, NaN)));
+      var b = bounds();
+      var x = Math.max(b.x0, Math.min(b.x1, num(msg.x, NaN))), y = Math.max(b.y0, Math.min(b.y1, num(msg.y, NaN)));
       if (!isFinite(x) || !isFinite(y)) return;
       var t = now();
       if (d && d.ending) { d.el.remove(); dots.delete(from); d = null; }
@@ -144,8 +151,8 @@
     var ME = '\u0000me';
 
     function placeOwn(clientX, clientY) {
-      var nat = host.toNatural(clientX, clientY), n = host.natural();
-      var x = Math.max(0, Math.min(n.w, nat.x)), y = Math.max(0, Math.min(n.h, nat.y));
+      var nat = host.toNatural(clientX, clientY), b = bounds();
+      var x = Math.max(b.x0, Math.min(b.x1, nat.x)), y = Math.max(b.y0, Math.min(b.y1, nat.y));
       holding.client = { x: clientX, y: clientY };
       holding.d.x = x; holding.d.y = y;
       host.send({ x: x, y: y, end: 0 });

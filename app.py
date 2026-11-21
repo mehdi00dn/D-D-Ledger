@@ -1,5 +1,6 @@
 import os
 import re
+import math
 import uuid
 import time
 import io
@@ -7336,6 +7337,63 @@ def api_map_settings(map_id):
 
 # ---- Drawings ----
 
+# A Player sees and edits every drawing the DM has not hidden.  Pictures on the canvas are part of the canvas itself and can never be hidden.
+_PLAYER_SEES = " AND (dm_only = 0 OR kind = 'image')"
+
+# A picture beside the map may reach this many map sizes past each edge of the map (so the whole canvas is at most four map sizes across).
+IMAGE_REACH = 1.5
+
+
+def _image_extent(w, h, rotation):
+    """Half the width and half the height of the box a picture takes up on the canvas, turned or not."""
+    r = math.radians(rotation or 0)
+    return (abs(w * math.cos(r)) + abs(h * math.sin(r))) / 2, (abs(w * math.sin(r)) + abs(h * math.cos(r))) / 2
+
+
+def _clamp_image_box(map_w, map_h, cx, cy, w, h, rotation):
+    """Keep a canvas picture inside the reach: not absurdly big, and not lost far away from the map.  Returns (cx, cy, w, h)."""
+    side = 2.0 * max(map_w, map_h)
+    w, h = min(max(w, 6.0), side), min(max(h, 6.0), side)
+    hx, hy = _image_extent(w, h, rotation)
+
+    def fit(c, half, size):
+        lo, hi = -IMAGE_REACH * size + half, (1 + IMAGE_REACH) * size - half
+        return (lo + hi) / 2 if lo > hi else min(max(c, lo), hi)
+    return fit(cx, hx, map_w), fit(cy, hy, map_h), w, h
+
+
+def _place_beside_map(m, boxes, w, h):
+    """Where a new picture lands: next to what is already on the canvas, top-aligned with the map, on the grid when the map snaps to it.
+    Right of everything first, then left, below, above.  `boxes` are the boxes (x0, y0, x1, y1) of the pictures already there."""
+    map_w, map_h = float(m['image_width'] or 1000), float(m['image_height'] or 1000)
+    x0 = min([0.0] + [b[0] for b in boxes]); y0 = min([0.0] + [b[1] for b in boxes])
+    x1 = max([map_w] + [b[2] for b in boxes]); y1 = max([map_h] + [b[3] for b in boxes])
+    gap = max(map_w, map_h) / 40.0
+    size = float(m['grid_size'] or 0)
+    snap = bool(m['snap_to_grid']) and size >= 2
+    ox, oy = float(m['grid_offset_x'] or 0), float(m['grid_offset_y'] or 0)
+
+    def line(v, off, up):                       # the grid line at or after (up) / at or before the value
+        n = (v - off) / size
+        return off + (math.ceil(n) if up else math.floor(n)) * size
+    ahead = ((x1 + gap, 0.0, True, True), (x0 - gap - w, 0.0, False, True), (0.0, y1 + gap, True, False), (0.0, y0 - gap - h, False, False))
+    for left, top, up, sideways in ahead:
+        if sideways:
+            top = 0.0
+            if snap:
+                left = line(left, ox, up) if up else line(left + w, ox, False) - w
+                top = line(top, oy, True)
+        else:
+            left = 0.0
+            if snap:
+                top = line(top, oy, up) if up else line(top + h, oy, False) - h
+                left = line(left, ox, True)
+        cx, cy = left + w / 2, top + h / 2
+        if _clamp_image_box(map_w, map_h, cx, cy, w, h, 0)[:2] == (cx, cy):
+            return round(cx, 2), round(cy, 2)
+    return round(map_w / 2, 2), round(map_h / 2, 2)             # no room beside it any more: in the middle of the map
+
+
 @app.route('/campaigns/<campaign:campaign_id>/api/maps/<gamemap:map_id>/drawings')
 @campaign_access_required
 def api_map_drawings_list(map_id):
@@ -7347,7 +7405,7 @@ def api_map_drawings_list(map_id):
 
 def _map_drawings_payload(db, map_id):
     # DM-only drawings never leave the server for a Player (the same redaction pattern as hidden notes).
-    rows = db.execute('SELECT * FROM map_drawings WHERE map_id = ?' + ('' if g.is_dm else ' AND dm_only = 0')
+    rows = db.execute('SELECT * FROM map_drawings WHERE map_id = ?' + ('' if g.is_dm else _PLAYER_SEES)
                       + ' ORDER BY sort_order, id', (map_id,)).fetchall()
     hidden_pins = set() if g.is_dm else {r['id'] for r in db.execute('SELECT id FROM map_pins WHERE map_id = ? AND dm_only = 1', (map_id,)).fetchall()}
     result = []
@@ -7406,8 +7464,12 @@ def api_map_drawings_add(map_id):
             db.close()
             return api_error('Unknown image.', 400)
         geometry = {'path': path}
+        dm_only = 0
+        locked = 0
+        mm = db.execute('SELECT image_width, image_height FROM maps WHERE id = ?', (map_id,)).fetchone()
+        cx, cy, w, h = _clamp_image_box(float(mm['image_width'] or 1000), float(mm['image_height'] or 1000), cx, cy, w, h, rotation)
     try:
-        attached = _attach_target(db, map_id, data.get('attached_pin_id'))
+        attached = _attach_target(db, map_id, data.get('attached_pin_id') if kind != 'image' else None)
     except ValueError as e:
         db.close()
         return api_error(str(e), 400)
@@ -7430,9 +7492,10 @@ MAX_IMAGES_PER_MAP = 40
 @campaign_access_required
 @map_edit_allowed
 def api_map_image_add(map_id):
-    """Put a picture on the map as a new object (move, resize, rotate, lock, hide, delete like any shape)."""
+    """Add a picture to the canvas, beside the map.  It is part of the canvas: it has a position, a size and a turn, and can be removed."""
     db = get_db()
-    m = db.execute('SELECT image_width, image_height FROM maps WHERE id = ? AND campaign_id = ?', (map_id, g.campaign_id)).fetchone()
+    m = db.execute('SELECT image_width, image_height, grid_size, grid_offset_x, grid_offset_y, snap_to_grid FROM maps WHERE id = ? AND campaign_id = ?',
+                   (map_id, g.campaign_id)).fetchone()
     if m is None:
         db.close()
         abort(404)
@@ -7448,21 +7511,20 @@ def api_map_image_add(map_id):
     if not stored:
         return api_error('That file is not an image we can use (PNG, JPEG, GIF or WebP).', 400, code='bad_image')
     map_w, map_h = float(m['image_width'] or 1000), float(m['image_height'] or 1000)
-    try:
-        cx = min(max(float(request.form.get('cx', map_w / 2)), 0), map_w)
-        cy = min(max(float(request.form.get('cy', map_h / 2)), 0), map_h)
-    except ValueError:
-        cx, cy = map_w / 2, map_h / 2
-    # Land at its own size, shrunk to at most half the map each way, never enlarged.
-    scale = min(1.0, (map_w * 0.5) / stored.width, (map_h * 0.5) / stored.height)
+    # Its own size, shrunk to at most the size of the map each way, never enlarged.
+    scale = min(1.0, map_w / stored.width, map_h / stored.height)
     w, h = round(stored.width * scale, 2), round(stored.height * scale, 2)
-    dm_only = 1 if (g.is_dm and request.form.get('dm_only') in ('1', 'true', 'on')) else 0
     db = get_db()
+    boxes = []
+    for r in db.execute("SELECT cx, cy, w, h, rotation FROM map_drawings WHERE map_id = ? AND kind = 'image'", (map_id,)).fetchall():
+        hx, hy = _image_extent(r['w'], r['h'], r['rotation'])
+        boxes.append((r['cx'] - hx, r['cy'] - hy, r['cx'] + hx, r['cy'] + hy))
+    cx, cy = _place_beside_map(m, boxes, w, h)
     max_order = db.execute('SELECT COALESCE(MAX(sort_order), -1) AS m FROM map_drawings WHERE map_id = ?', (map_id,)).fetchone()['m']
     cur = db.execute(
         '''INSERT INTO map_drawings (map_id, kind, data, cx, cy, w, h, rotation, color, fill, fill_opacity, sort_order, locked, dm_only, attached_pin_id)
-           VALUES (?, 'image', ?, ?, ?, ?, ?, 0, '#ffffff', 0, 0, ?, 0, ?, NULL)''',
-        (map_id, json.dumps({'path': stored.path}), cx, cy, w, h, max_order + 1, dm_only))
+           VALUES (?, 'image', ?, ?, ?, ?, ?, 0, '#ffffff', 0, 0, ?, 0, 0, NULL)''',
+        (map_id, json.dumps({'path': stored.path}), cx, cy, w, h, max_order + 1))
     db.commit()
     row = db.execute('SELECT * FROM map_drawings WHERE id = ?', (cur.lastrowid,)).fetchone()
     db.close()
@@ -7478,6 +7540,14 @@ def api_map_image_add(map_id):
 def api_map_drawing_update(map_id, drawing_id):
     data = request.get_json(force=True)
     db = get_db()
+    if any(k in data for k in ('cx', 'cy', 'w', 'h', 'rotation')):
+        row = db.execute('SELECT kind, cx, cy, w, h, rotation FROM map_drawings WHERE id = ? AND map_id = ?', (drawing_id, map_id)).fetchone()
+        if row is not None and row['kind'] == 'image':             # a picture stays within reach of the map
+            mm = db.execute('SELECT image_width, image_height FROM maps WHERE id = ?', (map_id,)).fetchone()
+            box = {k: float(data.get(k, row[k])) for k in ('cx', 'cy', 'w', 'h', 'rotation')}
+            box['cx'], box['cy'], box['w'], box['h'] = _clamp_image_box(float(mm['image_width'] or 1000), float(mm['image_height'] or 1000),
+                                                                      box['cx'], box['cy'], box['w'], box['h'], box['rotation'])
+            data = {**data, **box}
     fields = []
     values = []
     for key in ('cx', 'cy', 'w', 'h', 'rotation', 'fill_opacity'):
@@ -7517,7 +7587,7 @@ def api_map_drawing_update(map_id, drawing_id):
 @map_edit_allowed
 def api_map_drawing_delete(map_id, drawing_id):
     db = get_db()
-    db.execute('DELETE FROM map_drawings WHERE id = ? AND map_id = ?' + ('' if g.is_dm else ' AND dm_only = 0'), (drawing_id, map_id))
+    db.execute('DELETE FROM map_drawings WHERE id = ? AND map_id = ?' + ('' if g.is_dm else _PLAYER_SEES), (drawing_id, map_id))
     db.commit()
     db.close()
     return jsonify({'ok': True})
@@ -7528,7 +7598,7 @@ def api_map_drawing_delete(map_id, drawing_id):
 @map_edit_allowed
 def api_map_drawings_clear(map_id):
     db = get_db()
-    db.execute('DELETE FROM map_drawings WHERE map_id = ?' + ('' if g.is_dm else ' AND dm_only = 0'), (map_id,))
+    db.execute('DELETE FROM map_drawings WHERE map_id = ?' + ('' if g.is_dm else _PLAYER_SEES), (map_id,))
     db.commit()
     db.close()
     return jsonify({'ok': True})

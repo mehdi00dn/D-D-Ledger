@@ -1,4 +1,4 @@
-"""DL-180 part 15: a picture can be placed on a map as an object of its own."""
+"""DL-180 part 15 (reworked in part 27): a picture is added to the canvas, beside the map: a position, a size, a turn and a remove, and nothing else."""
 import io
 import json
 
@@ -12,26 +12,78 @@ def put(u, cid, mid, w=800, h=600, **fields):
     return u.post(f'/campaigns/{cid}/api/maps/{mid}/images', data=data, content_type='multipart/form-data')
 
 
-def test_an_image_lands_on_the_map_as_a_drawing_and_is_served(camp):
+def test_an_image_lands_beside_the_map_as_a_drawing_and_is_served(camp):
     u, cid = camp
     mid = u.new_map(cid, 'Hall', 1000, 800)
     r = put(u, cid, mid, 400, 300)
     assert r.status_code == 200
     d = r.get_json()
     assert d['kind'] == 'image' and d['data']['path'].startswith('maps/') and d['url'] == '/uploads/' + d['data']['path']
-    assert (d['cx'], d['cy']) == (500, 400)                                   # the middle of the map by default
     assert (d['w'], d['h']) == (400, 300)                                     # its own size, as it fits
+    assert d['cx'] - d['w'] / 2 >= 1000 and d['cy'] - d['h'] / 2 == 0         # right of the map, top-aligned with it
     assert u.get(d['url']).status_code == 200
     rows = u.get(f'/campaigns/{cid}/api/maps/{mid}/drawings').get_json()
     assert [(x['kind'], x['url']) for x in rows] == [('image', d['url'])]
 
 
-def test_a_large_image_is_shrunk_to_half_the_map_and_placed_where_asked(camp):
+def test_a_large_image_is_shrunk_to_the_size_of_the_map(camp):
     u, cid = camp
     mid = u.new_map(cid, 'Hall', 1000, 800)
-    d = put(u, cid, mid, 1500, 1000, cx='200', cy='9999').get_json()
-    assert d['w'] == 500 and round(d['h']) == 333                              # half the map's width, same shape
-    assert d['cx'] == 200 and d['cy'] == 800                                   # kept inside the map
+    d = put(u, cid, mid, 3000, 2000).get_json()
+    assert d['w'] == 1000 and round(d['h']) == 667                             # the map's width, same shape
+
+
+def test_pictures_are_placed_next_to_each_other_not_on_top(camp):
+    u, cid = camp
+    mid = u.new_map(cid, 'Hall', 1000, 800)
+    boxes = []
+    for _ in range(6):
+        d = put(u, cid, mid, 600, 400).get_json()
+        boxes.append((d['cx'] - d['w'] / 2, d['cy'] - d['h'] / 2, d['cx'] + d['w'] / 2, d['cy'] + d['h'] / 2))
+    boxes.append((0, 0, 1000, 800))                                            # the map
+    for i, a in enumerate(boxes):
+        for b in boxes[i + 1:]:
+            assert a[2] <= b[0] or b[2] <= a[0] or a[3] <= b[1] or b[3] <= a[1], (a, b)     # none overlap
+        assert -1500 <= a[0] and a[2] <= 2500 and -1200 <= a[1] and a[3] <= 2000            # all within reach of the map
+
+
+def test_a_picture_lands_on_the_grid_when_the_map_snaps(camp):
+    u, cid = camp
+    mid = u.new_map(cid, 'Hall', 1000, 800)
+    ex('UPDATE maps SET grid_size = 60, grid_offset_x = 7, grid_offset_y = 11, snap_to_grid = 1 WHERE id = ?', mid)
+    d = put(u, cid, mid, 300, 200).get_json()
+    left, top = d['cx'] - d['w'] / 2, d['cy'] - d['h'] / 2
+    assert (left - 7) % 60 == 0 and (top - 11) % 60 == 0 and left >= 1000
+
+
+def test_a_picture_has_no_hiding_locking_or_attaching(camp, make_user):
+    u, cid = camp
+    mid = u.new_map(cid)
+    player = make_user()
+    u.add_member(cid, player)
+    A = f'/campaigns/{cid}/api/maps/{mid}/drawings'
+    d = put(u, cid, mid, dm_only='1').get_json()
+    assert d['dm_only'] == 0 and d['locked'] == 0 and d['attached_pin_id'] is None
+    assert [x['id'] for x in player.get(A).get_json()] == [d['id']]            # the whole table sees the canvas
+    # even a picture an older version hid is now shown, and a Player may move it
+    ex('UPDATE map_drawings SET dm_only = 1 WHERE id = ?', d['id'])
+    assert [x['id'] for x in player.get(A).get_json()] == [d['id']]
+    assert player.json(f'{A}/{d["id"]}/update', {'cx': 5}).status_code == 200
+
+
+def test_a_picture_stays_within_reach_of_the_map(camp):
+    u, cid = camp
+    mid = u.new_map(cid, 'Hall', 1000, 800)
+    A = f'/campaigns/{cid}/api/maps/{mid}/drawings'
+    d = put(u, cid, mid, 300, 200).get_json()
+    assert u.json(f'{A}/{d["id"]}/update', {'cx': 90000, 'cy': -90000, 'w': 90000, 'h': 5}).status_code == 200
+    got = u.get(A).get_json()[0]
+    assert got['w'] == 2000 and got['h'] == 6                                   # at most two map sizes across
+    assert got['cx'] - got['w'] / 2 >= -1500 and got['cx'] + got['w'] / 2 <= 2500 and got['cy'] >= -1200 and got['cy'] <= -1200 + 3
+    # a picture put back by undo is held to the same limits
+    back = u.json(A, {'kind': 'image', 'data': d['data'], 'cx': 5e6, 'cy': 5e6, 'w': 400, 'h': 300}).get_json()
+    row = [x for x in u.get(A).get_json() if x['id'] == back['id']][0]
+    assert row['cx'] + 200 <= 2500 and row['cy'] + 150 <= 2000
 
 
 def test_a_file_that_is_not_an_image_is_refused(camp):
@@ -58,21 +110,6 @@ def test_a_picture_can_be_put_back_after_delete_but_only_a_file_of_this_campaign
     assert u.json(A, {'kind': 'image', 'data': theirs['data'], 'w': 5, 'h': 5}).status_code == 400
     assert u.json(A, {'kind': 'image', 'data': {'path': '../../etc/passwd'}, 'w': 5, 'h': 5}).status_code == 400
     assert u.json(A, {'kind': 'image', 'data': {}, 'w': 5, 'h': 5}).status_code == 400
-
-
-def test_a_hidden_picture_never_reaches_a_player(camp, make_user):
-    u, cid = camp
-    mid = u.new_map(cid)
-    player = make_user()
-    u.add_member(cid, player)
-    shown = put(u, cid, mid).get_json()
-    hidden = put(u, cid, mid, dm_only='1').get_json()
-    assert hidden['dm_only'] == 1
-    seen = player.get(f'/campaigns/{cid}/api/maps/{mid}/drawings').get_json()
-    assert [x['id'] for x in seen] == [shown['id']]
-    assert hidden['data']['path'] not in json.dumps(seen)
-    # and a Player may not hide one
-    assert put(player, cid, mid, dm_only='1').get_json()['dm_only'] == 0
 
 
 def test_a_player_may_not_add_pictures_to_a_locked_map(camp, make_user):
@@ -113,7 +150,7 @@ def test_pictures_travel_with_a_campaign_export_and_import(camp, make_user):
     import zipfile
     u, cid = camp
     mid = u.new_map(cid, 'Hall', 1000, 800)
-    d = put(u, cid, mid, 300, 200, cx='400', cy='300').get_json()
+    d = put(u, cid, mid, 300, 200).get_json()
     z = export(u, cid)
     m = json.loads(zipfile.ZipFile(io.BytesIO(z)).read('manifest.json'))
     exported = m['maps'][0]['drawings'][0]
@@ -129,7 +166,7 @@ def test_pictures_travel_with_a_campaign_export_and_import(camp, make_user):
     path = json.loads(rows[0]['data'])['path']
     assert path.startswith('maps/') and path != d['data']['path']              # its own file, so deleting one never breaks the other
     assert friend.get('/uploads/' + path).status_code == 200
-    assert (rows[0]['cx'], rows[0]['cy'], rows[0]['w'], rows[0]['h']) == (400, 300, 300, 200)
+    assert (rows[0]['cx'], rows[0]['cy'], rows[0]['w'], rows[0]['h']) == (d['cx'], d['cy'], 300, 200)     # beside the map, where it was
 
 
 def test_an_import_drops_a_picture_whose_file_is_missing(camp, make_user):

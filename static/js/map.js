@@ -79,6 +79,7 @@
   let bgImage = new Image();
   let bgLoaded = false;
   let attachMode = false;   // true while the next token click attaches the selected shapes to it (DL-159)
+  let activeDrag = null;  // manipulating an existing shape or pin
   let drawings = [];   // shape objects: {id, kind, cx, cy, w, h, rotation, color, fill, fill_opacity, data, locked}
   let pins = [];        // {id, pin_type, x, y, scale, rotation, locked, ...}
   let currentTool = 'select';
@@ -123,6 +124,81 @@
   // ---------------------------------------------------------------------
   canvas.width = naturalWidth;
   canvas.height = naturalHeight;
+
+  // ---------------------------------------------------------------------
+  // The canvas world.  Coordinates stay "map pixels, origin at the map's top left", but pictures placed beside the map (kind 'image')
+  // make the canvas bigger than the map: `world` is the box that holds the map and every picture (left and top can be negative).
+  // The grid, drawings, tokens, measuring and pointers all work anywhere inside it.  With no pictures the world is exactly the map.
+  // ---------------------------------------------------------------------
+  const IMAGE_REACH = 1.5;                         // a picture may reach 1.5 map sizes past an edge (the server keeps the same limit)
+  const WORLD_MAX_PIXELS = 16000000;               // phones refuse a canvas much bigger than this; a larger world is drawn a little softer
+  let world = { x0: 0, y0: 0, x1: naturalWidth, y1: naturalHeight };
+  let worldScale = 1;                              // canvas pixels per map pixel
+  let worldTimer = 0;
+
+  function imageHalfExtent(d) {                    // half width and half height of the box a (turned) picture takes up
+    const r = toRad(d.rotation || 0);
+    return { x: (Math.abs(d.w * Math.cos(r)) + Math.abs(d.h * Math.sin(r))) / 2, y: (Math.abs(d.w * Math.sin(r)) + Math.abs(d.h * Math.cos(r))) / 2 };
+  }
+  // Keep a picture within reach of the map (the server clamps the same way).
+  function limitImage(d) {
+    const side = 2 * Math.max(naturalWidth, naturalHeight);
+    d.w = Math.min(Math.max(d.w, 6), side); d.h = Math.min(Math.max(d.h, 6), side);
+    const half = imageHalfExtent(d);
+    const fit = (c, h, size) => { const lo = -IMAGE_REACH * size + h, hi = (1 + IMAGE_REACH) * size - h; return lo > hi ? (lo + hi) / 2 : Math.min(Math.max(c, lo), hi); };
+    d.cx = fit(d.cx, half.x, naturalWidth); d.cy = fit(d.cy, half.y, naturalHeight);
+  }
+  const isPicture = (d) => !!d && d.kind === 'image';
+
+  function computeWorld(slack) {
+    const w = { x0: 0, y0: 0, x1: naturalWidth, y1: naturalHeight };
+    drawings.forEach((raw) => {
+      if (!isPicture(raw)) return;
+      const d = live ? live.shapeView(raw) : raw;
+      // Room round each picture for its handles (the turn handle sits well out from the edge), so they can always be grabbed.
+      const half = imageHalfExtent(d), pad = Math.max(30, naturalWidth / 25) + Math.max(14, naturalWidth / 80) + (slack ? Math.max(naturalWidth, naturalHeight) * 0.1 : 0);
+      w.x0 = Math.min(w.x0, d.cx - half.x - pad); w.y0 = Math.min(w.y0, d.cy - half.y - pad);
+      w.x1 = Math.max(w.x1, d.cx + half.x + pad); w.y1 = Math.max(w.y1, d.cy + half.y + pad);
+    });
+    return w;
+  }
+  const sameWorld = (a, b) => Math.abs(a.x0 - b.x0) < 0.5 && Math.abs(a.y0 - b.y0) < 0.5 && Math.abs(a.x1 - b.x1) < 0.5 && Math.abs(a.y1 - b.y1) < 0.5;
+
+  // Size and place the canvas and the measuring canvas to cover the world.  A map with no pictures keeps the plain stylesheet layout.
+  function layoutWorld() {
+    const ww = world.x1 - world.x0, wh = world.y1 - world.y0;
+    const plain = world.x0 === 0 && world.y0 === 0 && ww === naturalWidth && wh === naturalHeight;
+    worldScale = plain ? 1 : Math.min(1, Math.sqrt(Math.max(naturalWidth * naturalHeight, WORLD_MAX_PIXELS) / (ww * wh)));
+    const px = Math.max(1, Math.round(ww * worldScale)), py = Math.max(1, Math.round(wh * worldScale));
+    if (canvas.width !== px) canvas.width = px;
+    if (canvas.height !== py) canvas.height = py;
+    [canvas, rulerCanvas].forEach((el) => {
+      ['left', 'top', 'right', 'bottom', 'width', 'height'].forEach((k) => el.style.removeProperty(k));
+      el.classList.toggle('on-world', !plain);
+      if (plain) return;
+      el.style.left = `${(world.x0 / naturalWidth) * 100}%`;
+      el.style.top = `${(world.y0 / naturalHeight) * 100}%`;
+      el.style.right = 'auto'; el.style.bottom = 'auto';
+      el.style.width = `${(ww / naturalWidth) * 100}%`;
+      el.style.height = `${(wh / naturalHeight) * 100}%`;
+    });
+  }
+  // While something is being dragged the world only grows (with some room to spare, so the canvas is not rebuilt on every mouse move);
+  // when the hand lets go it is tightened around the map and the pictures again.
+  function syncWorld() {
+    const dragging = !!activeDrag;
+    const next = computeWorld(dragging);
+    if (dragging) {
+      next.x0 = Math.min(next.x0, world.x0); next.y0 = Math.min(next.y0, world.y0);
+      next.x1 = Math.max(next.x1, world.x1); next.y1 = Math.max(next.y1, world.y1);
+      clearTimeout(worldTimer); worldTimer = setTimeout(() => { worldTimer = 0; redraw(); }, 300);
+    }
+    if (sameWorld(next, world)) return false;
+    world = next;
+    layoutWorld();
+    return true;
+  }
+  function worldBounds() { return { x0: world.x0, y0: world.y0, x1: world.x1, y1: world.y1 }; }
   rulerCanvas.width = 1;       // drawRuler() sizes it to the screen (a full-size canvas for a big map is too much for a phone)
   rulerCanvas.height = 1;
   bgImage.onload = () => { bgLoaded = true; redraw(); };
@@ -297,10 +373,10 @@
     if (d.kind === 'angle') {
       const sweep = (((d.data && d.data.sweepDeg) || 60) * Math.PI) / 180;
       const yMax = d.w * Math.sin(sweep / 2);
-      const dist = yMax + Math.max(30, canvas.width / 25);
+      const dist = yMax + Math.max(30, naturalWidth / 25);
       return localOffsetToNatural(d, d.w / 2, -dist);
     }
-    const dist = d.h / 2 + Math.max(30, canvas.width / 25);
+    const dist = d.h / 2 + Math.max(30, naturalWidth / 25);
     return localOffsetToNatural(d, 0, -dist);
   }
 
@@ -322,11 +398,18 @@
     return Math.hypot(p.x - cx, p.y - cy);
   }
 
+  // Drawings from the top down, then the pictures: a picture is the bottom layer of the canvas, so a line drawn on it is picked first.
+  function topFirst() {
+    const above = [], below = [];
+    for (let i = drawings.length - 1; i >= 0; i--) (isPicture(drawings[i]) ? below : above).push(drawings[i]);
+    return above.concat(below);
+  }
+
   function hitTestShape(d, pos) {
     const local = naturalToLocalOffset(d, pos.x, pos.y);
     const lx = local.x, ly = local.y;
     const hw = d.w / 2, hh = d.h / 2;
-    const pad = Math.max(6, canvas.width / 300);
+    const pad = Math.max(6, naturalWidth / 300);
     const hasFill = (d.fill_opacity || 0) > 0.001;
     if (d.kind === 'image') return lx >= -hw && lx <= hw && ly >= -hh && ly <= hh;
     if (d.kind === 'rect') {
@@ -374,7 +457,7 @@
 
   function hitTestResizeHandle(d, pos) {
     const corners = getShapeCorners(d);
-    const hs = Math.max(12, canvas.width / 90);
+    const hs = Math.max(12, naturalWidth / 90);
     for (let i = 0; i < 4; i++) {
       if (Math.hypot(pos.x - corners[i].x, pos.y - corners[i].y) < hs) return i;
     }
@@ -383,29 +466,31 @@
 
   function hitTestRotateHandle(d, pos) {
     const rp = getRotateHandlePos(d);
-    const hs = Math.max(14, canvas.width / 80);
+    const hs = Math.max(14, naturalWidth / 80);
     return Math.hypot(pos.x - rp.x, pos.y - rp.y) < hs;
   }
 
   // ---------------------------------------------------------------------
   // Rendering
   // ---------------------------------------------------------------------
-  function drawGridOnto(targetCtx, w, h, size, offX, offY, color, visible) {
+  // `area` (optional) is the part of the canvas to draw lines over, in the same coordinates as the offsets; the default is 0..w by 0..h.
+  function drawGridOnto(targetCtx, w, h, size, offX, offY, color, visible, area) {
     if (!visible || !size || size < 2) return;
     targetCtx.save();
-    const startX = ((offX % size) + size) % size;
-    const startY = ((offY % size) + size) % size;
+    const a = area || { x0: 0, y0: 0, x1: w, y1: h };
+    const startX = a.x0 + ((((offX - a.x0) % size) + size) % size);
+    const startY = a.y0 + ((((offY - a.y0) % size) + size) % size);
     const outerWidth = Math.max(1, w / 700);
     const innerWidth = Math.max(0.5, w / 1400);
 
     function strokeLines(strokeColor, width) {
       targetCtx.strokeStyle = strokeColor;
       targetCtx.lineWidth = width;
-      for (let x = startX; x < w; x += size) {
-        targetCtx.beginPath(); targetCtx.moveTo(x, 0); targetCtx.lineTo(x, h); targetCtx.stroke();
+      for (let x = startX; x < a.x1; x += size) {
+        targetCtx.beginPath(); targetCtx.moveTo(x, a.y0); targetCtx.lineTo(x, a.y1); targetCtx.stroke();
       }
-      for (let y = startY; y < h; y += size) {
-        targetCtx.beginPath(); targetCtx.moveTo(0, y); targetCtx.lineTo(w, y); targetCtx.stroke();
+      for (let y = startY; y < a.y1; y += size) {
+        targetCtx.beginPath(); targetCtx.moveTo(a.x0, y); targetCtx.lineTo(a.x1, y); targetCtx.stroke();
       }
     }
 
@@ -424,7 +509,7 @@
 
   function drawGrid() {
     if (suppressMainGrid) return;
-    drawGridOnto(ctx, canvas.width, canvas.height, gridSize, gridOffsetX, gridOffsetY, gridColor, gridVisible);
+    drawGridOnto(ctx, naturalWidth, naturalHeight, gridSize, gridOffsetX, gridOffsetY, gridColor, gridVisible, world);   // over the whole canvas, pictures included
   }
 
   // ---- Measuring: the ruler and the cone / sphere / line / cube templates (DL-153) ----
@@ -517,8 +602,8 @@
       rctx.font = `500 ${size}px Lato, "Segoe UI", sans-serif`;
       rctx.textAlign = 'center'; rctx.textBaseline = 'middle';
       const w = rctx.measureText(full).width + 16 * unit, h = size + 10 * unit;
-      const mx = Math.min(Math.max(anchor.x, w / 2 + 2 * unit), naturalWidth - w / 2 - 2 * unit);
-      const my = Math.min(Math.max(anchor.y - 18 * unit, h / 2 + 2 * unit), naturalHeight - h / 2 - 2 * unit);
+      const mx = Math.min(Math.max(anchor.x, world.x0 + w / 2 + 2 * unit), world.x1 - w / 2 - 2 * unit);
+      const my = Math.min(Math.max(anchor.y - 18 * unit, world.y0 + h / 2 + 2 * unit), world.y1 - h / 2 - 2 * unit);
       rctx.beginPath();
       if (rctx.roundRect) rctx.roundRect(mx - w / 2, my - h / 2, w, h, h / 2); else rctx.rect(mx - w / 2, my - h / 2, w, h);
       rctx.fillStyle = 'rgba(14,16,24,0.92)'; rctx.fill();
@@ -550,9 +635,10 @@
     if (ruler && ruler.until && Date.now() >= ruler.until) ruler = null;      // a finished template has faded away
     if (readout) readout.textContent = ruler ? rulerReading().text : '';
     if (!ruler && !remoteMeasures.size) return;
-    const k = px / naturalWidth;                                   // natural map pixels -> canvas pixels
-    const unit = rect.width > 0 ? naturalWidth / rect.width : 1;   // one unit = one screen pixel, in map pixels
-    rctx.setTransform(k, 0, 0, k, 0, 0);
+    const worldW = world.x1 - world.x0;
+    const k = px / worldW;                                         // natural map pixels -> canvas pixels
+    const unit = rect.width > 0 ? worldW / rect.width : 1;         // one unit = one screen pixel, in map pixels
+    rctx.setTransform(k, 0, 0, k, -world.x0 * k, -world.y0 * k);
     remoteMeasures.forEach((m) => { const al = fadeAlpha(m.until); if (al > 0) drawMeasure(m, MEASURE_OTHERS, al, unit, m.name); });
     if (ruler) drawMeasure(ruler, MEASURE_OWN, ruler.until ? fadeAlpha(ruler.until) : 1, unit, '');
   }
@@ -651,12 +737,12 @@
     ctx.translate(d.cx, d.cy);
     ctx.rotate(toRad(d.rotation));
     // A DM-only shape is drawn faint with a dashed edge, so the DM can tell it is hidden at a glance.
-    const base = d.dm_only ? 0.5 : 1;
+    const base = d.dm_only && !isPicture(d) ? 0.5 : 1;
     ctx.globalAlpha = base;
-    if (d.dm_only) ctx.setLineDash([Math.max(6, canvas.width / 160), Math.max(5, canvas.width / 200)]);
+    if (d.dm_only && !isPicture(d)) ctx.setLineDash([Math.max(6, naturalWidth / 160), Math.max(5, naturalWidth / 200)]);
     ctx.strokeStyle = d.color;
     ctx.fillStyle = d.color;
-    ctx.lineWidth = Math.max(2, canvas.width / 450);
+    ctx.lineWidth = Math.max(2, naturalWidth / 450);
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     const w = d.w, h = d.h;
@@ -667,7 +753,7 @@
       if (img && img.complete && img.naturalWidth) {
         ctx.drawImage(img, -w / 2, -h / 2, w, h);
       } else {                                           // still loading: a dashed frame holds the place
-        ctx.setLineDash([Math.max(6, canvas.width / 160), Math.max(5, canvas.width / 200)]);
+        ctx.setLineDash([Math.max(6, naturalWidth / 160), Math.max(5, naturalWidth / 200)]);
         ctx.strokeRect(-w / 2, -h / 2, w, h);
       }
     } else if (d.kind === 'rect') {
@@ -719,8 +805,8 @@
     if (selectedShapeIds.size === 0) return;
     ctx.save();
     ctx.strokeStyle = '#4d9eff';
-    ctx.lineWidth = Math.max(1.5, canvas.width / 900);
-    ctx.setLineDash([canvas.width / 150, canvas.width / 220]);
+    ctx.lineWidth = Math.max(1.5, naturalWidth / 900);
+    ctx.setLineDash([naturalWidth / 150, naturalWidth / 220]);
 
     let primaryCorners = null;
     selectedShapeIds.forEach((id) => {
@@ -733,7 +819,7 @@
 
     // A dotted line from each selected shape to the token it follows.
     ctx.strokeStyle = '#d4a847';
-    ctx.setLineDash([canvas.width / 400, canvas.width / 300]);
+    ctx.setLineDash([naturalWidth / 400, naturalWidth / 300]);
     selectedShapeIds.forEach((id) => {
       const d = drawings.find((s) => s.id === id);
       const pin = d && d.attached_pin_id ? pins.find((q) => q.id === d.attached_pin_id) : null;
@@ -746,7 +832,7 @@
     if (primaryCorners) {
       const { d, corners } = primaryCorners;
       if (shapeHandleMode === 'resize') {
-        const hs = Math.max(9, canvas.width / 130);
+        const hs = Math.max(9, naturalWidth / 130);
         ctx.fillStyle = '#4d9eff';
         corners.forEach((c) => ctx.fillRect(c.x - hs / 2, c.y - hs / 2, hs, hs));
       }
@@ -758,13 +844,13 @@
         ctx.lineTo(rp.x, rp.y);
         ctx.stroke();
         ctx.beginPath();
-        ctx.arc(rp.x, rp.y, Math.max(8, canvas.width / 140), 0, Math.PI * 2);
+        ctx.arc(rp.x, rp.y, Math.max(8, naturalWidth / 140), 0, Math.PI * 2);
         ctx.fillStyle = '#4d9eff';
         ctx.fill();
       }
       if (shapeHandleMode === 'angle-adjust' && d.kind === 'angle') {
         const handles = getAngleHandlePositions(d);
-        const hs = Math.max(9, canvas.width / 130);
+        const hs = Math.max(9, naturalWidth / 130);
         ctx.fillStyle = '#4d9eff';
         handles.forEach((p) => {
           ctx.beginPath();
@@ -776,7 +862,7 @@
     ctx.restore();
   }
 
-  function lockIconRadius() { return Math.max(15, canvas.width / 55); }
+  function lockIconRadius() { return Math.max(15, naturalWidth / 55); }
 
   function drawLockHoverIcon() {
     if (hoveredLockedShapeId == null) return;
@@ -819,10 +905,14 @@
   }
 
   function redraw() {
+    syncWorld();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    if (bgLoaded) ctx.drawImage(bgImage, 0, 0, canvas.width, canvas.height);
+    ctx.setTransform(worldScale, 0, 0, worldScale, -world.x0 * worldScale, -world.y0 * worldScale);      // everything below is in map pixels
+    if (bgLoaded) ctx.drawImage(bgImage, 0, 0, naturalWidth, naturalHeight);
+    drawings.forEach((d) => { if (isPicture(d)) drawShape(live ? live.shapeView(d) : d); });      // pictures are part of the canvas: under the grid and the drawings
     drawGrid();
-    drawings.forEach((d) => drawShape(live ? live.shapeView(d) : d));
+    drawings.forEach((d) => { if (!isPicture(d)) drawShape(live ? live.shapeView(d) : d); });
     if (live) live.drafts().forEach(drawShape);                 // other people's shapes while they are still drawing them
     if (previewShape) drawShape(previewShape);
     drawSelectionOverlay();
@@ -837,7 +927,9 @@
   async function loadDrawings() {
     const res = await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/drawings`);
     drawings = await res.json();
+    drawings.forEach((d) => { if (isPicture(d)) { d.locked = false; d.dm_only = false; d.attached_pin_id = null; } });      // pictures cannot be locked, hidden or attached
     redraw();
+    if (!viewFitted) { viewFitted = true; fitView(); }
   }
 
   async function loadPins() {
@@ -896,6 +988,18 @@
     const cellX = Math.round((x - gridOffsetX - gridSize / 2) / gridSize);
     const cellY = Math.round((y - gridOffsetY - gridSize / 2) / gridSize);
     return { x: gridOffsetX + gridSize / 2 + cellX * gridSize, y: gridOffsetY + gridSize / 2 + cellY * gridSize };
+  }
+
+  // Pictures follow the grid too (when "snap to grid" is on): the corner of a picture meets a grid line.
+  function snapToGridLines(p) {
+    if (!snapToGrid || !gridSize || gridSize < 2) return p;
+    return { x: gridOffsetX + Math.round((p.x - gridOffsetX) / gridSize) * gridSize, y: gridOffsetY + Math.round((p.y - gridOffsetY) / gridSize) * gridSize };
+  }
+  function snapPictureCorner(d) {                       // the top left of the box the picture takes up
+    if (!snapToGrid || !gridSize || gridSize < 2) return;
+    const half = imageHalfExtent(d);
+    const c = snapToGridLines({ x: d.cx - half.x, y: d.cy - half.y });
+    d.cx = c.x + half.x; d.cy = c.y + half.y;
   }
 
   function applyPinStyle(pin, el) {
@@ -1150,6 +1254,7 @@
   function positionShapeBubble() {
     const d = drawings.find((s) => s.id === selectedShapeId);
     if (!d) { shapeBubble.hidden = true; return; }
+    shapeBubble.classList.toggle('is-picture', isPicture(d));      // a picture only has: size, turn, remove
     syncHideButton(shapeHideBtn, selectedShapeIds.size > 1 ? [...selectedShapeIds].every((id) => (drawings.find((x) => x.id === id) || {}).dm_only) : d.dm_only);
     syncAttachButton();
     applyBubbleScale();
@@ -1967,7 +2072,8 @@
   const SHAPE_TOOLS = ['line', 'rect', 'oval', 'pen', 'angle'];
   const styleGroup = document.getElementById('shape-style-group');
   function updateStylePanelVisibility() {
-    const show = SHAPE_TOOLS.includes(currentTool) || selectedShapeIds.size > 0;
+    // A picture has no colour or fill, so selecting only pictures does not open the style panel.
+    const show = SHAPE_TOOLS.includes(currentTool) || [...selectedShapeIds].some((id) => !isPicture(drawings.find((s) => s.id === id)));
     styleGroup.hidden = !show;
   }
 
@@ -2037,7 +2143,7 @@
     document.querySelectorAll('.tool-flyout').forEach((f) => f.classList.remove('open'));
   });
 
-  // ---- Add image: a picture becomes a map object ----
+  // ---- Add image: a picture is added to the canvas, beside the map ----
   const MAP_IMAGE_MAX_SIDE = 1600, MAP_IMAGE_SEND_LIMIT = 3 * 1024 * 1024;     // the server keeps 1600 px; Vercel takes ~4.5 MB a request
   async function fitForUpload(file) {
     if (file.type === 'image/gif' || (file.size <= MAP_IMAGE_SEND_LIMIT && !/^image\/(png|jpeg|webp)$/.test(file.type))) return file;
@@ -2067,15 +2173,11 @@
       try {
         const body = new FormData();
         body.append('image', await fitForUpload(file), file.name);
-        const r = stageWrap.getBoundingClientRect();
-        const c = getNaturalPos(r.left + r.width / 2, r.top + r.height / 2);          // the middle of what is on screen
-        body.append('cx', Math.max(0, Math.min(naturalWidth, c.x)));
-        body.append('cy', Math.max(0, Math.min(naturalHeight, c.y)));
-        if (window.IS_DM && newObjectsHidden) body.append('dm_only', '1');
         const res = await mapWrite(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/images`, { method: 'POST', body });
-        const shape = await res.json();
+        const shape = await res.json();                       // the server puts it beside what is already on the canvas
         drawings.push(shape);
         redraw();
+        fitView();                                            // so the new picture is on screen
         pushCommand(makeAddShapeCommand(shape));
         const selectBtn = document.querySelector('.map-tool-btn[data-tool="select"]');
         if (selectBtn) selectBtn.click();
@@ -2224,6 +2326,7 @@
   const pointerUi = window.MapPointer ? window.MapPointer.create({
     stage: stageWrap, inner: stageInner,
     natural: () => ({ w: naturalWidth, h: naturalHeight }),
+    bounds: worldBounds,                                  // a dot can go anywhere on the canvas, pictures included
     toNatural: (cx, cy) => getNaturalPos(cx, cy),
     send: (m) => { if (live) live.pointer(m); },
     myId: () => window.USER_ID,
@@ -2358,7 +2461,6 @@
   });
   let drawState = null;   // creating a brand-new shape, or moving the grid
   let angleDrawState = null; // {vertex} while placing an angle/cone shape (click, then click again)
-  let activeDrag = null;  // manipulating an existing shape or pin
 
   canvas.addEventListener('mousedown', (e) => {
     if (currentTool === 'ruler') {                       // measuring changes nothing, so it works on a locked map too
@@ -2419,7 +2521,7 @@
         const d = drawings.find((s) => s.id === selectedShapeId);
         if (d && d.kind === 'angle') {
           const handles = getAngleHandlePositions(d);
-          const hs = Math.max(14, canvas.width / 80);
+          const hs = Math.max(14, naturalWidth / 80);
           const hitIdx = handles.findIndex((p) => Math.hypot(pos.x - p.x, pos.y - p.y) < hs);
           if (hitIdx !== -1) {
             const before = { data: { ...d.data } };
@@ -2429,9 +2531,8 @@
         }
       }
       const multiKey = e.ctrlKey || e.metaKey;
-      for (let i = drawings.length - 1; i >= 0; i--) {
-        const cand = drawings[i];
-        if (cand.locked) continue;
+      for (const cand of topFirst()) {
+        if (cand.locked && !isPicture(cand)) continue;
         if (hitTestShape(cand, pos)) {
           if (multiKey) {
             toggleShapeSelection(cand.id);
@@ -2447,9 +2548,9 @@
     }
 
     if (currentTool === 'eraser') {
-      for (let i = drawings.length - 1; i >= 0; i--) {
-        if (drawings[i].locked) continue;
-        if (hitTestShape(drawings[i], pos)) { deleteShape(drawings[i]); return; }
+      for (const cand of topFirst()) {
+        if (cand.locked && !isPicture(cand)) continue;
+        if (hitTestShape(cand, pos)) { deleteShape(cand); return; }
       }
       return;
     }
@@ -2562,6 +2663,10 @@
         const start = activeDrag.starts.get(id);
         if (d && start) { d.cx = start.cx + dx; d.cy = start.cy + dy; }
       });
+      if (activeDrag.ids.length === 1) {
+        const d = drawings.find((s) => s.id === activeDrag.ids[0]);
+        if (isPicture(d)) { snapPictureCorner(d); limitImage(d); }
+      }
       redraw();
       if (selectedShapeId != null) positionShapeBubble();
       return;
@@ -2573,6 +2678,7 @@
       const ratio = dist / activeDrag.startDist;
       d.w = Math.max(6, activeDrag.startW * ratio);
       d.h = Math.max(6, activeDrag.startH * ratio);
+      if (isPicture(d)) limitImage(d);
       redraw();
       positionShapeBubble();
       return;
@@ -2592,10 +2698,18 @@
       const pos = eventPos(e);
       const d = activeDrag.d;
       const axes = activeDrag.axes;
-      const vec = { x: pos.x - activeDrag.anchor.x, y: pos.y - activeDrag.anchor.y };
+      let target = pos;
+      if (isPicture(d) && Math.abs(((d.rotation || 0) % 360)) < 0.01) target = snapToGridLines(pos);   // an upright picture's corner meets the grid
+      const vec = { x: target.x - activeDrag.anchor.x, y: target.y - activeDrag.anchor.y };
       let du = vec.x * axes.u.x + vec.y * axes.u.y;
       let dv = vec.x * axes.v.x + vec.y * axes.v.y;
-      if (e.altKey) {
+      if (isPicture(d)) {
+        // A picture keeps its proportions: the corner follows whichever side moved further.
+        const b = activeDrag.before;
+        const s = Math.max(Math.abs(du) / Math.max(1, b.w), Math.abs(dv) / Math.max(1, b.h));
+        du = (du < 0 ? -1 : 1) * s * b.w;
+        dv = (dv < 0 ? -1 : 1) * s * b.h;
+      } else if (e.altKey) {
         // Lock to a 1:1 aspect ratio, using whichever axis moved further.
         const mag = Math.max(Math.abs(du), Math.abs(dv));
         du = (du < 0 ? -1 : 1) * mag;
@@ -2619,6 +2733,7 @@
         d.cx = (activeDrag.anchor.x + effX) / 2;
         d.cy = (activeDrag.anchor.y + effY) / 2;
       }
+      if (isPicture(d)) limitImage(d);
       redraw();
       positionShapeBubble();
       return;
@@ -2628,6 +2743,7 @@
       const d = activeDrag.d;
       const angleNow = Math.atan2(pos.y - d.cy, pos.x - d.cx) * (180 / Math.PI);
       d.rotation = activeDrag.startRotation + (angleNow - activeDrag.startAngle);
+      if (isPicture(d)) limitImage(d);
       redraw();
       positionShapeBubble();
       return;
@@ -3149,9 +3265,23 @@
     applyZoomTransform();
   }, { passive: false });
 
-  zoomResetBtn.addEventListener('click', () => {
-    zoomLevel = 1; panX = 0; panY = 0;
+  // The whole canvas on screen: the map alone is the plain 100% view; with pictures beside it the view pulls back to hold them all.
+  let viewFitted = false;
+  function fitView() {
+    const ww = world.x1 - world.x0, wh = world.y1 - world.y0;
+    const beside = ww > naturalWidth || wh > naturalHeight || world.x0 < 0 || world.y0 < 0;
+    const z = Math.max(ZOOM_MIN, Math.min(1, (beside ? 0.94 : 1) * Math.min(naturalWidth / ww, naturalHeight / wh)));   // a little room round the edge, so a corner is easy to grab
+    const box = stageWrap.getBoundingClientRect();
+    const left = (world.x0 / naturalWidth) * box.width, top = (world.y0 / naturalHeight) * box.height;
+    const widthPx = (ww / naturalWidth) * box.width, heightPx = (wh / naturalHeight) * box.height;
+    zoomLevel = z;
+    panX = (box.width - widthPx * z) / 2 - left * z;
+    panY = (box.height - heightPx * z) / 2 - top * z;
     applyZoomTransform();
+  }
+
+  zoomResetBtn.addEventListener('click', () => {
+    fitView();
   });
 
   // Hold Space to pan by dragging, regardless of the active tool — a
