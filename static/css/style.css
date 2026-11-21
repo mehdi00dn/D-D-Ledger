@@ -2908,16 +2908,13 @@ body.page-leaving .content {
 .preview-banner form { margin: 0; }
 
 /* DL-43: character classes */
-/* Class icons: one restrained accent, in a small framed tile so they are not just more text.  Brass on the dark surfaces, bronze on paper and light ones. */
+/* Class icons: one restrained accent colour.  Framed tiles are used only inside the class picker (.class-trigger-icon, .class-option-icon).  Brass on the dark surfaces, bronze on paper and light ones. */
 [data-class] { --cc: var(--brass-bright); }
 :root[data-theme="light"] [data-class], .o-paper [data-class], .o-paper[data-class] { --cc: #8f5f12; }          /* bronze: warm and clearly lighter than the brown text */
 .o-ondark [data-class] { --cc: var(--brass-bright); }
 .class-icon[data-class], .avatar-class[data-class], .avatar-frame .avatar-class[data-class], .class-trigger-icon[data-class], .class-badge .class-icon[data-class] { color: var(--cc); }
-.class-icon[data-class] {
-  inline-size: 1.5em; block-size: 1.5em; padding: 0.28em; margin-inline-end: 8px; vertical-align: -0.38em; box-sizing: border-box; border-radius: 0.42em;
-  border: 1px solid color-mix(in srgb, var(--cc) 55%, transparent); background: color-mix(in srgb, var(--cc) 12%, transparent);
-}
-.class-badge .class-icon[data-class], .profile-char-ph .class-icon[data-class], .map-pin-label .class-icon[data-class] { padding: 0; border: 0; border-radius: 0; background: none; vertical-align: baseline; }
+.class-icon[data-class] { inline-size: 1.25em; block-size: 1.25em; margin-inline-end: 7px; vertical-align: -0.25em; }   /* bare glyph, no frame; only the class picker frames its icons */
+.class-badge .class-icon[data-class], .profile-char-ph .class-icon[data-class], .map-pin-label .class-icon[data-class] { vertical-align: baseline; }
 .map-pin-label .class-icon[data-class] { color: inherit; }
 .class-icon { display: inline-flex; align-items: center; justify-content: center; width: 1.05em; height: 1.05em; margin-inline-end: 6px; vertical-align: -0.12em; color: var(--brass-ink); flex-shrink: 0; }
 .class-icon svg { width: 100%; height: 100%; fill: currentColor; }

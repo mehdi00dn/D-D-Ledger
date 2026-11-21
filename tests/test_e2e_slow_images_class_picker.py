@@ -157,3 +157,17 @@ def test_dialogs_ease_out_before_they_go(pw, shared_server):
     page.wait_for_timeout(400)
     assert dlg.evaluate('e => e.open && getComputedStyle(e).opacity') == '1'
     ctx.close()
+
+
+def test_class_icons_outside_the_picker_have_no_frame(pw, shared_server):
+    """DL-180 part 22: only the class picker frames its icons; the icon next to a name is a bare glyph."""
+    base = shared_server.url; api = Api(base); cid = api.campaign('Bare icons')
+    ctx = api.context(pw, base); page = ctx.new_page()
+    page.goto(base + f'/campaigns/{cid}/characters/new'); page.wait_for_selector('#class-trigger')
+    page.evaluate("() => { const d = document.createElement('div'); d.id = 'probe'; d.innerHTML = window.classIconHtml('wizard'); document.body.appendChild(d); }")
+    st = page.eval_on_selector('#probe .class-icon', 'e => { const c = getComputedStyle(e); return [c.borderTopWidth, c.backgroundColor, c.paddingTop, c.color]; }')
+    assert st[0] == '0px' and st[1] == 'rgba(0, 0, 0, 0)' and st[2] == '0px', st             # no border, no tint, no padding
+    assert st[3] != page.eval_on_selector('#probe', 'e => getComputedStyle(e).color')           # still the one accent colour
+    page.click('#class-trigger'); page.wait_for_selector('#class-menu:not([hidden])')
+    assert page.eval_on_selector('.class-option[data-class] .class-option-icon', 'e => getComputedStyle(e).borderTopWidth') == '1px'   # the picker keeps its frames
+    ctx.close()

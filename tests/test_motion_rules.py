@@ -25,11 +25,14 @@ def test_dialogs_and_panels_open_without_overshoot():
     # panel-pop-in is the opening motion of every dialog and overlay panel; a bouncing curve (a y2 above 1) made them wobble.
     css = _read(os.path.join(ROOT, 'static', 'css', 'style.css'))
     uses = re.findall(r'animation\s*:\s*panel-pop-in\s+([^;]+);', css)
-    assert len(uses) >= 4
+    assert len(uses) >= 3      # the pick and encounter dialogs moved to transitions with @starting-style (DL-180 part 20); the rest still use the keyframes
     for timing in uses:
         assert 'var(--ease-out)' in timing, timing
         m = re.search(r'(\d*\.?\d+)s', timing)
         assert float(m.group(1)) <= 0.3, timing
+    # ...and those dialogs open and close with ease-out, never a bouncing curve
+    block = css[css.index('@starting-style') - 900: css.index('@starting-style') + 900]
+    assert 'var(--ease-out)' in block and 'cubic-bezier' not in block
 
 
 def test_reduced_motion_still_flattens_every_animation_and_transition():
