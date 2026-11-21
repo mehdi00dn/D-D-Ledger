@@ -34,7 +34,7 @@
   <ol class="guide-steps">
     <li>{{ icon('cursor') }}<div><b>Move things.</b> Pick the Select tool, then drag a token, shape or picture. Tap or click one to get its buttons: resize, rotate, lock{% if g.is_dm %}, hide from players{% endif %} and delete.</div></li>
     <li>{{ icon('shapes-group') }}<div><b>Draw.</b> Lines, rectangles, ovals, free draw and cones live under the shapes button. Pick a colour first; a new shape is selected as soon as you finish it. The link button on a selected shape attaches it to a token so they move together.</div></li>
-    <li>{{ icon('images') }}<div><b>Add a picture.</b> The pictures button in the shapes menu puts a handout, a room or a clue on the map. It behaves like any shape, so you can move, resize, rotate, lock{% if g.is_dm %} or hide it{% endif %}. Undo brings back a deleted one.</div></li>
+    <li>{{ icon('images') }}<div><b>Add a picture.</b> The pictures button in the shapes menu adds a handout, a room or a clue beside the map, as part of the canvas. Move it, resize it, turn it or remove it; the grid runs over it and tokens can stand on it. Undo brings back a deleted one.</div></li>
     <li>{{ icon('ruler') }}<div><b>Measure.</b> Drag with the ruler for the true distance in squares and feet, diagonals included. Cone, sphere, line and cube show a spell's reach. With "Show to table" on, everyone sees it for a few seconds.</div></li>
     <li>{{ icon('maximize') }}<div><b>Look around.</b> Zoom with Ctrl + scroll (or pinch with two fingers) and pan by holding Space and dragging (or dragging with two fingers). Reset zoom puts it back.</div></li>
     <li>{{ icon('user') }}<div><b>Tokens.</b> Pick a character from the Characters list, then click the map to drop its token. The marker buttons drop an animal, a monster or a weapon the same way. {% if g.is_dm %}Assign a token to a player so they can move it themselves, and use fog to hide what the party has not found yet.{% else %}You can move the tokens that are assigned to you, unless the DM has locked the map.{% endif %}</div></li>
@@ -66,8 +66,8 @@
         <button type="button" class="map-tool-btn" data-tool="oval" title="Oval">{{ icon('oval-tool') }}</button>
         <button type="button" class="map-tool-btn" data-tool="pen" title="Free draw">{{ icon('pen-tool') }}</button>
         <button type="button" class="map-tool-btn" data-tool="angle" title="Angle / cone: click a start point, click again to set the reach, then drag its edges to widen or narrow">{{ icon('angle-tool') }}</button>
-        <button type="button" class="map-tool-btn" id="map-add-image-btn" title="Add image: place a picture on the map (a handout, a room, a clue). Move, resize, rotate, lock or hide it like any shape" aria-label="Add image">{{ icon('images') }}</button>
-        <input type="file" id="map-image-input" aria-label="Choose a picture to put on the map" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
+        <button type="button" class="map-tool-btn" id="map-add-image-btn" title="Add image: put a picture beside the map (a handout, a room, a clue). Move, resize, turn or remove it" aria-label="Add image">{{ icon('images') }}</button>
+        <input type="file" id="map-image-input" aria-label="Choose a picture to put beside the map" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
       </div></div>
     </div>
 

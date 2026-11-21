@@ -43,6 +43,7 @@ def test_quests_on_a_phone_are_text_then_one_row_of_buttons(pw, shared_server):
     ctx = _ctx(pw, dm, base, 390, 844, True); page = ctx.new_page()
     page.goto(base + '/campaigns'); page.locator('.group-actions a.btn-primary').first.click()
     page.wait_for_selector('.quest')
+    page.evaluate('() => document.fonts.ready'); page.wait_for_timeout(500)         # let the page's entrance motion finish so the boxes are measured at rest
     title = page.locator('.quest-title').first.bounding_box()
     main = page.locator('.quest-main').first.bounding_box()
     buttons = [b.bounding_box() for b in page.locator('.quest .quest-btn').all()]
