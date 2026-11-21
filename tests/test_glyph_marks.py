@@ -1,4 +1,4 @@
-"""DL-180 part 23: the bundled fonts (Inter, Fraunces, IBM Plex Mono) have no circle, diamond or check glyphs, so those marks must be drawn by the .pm CSS shapes
+"""DL-180 part 23: the bundled fonts (Newsreader and Lato) have no diamond or check glyphs and Newsreader has no circles either, so those marks must be drawn by the .pm CSS shapes
 instead of depending on whichever fallback font a device picks."""
 import pathlib, re
 

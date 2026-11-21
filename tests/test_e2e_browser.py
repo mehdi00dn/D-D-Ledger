@@ -1550,14 +1550,15 @@ def test_reference_item_tables_render_as_real_tables_and_ability_modifiers_sit_c
         srv.stop(); api.shutdown()
 
 
-def test_the_three_typefaces_load_from_this_site(pw, shared_server):
+def test_the_two_typefaces_load_from_this_site(pw, shared_server):
     base = shared_server.url; dm = Api(base); cid = dm.campaign('Type')
     dm.character(cid, 'Hero')
     ctx = dm.context(pw, base); page = ctx.new_page(); bad, errs = _collect(page)
     hosts = set(); page.on('request', lambda r: hosts.add(r.url.split('/')[2]))
     page.goto(base + f'/campaigns/{cid}/characters'); page.wait_for_load_state('load'); page.wait_for_timeout(800)
     loaded = page.evaluate("async () => { await document.fonts.ready; return [...document.fonts].filter(f => f.status === 'loaded').map(f => f.family.replace(/\"/g, '')); }")
-    assert {'Inter', 'Fraunces', 'IBM Plex Mono'} <= set(loaded), loaded
+    assert {'Newsreader', 'Lato'} <= set(loaded), loaded
+    assert not {'Inter', 'Fraunces', 'IBM Plex Mono'} & set(loaded), loaded
     assert hosts == {base.split('/')[2]}, hosts                                                         # nothing but our own server
     assert not bad and not errs, (bad, errs)
     ctx.close()
