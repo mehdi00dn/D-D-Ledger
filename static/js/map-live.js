@@ -15,6 +15,7 @@
   'use strict';
 
   var SEND_EVERY = 100;      // ms between messages while dragging (about 10 a second -- kind to the Realtime rate limits)
+  var EVERY = { ptr: 50 };   // the right-click pointer goes out 20 times a second, so other people see it move the way it really moved
   var EASE_MS = 70;          // how quickly the receiving side catches up with the newest position
   var STALE_MS = 2500;       // a live item that goes quiet this long snaps back to its saved state
   var MAX_ITEMS = 200, MAX_POINTS = 200, MAX_PEN = 4000;
@@ -35,7 +36,7 @@
     function throttled(key, build) {
       pending[key] = build;
       if (timers[key]) return;
-      var wait = Math.max(0, SEND_EVERY - (now() - (lastSent[key] || 0)));
+      var wait = Math.max(0, (EVERY[key] || SEND_EVERY) - (now() - (lastSent[key] || 0)));
       timers[key] = setTimeout(function () {
         timers[key] = 0;
         var b = pending[key]; pending[key] = null;

@@ -2495,21 +2495,23 @@ body.page-leaving .content {
 .map-ptr { position: absolute; left: 0; top: 0; inline-size: 0; block-size: 0; will-change: transform; }   /* phys */   /* placed with a screen-space translate from the stage top left */
 .map-ptr-dot, .map-ptr-trail { position: absolute; display: block; }
 .map-ptr-dot {
-  inline-size: 10px; block-size: 10px; margin: -5px 0 0 -5px; border-radius: 50%;
-  background: var(--ptr, #f0b64d);                               /* a plain dot: no ring, no outline */
-  box-shadow: 0 0 9px 2px color-mix(in srgb, var(--ptr, #f0b64d) 55%, transparent), 0 1px 3px rgba(20, 14, 6, 0.3);   /* a subtle glow */
-  opacity: 0; transform: scale(0.35);
+  inline-size: 14px; block-size: 14px; margin: -7px 0 0 -7px; border-radius: 50%;
+  /* a plain dot, no ring: a bright core fading into the person's colour, and a wide glow so it stands out on light and dark maps */
+  background: radial-gradient(circle at 50% 50%, #fff 0%, color-mix(in srgb, #fff 55%, var(--ptr, #f0b64d)) 28%, var(--ptr, #f0b64d) 62%);
+  box-shadow: 0 0 6px 1px color-mix(in srgb, var(--ptr, #f0b64d) 95%, transparent), 0 0 18px 5px color-mix(in srgb, var(--ptr, #f0b64d) 60%, transparent),
+              0 0 38px 10px color-mix(in srgb, var(--ptr, #f0b64d) 28%, transparent), 0 1px 3px rgba(20, 14, 6, 0.45);
+  opacity: 0; transform: scale(0.3);
 }
 .map-ptr.is-on .map-ptr-dot { opacity: 1; transform: scale(1); }
 .map-ptr-trail {
-  inset-inline-end: 0; inset-block-start: 0; inline-size: 96px; block-size: 10px; margin: -5px 0 0 0; border-radius: 999px; opacity: 0;
+  inset-inline-end: 0; inset-block-start: 0; inline-size: 150px; block-size: 14px; margin: -7px 0 0 0; border-radius: 999px; opacity: 0;
   transform-origin: 100% 50%;                                /* the dot's centre; script rotates it against the direction of travel and scales it with speed */
-  background: linear-gradient(to left, color-mix(in srgb, var(--ptr, #f0b64d) 85%, transparent) 0%, color-mix(in srgb, var(--ptr, #f0b64d) 35%, transparent) 45%, transparent);
-  filter: blur(2px);
+  background: linear-gradient(to left, color-mix(in srgb, var(--ptr, #f0b64d) 100%, transparent) 0%, color-mix(in srgb, var(--ptr, #f0b64d) 60%, transparent) 40%, transparent);
+  filter: blur(1.5px);
 }
 @media (prefers-reduced-motion: no-preference) {
-  .map-ptr-dot { transition: transform 200ms var(--ease-out), opacity 160ms var(--ease-out); }
-  .map-ptr:not(.is-on) .map-ptr-dot { transition-duration: 160ms; }
+  .map-ptr-dot { transition: transform 260ms cubic-bezier(0.34, 1.56, 0.64, 1), opacity 140ms var(--ease-out); }   /* a small overshoot: it pops in */
+  .map-ptr:not(.is-on) .map-ptr-dot { transition: transform 160ms var(--ease-out), opacity 160ms var(--ease-out); }
 }
 .map-stage-wrap.panning, .map-stage-wrap.panning * { cursor: grab !important; }
 .map-stage-wrap.panning-active, .map-stage-wrap.panning-active * { cursor: grabbing !important; }

@@ -1,7 +1,7 @@
 /* Map pointer: hold the right mouse button on the map and your cursor turns into a small dot that everyone looking at the map sees, live.
  *
- * Your own dot follows the mouse exactly.  Other people's dots arrive about ten times a second over the live channel (map-live.js, kind "ptr");
- * they are played back about 120 ms behind real time, interpolated between the last two positions, so the path is smooth instead of stepping.
+ * Your own dot follows the mouse exactly.  Other people's dots arrive about twenty times a second over the live channel (map-live.js, kind "ptr");
+ * they are played back about 65 ms behind real time (a little over one message interval), joined straight from one position to the next, so the path is the path that was really taken, not an eased one.
  * A short soft trail behind the dot, as long as the dot is fast, gives the motion blur.  Nothing here is saved: when the button is released (or
  * the messages stop for a few seconds) the dot shrinks away.
  *
@@ -14,12 +14,12 @@
 (function () {
   'use strict';
 
-  var DELAY_MS = 120;         // how far behind real time other people's dots are drawn (a little over one message interval)
+  var DELAY_MS = 65;          // how far behind real time other people's dots are drawn: a little over one message interval (50 ms), so the path is the real path, not an eased one
   var STALE_MS = 3500;        // a dot that has gone quiet this long is taken away (a held button keeps sending a heartbeat)
   var KEEPALIVE_MS = 1000;
   var MAX_DOTS = 40;
-  var SPEED_FOR_TRAIL = 90;   // px per second below which there is no trail
-  var TRAIL_PX = 96;          // length of the trail element at full speed (the trail is scaled from this; keep in step with .map-ptr-trail in style.css)
+  var SPEED_FOR_TRAIL = 40;   // px per second below which there is no trail
+  var TRAIL_PX = 150;         // length of the trail element at full speed (the trail is scaled from this; keep in step with .map-ptr-trail in style.css)
   var COLORS = ['#f0b64d', '#4cc3e0', '#ef6f5e', '#8fd14f', '#b98cf5', '#f27fb8', '#3fd0a6', '#6f8cf5', '#e05ad8', '#f0e07a'];   // ten that stay apart on light and dark maps
 
   function num(v, fallback) { v = Number(v); return isFinite(v) ? v : fallback; }
@@ -108,7 +108,7 @@
         var p = toScreen(box, px, py);
         // velocity on screen (px per second), smoothed so the trail does not flicker
         if (d.placed) {
-          var ix = (p.x - d.sx) / dt * 1000, iy = (p.y - d.sy) / dt * 1000, f = 1 - Math.exp(-dt / 60);
+          var ix = (p.x - d.sx) / dt * 1000, iy = (p.y - d.sy) / dt * 1000, f = 1 - Math.exp(-dt / 170);
           d.vx += (ix - d.vx) * f; d.vy += (iy - d.vy) * f;
         }
         d.sx = p.x; d.sy = p.y; d.placed = true;
@@ -117,9 +117,9 @@
         var speed = Math.sqrt(d.vx * d.vx + d.vy * d.vy);
         if (calm || speed < SPEED_FOR_TRAIL) { d.trail.style.opacity = '0'; }
         else {
-          var len = Math.min(1, speed / 1400);                       // full trail at about 1400 px/s
-          d.trail.style.opacity = String(Math.min(0.85, 0.25 + len)).slice(0, 5);
-          d.trail.style.transform = 'rotate(' + Math.atan2(d.vy, d.vx).toFixed(3) + 'rad) scaleX(' + (0.25 + len * 0.75).toFixed(3) + ')';
+          var len = Math.min(1, speed / 1000);                       // full trail at about 1000 px/s
+          d.trail.style.opacity = String(Math.min(1, 0.55 + len * 0.45)).slice(0, 5);
+          d.trail.style.transform = 'rotate(' + Math.atan2(d.vy, d.vx).toFixed(3) + 'rad) scaleX(' + (0.3 + len * 0.7).toFixed(3) + ')';
         }
         busy = true;
       });
