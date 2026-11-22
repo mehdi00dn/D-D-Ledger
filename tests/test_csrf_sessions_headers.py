@@ -192,6 +192,37 @@ def test_uploaded_images_keep_their_own_cache_policy(appmod, user):
     assert 'immutable' in user.get('/uploads/' + path).headers['Cache-Control']
 
 
+def test_a_stored_image_can_be_kept_by_the_browser_between_page_loads(appmod, user):
+    # The session cookie is signed again on every response, so a "Vary: Cookie" image response never matched the browser's copy and every
+    # avatar and campaign picture was downloaded again on each reload.  Image responses carry neither the Vary nor a new cookie.
+    import io
+    from conftest import png_bytes
+    cid = user.new_campaign()
+    user.post(f'/campaigns/{cid}/characters/new', data={'name': 'P2', 'avatar': (io.BytesIO(png_bytes()), 'a.png')}, content_type='multipart/form-data')
+    path = q('SELECT avatar_path FROM characters WHERE name = ?', 'P2')[0]['avatar_path']
+    first = user.get('/uploads/' + path)
+    again = user.get('/uploads/' + path)
+    for r in (first, again):
+        assert r.status_code == 200 and 'immutable' in r.headers['Cache-Control'] and 'max-age=31536000' in r.headers['Cache-Control']
+        assert 'Vary' not in r.headers and 'Set-Cookie' not in r.headers, dict(r.headers)
+    # a signed-out visitor is still turned away, and ordinary pages still keep the session alive
+    anon = appmod.app.test_client()
+    assert anon.get('/uploads/' + path).status_code in (302, 401, 403)
+    assert 'Set-Cookie' in user.get('/campaigns').headers
+
+
+def test_the_map_picture_is_rechecked_by_etag_and_not_downloaded_again(appmod, user):
+    from conftest import png_bytes
+    import io
+    cid = user.new_campaign()
+    user.post(f'/campaigns/{cid}/maps/new', data={'name': 'M', 'image': (io.BytesIO(png_bytes(200, 100)), 'm.png')}, content_type='multipart/form-data')
+    mid = q('SELECT id FROM maps WHERE name = ?', 'M')[0]['id']
+    first = user.get(f'/campaigns/{cid}/maps/{mid}/image')
+    assert first.status_code == 200 and first.headers['ETag'] and 'Vary' not in first.headers and 'Set-Cookie' not in first.headers
+    again = user.get(f'/campaigns/{cid}/maps/{mid}/image', headers={'If-None-Match': first.headers['ETag']})
+    assert again.status_code == 304
+
+
 # ------------------------------------------------------------------ open redirect
 @pytest.mark.parametrize('nxt', ['//evil.example', '/\\evil.example', '\\\\evil.example', 'https://evil.example', 'http://evil.example/x',
                                  'javascript:alert(1)', '/ok\r\nSet-Cookie: a=b', '/\tevil', 'evil.example', '///evil.example', '/' + 'a' * 2100])

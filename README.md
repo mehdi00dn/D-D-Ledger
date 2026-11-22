@@ -504,6 +504,15 @@ The hover burn (DL-180 parts 5 and 7, a scorch drawn in CSS along a panel's edge
 - The Died? and Remove buttons were 34px; on a touch screen they are 40px. INIT and AC keep their deliberately small boxes (at most 32px by 44px, a DL-169 rule that `tests/test_e2e_battle_responsive.py` holds); only their text grows, to 16px.
 Not changed: a phone held sideways (844 by 390) still has very little room, and the Battle log bar and the floating buttons sit over the rows while you scroll, as they do upright. `tests/test_battle_rows_cards.py` has 3 style sheet tests and a touch-phone browser test at 390x844, 360x640 and 844x390 (rounded corners, gaps between cards, 16px fields, `manipulation`, 40px end buttons, no sideways scroll); all six fail on the old style sheet.
 
+### Avatars and campaign pictures are kept by the browser (DL-180, part 29)
+
+Stored images were already sent with `Cache-Control: private, max-age=31536000, immutable`, yet browsers fetched them again on every page. The cause was two other headers on the same response: Flask marks any response that read the session `Vary: Cookie`, and the signed-in session cookie is signed again on every response, so its value was different every time. A browser that honours `Vary: Cookie` (Safari and Firefox do; Chrome effectively ignores it) saw a different "variant" on each visit and never reused its copy.
+
+- **Fix.** `_OakenSessionInterface` in `app.py` leaves the response alone on the two image routes (`uploaded_file`, and `map_image`, which the browser re-checks by ETag so the fog is always current): no `Vary: Cookie`, no new `Set-Cookie`. A stored image is the same for everyone who may see it, under a key nobody can guess, and the response is still `private`.
+- **A write that was not needed.** `campaign_access_required` set `session['last_campaign_id']` on every request, which marks the session modified and re-signs the cookie even when the value had not changed. It is now written only when it changes, so campaign pages and the map picture stop re-signing the cookie for nothing.
+- **Unchanged.** Signed-out visitors are still turned away from `/uploads/...`; ordinary pages still keep the session alive; the map picture is still re-checked by ETag on every load (a small 304, not a download).
+- **Tests.** `tests/test_csrf_sessions_headers.py` (no `Vary` and no cookie on the image responses, a 304 for the map picture, pages still refresh the session) and `tests/test_e2e_image_cache.py` (in Chrome, a reload and a visit to another page show avatars from the browser cache; this guards the policy, it cannot reproduce the Safari and Firefox problem).
+
 ### Pointer: more pop, a longer trail, true movement (DL-180, part 28)
 
 - **Pop.** The dot is 14 px with a bright core fading into the person's colour and a wider, layered glow (still no ring, no name). It pops in with a small overshoot (260 ms, ease with a slight spring) and shrinks away as before.
