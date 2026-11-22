@@ -2,12 +2,12 @@
 {% extends "base.html" if g.campaign_id else "site_base.html" %}
 {% from "_icons.html" import icon %}
 {% set active_page = 'reference' %}
-{% block title %}Reference — Oaken{% endblock %}
+{% block title %}Compendium — Oaken{% endblock %}
 
 {% block content %}
 <div class="page-header">
   <div>
-    <h1 class="page-title">Rules Reference</h1>
+    <h1 class="page-title">Compendium</h1>
     <p class="page-sub">Spells, monsters, items, classes, {{ editions[edition].species_tab|lower }}, backgrounds, feats and the core rules from the {{ editions[edition].label }} of D&amp;D 5e.</p>
   </div>
   <div class="page-actions toolbar">
@@ -33,7 +33,7 @@
   </div>
   <div class="ref-body">
     <div class="cf-card o-paper ref-list-card">
-      <div class="ref-search">{{ icon('search') }}<input type="search" data-ref-query placeholder="Search…" aria-label="Search the reference" autocomplete="off"></div>
+      <div class="ref-search">{{ icon('search') }}<input type="search" data-ref-query placeholder="Search…" aria-label="Search the compendium" autocomplete="off"></div>
       <ul class="ref-list" data-ref-list aria-live="polite"></ul>
     </div>
     <article class="cf-card o-paper ref-detail" data-ref-detail aria-live="polite">

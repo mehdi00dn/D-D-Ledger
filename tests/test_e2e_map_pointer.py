@@ -14,6 +14,48 @@ def dot_center(page, uid=None):
         const r = e.getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; }""")
 
 
+def trail_bend(page):
+    """How far the trail's centre line strays from the straight line between the dot and the far end of the trail, in px (0 for a straight trail)."""
+    return page.evaluate("""() => {
+        const el = document.querySelector('.map-ptr-trail'); if (!el || parseFloat(el.style.opacity || 0) === 0) return -1;
+        const pts = el.querySelector('path').getAttribute('d').replace(/[MZ]/g, '').split('L').map(p => p.split(' ').map(Number));
+        const n = pts.length / 2, mid = [];
+        for (let i = 0; i < n; i++) mid.push([(pts[i][0] + pts[pts.length - 1 - i][0]) / 2, (pts[i][1] + pts[pts.length - 1 - i][1]) / 2]);
+        const a = mid[0], b = mid[n - 1], len = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+        return Math.max(...mid.map(p => Math.abs((b[0] - a[0]) * (a[1] - p[1]) - (a[0] - p[0]) * (b[1] - a[1])) / len));
+    }""")
+
+
+def test_the_trail_bends_with_the_movement_and_the_dot_is_a_plain_small_saturated_spot(world):
+    w = world
+    page_dm, sock_dm, err_dm, page_pl, sock_pl, err_pl = open_pages(w)
+    import math
+    cx, cy, r = 400, 300, 120
+    sx, sy = to_screen(page_dm, cx + r, cy); page_dm.mouse.move(sx, sy); page_dm.mouse.down(button='right')
+    bends_own, bends_other = [], []
+    for i in range(1, 22):                                                  # a circle, fast enough to leave a trail
+        a = i * 0.28
+        x, y = to_screen(page_dm, cx + r * math.cos(a), cy + r * math.sin(a)); page_dm.mouse.move(x, y); pump(page_dm, sock_dm, sock_pl, w.channel, 40)
+        if i > 8:
+            bends_own.append(trail_bend(page_dm)); bends_other.append(trail_bend(page_pl))
+    assert max(bends_own) > 6, ('your own trail curves round the circle', bends_own)
+    assert max(bends_other) > 6, ('and so does the one other people see', bends_other)
+    # a straight run leaves a straight trail
+    page_dm.mouse.up(button='right'); relay(sock_dm, sock_pl, w.channel)
+    page_dm.wait_for_function("() => document.querySelectorAll('.map-ptr').length === 0", timeout=3000)
+    sx, sy = to_screen(page_dm, 100, 100); page_dm.mouse.move(sx, sy); page_dm.mouse.down(button='right')
+    straight = []
+    for i in range(1, 14):
+        x, y = to_screen(page_dm, 100 + i * 40, 100 + i * 10); page_dm.mouse.move(x, y); pump(page_dm, sock_dm, sock_pl, w.channel, 40)
+        if i > 7:
+            straight.append(trail_bend(page_dm))
+    assert max(straight) < 3, ('a straight movement leaves a straight trail', straight)
+    st = page_dm.evaluate("() => { const c = getComputedStyle(document.querySelector('.map-ptr-dot')); return [parseFloat(c.width), c.backgroundImage, c.backgroundColor]; }")
+    assert st[0] <= 10 and st[1] == 'none' and st[2].startswith('rgb'), ('a small dot in one flat colour, no white core', st)
+    page_dm.mouse.up(button='right')
+    assert not err_dm and not err_pl
+
+
 def test_a_held_right_click_shows_a_dot_to_the_other_person_that_follows_live(world):
     w = world
     page_dm, sock_dm, err_dm, page_pl, sock_pl, err_pl = open_pages(w)

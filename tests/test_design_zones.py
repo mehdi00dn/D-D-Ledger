@@ -68,7 +68,7 @@ def test_every_page_inside_a_campaign_keeps_the_campaign_design(world):
 def test_the_site_header_marks_where_you_are(world):
     u, _cid, char = world
     for path, label in (('/campaigns', 'Campaigns'), ('/library', 'Your characters'), (f'/library/{char}', 'Your characters'), ('/friends', 'Friends'),
-                        ('/reference', 'Reference'), ('/about', 'About'), ('/contact', 'Contact')):
+                        ('/reference', 'Compendium'), ('/about', 'About'), ('/contact', 'Contact')):
         html = u.get(path).get_data(as_text=True)
         html = html[:html.index('class="pub-stage')]                                  # the header only (the footer has its own About and Contact)
         marked = re.findall(r'<a href="[^"]*" aria-current="page">([^<]+)', html)
@@ -83,8 +83,8 @@ def test_the_site_header_has_the_places_you_work_in_then_the_pages_about_the_sit
     html = u.get('/campaigns').get_data(as_text=True)
     nav = html[html.index('class="pub-links"'):html.index('class="pub-actions"')]
     order = re.findall(r'<a href="[^"]*"[^>]*>([^<]+)</a>', nav)
-    assert order == ['Campaigns', 'Your characters', 'Friends', 'Reference', 'About', 'Contact'], order
-    assert nav.index('pub-links-sep') > nav.index('>Reference<') and nav.index('pub-links-sep') < nav.index('>About<')
+    assert order == ['Campaigns', 'Your characters', 'Friends', 'Compendium', 'About', 'Contact'], order
+    assert nav.index('pub-links-sep') > nav.index('>Compendium<') and nav.index('pub-links-sep') < nav.index('>About<')
     actions = html[html.index('class="pub-actions"'):html.index('class="pub-stage')]
     assert actions.index('id="theme-toggle"') < actions.index('class="pub-bell"') < actions.index('class="pub-profile"') < actions.index('Log out')   # theme, bell, profile, then Log out under it
 

@@ -84,7 +84,7 @@
       </a>
       <span class="nav-group">Lore</span>
       <a href="{{ url_for('reference_view') }}" data-more class="nav-tab {{ 'active' if active_page == 'reference' else '' }}" title="Spells, monsters and items">
-        {{ icon('book-open') }}<span>Reference</span>
+        {{ icon('book-open') }}<span>Compendium</span>
       </a>
       <a href="{{ url_for('journal_list') }}" data-more class="nav-tab {{ 'active' if active_page == 'journal' else '' }}" title="Session recaps">
         {{ icon('pencil') }}<span>Journal</span>
@@ -186,7 +186,7 @@
     <a href="{{ url_for('campaign_home') }}" class="more-link {{ 'active' if active_page == 'home' else '' }}">{{ icon('scroll') }}<span>Overview</span></a>
     <a href="{{ url_for('factions_list') }}" class="more-link {{ 'active' if active_page == 'factions' else '' }}">{{ icon('faction') }}<span>Factions</span></a>
     <a href="{{ url_for('treasury_view') }}" class="more-link {{ 'active' if active_page == 'treasury' else '' }}">{{ icon('coins') }}<span>Treasury</span></a>
-    <a href="{{ url_for('reference_view') }}" class="more-link {{ 'active' if active_page == 'reference' else '' }}">{{ icon('book-open') }}<span>Reference</span></a>
+    <a href="{{ url_for('reference_view') }}" class="more-link {{ 'active' if active_page == 'reference' else '' }}">{{ icon('book-open') }}<span>Compendium</span></a>
     <a href="{{ url_for('journal_list') }}" class="more-link {{ 'active' if active_page == 'journal' else '' }}">{{ icon('pencil') }}<span>Journal</span></a>
     {% if g.real_is_dm %}
     <form method="POST" action="{{ url_for('preview_as_player') }}">{{ csrf_field() }}

@@ -33,7 +33,7 @@ def test_no_label_button_or_secondary_heading_is_in_title_case():
 
 def test_primary_headings_keep_title_case():
     # the page title of the forms and the policy pages is the one place Title Case stays
-    for path, heading in (('templates/campaign_form.html', "'New Campaign'"), ('templates/character_form.html', "'New Character'"), ('templates/group_form.html', "'New Faction'"), ('templates/reference.html', 'Rules Reference'), ('templates/about.html', 'About Oaken')):
+    for path, heading in (('templates/campaign_form.html', "'New Campaign'"), ('templates/character_form.html', "'New Character'"), ('templates/group_form.html', "'New Faction'"), ('templates/reference.html', 'Compendium'), ('templates/about.html', 'About Oaken')):
         assert heading in open(path, encoding='utf-8').read(), (path, heading)
 
 
