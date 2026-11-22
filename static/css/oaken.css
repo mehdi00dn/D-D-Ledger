@@ -93,6 +93,7 @@
   --surface-blend: normal;
   --backdrop-painting: var(--bg-torrent);
   --backdrop-scrim: linear-gradient(rgba(23, 27, 24, 0.5), rgba(23, 27, 24, 0.78));
+  --backdrop-dim: 0.34;                       /* DL-180 part 33: the extra warm veil a page may ask for (.is-dim on the campaign list); the light theme takes less so its dark text stays readable */
 }
 
 [data-theme="light"] {
@@ -132,6 +133,7 @@
   --surface-blend: soft-light;
   --backdrop-painting: var(--bg-river-pale);
   --backdrop-scrim: linear-gradient(rgba(238, 230, 210, 0.62), rgba(238, 230, 210, 0.86));
+  --backdrop-dim: 0.14;
 }
 
 /* ---------- 3. Material assets ----------

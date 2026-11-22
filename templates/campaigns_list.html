@@ -2,6 +2,7 @@
 {% from "_icons.html" import icon %}
 {% set active_page = 'campaigns' %}
 {% block title %}Campaigns — Oaken{% endblock %}
+{% block site_class %} is-dim{% endblock %}
 
 {% block content %}
 <div class="page-header">
@@ -34,20 +35,22 @@
         {% set words = c.name.split() %}
         <div class="cover-monogram" aria-hidden="true">{{ ((words[0][:1] ~ (words[1][:1] if words|length > 1 else '')) if words else '?')|upper }}</div>
       {% endif %}
+      <span class="role-badge role-badge-{{ c.my_role }} camp-role">{{ c.my_role }}</span>
     </div>
     <div class="group-body">
-      <h2 class="group-name">{{ c.name }} <span class="role-badge role-badge-{{ c.my_role }}">{{ c.my_role }}</span></h2>
-      <p class="group-count">{{ c.character_count }} character{{ '' if c.character_count == 1 else 's' }} &middot; {{ c.group_count }} group{{ '' if c.group_count == 1 else 's' }} &middot; {{ c.map_count }} map{{ '' if c.map_count == 1 else 's' }}</p>
+      <h2 class="group-name">{{ c.name }}</h2>
+      <ul class="camp-stats" aria-label="What this campaign holds">
+        <li>{{ icon('user') }} <strong>{{ c.character_count }}</strong> character{{ '' if c.character_count == 1 else 's' }}</li>
+        <li>{{ icon('shield') }} <strong>{{ c.group_count }}</strong> group{{ '' if c.group_count == 1 else 's' }}</li>
+        <li>{{ icon('map') }} <strong>{{ c.map_count }}</strong> map{{ '' if c.map_count == 1 else 's' }}</li>
+      </ul>
       <p class="group-bio">{{ c.description | notes_preview }}</p>
       <div class="group-actions">
         <a href="{{ url_for('campaign_home', campaign_id=c.id) }}" class="btn btn-primary btn-sm">{{ icon('scroll') }} Enter</a>
-        {% if c.my_status == 'dm' %}
-        <a href="{{ url_for('campaign_export', campaign_id=c.id) }}" class="btn-icon" title="Export whole campaign" aria-label="Export whole campaign {{ c.name }}">{{ icon('upload') }}</a>
-        {% endif %}
         {% if c.my_role == 'owner' %}
-        <a href="{{ url_for('campaign_edit', campaign_id=c.id) }}" class="btn-icon" title="Edit campaign">{{ icon('pencil') }}</a>
+        <a href="{{ url_for('campaign_edit', campaign_id=c.id) }}" class="btn-icon" title="Campaign settings" aria-label="Settings for {{ c.name }}">{{ icon('pencil') }}</a>
         <form method="POST" action="{{ url_for('campaign_delete', campaign_id=c.id) }}" data-confirm="Delete campaign '{{ c.name }}'? This permanently deletes all its characters, groups, and maps. This cannot be undone.">{{ csrf_field() }}
-          <button type="submit" class="btn btn-danger btn-sm">{{ icon('trash-2') }} Delete</button>
+          <button type="submit" class="btn-icon btn-icon-danger" title="Delete campaign" aria-label="Delete {{ c.name }}">{{ icon('trash-2') }}</button>
         </form>
         {% endif %}
       </div>
