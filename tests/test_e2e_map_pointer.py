@@ -72,7 +72,7 @@ def test_the_sender_is_throttled_and_a_still_dot_sends_a_heartbeat(world):
         page_dm.mouse.move(sx + i, sy)
     page_dm.wait_for_timeout(300); secs = time.time() - t0
     n = len([m for m in sock_dm.sent if m.get('k') == 'ptr' and not m.get('end')])
-    assert n <= secs * 12 + 3, (n, secs)
+    assert n <= secs * 22 + 3, (n, secs)       # the pointer goes out 20 times a second at most
     count = n; page_dm.wait_for_timeout(1300)
     assert len([m for m in sock_dm.sent if m.get('k') == 'ptr' and not m.get('end')]) > count, 'a held, motionless dot must keep telling the others it is there'
     page_dm.mouse.up(button='right')
