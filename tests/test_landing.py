@@ -124,13 +124,6 @@ def test_a_signed_out_session_is_a_visitor_again(make_user):
     assert 'Get started' in html and 'Log out' not in html
 
 
-def test_the_sidebar_links_back_to_home_outside_a_campaign(make_user):
-    u = make_user(); cid = u.new_campaign()
-    out = u.get('/campaigns').data.decode()
-    assert 'class="brand-link" href="/"' in out and 'class="nav-tab nav-home"' in out
-    assert 'nav-home' not in u.get(f'/campaigns/{cid}/home').data.decode()         # inside a campaign the tabs are the campaign's
-
-
 def test_landing_assets_are_served(visitor):
     for path in ('/static/css/public.css', '/static/css/landing.css', '/static/js/public.js'):
         assert visitor.get(path).status_code == 200

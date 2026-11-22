@@ -6,6 +6,8 @@
 {%- set who = ((me.display_name if me and me.display_name else session.get('username')) or 'You') if signed_in else '' %}
 {%- set unread = unread_notification_count() if signed_in else 0 %}
 {%- set home = request.endpoint == 'index' %}
+{%- set here = active_page|default('') %}
+{%- from "_icons.html" import icon %}
 {%- set home_url = '' if home else url_for('index') %}
 <a class="pub-skip" href="#main">Skip to content</a>
 
@@ -23,13 +25,17 @@
       <div class="pub-menu-inner">
       {%- if signed_in %}
       <ul class="pub-links">
-        <li><a href="{{ url_for('campaigns_list') }}">Campaigns</a></li>
-        <li><a href="{{ url_for('library_list') }}">Your characters</a></li>
-        <li><a href="{{ url_for('reference_global') }}">Reference</a></li>
-        <li><a href="{{ url_for('notifications_page') }}">Notifications{% if unread %} <em class="pub-badge" aria-label="{{ unread }} unread">{{ unread if unread < 100 else '99+' }}</em>{% endif %}</a></li>
+        <li><a href="{{ url_for('campaigns_list') }}"{% if here == 'campaigns' %} aria-current="page"{% endif %}>Campaigns</a></li>
+        <li><a href="{{ url_for('library_list') }}"{% if here == 'library' %} aria-current="page"{% endif %}>Your characters</a></li>
+        <li><a href="{{ url_for('reference_global') }}"{% if here == 'reference' %} aria-current="page"{% endif %}>Reference</a></li>
+        <li><a href="{{ url_for('notifications_page') }}"{% if here == 'notifications' %} aria-current="page"{% endif %}>Notifications{% if unread %} <em class="pub-badge" aria-label="{{ unread }} unread">{{ unread if unread < 100 else '99+' }}</em>{% endif %}</a></li>
       </ul>
       <div class="pub-actions">
-        <a class="pub-profile" href="{{ url_for('account') }}" aria-label="Your profile ({{ who }})">
+        {#- DL-180 part 30: light or dark, for the whole site (the choice is shared with the campaign pages through localStorage) #}
+        <button class="pub-theme" id="theme-toggle" type="button" aria-label="Switch between the light and dark theme" title="Light or dark theme">
+          <span class="pub-theme-ico pub-theme-sun" aria-hidden="true">{{ icon('sun') }}</span><span class="pub-theme-ico pub-theme-moon" aria-hidden="true">{{ icon('moon') }}</span>
+        </button>
+        <a class="pub-profile" href="{{ url_for('account') }}"{% if here in ('account', 'profile') %} aria-current="page"{% endif %} aria-label="Your profile ({{ who }})">
           {% if me and me.avatar_path %}<img class="pub-avatar" src="{{ url_for('uploaded_file', filename=me.avatar_path) }}" alt="" width="30" height="30">{% else %}<span class="pub-avatar pub-avatar--initial" aria-hidden="true">{{ who[:1]|upper }}</span>{% endif %}
           <span class="pub-profile-name">{{ who }}</span>
         </a>
@@ -52,3 +58,6 @@
     </nav>
   </div>
 </header>
+{%- if signed_in %}
+<script src="{{ url_for('static', filename='js/theme.js') }}" defer></script>
+{%- endif %}

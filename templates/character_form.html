@@ -1,4 +1,5 @@
-{% extends "base.html" %}
+{#- DL-180 part 30: inside a campaign this is a campaign page (the sidebar shell); outside one it is a site page (the home page's look). -#}
+{% extends "base.html" if g.campaign_id else "site_base.html" %}
 {% from "_icons.html" import icon, class_icon %}
 {% set active_page = 'library' if library else 'characters' %}
 {% macro note_block(content='', hidden=False) %}

@@ -1,0 +1,92 @@
+{#- DL-180 part 30: the second of the two design systems.  Every page a signed-in person sees OUTSIDE a campaign (campaign list, new campaign, account,
+    profile, friends, notifications, invite link, your characters, the rules reference) is built on this.  It is the home page's look: the Deep Forest
+    header and footer, the painted stage, Newsreader titles, brass buttons, paper panels.  Pages inside a campaign use base.html (the sidebar shell)
+    and never this; the two are not mixed.
+
+    A page extends this exactly as it used to extend base.html: set `active_page`, fill `title`, `content` and (if it has scripts) `extra_scripts`. -#}
+{% extends "public_base.html" %}
+{% from "_icons.html" import icon %}
+{% block body_class %}pub site{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{{ url_for('static', filename='css/site.css') }}">{% endblock %}
+{% block stage %}
+<div class="site-page" id="main-content" tabindex="-1">
+  {% if request.args.get('quota_error') %}
+  <div class="banner-notice banner-error" role="alert">{{ 'This campaign\'s image storage is full, so the image was not saved. Delete images you no longer need and try again.' if request.args.get('quota_error') == 'campaign' else 'Your upload storage is full, so the image was not saved. Delete images you no longer need and try again.' }}</div>
+  {% endif %}
+  {% if session.user_id and active_page not in ('account', 'confirm_email') %}{% set me_banner = my_profile() %}{% if me_banner and me_banner.needs_email %}
+  <div class="banner-notice" role="status">Add an email address to your account so you can recover it. <a href="{{ url_for('account') }}#email-panel">Add email</a></div>
+  {% elif me_banner and me_banner.must_confirm %}
+  <div class="banner-notice" role="status">Confirm your email to create or join a campaign. We sent a link to your inbox. <a href="{{ url_for('confirm_email') }}">Resend it</a></div>
+  {% endif %}{% endif %}
+  {% block content %}{% endblock %}
+</div>
+{% endblock %}
+
+{% block after_footer %}
+{#- the same three dialogs the campaign shell carries: they are used by the image, crop and confirm scripts on these pages too #}
+<div class="lightbox-overlay" id="image-lightbox" hidden>
+  <button type="button" class="btn-icon lightbox-close" id="lightbox-close-btn" aria-label="Close image">{{ icon('x') }}</button>
+  <button type="button" class="btn btn-danger lightbox-delete" id="lightbox-delete-btn" hidden>{{ icon('trash-2') }} Delete this image</button>
+  <div class="lightbox-row">
+    <button type="button" class="btn-icon lightbox-nav lightbox-prev" id="lightbox-prev-btn" title="Previous image">{{ icon('chevron-left') }}</button>
+    <div class="lightbox-stage">
+      <img id="lightbox-img" src="" alt="Enlarged image">
+    </div>
+    <button type="button" class="btn-icon lightbox-nav lightbox-next" id="lightbox-next-btn" title="Next image">{{ icon('chevron-right') }}</button>
+  </div>
+  <p class="lightbox-hint">Click or scroll to zoom &middot; hold and drag to pan</p>
+</div>
+
+<div class="modal-overlay" id="confirm-modal" hidden>
+  <div class="modal-panel confirm-modal-panel">
+    <div class="modal-body">
+      <p class="confirm-modal-message" id="confirm-modal-message"></p>
+      <div class="form-actions">
+        <button type="button" class="btn btn-ghost" id="confirm-modal-no">No</button>
+        <button type="button" class="btn btn-danger" id="confirm-modal-yes">Yes</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="crop-modal" hidden>
+  <div class="modal-panel crop-modal-panel">
+    <div class="modal-header">
+      <h3 id="crop-modal-title">Position avatar</h3>
+      <button type="button" class="btn-icon" id="crop-cancel-btn" aria-label="Cancel crop">{{ icon('x') }}</button>
+    </div>
+    <div class="modal-body">
+      <div class="crop-stage-wrap" id="crop-stage-wrap">
+        <canvas id="crop-canvas" width="480" height="480"></canvas>
+        <div class="crop-circle-guide" id="crop-circle-guide"></div>
+      </div>
+      <p class="hint-text u-center-mt10">Drag to reposition &middot; use the slider to zoom</p>
+      <div class="crop-zoom-row">
+        <label>{{ icon('images') }}</label>
+        <input type="range" id="crop-zoom-slider" min="0" max="100" value="0" aria-label="Zoom">
+      </div>
+      <div class="form-actions">
+        <button type="button" class="btn btn-ghost" id="crop-cancel-btn-2">Cancel</button>
+        <button type="button" class="btn btn-primary" id="crop-apply-btn">{{ icon('check') }} Apply crop</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts_base %}
+<script src="{{ url_for('static', filename='js/csrf.js') }}"></script>
+<script src="{{ url_for('static', filename='js/api.js') }}"></script>
+<script src="{{ url_for('static', filename='js/form-actions.js') }}"></script>
+<script src="{{ url_for('static', filename='js/a11y-labels.js') }}"></script>
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+<script src="{{ url_for('static', filename='js/cropper.js') }}"></script>
+<script src="{{ url_for('static', filename='js/direct-upload.js') }}"></script>
+<script src="{{ url_for('static', filename='js/loading-ring.js') }}"></script>
+<script src="{{ url_for('static', filename='js/lightbox.js') }}"></script>
+<script src="{{ url_for('static', filename='js/confirm.js') }}"></script>
+<script src="{{ url_for('static', filename='js/modals.js') }}"></script>
+<script src="{{ url_for('static', filename='js/class-icons.js') }}"></script>
+<script src="{{ url_for('static', filename='js/menus.js') }}"></script>
+{% endblock %}
+{% block scripts %}{% block extra_scripts %}{% endblock %}{% endblock %}

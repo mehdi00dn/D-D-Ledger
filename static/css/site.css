@@ -1,0 +1,70 @@
+/* DL-180 part 30: the SITE design system, for every page a signed-in person sees outside a campaign (campaign list, new campaign, account, profile,
+   friends, notifications, invite link, your characters, the rules reference).  The home page is its reference: the Deep Forest header and footer and
+   the painted stage come from public.css, and this file gives the page content the same voice: Newsreader titles standing on the painting, brass
+   flat buttons, paper panels, the same radii and spacing.
+
+   Everything is scoped to body.site, so it can never reach a campaign page (those use base.html, the sidebar shell, and do not load this file).
+   Loaded after oaken.css, style.css, auth.css and public.css.  Components that style.css already defines (forms, lists, cards, menus, tables) stay as
+   they are: they sit on paper, which is the same material the home page and the sign-in card use. */
+
+/* ---------- Stage and page frame ---------- */
+body.site .pub-stage { padding-block: clamp(28px, 4vw, 52px) clamp(48px, 6vw, 88px); }
+.site-page { inline-size: min(1200px, 100% - 48px); margin-inline: auto; min-inline-size: 0; }   /* the header's own width, so the page lines up with the logo */
+.site-page:focus { outline: none; }
+@media (prefers-reduced-motion: no-preference) {
+  .site-page { animation: site-settle 420ms var(--pub-ease) both; }
+  @keyframes site-settle { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+}
+@media (max-width: 560px) {
+  body.site .pub-stage { padding-block: 20px 40px; }
+  .site-page { inline-size: calc(100% - 24px); }
+}
+
+/* ---------- Page header: a title standing on the painting, like the home page's hero ---------- */
+.site-page .page-header { align-items: flex-end; gap: 16px 24px; margin-block-end: clamp(20px, 3vw, 32px); }
+.site-page .page-title, .site-page .page-header h1 {
+  margin: 0; color: var(--o-text);
+  font: 500 clamp(32px, 4.4vw, 46px)/1.08 var(--pub-font-display); letter-spacing: -0.015em;
+  text-wrap: balance;
+}
+.site-page .page-sub { max-inline-size: 62ch; margin: 10px 0 0; color: var(--o-text-muted); font-size: var(--fs-lg); line-height: 1.55; }
+.site-page .page-eyebrow { margin: 0 0 8px; color: var(--o-accent-ink); font-size: var(--fs-sm); letter-spacing: 0.13em; }
+.site-page .back-link { margin-block-end: 14px; color: var(--o-text-muted); font-size: var(--fs-base); }
+@media (hover: hover) and (pointer: fine) { .site-page .back-link:hover { color: var(--o-text); } }
+@media (max-width: 560px) { .site-page .page-header { align-items: stretch; } }
+
+/* ---------- Buttons: the home page's: flat brass, 10px corners ---------- */
+.site-page .btn { min-block-size: 40px; padding: 0 18px; border-radius: 10px; font-size: var(--fs-base); font-weight: 500; gap: 8px; }
+.site-page .btn-sm { min-block-size: 32px; padding: 0 12px; font-size: var(--fs-md); }
+.site-page .btn-icon { min-inline-size: 40px; min-block-size: 40px; border-radius: 10px; }
+.site-page .btn-primary { background: var(--o-action); color: var(--o-action-text); border-color: transparent; }
+.site-page .btn-primary:hover { background: var(--o-action-hover); filter: none; }
+.site-page .btn-ghost { border-color: var(--o-border-strong); color: var(--o-text); }
+.site-page .btn-ghost:hover { border-color: var(--o-accent-ink); background: var(--o-selected); }
+/* on paper the ink tokens already carry the colour; only the border has to follow them */
+.site-page .o-paper .btn-ghost { color: var(--paper-ink); border-color: var(--paper-line-strong); }
+.site-page .o-paper .btn-ghost:hover { border-color: var(--paper-accent-ink); background: rgba(70, 50, 20, 0.07); }
+
+/* ---------- Notices on the painting need a solid face ---------- */
+.site-page .banner-notice { background: var(--o-surface); color: var(--o-text); border-color: var(--o-border-strong); border-radius: 10px; }
+.site-page .banner-error { border-color: rgba(226, 80, 72, 0.6); }
+.site-page .banner-success { border-color: rgba(30, 154, 82, 0.6); }
+.site-page .banner-notice a { color: var(--o-accent-ink); }
+
+/* ---------- Panels and cards: paper, with the home page's corner radius ---------- */
+.site-page .o-paper, .site-page .form-panel.o-paper { border-radius: 14px; }
+
+/* the profile is one column of panels: centred under the title block's left edge would look lopsided, so the column is centred on the page */
+.site-page .profile-page { margin-inline: auto; }
+
+/* ---------- Print (a character sheet from Your characters): the header, footer and dialogs stay off the paper ---------- */
+@media print {
+  body.site > .pub-stage { display: block !important; padding: 0 !important; background: none !important; }
+  body.site .pub-header, body.site .pub-footer, body.site .pub-skip { display: none !important; }
+  .site-page { inline-size: auto; animation: none !important; }
+  .site-page .page-title, .site-page .page-header h1 { color: #000; }
+}
+@media (prefers-contrast: more) {
+  .site-page .btn-ghost { border-color: currentColor; }
+  .site-page .page-sub { color: var(--o-text); }
+}

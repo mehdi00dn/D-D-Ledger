@@ -460,10 +460,10 @@ def test_invitation_flow_in_the_browser(pw, shared_server):
     dpage.screenshot(path='/tmp/invite-owner.png')
 
     pctx = pl.context(pw, base); ppage = pctx.new_page(); pbad, perrs = _collect(ppage)
-    ppage.goto(base + '/campaigns'); ppage.wait_for_selector('.nav-badge')
-    assert ppage.inner_text('.nav-badge') == '1'
-    assert 'Campaigns' in ppage.inner_text('.sidebar-nav') and ppage.locator('.foot-bell:not(.foot-privacy)').count() == 0     # outside a campaign: Campaigns + Notifications in the menu
-    ppage.click('.nav-notifications'); ppage.wait_for_selector('.notification-card.is-unread'); ppage.wait_for_timeout(700)
+    ppage.goto(base + '/campaigns'); ppage.wait_for_selector('.pub-badge')
+    assert ppage.inner_text('.pub-badge') == '1'
+    assert ppage.locator('.sidebar').count() == 0 and 'Campaigns' in ppage.inner_text('.pub-links')       # outside a campaign: the site header (Campaigns, Notifications), no sidebar
+    ppage.click('.pub-links a:has-text("Notifications")'); ppage.wait_for_selector('.notification-card.is-unread'); ppage.wait_for_timeout(700)
     assert 'invited you to Invites' in ppage.inner_text('.notification-card')
     ppage.screenshot(path='/tmp/invite-player.png')
     ppage.evaluate("() => document.documentElement.setAttribute('data-theme', 'light')")
@@ -1012,7 +1012,7 @@ def test_phone_and_tablet_pages_fit_the_screen_with_a_bottom_tab_bar(pw, shared_
     mid = pubid.pk('maps', r.headers['Location'])
     ctx = _touch_context(pw, dm, base, *size); page = ctx.new_page(); bad, errs = _collect(page)
     w, h = size
-    paths = ['/campaigns', f'/campaigns/{cid}/characters', f'/campaigns/{cid}/characters/{hero}', f'/campaigns/{cid}/characters/new',
+    paths = [f'/campaigns/{cid}/characters', f'/campaigns/{cid}/characters/{hero}', f'/campaigns/{cid}/characters/new',
              f'/campaigns/{cid}/factions', f'/campaigns/{cid}/battle', f'/campaigns/{cid}/maps', f'/campaigns/{cid}/maps/{mid}',
              f'/campaigns/{cid}/dice', f'/campaigns/{cid}/reference']
     for path in paths:
@@ -1022,6 +1022,11 @@ def test_phone_and_tablet_pages_fit_the_screen_with_a_bottom_tab_bar(pw, shared_
         bar = page.locator('.sidebar-nav').bounding_box()
         assert bar and abs(bar['y'] + bar['height'] - h) <= 1 and bar['width'] >= w - 2, (path, bar)   # the tab bar sits on the bottom edge
         assert page.locator('.sidebar').bounding_box()['height'] < 90, path                          # a slim top bar, not a tall block
+    for path in ('/campaigns', '/account', '/library', '/reference', '/notifications'):                # outside a campaign: the site, no sidebar, still no sideways scroll
+        page.goto(base + path); page.wait_for_load_state('load'); page.wait_for_timeout(400)
+        sideways = page.evaluate('() => document.documentElement.scrollWidth - document.documentElement.clientWidth')
+        assert sideways <= 1, f'{path} scrolls sideways by {sideways}px at {w}px'
+        assert page.locator('.sidebar').count() == 0 and page.locator('.pub-header').is_visible(), path
     # every tab of the campaign is on screen at once and one tap goes there
     page.goto(base + f'/campaigns/{cid}/characters')
     tabs = page.locator('.sidebar-nav .nav-tab:visible')                                       # four tabs and a More button; the rest live in the More sheet

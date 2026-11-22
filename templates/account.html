@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+{% extends "site_base.html" %}
 {% from "_friends.html" import person, act with context %}
 {% from "_icons.html" import icon %}
 {% set active_page = 'account' %}
@@ -7,7 +7,7 @@
 {% block content %}
 <div class="page-header">
   <div>
-    <h1 class="page-title">Account settings</h1>
+    <h1 class="page-title">Account Settings</h1>
     <p class="page-sub">Signed in as <b>{{ profile.username }}</b>. These settings belong to you, not to any campaign.</p>
   </div>
   <a class="btn btn-ghost" href="{{ url_for('profile_view', username=profile.username) }}">{{ icon('user') }} View my profile</a>

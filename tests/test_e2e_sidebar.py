@@ -160,18 +160,12 @@ def test_tablets_get_the_phone_layout_and_desktops_keep_the_sidebar(shared_serve
 def test_phone_top_bar_icons_and_notification_tab_line_up(shared_server, pw):
     base = shared_server.url
     dm = Api(base)
-    dm.campaign('Margins')
+    cid = dm.campaign('Margins')
     page = _page_at(pw, dm, base, 390, 844)
-    page.goto(f'{base}/campaigns')
-    top = page.locator('.sidebar').bounding_box()
+    page.goto(f'{base}/campaigns/{cid}/home')
     mark = page.locator('.sidebar-brand').bounding_box()
-    assert not page.locator('.sidebar-foot .foot-privacy').is_visible(), 'outside a campaign the top bar shows the profile, not the Privacy shield'
-    icon = page.locator('.sidebar-foot .foot-profile > *').first.bounding_box()
-    assert abs((icon['y'] + icon['height'] / 2) - (mark['y'] + mark['height'] / 2)) <= 1, 'the profile picture sits on the logo\'s centre line'
-    assert abs(top['width'] - (icon['x'] + icon['width']) - 14) <= 1, 'the picture sits on the 14px content gutter'
-    page.click('.sidebar-foot .foot-profile'); page.wait_for_url('**/account')                    # it opens the profile page
-    page.goto(f'{base}/campaigns'); page.locator('.more-chip', has_text='Privacy').count() or page.click('[data-more]')
-    assert 'Privacy' in page.inner_text('.more-links') or page.locator('.more-chip', has_text='Privacy').count() == 1
+    icon = page.locator('.sidebar-foot .foot-bell').bounding_box()
+    assert abs((icon['y'] + icon['height'] / 2) - (mark['y'] + mark['height'] / 2)) <= 1, 'the bell sits on the logo\'s centre line'
     shown = page.locator('.sidebar-nav .nav-tab:visible')                 # tabs that live in the More sheet on a phone are hidden
     tabs = [shown.nth(i).locator('svg').bounding_box()['y'] for i in range(shown.count())]
     inactive = [y for y, cls in zip(tabs, shown.evaluate_all('els => els.map(e => e.className)')) if 'active' not in cls]
@@ -180,7 +174,6 @@ def test_phone_top_bar_icons_and_notification_tab_line_up(shared_server, pw):
     page.wait_for_timeout(700)                                     # the sheet slides up first
     chips = page.locator('.more-quick .more-chip:visible')
     ys = sorted({round(chips.nth(i).bounding_box()['y'] / 10) for i in range(chips.count())})       # rows, not pixels
-    assert page.locator('.more-quick').count() == 1 and chips.count() >= 2 and len(ys) <= 2
+    assert page.locator('.more-quick').count() == 1 and chips.count() >= 1 and len(ys) <= 2
     names = [c.strip() for c in chips.all_text_contents()]
-    assert 'Privacy' in names
     page.context.close()
