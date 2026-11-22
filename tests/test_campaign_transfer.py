@@ -440,12 +440,12 @@ def test_a_signed_out_visitor_cannot_import(appmod):
 
 
 # ------------------------------------------------------------------ pages
-def test_the_campaigns_page_offers_import_to_everyone_and_export_to_dms(source, make_user):
+def test_the_campaigns_page_offers_import_to_everyone_and_export_to_no_one(source, make_user):      # DL-180 part 33: export lives in the settings only
     u, cid, _ = source
     player = make_user()
     u.add_member(cid, player, status='player')
     mine = u.get('/campaigns').get_data(as_text=True)
-    assert '/campaigns/import' in mine and '/export/campaign' in mine and 'data-auto-submit-request' in mine
+    assert '/campaigns/import' in mine and '/export/campaign' not in mine and 'data-auto-submit-request' in mine
     theirs = player.get('/campaigns').get_data(as_text=True)
     assert '/campaigns/import' in theirs and '/export/campaign' not in theirs
 

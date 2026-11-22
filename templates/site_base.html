@@ -9,7 +9,7 @@
 {% block body_class %}pub site{% endblock %}
 {% block extra_head %}<link rel="stylesheet" href="{{ url_for('static', filename='css/site.css') }}">{% endblock %}
 {% block stage %}
-<div class="site-page" id="main-content" tabindex="-1">
+<div class="site-page{% block site_class %}{% endblock %}" id="main-content" tabindex="-1">
   {% if request.args.get('quota_error') %}
   <div class="banner-notice banner-error" role="alert">{{ 'This campaign\'s image storage is full, so the image was not saved. Delete images you no longer need and try again.' if request.args.get('quota_error') == 'campaign' else 'Your upload storage is full, so the image was not saved. Delete images you no longer need and try again.' }}</div>
   {% endif %}

@@ -132,3 +132,39 @@ def test_site_css_is_scoped_to_the_site():
         for part in prelude.split(','):
             part = part.strip()
             assert part.startswith(('.site-page', 'body.site')), part          # never a bare selector that could reach a campaign page
+
+
+# ---- DL-180 part 33: the campaign list's cards and stage ----------------------------------------------------------
+
+def test_a_campaign_card_has_no_export_button_but_the_settings_page_keeps_it(world):
+    u, cid, _char = world
+    html = u.get('/campaigns').get_data(as_text=True)
+    assert 'group-card' in html and '/export/campaign' not in html and 'aria-label="Export whole campaign' not in html   # (the import button's tooltip still names the export)
+    edit = re.search(r'href="(/campaigns/[^/"]+/edit)"', html)
+    assert edit                                                                                # the card still opens the settings
+    settings = u.get(edit.group(1)).get_data(as_text=True)
+    assert '/export/campaign' in settings and 'Export whole campaign' in settings
+
+
+def test_a_campaign_card_shows_the_role_on_the_picture_and_the_counts_as_a_list(world):
+    u, cid, _char = world
+    html = u.get('/campaigns').get_data(as_text=True)
+    card = html[html.index('class="group-card'):]
+    assert card.index('camp-role') < card.index('group-name') < card.index('camp-stats') < card.index('group-bio') < card.index('group-actions')
+    assert re.search(r'<li>[^<]*<svg[^>]*>.*?</svg> <strong>\d+</strong> characters?</li>', card, re.S)
+    assert 'aria-label="Delete ' in card and 'aria-label="Settings for ' in card            # the icon buttons are named for screen readers
+
+
+def test_only_the_campaign_list_asks_for_the_darker_stage(world):
+    u, _cid, char = world
+    assert 'site-page is-dim' in u.get('/campaigns').get_data(as_text=True)
+    for path in ('/campaigns/new', '/account', '/friends', '/library', '/reference'):
+        assert 'is-dim' not in u.get(path).get_data(as_text=True), path
+
+
+def test_the_darker_stage_is_one_token_per_theme_and_stays_off_for_high_contrast():
+    oaken = open('static/css/oaken.css', encoding='utf-8').read()
+    assert len(re.findall(r'--backdrop-dim: 0\.\d+;', oaken)) == 2                          # dark and light each set it
+    site = open('static/css/site.css', encoding='utf-8').read()
+    assert 'body.site .pub-stage:has(> .site-page.is-dim)' in site
+    assert re.search(r'prefers-contrast: more\) \{ body\.site \.pub-stage:has\(> \.site-page\.is-dim\) \{ background-image: none; \} \}', site)
