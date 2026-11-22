@@ -27,27 +27,39 @@
       <ul class="pub-links">
         <li><a href="{{ url_for('campaigns_list') }}"{% if here == 'campaigns' %} aria-current="page"{% endif %}>Campaigns</a></li>
         <li><a href="{{ url_for('library_list') }}"{% if here == 'library' %} aria-current="page"{% endif %}>Your characters</a></li>
+        <li><a href="{{ url_for('friends_page') }}"{% if here == 'friends' %} aria-current="page"{% endif %}>Friends</a></li>
         <li><a href="{{ url_for('reference_global') }}"{% if here == 'reference' %} aria-current="page"{% endif %}>Reference</a></li>
-        <li><a href="{{ url_for('notifications_page') }}"{% if here == 'notifications' %} aria-current="page"{% endif %}>Notifications{% if unread %} <em class="pub-badge" aria-label="{{ unread }} unread">{{ unread if unread < 100 else '99+' }}</em>{% endif %}</a></li>
+        <li class="pub-links-sep" aria-hidden="true"></li>
+        <li><a href="{{ url_for('about') }}"{% if request.endpoint == 'about' %} aria-current="page"{% endif %}>About</a></li>
+        <li><a href="{{ url_for('contact') }}"{% if request.endpoint == 'contact' %} aria-current="page"{% endif %}>Contact</a></li>
       </ul>
       <div class="pub-actions">
         {#- DL-180 part 30: light or dark, for the whole site (the choice is shared with the campaign pages through localStorage) #}
         <button class="pub-theme" id="theme-toggle" type="button" aria-label="Switch between the light and dark theme" title="Light or dark theme">
           <span class="pub-theme-ico pub-theme-sun" aria-hidden="true">{{ icon('sun') }}</span><span class="pub-theme-ico pub-theme-moon" aria-hidden="true">{{ icon('moon') }}</span>
         </button>
-        <a class="pub-profile" href="{{ url_for('account') }}"{% if here in ('account', 'profile') %} aria-current="page"{% endif %} aria-label="Your profile ({{ who }})">
-          {% if me and me.avatar_path %}<img class="pub-avatar" src="{{ url_for('uploaded_file', filename=me.avatar_path) }}" alt="" width="30" height="30">{% else %}<span class="pub-avatar pub-avatar--initial" aria-hidden="true">{{ who[:1]|upper }}</span>{% endif %}
-          <span class="pub-profile-name">{{ who }}</span>
+        <a class="pub-bell" href="{{ url_for('notifications_page') }}"{% if here == 'notifications' %} aria-current="page"{% endif %} aria-label="Notifications{% if unread %}, {{ unread }} unread{% endif %}" title="Notifications">
+          {{ icon('bell') }}{% if unread %}<em class="pub-badge" aria-hidden="true">{{ unread if unread < 100 else '99+' }}</em>{% endif %}
         </a>
-        <form class="pub-logout" method="POST" action="{{ url_for('logout') }}">{{ csrf_field() }}
-          <button class="pub-login" type="submit">Log out</button>
-        </form>
+        {#- DL-180 part 31: Log out waits under the profile and shows when it is hovered or focused (on a phone, or a screen with no hover, it stays in the row) #}
+        <div class="pub-account">
+          <a class="pub-profile" href="{{ url_for('account') }}"{% if here in ('account', 'profile') %} aria-current="page"{% endif %} aria-label="Your profile ({{ who }})">
+            {% if me and me.avatar_path %}<img class="pub-avatar" src="{{ url_for('uploaded_file', filename=me.avatar_path) }}" alt="" width="30" height="30">{% else %}<span class="pub-avatar pub-avatar--initial" aria-hidden="true">{{ who[:1]|upper }}</span>{% endif %}
+            <span class="pub-profile-name">{{ who }}</span>
+          </a>
+          <div class="pub-account-menu">
+            <form class="pub-logout" method="POST" action="{{ url_for('logout') }}">{{ csrf_field() }}
+              <button class="pub-login" type="submit">Log out</button>
+            </form>
+          </div>
+        </div>
       </div>
       {%- else %}
       <ul class="pub-links">
         <li><a href="{{ home_url }}#features">Features</a></li>
         <li><a href="{{ home_url }}#how-it-works">How it works</a></li>
         <li><a href="{{ url_for('about') }}"{% if request.endpoint == 'about' %} aria-current="page"{% endif %}>About</a></li>
+        <li><a href="{{ url_for('contact') }}"{% if request.endpoint == 'contact' %} aria-current="page"{% endif %}>Contact</a></li>
       </ul>
       <div class="pub-actions">
         <a class="pub-login" href="{{ url_for('login') }}"{% if request.endpoint == 'login' %} aria-current="page"{% endif %}>Log in</a>

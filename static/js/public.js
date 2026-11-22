@@ -5,7 +5,7 @@
   var header = document.querySelector('[data-pub-header]');
   var toggle = document.querySelector('[data-nav-toggle]');
   var menu = document.querySelector('[data-nav-menu]');
-  var narrow = window.matchMedia('(max-width: 820px)');
+  var narrow = window.matchMedia('(max-width: 960px)');
 
   // -- phone menu --------------------------------------------------------------------------------------------------------------
   if (toggle && menu) {

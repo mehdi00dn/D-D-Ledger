@@ -113,7 +113,7 @@ def test_the_unread_count_shows_in_the_header(make_user):
     finally:
         db.close()
     html = u.get('/').data.decode()
-    assert 'class="pub-badge" aria-label="1 unread"' in html
+    assert 'class="pub-badge" aria-hidden="true">1</em>' in html and 'aria-label="Notifications, 1 unread"' in html
 
 
 def test_a_signed_out_session_is_a_visitor_again(make_user):

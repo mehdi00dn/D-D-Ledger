@@ -67,11 +67,32 @@ def test_every_page_inside_a_campaign_keeps_the_campaign_design(world):
 
 def test_the_site_header_marks_where_you_are(world):
     u, _cid, char = world
-    for path, label in (('/campaigns', 'Campaigns'), ('/library', 'Your characters'), (f'/library/{char}', 'Your characters'),
-                        ('/reference', 'Reference'), ('/notifications', 'Notifications')):
+    for path, label in (('/campaigns', 'Campaigns'), ('/library', 'Your characters'), (f'/library/{char}', 'Your characters'), ('/friends', 'Friends'),
+                        ('/reference', 'Reference'), ('/about', 'About'), ('/contact', 'Contact')):
         html = u.get(path).get_data(as_text=True)
+        html = html[:html.index('class="pub-stage')]                                  # the header only (the footer has its own About and Contact)
         marked = re.findall(r'<a href="[^"]*" aria-current="page">([^<]+)', html)
-        assert [m.strip() for m in marked if m.strip() in ('Campaigns', 'Your characters', 'Reference', 'Notifications')] == [label], path
+        assert [m.strip() for m in marked] == [label], path
+    html = u.get('/notifications').get_data(as_text=True)                       # the bell is an icon, so it is marked on the element itself
+    assert re.search(r'class="pub-bell" href="[^"]*" aria-current="page"', html)
+    assert re.search(r'class="pub-profile" href="[^"]*" aria-current="page"', u.get('/account').get_data(as_text=True))
+
+
+def test_the_site_header_has_the_places_you_work_in_then_the_pages_about_the_site(world):
+    u, _cid, _char = world
+    html = u.get('/campaigns').get_data(as_text=True)
+    nav = html[html.index('class="pub-links"'):html.index('class="pub-actions"')]
+    order = re.findall(r'<a href="[^"]*"[^>]*>([^<]+)</a>', nav)
+    assert order == ['Campaigns', 'Your characters', 'Friends', 'Reference', 'About', 'Contact'], order
+    assert nav.index('pub-links-sep') > nav.index('>Reference<') and nav.index('pub-links-sep') < nav.index('>About<')
+    actions = html[html.index('class="pub-actions"'):html.index('class="pub-stage')]
+    assert actions.index('id="theme-toggle"') < actions.index('class="pub-bell"') < actions.index('class="pub-profile"') < actions.index('Log out')   # theme, bell, profile, then Log out under it
+
+
+def test_the_bell_carries_the_unread_count_and_a_spoken_label(make_user):
+    a, b = make_user(), make_user()
+    html = a.get('/campaigns').get_data(as_text=True)
+    assert 'aria-label="Notifications"' in html and 'pub-badge' not in html
 
 
 def test_the_site_header_has_the_theme_switch_and_the_theme_script(world):
