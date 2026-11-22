@@ -1,4 +1,4 @@
-// Rules reference page (spells / monsters / items) and the monster search inside "New character".
+// Compendium page (the rules reference; the address stays /reference) (spells / monsters / items) and the monster search inside "New character".
 (function () {
   'use strict';
 
@@ -18,7 +18,7 @@
     const r = await fetch(url, { headers: { Accept: 'application/json' }, credentials: 'same-origin' });
     let data = null;
     try { data = await r.json(); } catch (e) { /* not json */ }
-    if (!r.ok) throw new Error((data && data.error) || 'The rules reference is unavailable right now.');
+    if (!r.ok) throw new Error((data && data.error) || 'The compendium is unavailable right now.');
     return data;
   }
 

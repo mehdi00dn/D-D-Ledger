@@ -1448,7 +1448,7 @@ def test_phone_more_sheet_holds_the_extras_and_closes_every_way(pw, shared_serve
     assert page.locator('#more-sheet').is_hidden()
     page.click('#nav-more-btn'); page.wait_for_timeout(500)
     assert page.locator('#more-sheet').is_visible()
-    for text in ('Factions', 'Reference', 'View as player', 'Theme', 'Log out'):
+    for text in ('Factions', 'Compendium', 'View as player', 'Theme', 'Log out'):
         assert page.locator('#more-sheet').get_by_text(text).first.is_visible(), text
     box = page.locator('#more-sheet').bounding_box()
     assert box['y'] + box['height'] <= 844 + 1 and box['y'] > 150                  # a sheet, not a full page
@@ -1465,7 +1465,7 @@ def test_phone_more_sheet_holds_the_extras_and_closes_every_way(pw, shared_serve
     assert not [b for b in bad if b[0] >= 400], bad
     assert not errs, errs
     page.click('#nav-more-btn'); page.wait_for_timeout(500)
-    page.locator('#more-sheet').get_by_text('Reference').click(); page.wait_for_load_state('domcontentloaded')
+    page.locator('#more-sheet').get_by_text('Compendium').click(); page.wait_for_load_state('domcontentloaded')
     assert '/reference' in page.url
     ctx.close()
 

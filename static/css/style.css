@@ -2495,20 +2495,16 @@ body.page-leaving .content {
 .map-ptr { position: absolute; left: 0; top: 0; inline-size: 0; block-size: 0; will-change: transform; }   /* phys */   /* placed with a screen-space translate from the stage top left */
 .map-ptr-dot, .map-ptr-trail { position: absolute; display: block; }
 .map-ptr-dot {
-  inline-size: 14px; block-size: 14px; margin: -7px 0 0 -7px; border-radius: 50%;
-  /* a plain dot, no ring: a bright core fading into the person's colour, and a wide glow so it stands out on light and dark maps */
-  background: radial-gradient(circle at 50% 50%, #fff 0%, color-mix(in srgb, #fff 55%, var(--ptr, #f0b64d)) 28%, var(--ptr, #f0b64d) 62%);
-  box-shadow: 0 0 6px 1px color-mix(in srgb, var(--ptr, #f0b64d) 95%, transparent), 0 0 18px 5px color-mix(in srgb, var(--ptr, #f0b64d) 60%, transparent),
-              0 0 38px 10px color-mix(in srgb, var(--ptr, #f0b64d) 28%, transparent), 0 1px 3px rgba(20, 14, 6, 0.45);
+  inline-size: 9px; block-size: 9px; margin: -4.5px 0 0 -4.5px; border-radius: 50%;
+  /* a plain dot in the person's full-strength colour (no white in it, no ring), a close glow and a hair of shadow so it reads on light and dark maps */
+  background: var(--ptr, #ffb000);
+  box-shadow: 0 0 4px 1px color-mix(in srgb, var(--ptr, #ffb000) 90%, transparent), 0 0 10px 2px color-mix(in srgb, var(--ptr, #ffb000) 38%, transparent), 0 1px 2px rgba(10, 8, 4, 0.5);
   opacity: 0; transform: scale(0.3);
 }
 .map-ptr.is-on .map-ptr-dot { opacity: 1; transform: scale(1); }
-.map-ptr-trail {
-  inset-inline-end: 0; inset-block-start: 0; inline-size: 150px; block-size: 14px; margin: -7px 0 0 0; border-radius: 999px; opacity: 0;
-  transform-origin: 100% 50%;                                /* the dot's centre; script rotates it against the direction of travel and scales it with speed */
-  background: linear-gradient(to left, color-mix(in srgb, var(--ptr, #f0b64d) 100%, transparent) 0%, color-mix(in srgb, var(--ptr, #f0b64d) 60%, transparent) 40%, transparent);
-  filter: blur(1.5px);
-}
+/* the trail is an SVG ribbon along the path the dot just took; script draws its outline each frame, the colour comes from --ptr (the gradient fades it to nothing at the far end) */
+.map-ptr-trail { inset-inline-start: 0; inset-block-start: 0; overflow: visible; opacity: 0; }
+.map-ptr-trail stop { stop-color: var(--ptr, #ffb000); }
 @media (prefers-reduced-motion: no-preference) {
   .map-ptr-dot { transition: transform 260ms cubic-bezier(0.34, 1.56, 0.64, 1), opacity 140ms var(--ease-out); }   /* a small overshoot: it pops in */
   .map-ptr:not(.is-on) .map-ptr-dot { transition: transform 160ms var(--ease-out), opacity 160ms var(--ease-out); }

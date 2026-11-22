@@ -28,7 +28,7 @@
         <li><a href="{{ url_for('campaigns_list') }}"{% if here == 'campaigns' %} aria-current="page"{% endif %}>Campaigns</a></li>
         <li><a href="{{ url_for('library_list') }}"{% if here == 'library' %} aria-current="page"{% endif %}>Your characters</a></li>
         <li><a href="{{ url_for('friends_page') }}"{% if here == 'friends' %} aria-current="page"{% endif %}>Friends</a></li>
-        <li><a href="{{ url_for('reference_global') }}"{% if here == 'reference' %} aria-current="page"{% endif %}>Reference</a></li>
+        <li><a href="{{ url_for('reference_global') }}"{% if here == 'reference' %} aria-current="page"{% endif %}>Compendium</a></li>
         <li class="pub-links-sep" aria-hidden="true"></li>
         <li><a href="{{ url_for('about') }}"{% if request.endpoint == 'about' %} aria-current="page"{% endif %}>About</a></li>
         <li><a href="{{ url_for('contact') }}"{% if request.endpoint == 'contact' %} aria-current="page"{% endif %}>Contact</a></li>

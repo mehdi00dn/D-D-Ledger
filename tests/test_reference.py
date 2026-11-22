@@ -249,7 +249,7 @@ def test_the_routes_need_a_campaign_and_return_json(make_user):
 @new_code
 def test_an_unreachable_api_gives_a_clean_error(make_user, monkeypatch):
     def down(path, edition='2024'):
-        raise srd.SrdError('The rules reference is unavailable right now.')
+        raise srd.SrdError('The compendium is unavailable right now.')
     monkeypatch.setattr(srd, '_get_json', down)
     dm = make_user(); cid = dm.new_campaign()
     r = dm.get(f'/campaigns/{cid}/api/reference/search?kind=spells&q=x')
@@ -335,7 +335,7 @@ def test_a_class_survives_a_missing_level_table(monkeypatch):
     real = srd._get_json
     def fake(path, edition='2024'):
         if path.endswith('/levels'):
-            raise srd.SrdError('The rules reference is unavailable right now.')
+            raise srd.SrdError('The compendium is unavailable right now.')
         return real(path, edition)
     monkeypatch.setattr(srd, '_get_json', fake)
     assert 'Choose 2' in srd.detail('classes', 'classes/wizard')['body']

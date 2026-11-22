@@ -2,7 +2,8 @@
  *
  * Your own dot follows the mouse exactly.  Other people's dots arrive about twenty times a second over the live channel (map-live.js, kind "ptr");
  * they are played back about 65 ms behind real time (a little over one message interval), joined straight from one position to the next, so the path is the path that was really taken, not an eased one.
- * A short soft trail behind the dot, as long as the dot is fast, gives the motion blur.  Nothing here is saved: when the button is released (or
+ * A tapering trail behind the dot follows the path the dot really took, so it bends when the hand moves in a curve (it is built from the last third of a second of positions, and
+ * is as long as the dot is fast).  Nothing here is saved: when the button is released (or
  * the messages stop for a few seconds) the dot shrinks away.
  *
  * Each person has one colour, taken from their user id.  Positions travel in map coordinates (the same ones pins use), so the dot lands on the same spot of the map for everyone whatever their zoom or pan.
@@ -18,9 +19,12 @@
   var STALE_MS = 3500;        // a dot that has gone quiet this long is taken away (a held button keeps sending a heartbeat)
   var KEEPALIVE_MS = 1000;
   var MAX_DOTS = 40;
-  var SPEED_FOR_TRAIL = 40;   // px per second below which there is no trail
-  var TRAIL_PX = 150;         // length of the trail element at full speed (the trail is scaled from this; keep in step with .map-ptr-trail in style.css)
-  var COLORS = ['#f0b64d', '#4cc3e0', '#ef6f5e', '#8fd14f', '#b98cf5', '#f27fb8', '#3fd0a6', '#6f8cf5', '#e05ad8', '#f0e07a'];   // ten that stay apart on light and dark maps
+  var TRAIL_MS = 340;         // the trail is drawn from the positions of the last 340 ms
+  var TRAIL_MAX_PX = 170;     // and never longer than this
+  var TRAIL_HALF = 3.2;       // half the trail's width at the dot (it narrows to nothing at the far end)
+  var TRAIL_MIN_PX = 8;       // a trail shorter than this is not drawn
+  var SVG_NS = 'http://www.w3.org/2000/svg';
+  var COLORS = ['#ffb000', '#00b4ff', '#ff3b30', '#5fe000', '#9a4dff', '#ff2d9b', '#00d49a', '#2f5bff', '#e61ee6', '#ffe600'];   // ten full-strength hues that stay apart on light and dark maps
 
   function num(v, fallback) { v = Number(v); return isFinite(v) ? v : fallback; }
   function now() { return (window.performance && performance.now) ? performance.now() : Date.now(); }
@@ -40,21 +44,55 @@
     stage.appendChild(layer);
 
     var dots = new Map();       // sender id -> dot
-    var raf = 0, lastFrame = 0;
+    var raf = 0, lastFrame = 0, gradients = 0;
 
     function makeEl(color) {
       var el = document.createElement('div');
       el.className = 'map-ptr';
       el.style.setProperty('--ptr', color);
-      el.innerHTML = '<i class="map-ptr-trail"></i><i class="map-ptr-dot"></i>';
+      var gid = 'map-ptr-fade-' + (++gradients);
+      el.innerHTML = '<svg class="map-ptr-trail" width="1" height="1" aria-hidden="true"><defs><linearGradient id="' + gid + '" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="1" y2="0">' +
+        '<stop offset="0" stop-opacity="0.95"/><stop offset="1" stop-opacity="0"/></linearGradient></defs><path fill="url(#' + gid + ')"/></svg><i class="map-ptr-dot"></i>';
       layer.appendChild(el);
       return el;
     }
 
+    // The trail: a ribbon along the dot's recent path, as wide as the dot at the head and narrowing to a point.  `hist` holds where the dot was on screen
+    // (newest last).  Returns the path text and the far end, or null when there is nothing worth drawing.
+    function ribbon(hist) {
+      var pts = [], acc = 0, i, q;
+      for (i = hist.length - 1; i >= 0; i--) {
+        var h = hist[i];
+        if (pts.length) {
+          q = pts[pts.length - 1];
+          var step = Math.hypot(h.x - q.x, h.y - q.y);
+          if (step < 0.6) continue;                                  // a dot at rest piles up points on one spot
+          acc += step;
+          if (acc > TRAIL_MAX_PX) break;
+        }
+        pts.push({ x: h.x, y: h.y });
+      }
+      var n = pts.length;
+      if (n < 3 || acc < TRAIL_MIN_PX) return null;
+      var sm = [pts[0]];                                             // smooth the corners that the 20-a-second messages leave, the head stays put
+      for (i = 1; i < n - 1; i++) sm.push({ x: pts[i - 1].x * 0.25 + pts[i].x * 0.5 + pts[i + 1].x * 0.25, y: pts[i - 1].y * 0.25 + pts[i].y * 0.5 + pts[i + 1].y * 0.25 });
+      sm.push(pts[n - 1]);
+      var hx = sm[0].x, hy = sm[0].y, left = [], right = [];
+      for (i = 0; i < n; i++) {
+        var a = sm[Math.max(0, i - 1)], b = sm[Math.min(n - 1, i + 1)];
+        var tx = a.x - b.x, ty = a.y - b.y, len = Math.hypot(tx, ty) || 1;
+        var nx = -ty / len, ny = tx / len, w = TRAIL_HALF * Math.pow(1 - i / (n - 1), 0.9);
+        var cx = sm[i].x - hx, cy = sm[i].y - hy;
+        left.push((cx + nx * w).toFixed(1) + ' ' + (cy + ny * w).toFixed(1));
+        right.push((cx - nx * w).toFixed(1) + ' ' + (cy - ny * w).toFixed(1));
+      }
+      return { d: 'M' + left.join('L') + 'L' + right.reverse().join('L') + 'Z', x: sm[n - 1].x - hx, y: sm[n - 1].y - hy };
+    }
+
     function addDot(id, color, mine) {
       if (dots.size >= MAX_DOTS && !mine) return null;
-      var d = { id: id, mine: !!mine, el: makeEl(color), trail: null, samples: [], x: 0, y: 0, sx: 0, sy: 0, vx: 0, vy: 0, placed: false, ending: false, at: now(), gone: 0 };
-      d.trail = d.el.firstChild;
+      var d = { id: id, mine: !!mine, el: makeEl(color), trail: null, path: null, fade: null, hist: [], samples: [], x: 0, y: 0, ending: false, at: now(), gone: 0 };
+      d.trail = d.el.firstChild; d.path = d.trail.querySelector('path'); d.fade = d.trail.querySelector('linearGradient');
       dots.set(id, d);
       requestAnimationFrame(function () { requestAnimationFrame(function () { if (!d.ending) d.el.classList.add('is-on'); }); });   // two frames so the grow-in has a start state
       return d;
@@ -106,20 +144,17 @@
         d.x = px; d.y = py;
 
         var p = toScreen(box, px, py);
-        // velocity on screen (px per second), smoothed so the trail does not flicker
-        if (d.placed) {
-          var ix = (p.x - d.sx) / dt * 1000, iy = (p.y - d.sy) / dt * 1000, f = 1 - Math.exp(-dt / 170);
-          d.vx += (ix - d.vx) * f; d.vy += (iy - d.vy) * f;
-        }
-        d.sx = p.x; d.sy = p.y; d.placed = true;
         d.el.style.transform = 'translate3d(' + p.x.toFixed(1) + 'px,' + p.y.toFixed(1) + 'px,0)';
 
-        var speed = Math.sqrt(d.vx * d.vx + d.vy * d.vy);
-        if (calm || speed < SPEED_FOR_TRAIL) { d.trail.style.opacity = '0'; }
+        // the trail follows the path the dot took in the last moments
+        d.hist.push({ t: t, x: p.x, y: p.y });
+        while (d.hist.length > 2 && t - d.hist[0].t > TRAIL_MS) d.hist.shift();
+        var r = calm || d.ending ? null : ribbon(d.hist);
+        if (!r) { d.trail.style.opacity = '0'; }
         else {
-          var len = Math.min(1, speed / 1000);                       // full trail at about 1000 px/s
-          d.trail.style.opacity = String(Math.min(1, 0.55 + len * 0.45)).slice(0, 5);
-          d.trail.style.transform = 'rotate(' + Math.atan2(d.vy, d.vx).toFixed(3) + 'rad) scaleX(' + (0.3 + len * 0.7).toFixed(3) + ')';
+          d.path.setAttribute('d', r.d);
+          d.fade.setAttribute('x2', r.x.toFixed(1)); d.fade.setAttribute('y2', r.y.toFixed(1));
+          d.trail.style.opacity = '1';
         }
         busy = true;
       });
@@ -166,7 +201,7 @@
       holding = { d: d, client: null, timer: 0 };
       stage.classList.add('is-pointing');
       placeOwn(e.clientX, e.clientY);
-      d.placed = false;
+      d.hist.length = 0;
       holding.timer = setInterval(function () { if (holding && holding.client) { var c = holding.client; placeOwn(c.x, c.y); } }, KEEPALIVE_MS);
     }
     function end() {

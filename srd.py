@@ -91,7 +91,7 @@ def _get_json(path, edition=DEFAULT_EDITION):
     except SrdError:
         raise
     except (requests.RequestException, ValueError) as e:
-        raise SrdError('The rules reference is unavailable right now.') from e
+        raise SrdError('The compendium is unavailable right now.') from e
     with _lock:
         if len(_cache) > 2000:
             _cache.clear()
