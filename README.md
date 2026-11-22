@@ -504,6 +504,12 @@ The hover burn (DL-180 parts 5 and 7, a scorch drawn in CSS along a panel's edge
 - The Died? and Remove buttons were 34px; on a touch screen they are 40px. INIT and AC keep their deliberately small boxes (at most 32px by 44px, a DL-169 rule that `tests/test_e2e_battle_responsive.py` holds); only their text grows, to 16px.
 Not changed: a phone held sideways (844 by 390) still has very little room, and the Battle log bar and the floating buttons sit over the rows while you scroll, as they do upright. `tests/test_battle_rows_cards.py` has 3 style sheet tests and a touch-phone browser test at 390x844, 360x640 and 844x390 (rounded corners, gaps between cards, 16px fields, `manipulation`, 40px end buttons, no sideways scroll); all six fail on the old style sheet.
 
+### The public header: centred links, a bell, Log out under the profile (DL-180, part 31)
+
+On a desktop (961 px and wider) the header bar is three columns (`1fr auto 1fr`), so the links are centred on the page whatever the width of the logo and the profile; the menu wrappers dissolve into the grid there. Between 961 and 1180 px the profile shrinks to its avatar so everything fits. At 960 px and below the links fold into the menu (the breakpoint was 820 px before six links needed more room: `public.css` and `public.js`).
+
+Signed in, the links are **Campaigns, Your characters, Friends, Reference**, a hairline, then **About, Contact** (the places you work in, then the pages about the site). On the right: the theme switch, the **notifications bell** (an icon button with the unread count on its corner; it was a text link), and the profile. **Log out** sits in a small panel under the profile (`.pub-account-menu`) and shows while the profile or the panel is hovered or has keyboard focus; the panel has a 10px bridge so the pointer can travel to it. On a screen with no hover (a phone, or a touch tablet) it stays in the row. Signed out: Features, How it works, About, Contact, then Log in and Get started. Friends is marked by `active_page = 'friends'`. `tests/test_e2e_site_header.py` checks the centring at four widths, the hover and focus behaviour and the phone menu; `tests/test_design_zones.py` checks the order of the links, the bell and which link is marked.
+
 ### Two design systems: the site and the campaign (DL-180, part 30)
 
 The web app has two looks, and a page belongs to exactly one of them.

@@ -462,8 +462,8 @@ def test_invitation_flow_in_the_browser(pw, shared_server):
     pctx = pl.context(pw, base); ppage = pctx.new_page(); pbad, perrs = _collect(ppage)
     ppage.goto(base + '/campaigns'); ppage.wait_for_selector('.pub-badge')
     assert ppage.inner_text('.pub-badge') == '1'
-    assert ppage.locator('.sidebar').count() == 0 and 'Campaigns' in ppage.inner_text('.pub-links')       # outside a campaign: the site header (Campaigns, Notifications), no sidebar
-    ppage.click('.pub-links a:has-text("Notifications")'); ppage.wait_for_selector('.notification-card.is-unread'); ppage.wait_for_timeout(700)
+    assert ppage.locator('.sidebar').count() == 0 and 'Campaigns' in ppage.inner_text('.pub-links') and ppage.locator('.pub-bell .pub-badge').inner_text() == '1'       # outside a campaign: the site header (Campaigns, Notifications), no sidebar
+    ppage.click('.pub-bell'); ppage.wait_for_selector('.notification-card.is-unread'); ppage.wait_for_timeout(700)
     assert 'invited you to Invites' in ppage.inner_text('.notification-card')
     ppage.screenshot(path='/tmp/invite-player.png')
     ppage.evaluate("() => document.documentElement.setAttribute('data-theme', 'light')")

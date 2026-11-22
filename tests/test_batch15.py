@@ -90,7 +90,7 @@ def test_card_pictures_load_lazily(camp):
 
 def test_phone_rules_for_the_header_quests_and_campaign_cards():
     pub = read('static', 'css', 'public.css')
-    assert re.search(r'@media \(max-width: 820px\) \{\s*\.pub-bar \{ row-gap: 0; min-block-size: 0; \}\s*\.pub-brand \{ min-block-size: var\(--pub-nav-h\); \}', pub)
+    assert re.search(r'@media \(max-width: 960px\) \{\s*\.pub-bar \{ row-gap: 0; min-block-size: 0; \}\s*\.pub-brand \{ min-block-size: var\(--pub-nav-h\); \}', pub)
     css = read('static', 'css', 'style.css')
     assert '.campaign-grid .group-image-block { block-size: auto; aspect-ratio: 2 / 1; }' in css
     assert re.search(r'@media \(max-width: 640px\) \{\s*\.quest-main \{ flex-basis: 100%; \}', css)
