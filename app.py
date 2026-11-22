@@ -31,6 +31,7 @@ import observability
 from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
 from flask import Response
+from flask.sessions import SecureCookieSessionInterface
 import images
 import fog
 import dnd5e
@@ -44,6 +45,24 @@ from database import get_db, init_db, init_app as init_database_app, UniqueViola
 
 
 app = Flask(__name__)
+
+
+_IMAGE_ENDPOINTS = ('uploaded_file', 'map_image')      # stored images, and the map picture (which the browser re-checks by ETag, so the fog is always current)
+
+
+class _OakenSessionInterface(SecureCookieSessionInterface):
+    """The usual signed-cookie session, except on stored images.  A signed-in person's session cookie is signed again on every response, so its value
+    changes every time; Flask also marks any response that read the session "Vary: Cookie".  Together they make a browser treat each image as a new
+    thing every time (the cached copy only matches while the Cookie header is unchanged), so avatars and campaign pictures were downloaded again on
+    every page.  A stored image is the same for everyone who may see it, under a key nobody can guess, so its response carries neither.  (The map picture is checked against its ETag every time; the same two headers would stop that check too.)"""
+
+    def save_session(self, app, session, response):
+        if request.endpoint in _IMAGE_ENDPOINTS and not session.modified:
+            return
+        return super().save_session(app, session, response)
+
+
+app.session_interface = _OakenSessionInterface()
 observability.init_app(app)
 public_ids.init_app(app)
 
@@ -1933,7 +1952,8 @@ def campaign_access_required(view_func):
         if g.previewing:
             g.campaign_status = 'player'
         g.is_dm = g.campaign_status == 'dm'
-        session['last_campaign_id'] = campaign_id
+        if session.get('last_campaign_id') != campaign_id:          # only when it changes: writing the same value would re-sign the cookie on every request
+            session['last_campaign_id'] = campaign_id
         return view_func(*args, **kwargs)
     return wrapped
 
