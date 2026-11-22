@@ -468,7 +468,8 @@ def test_reference_outside_a_campaign_and_the_edition_switch(make_user):
 def test_the_reference_is_in_the_menu_outside_a_campaign(make_user):
     u = make_user()
     html = u.get('/campaigns').get_data(as_text=True)
-    assert 'href="/reference"' in html and html.count('href="/reference"') >= 2           # sidebar and the phone More sheet
+    assert 'href="/reference"' in html and html.index('href="/reference"') < html.index('class="pub-stage')       # a link in the site header (DL-180 part 30), not a sidebar entry
+    assert 'sidebar' not in html
 
 
 @new_code

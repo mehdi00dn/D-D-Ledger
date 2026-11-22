@@ -22,8 +22,8 @@ def test_an_invitation_adds_nobody_and_notifies_the_invitee(make_user):
     assert pl.name not in _members(cid)
     page = pl.get('/notifications').data.decode()
     assert 'invited you to Quest' in page and 'Accept' in page and 'Decline' in page and f'/invitations/{inv}/accept' in page
-    assert 'nav-badge' in pl.get('/campaigns').data.decode()                   # unread badge in the sidebar
-    assert 'nav-badge' not in dm.get('/campaigns').data.decode()
+    assert 'pub-badge' in pl.get('/campaigns').data.decode()                   # unread badge in the site header
+    assert 'pub-badge' not in dm.get('/campaigns').data.decode()
 
 
 def test_accepting_joins_with_the_offered_status_and_tells_the_owner(make_user):

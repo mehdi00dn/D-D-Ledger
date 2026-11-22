@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+{% extends "site_base.html" %}
 {% from "_icons.html" import icon, class_icon %}
 {% set active_page = 'library' %}
 {% block title %}Your characters — Oaken{% endblock %}
@@ -6,7 +6,7 @@
 {% block content %}
 <div class="page-header">
   <div>
-    <h1 class="page-title">Your characters</h1>
+    <h1 class="page-title">Your Characters</h1>
     <p class="page-sub">{{ items|length }} of {{ limit }}. Yours alone, kept outside any campaign. Add a copy to a table, or show up to {{ showcase_limit }} on your profile.</p>
   </div>
   <div class="page-actions toolbar">

@@ -176,8 +176,9 @@ def test_without_realtime_the_page_just_polls(pw):
 def test_a_poke_during_a_request_in_flight_triggers_another_refresh(pw, shared_server):
     """The answer already on its way may predate the change, so a ping that lands mid-request must cause a second fetch."""
     base = shared_server.url; api = Api(base)
+    cid = api.campaign('Poke')
     ctx = api.context(pw, base); page = ctx.new_page()
-    page.goto(f'{base}/campaigns')
+    page.goto(f'{base}/campaigns/{cid}/home')                        # the poller belongs to the campaign shell (the site pages do not load it)
     calls = page.evaluate("""() => new Promise((resolve) => {
         let n = 0;
         const poll = OakenPoll.every(() => new Promise((done) => { n += 1; setTimeout(() => done(true), 500); }), {base: 60000, max: 60000});
