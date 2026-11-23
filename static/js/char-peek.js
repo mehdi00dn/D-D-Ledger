@@ -101,6 +101,23 @@
           }).join('') + '</ul></div>';
       }
 
+      if (c.slots && c.slots.length && window.SpellSlots) {     // spell slots (DL-185): the DM and the character's player can spend and restore them here
+        html += '<div class="peek-section" aria-label="Spell slots"><div class="peek-section-title">Spell slots</div>' +
+          '<div class="peek-slots" data-peek-slots>' + SpellSlots.markup(c.slots, !!c.can_edit_slots, c.name) + '</div>' +
+          '<p class="peek-slots-status" data-peek-slots-status role="status" aria-live="polite"></p></div>';
+      }
+
+      if (c.spells && c.spells.length) {       // the spell list (DL-185): damage rolls like the attacks, grouped by level
+        html += '<div class="peek-section" aria-label="Spells"><div class="peek-section-title">Spells</div><ul class="atk-list">' +
+          c.spells.map(function (sp) {
+            return '<li class="atk-row"><span class="atk-name">' + esc(sp.name) +
+              '<small class="atk-type">' + (sp.spell_level ? 'Level ' + sp.spell_level : 'Cantrip') + (sp.note ? ' \u00b7 ' + esc(sp.note) : '') + '</small></span>' +
+              (sp.damage && sp.dice_json ? '<button type="button" class="atk-btn atk-btn--dmg" title="Roll ' + esc(sp.name) + ' damage" data-roll-bonus="' + sp.damage_bonus +
+                '" data-roll-dice="' + esc(sp.dice_json) + '" data-roll-label="' + esc(sp.name) + ' damage' + (sp.damage_type ? ' (' + esc(sp.damage_type) + ')' : '') +
+                '"><small>Damage</small><b>' + esc(sp.damage) + '</b></button>' : '') + '</li>';
+          }).join('') + '</ul></div>';
+      }
+
       var trained = s.skills.filter(function (k) { return k.level; });
       function skill(k, cls) {
         return '<div class="sheet-skill' + (k.level === 1 ? ' is-prof' : '') + (k.level === 2 ? ' is-expert' : '') + (cls || '') + '" role="button" tabindex="0"' +
@@ -142,6 +159,21 @@
         modal.hidden = false;
       });
   }
+
+  var slotState = [];
+  body.addEventListener('click', function (ev) {
+    var b = ev.target.closest('[data-action="slot-pip"]');
+    if (!b || b.disabled || !window.SpellSlots || !body.contains(b)) return;
+    var box = body.querySelector('[data-peek-slots]'), note = body.querySelector('[data-peek-slots-status]');
+    var id = currentId, mine = token;
+    b.disabled = true;
+    SpellSlots.send(id, b.getAttribute('data-slot-do'), parseInt(b.getAttribute('data-slot-level'), 10)).then(function (out) {
+      if (mine !== token || !box) return;
+      slotState = out.slots;
+      box.innerHTML = SpellSlots.markup(slotState, true, title.textContent);
+      if (note) note.textContent = '';
+    }).catch(function (e) { if (note) note.textContent = e.message; b.disabled = false; });
+  });
 
   if (window.CharacterRolls) window.CharacterRolls.bind(body, function () { return currentId; }, 'peek-roll-mode', function () { return currentParticipant; });
 

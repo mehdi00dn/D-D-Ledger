@@ -175,6 +175,34 @@
   </section>
   {% endif %}
 
+  {% if slots %}
+  <section class="cf-card o-paper" aria-label="Spell slots">
+    <h2 class="cf-title">Spell slots <span class="cf-count">{% if can_edit %}click a gem to spend or restore a slot{% else %}full gems are slots left{% endif %}</span></h2>
+    <div class="slot-board" data-slots data-character-id="{{ character.id }}" data-who="{{ character.name }}" data-can-edit="{{ 1 if can_edit else 0 }}" data-slots-state='{{ slots|tojson }}'>
+      <ul class="slot-fallback">{% for s in slots %}<li>Level {{ s.level }}: {{ s.max - s.used }} of {{ s.max }} left</li>{% endfor %}</ul>
+    </div>
+    <p class="hint-text" data-slots-status role="status"></p>
+  </section>
+  {% endif %}
+
+  {% if spells %}
+  <section class="cf-card o-paper" aria-label="Spells">
+    <h2 class="cf-title">Spells <span class="cf-count">{{ spells|length }}</span></h2>
+    {% for lvl, group in spells|groupby('spell_level') %}
+    <h3 class="spl-level">{{ 'Cantrips' if lvl == 0 else 'Level ' ~ lvl }}</h3>
+    <ul class="atk-list">
+      {% for s in group %}
+      <li class="atk-row">
+        <span class="atk-name">{{ s.name }}{% if s.note %}<small class="atk-type">{{ s.note }}</small>{% endif %}</span>
+        {% if s.damage %}<button type="button" class="atk-btn atk-btn--dmg" title="Roll {{ s.name }} damage" data-roll-bonus="{{ s.damage_bonus }}" data-roll-dice='{{ s.dice_json }}' data-roll-label="{{ s.name }} damage{{ ' (' ~ s.damage_type ~ ')' if s.damage_type }}"><small>Damage</small><b>{{ s.damage }}</b></button>{% endif %}
+        {% if can_edit and slots and s.spell_level > 0 %}<button type="button" class="atk-btn atk-btn--cast" title="Cast {{ s.name }}: spends a level {{ s.spell_level }} slot, or the next higher one" data-cast-level="{{ s.spell_level }}" data-spell-name="{{ s.name }}"><small>Cast</small><b>level {{ s.spell_level }}</b></button>{% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% endfor %}
+  </section>
+  {% endif %}
+
   {% if level_history|length > 1 %}
   <section class="cf-card o-paper" aria-label="Stats by level">
     <h2 class="cf-title">Stats by level <span class="cf-count">{{ level_history|length }} saved</span></h2>

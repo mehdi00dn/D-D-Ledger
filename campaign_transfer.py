@@ -89,6 +89,15 @@ def build_manifest(db, campaign_id, exported_at):
         attacks.setdefault(a['character_id'], []).append(
             {'name': a['name'], 'attack_bonus': a['attack_bonus'], 'damage': a['damage'], 'damage_type': a['damage_type']})
 
+    slots, spells = {}, {}                                      # spell slots (the maximums) and the spell list (DL-185)
+    for r in db.execute('SELECT s.character_id, s.slot_level, s.max_slots FROM character_spell_slots s JOIN characters c ON c.id = s.character_id '
+                        'WHERE c.campaign_id = ? ORDER BY s.character_id, s.slot_level', (campaign_id,)).fetchall():
+        slots.setdefault(r['character_id'], {})[str(r['slot_level'])] = r['max_slots']
+    for r in db.execute('SELECT s.character_id, s.name, s.spell_level, s.damage, s.damage_type, s.note FROM character_spells s '
+                        'JOIN characters c ON c.id = s.character_id WHERE c.campaign_id = ? ORDER BY s.character_id, s.position, s.id', (campaign_id,)).fetchall():
+        spells.setdefault(r['character_id'], []).append({'name': r['name'], 'spell_level': r['spell_level'], 'damage': r['damage'],
+                                                         'damage_type': r['damage_type'], 'note': r['note']})
+
     levels = {}
     for r in db.execute('SELECT l.character_id, l.level, l.max_hp, l.armor_class, l.str_score, l.dex_score, l.con_score, l.int_score, l.wis_score, '
                         'l.cha_score, l.speed, l.skill_prof, l.save_prof FROM character_levels l JOIN characters c ON c.id = l.character_id '
@@ -162,7 +171,7 @@ def build_manifest(db, campaign_id, exported_at):
             'int_score': c['int_score'], 'wis_score': c['wis_score'], 'cha_score': c['cha_score'],
             'armor_class': c['armor_class'], 'class_key': c['class_key'], 'speed': dnd5e.clean_speed(c['speed']),
             'skill_prof': dnd5e.clean_skill_prof(c['skill_prof']), 'save_prof': dnd5e.clean_save_prof(c['save_prof']),
-            'attacks': attacks.get(c['id'], []), 'levels': levels.get(c['id'], []),
+            'attacks': attacks.get(c['id'], []), 'slots': slots.get(c['id'], {}), 'spells': spells.get(c['id'], []), 'levels': levels.get(c['id'], []),
             'notes': c['notes'],                          # a DM's export carries the hidden notes too
             'faction_refs': memberships.get(c['id'], []),
             'main_faction_ref': c['group_id'] if c['group_id'] in faction_ids else None,
@@ -356,6 +365,8 @@ def normalize_manifest(raw, *, sanitize_notes, sanitize_bio, icon_keys, class_ke
             'skill_prof': dnd5e.clean_skill_prof(c.get('skill_prof')),
             'save_prof': dnd5e.clean_save_prof(c.get('save_prof')),
             'attacks': dnd5e.clean_attacks(c.get('attacks') if isinstance(c.get('attacks'), list) else []),
+            'slots': dnd5e.clean_slot_maxes(c.get('slots') if isinstance(c.get('slots'), dict) else {}),
+            'spells': dnd5e.clean_spells(c.get('spells') if isinstance(c.get('spells'), list) else []),
             'levels': levels,
             'notes': sanitize_notes(_clean(c.get('notes'), 200000)),
             'faction_refs': member_of,
