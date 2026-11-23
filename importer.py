@@ -159,6 +159,8 @@ def normalize_manifest(manifest, sanitize_notes):
             'skill_prof': dnd5e.clean_skill_prof(c.get('skill_prof')),
             'save_prof': dnd5e.clean_save_prof(c.get('save_prof')),
             'attacks': dnd5e.clean_attacks(c.get('attacks') if isinstance(c.get('attacks'), list) else []),
+            'slots': dnd5e.clean_slot_maxes(c.get('slots') if isinstance(c.get('slots'), dict) else {}),
+            'spells': dnd5e.clean_spells(c.get('spells') if isinstance(c.get('spells'), list) else []),
             'class_key': _clean(c.get('class_key'), 40).strip().lower() or None,   # checked against the known classes on import
             'notes': sanitize_notes(_clean(c.get('notes'), 200000)),
             'group_name': _clean(c.get('group_name'), 120).strip() or None,

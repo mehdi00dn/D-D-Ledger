@@ -52,7 +52,7 @@ POLICY = {
     'character_edit': DM, 'character_delete': OWNER, 'sheet_delete': OWNER,       # delete: owner or the member who made it
     'factions_list': MEMBER, 'faction_detail': MEMBER,
     'faction_new': DM, 'faction_edit': DM, 'faction_delete': OWNER, 'faction_member_remove': DM,
-    'api_characters': MEMBER, 'api_character_detail': MEMBER,
+    'api_characters': MEMBER, 'api_character_detail': MEMBER, 'api_character_slots': MEMBER,      # slots: the DM or the character's player, checked inside
     'campaign_home': MEMBER, 'dice_view': MEMBER, 'activity_view': MEMBER, 'dice_roll': MEMBER, 'dice_rolls': MEMBER, 'reference_view': MEMBER, 'reference_search': MEMBER, 'reference_detail': MEMBER, 'export_data': MEMBER, 'character_export': MEMBER, 'faction_export': MEMBER,
     'import_data': MEMBER, 'campaign_export': DM,
     # --- battle ---  (api_battle_death_save: DM, or the Player who made the character; the matrix's Player did not -> refused; tests/test_death_saves.py covers the maker)

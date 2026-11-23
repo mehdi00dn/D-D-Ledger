@@ -6358,3 +6358,67 @@ body:has(.tool-flyout.open) .pin-action-bubble.is-docked { opacity: 0; pointer-e
 .pm-0::before { border: 1.5px solid currentColor; border-radius: 50%; }
 .pm-1::before { background: currentColor; border-radius: 50%; }
 .pm-2::before { background: currentColor; transform: rotate(45deg) scale(0.72); }
+
+/* ==========================================================================
+   DL-185: spell slots and the spell list
+   Slots are rows of pips (a full pip is a slot left, an empty one is spent); the rows sit in a card on the character page and in the
+   character peek.  The spell list reuses the attack rows.
+   ========================================================================== */
+.slot-edit { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 10px; margin-block-end: 8px; }
+.slot-edit-cell { display: grid; gap: 4px; font-size: var(--fs-sm); }
+.slot-edit-cell span { font: 500 var(--fs-xs) var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--parchment-faint); }
+.slot-edit-cell input { inline-size: 100%; }
+
+.spl-edit { display: grid; gap: 8px; margin-block-end: 10px; }
+.spl-edit-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: 6px; align-items: center; padding-block-end: 8px; border-block-end: 1px solid var(--hairline); }
+.spl-edit-row input[name="spell_name"] { grid-column: 1 / 3; }
+.spl-edit-row .btn-icon { grid-column: 3; grid-row: 1; }
+.spl-edit-row .atk-error { grid-column: 1 / -1; }
+.spl-edit-row input.is-invalid { border-color: var(--blood-ink); box-shadow: 0 0 0 1px var(--blood-ink); }
+.spl-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.spl-book { display: grid; gap: 8px; margin-block-start: 12px; padding-block-start: 12px; border-block-start: 1px solid var(--hairline); }
+.spl-book[hidden] { display: none; }
+.spl-book-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.spl-book-bar .ref-search { flex: 1 1 220px; }
+.spl-book .ref-list--inline { margin-block-start: 0; }
+.spl-level { margin: 14px 0 6px; font: 500 var(--fs-xs) var(--font-mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--brass-ink); }
+.spl-level:first-of-type { margin-block-start: 4px; }
+.atk-btn--cast { border-color: color-mix(in srgb, var(--moss-ink, #6fae8a) 55%, transparent); }
+.atk-btn--cast b { color: var(--moss-ink, #6fae8a); }
+.atk-btn--cast:hover, .atk-btn--cast:focus-visible { border-color: var(--moss-ink, currentColor); background: color-mix(in srgb, var(--moss-ink, #6fae8a) 10%, transparent); }
+.atk-btn:disabled { opacity: .5; cursor: default; }
+
+.slot-groups { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; }
+.slot-group { display: inline-flex; align-items: center; gap: 6px; }
+.slot-level { display: inline-grid; place-items: center; min-inline-size: 18px; font: 600 var(--fs-xs) var(--font-mono); color: var(--parchment-faint); font-variant-numeric: tabular-nums; }
+.slot-pips { display: inline-flex; align-items: center; gap: 2px; }
+.slot-pip { position: relative; display: inline-block; inline-size: 20px; block-size: 24px; padding: 0; border: 0; background: transparent; color: var(--brass-bright, #d8b45e); cursor: default; flex: none; }
+button.slot-pip { cursor: pointer; }
+.slot-pip::before { content: ""; position: absolute; inset-inline-start: 4px; inset-block-start: 6px; inline-size: 12px; block-size: 12px; box-sizing: border-box; border: 1.5px solid currentColor; border-radius: 3px; transform: rotate(45deg) scale(0.85); background: transparent; transition: background-color 140ms var(--ease-out), transform 140ms var(--ease-out), opacity 140ms var(--ease-out); opacity: .7; }
+.slot-pip.is-full::before { background: currentColor; opacity: 1; transform: rotate(45deg) scale(0.95); }
+@media (hover: hover) and (pointer: fine) { button.slot-pip:hover::before { transform: rotate(45deg) scale(1.08); opacity: 1; } }
+button.slot-pip:active::before { transform: rotate(45deg) scale(0.8); }
+button.slot-pip:focus-visible { outline: 2px solid var(--brass-bright, #d8b45e); outline-offset: 1px; border-radius: 4px; }
+button.slot-pip:disabled { cursor: default; opacity: .6; }
+@media (prefers-reduced-motion: reduce) { .slot-pip::before { transition: none; } }
+
+.slot-board { min-block-size: 28px; }
+.slot-board .slot-groups { gap: 10px 22px; }
+.slot-board .slot-pip { inline-size: 26px; block-size: 30px; }
+.slot-board .slot-pip::before { inset-inline-start: 6px; inset-block-start: 8px; inline-size: 14px; block-size: 14px; }
+.slot-board .slot-level { font-size: var(--fs-sm); min-inline-size: 22px; }
+.slot-fallback { margin: 0; padding: 0; list-style: none; font-size: var(--fs-md); }
+.slot-board[data-can-edit] .slot-fallback { color: var(--parchment-dim); }
+.slot-summary { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.slot-summary li { display: inline-flex; align-items: baseline; gap: 8px; padding: 6px 12px; border: 1px solid var(--hairline); border-radius: var(--radius-ctl); }
+.slot-summary span { font: 500 var(--fs-xs) var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; opacity: .7; }
+.slot-summary b { font: 600 var(--fs-lg) var(--font-mono); }
+.cf-card.o-paper .slot-level, .cf-card.o-paper .slot-edit-cell span { color: var(--paper-ink-dim); }
+.cf-card.o-paper .slot-pip { color: var(--paper-accent-ink); }
+.cf-card.o-paper .slot-summary li { border-color: var(--paper-line-strong); }
+
+/* the character peek: the slot rows sit above the spell list */
+.peek-section .slot-groups { gap: 6px 14px; }
+.peek-section .atk-type { text-transform: none; }
+.peek-slots-status { margin: 6px 0 0; min-block-size: 1em; font-size: var(--fs-sm); color: var(--blood-ink); }
+.peek-slots-status:empty { display: none; }

@@ -3333,6 +3333,8 @@ def character_detail(char_id):
     factions = _factions_by_character(db, g.campaign_id).get(char_id, [])
     level_history = [] if stats_hidden else _level_history(db, char_id)
     attacks = [] if stats_hidden else _attacks_for(db, char_id)
+    slots = [] if stats_hidden else _slots_for(db, char_id)
+    spells = [] if stats_hidden else _spells_for(db, char_id)
     purse = recent_coins = None
     if not character['is_npc']:                                   # player characters carry a purse (see the Treasury page)
         purse = _purse(db, char_id)
@@ -3347,7 +3349,7 @@ def character_detail(char_id):
         if db.execute('SELECT 1 FROM characters WHERE id = ? AND owner_id = ?', (character['library_id'], session['user_id'])).fetchone():
             library_link = character['library_id']
         db.close()
-    return render_template('character_detail.html', can_archive=can_archive, library_link=library_link, character=character, sheets=sheets, factions=factions, level_history=level_history, attacks=attacks,
+    return render_template('character_detail.html', can_archive=can_archive, library_link=library_link, character=character, sheets=sheets, factions=factions, level_history=level_history, attacks=attacks, slots=slots, spells=spells,
                             purse=purse, recent_coins=recent_coins,
                             notes_html=notes_to_html(character['notes'], show_hidden=can_see_hidden_notes(character)), can_edit=can_edit,
                             can_delete=can_delete(character['created_by']), stats_hidden=stats_hidden,
@@ -3378,6 +3380,7 @@ def character_edit(char_id):
     faction_ids = [f['id'] for f in _factions_by_character(db, g.campaign_id).get(char_id, [])]
     level_history = _level_history(db, char_id)
     attacks = _attacks_for(db, char_id)
+    slots, spells = _slots_for(db, char_id), _spells_for(db, char_id)
     db.close()
     if character is None:
         return redirect(url_for('characters_list'))
@@ -3386,7 +3389,7 @@ def character_edit(char_id):
                            can_delete_sheets=can_delete(owner_row['created_by']), character_faction_ids=faction_ids,
                            character_save_prof=dnd5e.clean_save_prof(character['save_prof']),
                            character_skill_prof=dnd5e.clean_skill_prof(character['skill_prof']),
-                           level_history={str(r['level']): r for r in level_history}, attacks=attacks)
+                           level_history={str(r['level']): r for r in level_history}, attacks=attacks, slots=slots, spells=spells)
 
 
 # Character classes (DL-43).  Optional on a character.  The text is the hover guide in the picker.
@@ -3427,6 +3430,8 @@ app.jinja_env.globals['class_labels'] = {k: l for k, l, _d in CHARACTER_CLASSES}
 
 
 app.jinja_env.globals['sheet_abilities'] = dnd5e.ABILITIES
+app.jinja_env.globals['srd_editions'] = srd.EDITIONS                      # the spell book picker on the character form offers both rulebooks (DL-185)
+app.jinja_env.globals['srd_default_edition'] = srd.DEFAULT_EDITION
 app.jinja_env.globals['sheet_skills'] = [{'key': k, 'label': l, 'ability': dnd5e.ABILITY_SHORT[a]} for k, l, a in dnd5e.SKILLS]
 
 
@@ -3531,6 +3536,77 @@ def _save_attacks(db, char_id, attacks):
                    (char_id, pos, a['name'], a['attack_bonus'], a['damage'], a['damage_type']))
 
 
+# ---- Spell slots and the spell list (DL-185) ----
+
+def _slots_by_character(db, ids):
+    """{character id: [{'level': 1, 'max': 4, 'used': 1}, ...]} for the characters that have slots (levels in order)."""
+    out = {}
+    if ids:
+        marks = ','.join('?' * len(ids))
+        for r in db.execute('SELECT character_id, slot_level, max_slots, used_slots FROM character_spell_slots WHERE character_id IN (' + marks +
+                            ') ORDER BY character_id, slot_level', list(ids)).fetchall():
+            out.setdefault(r['character_id'], []).append({'level': r['slot_level'], 'max': r['max_slots'], 'used': r['used_slots']})
+    return out
+
+
+def _slots_for(db, char_id):
+    return _slots_by_character(db, [char_id]).get(char_id, [])
+
+
+def _save_slot_maxes(db, char_id, maxes):
+    """Set how many slots a character has per level ({level: max}, already cleaned).  Slots already spent stay spent, up to the
+    new maximum; a level set to none loses its row."""
+    for lvl in dnd5e.SLOT_LEVELS:
+        n = maxes.get(lvl, 0)
+        if n:
+            db.execute('INSERT INTO character_spell_slots (character_id, slot_level, max_slots, used_slots) VALUES (?, ?, ?, 0) '
+                       'ON CONFLICT (character_id, slot_level) DO UPDATE SET max_slots = EXCLUDED.max_slots, '
+                       'used_slots = LEAST(character_spell_slots.used_slots, EXCLUDED.max_slots)', (char_id, lvl, n))
+        else:
+            db.execute('DELETE FROM character_spell_slots WHERE character_id = ? AND slot_level = ?', (char_id, lvl))
+
+
+def _spells_for(db, char_id):
+    """A character's spell list in order, each with what its damage button needs (like _attacks_for)."""
+    out = []
+    for r in db.execute('SELECT name, spell_level, damage, damage_type, note FROM character_spells WHERE character_id = ? '
+                        'ORDER BY position, id', (char_id,)).fetchall():
+        s = dict(r)
+        spec = dnd5e.damage_roll_spec(s['damage'])
+        s['dice_json'] = json.dumps(spec[0]) if spec else ''
+        s['damage_bonus'] = spec[1] if spec else 0
+        out.append(s)
+    return out
+
+
+def _save_spells(db, char_id, spells):
+    """Replace a character's spell list with the (already cleaned) list."""
+    db.execute('DELETE FROM character_spells WHERE character_id = ?', (char_id,))
+    for pos, s in enumerate(spells):
+        db.execute('INSERT INTO character_spells (character_id, position, name, spell_level, damage, damage_type, note) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                   (char_id, pos, s['name'], s['spell_level'], s['damage'], s['damage_type'], s['note']))
+
+
+def _magic_for_export(db, ids):
+    """What an export file carries per character: {id: {'slots': {"1": 4}, 'spells': [...]}} (the maximums only: an imported
+    character starts rested)."""
+    out = {}
+    for cid, rows in _slots_by_character(db, ids).items():
+        out.setdefault(cid, {'slots': {}, 'spells': []})['slots'] = {str(r['level']): r['max'] for r in rows}
+    if ids:
+        marks = ','.join('?' * len(ids))
+        for r in db.execute('SELECT character_id, name, spell_level, damage, damage_type, note FROM character_spells WHERE character_id IN (' + marks +
+                            ') ORDER BY character_id, position, id', list(ids)).fetchall():
+            out.setdefault(r['character_id'], {'slots': {}, 'spells': []})['spells'].append(
+                {'name': r['name'], 'spell_level': r['spell_level'], 'damage': r['damage'], 'damage_type': r['damage_type'], 'note': r['note']})
+    return out
+
+
+def _save_magic(db, char_id, slots, spells):
+    _save_slot_maxes(db, char_id, dnd5e.clean_slot_maxes(slots))
+    _save_spells(db, char_id, dnd5e.clean_spells(spells))
+
+
 def _level_history(db, char_id):
     """Every level that has saved stats, lowest first.  Proficiencies come back as real objects (what the form needs)."""
     out = []
@@ -3609,6 +3685,11 @@ def _save_character(db, char_id):
     if form.get('attacks_present') == '1':            # only a form that shows the Attacks card may replace them (DL-150)
         _save_attacks(db, char_id, dnd5e.clean_attacks(zip(form.getlist('attack_name'), form.getlist('attack_bonus'),
                                                            form.getlist('attack_damage'), form.getlist('attack_type'))))
+    if form.get('slots_present') == '1':              # the Spell slots card (DL-185): the maximums per level
+        _save_slot_maxes(db, char_id, dnd5e.clean_slot_maxes({lvl: form.get('slot_max_%d' % lvl) for lvl in dnd5e.SLOT_LEVELS}))
+    if form.get('spells_present') == '1':             # the Spells card
+        _save_spells(db, char_id, dnd5e.clean_spells(zip(form.getlist('spell_name'), form.getlist('spell_level'), form.getlist('spell_damage'),
+                                                         form.getlist('spell_type'), form.getlist('spell_note'))))
 
     # multiple sheet images
     max_order = db.execute('SELECT COALESCE(MAX(sort_order), -1) AS m FROM character_sheets WHERE character_id = ?', (char_id,)).fetchone()['m']
@@ -3762,6 +3843,9 @@ def _clone_character(db, src, campaign_id, owner_id, library_id, added_from):
                             (src['id'],)).fetchall():
             db.execute('INSERT INTO character_attacks (character_id, position, name, attack_bonus, damage, damage_type) VALUES (?, ?, ?, ?, ?, ?)',
                        (new_id, a['position'], a['name'], a['attack_bonus'], a['damage'], a['damage_type']))
+        magic = _magic_for_export(db, [src['id']]).get(src['id'])
+        if magic:
+            _save_magic(db, new_id, magic['slots'], magic['spells'])
         for sh in db.execute('SELECT image_path, sort_order FROM character_sheets WHERE character_id = ? ORDER BY sort_order, id', (src['id'],)).fetchall():
             path = _copy_image(sh['image_path'], 'sheets', made)
             if path:
@@ -3854,13 +3938,14 @@ def library_detail(char_id):
     sheets = db.execute('SELECT * FROM character_sheets WHERE character_id = ? ORDER BY sort_order', (char_id,)).fetchall()
     level_history = _level_history(db, char_id)
     attacks = _attacks_for(db, char_id)
+    slots, spells = _slots_for(db, char_id), _spells_for(db, char_id)
     placed = db.execute('SELECT ch.id, ch.campaign_id, ca.name FROM characters ch JOIN campaigns ca ON ca.id = ch.campaign_id '
                         'WHERE ch.library_id = ? ORDER BY lower(ca.name)', (char_id,)).fetchall()
     taken = {p['campaign_id'] for p in placed}
     open_campaigns = [c for c in _my_campaigns(db) if c['id'] not in taken]
     featured = db.execute('SELECT 1 FROM profile_showcase WHERE user_id = ? AND character_id = ?', (session['user_id'], char_id)).fetchone() is not None
     db.close()
-    return render_template('library_detail.html', character=character, sheets=sheets, level_history=level_history, attacks=attacks,
+    return render_template('library_detail.html', character=character, sheets=sheets, level_history=level_history, attacks=attacks, slots=slots, spells=spells,
                            class_label=_class_label(character['class_key']), sheet=dnd5e.derive(character),
                            notes_html=notes_to_html(character['notes'], show_hidden=True), placed=placed, open_campaigns=open_campaigns,
                            featured=featured, note=_library_note(request.args))
@@ -3877,12 +3962,13 @@ def library_edit(char_id):
     sheets = db.execute('SELECT * FROM character_sheets WHERE character_id = ? ORDER BY sort_order', (char_id,)).fetchall()
     level_history = _level_history(db, char_id)
     attacks = _attacks_for(db, char_id)
+    slots, spells = _slots_for(db, char_id), _spells_for(db, char_id)
     db.close()
     return render_template('character_form.html', library=True, character=character, sheets=sheets, groups=[], from_battle=False,
                            notes_entries=notes_parse_entries(character['notes']) or [{'t': '', 'h': False}], can_delete_sheets=True,
                            character_faction_ids=[], character_save_prof=dnd5e.clean_save_prof(character['save_prof']),
                            character_skill_prof=dnd5e.clean_skill_prof(character['skill_prof']),
-                           level_history={str(r['level']): r for r in level_history}, attacks=attacks)
+                           level_history={str(r['level']): r for r in level_history}, attacks=attacks, slots=slots, spells=spells)
 
 
 @app.route('/library/<character:char_id>/delete', methods=['POST'])
@@ -3992,6 +4078,7 @@ def _library_manifest(db, rows):
             attacks.setdefault(a['character_id'], []).append({'name': a['name'], 'attack_bonus': a['attack_bonus'], 'damage': a['damage'], 'damage_type': a['damage_type']})
         for sh in db.execute('SELECT character_id, image_path FROM character_sheets WHERE character_id IN (' + marks + ') ORDER BY character_id, sort_order, id', ids).fetchall():
             sheets.setdefault(sh['character_id'], []).append(sh['image_path'])
+    magic = _magic_for_export(db, ids)
     return {
         'version': 1, 'exported_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 'groups': [],
         'characters': [{
@@ -4000,7 +4087,8 @@ def _library_manifest(db, rows):
             'int_score': c['int_score'], 'wis_score': c['wis_score'], 'cha_score': c['cha_score'],
             'armor_class': c['armor_class'], 'class_key': c['class_key'], 'speed': dnd5e.clean_speed(c['speed']),
             'skill_prof': dnd5e.clean_skill_prof(c['skill_prof']), 'save_prof': dnd5e.clean_save_prof(c['save_prof']),
-            'attacks': attacks.get(c['id'], []), 'notes': c['notes'], 'group_name': None, 'group_names': [],
+            'attacks': attacks.get(c['id'], []), 'slots': magic.get(c['id'], {}).get('slots', {}), 'spells': magic.get(c['id'], {}).get('spells', []),
+            'notes': c['notes'], 'group_name': None, 'group_names': [],
             'avatar_file': c['avatar_path'], 'sheet_files': sheets.get(c['id'], []),
         } for c in rows],
     }
@@ -4306,9 +4394,12 @@ def api_character_detail(char_id):
     sheets = db.execute('SELECT * FROM character_sheets WHERE character_id = ? ORDER BY sort_order', (char_id,)).fetchall()
     factions = _factions_by_character(db, g.campaign_id).get(char_id, [])
     attacks = _attacks_for(db, char_id)
+    slots, spells = _slots_for(db, char_id), _spells_for(db, char_id)
     db.close()
     data = dict(character)
     data['attacks'] = attacks
+    data['slots'], data['spells'] = slots, spells
+    data['can_edit_slots'] = bool(g.is_dm or owns_character(character))     # the DM and whoever plays it may spend and restore slots
     data['factions'] = factions
     data['can_delete'] = can_delete(character['created_by'])
     can_see_hidden = can_see_hidden_notes(character)
@@ -5082,11 +5173,63 @@ def api_battle_long_rest():
         db.rollback()
         db.close()
         return api_error('There are no player characters in the battle to rest.', 404)
+    db.execute('UPDATE character_spell_slots SET used_slots = 0 WHERE used_slots > 0 AND character_id IN (SELECT bp.character_id FROM battle_participants bp '
+               'JOIN characters c ON c.id = bp.character_id WHERE bp.campaign_id = ? AND c.is_npc = 0' + (' AND bp.id = ?' if data.get('id') is not None else '') + ')',
+               [g.campaign_id] + ([int(data['id'])] if data.get('id') is not None else []))          # a long rest refills every spell slot (DL-185)
     log_battle(db, 'The party took a long rest' if data.get('id') is None else 'A character took a long rest', None, 'heal')
     db.commit()
     rows = _battle_rows(db)
     db.close()
     return jsonify(rows)
+
+
+@app.route('/campaigns/<campaign:campaign_id>/api/characters/<character:char_id>/slots', methods=['POST'])
+@campaign_access_required
+def api_character_slots(char_id):
+    """Spend and restore a character's spell slots (DL-185).  Body {"action": ..., "level": n}:
+      spend    one more slot of that level is used            restore  one used slot of that level comes back
+      cast     spend the lowest slot of that level or higher  (a spell cast; 409 when none is left)
+      rest     every slot of this character comes back
+    Allowed for the DM and for whoever made or plays the character.  Answers with the character's slots."""
+    data = request.get_json(silent=True) or {}
+    action = data.get('action')
+    try:
+        level = int(data.get('level') or 0)
+    except (TypeError, ValueError):
+        level = 0
+    if action not in ('spend', 'restore', 'cast', 'rest') or (action != 'rest' and not 1 <= level <= 9):
+        return api_error('Choose a spell slot level from 1 to 9.', 400)
+    db = get_db()
+    ch = db.execute('SELECT id, created_by, player_id FROM characters WHERE id = ? AND campaign_id = ?', (char_id, g.campaign_id)).fetchone()
+    if ch is None:
+        db.close()
+        return api_error('That character could not be found.', 404)
+    if not (g.is_dm or owns_character(ch)):
+        db.close()
+        return api_error('Only the DM or the character\'s player can change spell slots.', 403)
+    used_level = None
+    if action == 'rest':
+        db.execute('UPDATE character_spell_slots SET used_slots = 0 WHERE character_id = ?', (char_id,))
+    elif action == 'cast':
+        # One atomic statement: the lowest level, from the asked one up, that still has a free slot.
+        cur = db.execute('UPDATE character_spell_slots SET used_slots = used_slots + 1 WHERE id = (SELECT id FROM character_spell_slots '
+                         'WHERE character_id = ? AND slot_level >= ? AND used_slots < max_slots ORDER BY slot_level LIMIT 1 FOR UPDATE) '
+                         'RETURNING slot_level', (char_id, level))
+        row = cur.fetchone()
+        if row is None:
+            db.rollback()
+            slots = _slots_for(db, char_id)
+            db.close()
+            return api_error('No spell slot left at level %d or higher.' % level, 409, slots=slots)
+        used_level = row['slot_level']
+    else:
+        delta = 1 if action == 'spend' else -1
+        db.execute('UPDATE character_spell_slots SET used_slots = LEAST(max_slots, GREATEST(0, used_slots + ?)) WHERE character_id = ? AND slot_level = ?',
+                   (delta, char_id, level))
+    db.commit()
+    slots = _slots_for(db, char_id)
+    db.close()
+    return jsonify({'character_id': char_id, 'slots': slots, 'used_level': used_level})
 
 
 @app.route('/campaigns/<campaign:campaign_id>/api/battle/short-rest', methods=['POST'])
@@ -6404,6 +6547,7 @@ def _build_export_zip(campaign_id, group_ids=None, character_ids=None, download_
                             f'WHERE character_id IN ({placeholders}) ORDER BY character_id, position, id', char_ids_for_sheets).fetchall():
             attacks_by_char.setdefault(a['character_id'], []).append(
                 {'name': a['name'], 'attack_bonus': a['attack_bonus'], 'damage': a['damage'], 'damage_type': a['damage_type']})
+    magic_by_char = _magic_for_export(db, char_ids_for_sheets)
     sheets_by_char = {}
     if char_ids_for_sheets:
         placeholders = ','.join('?' * len(char_ids_for_sheets))
@@ -6445,6 +6589,8 @@ def _build_export_zip(campaign_id, group_ids=None, character_ids=None, download_
                 'skill_prof': dnd5e.clean_skill_prof(c['skill_prof']),
                 'save_prof': dnd5e.clean_save_prof(c['save_prof']),
                 'attacks': attacks_by_char.get(c['id'], []),
+                'slots': magic_by_char.get(c['id'], {}).get('slots', {}),
+                'spells': magic_by_char.get(c['id'], {}).get('spells', []),
                 'notes': notes_for_viewer(c['notes'], can_see_hidden_notes(c)),
                 'group_name': group_id_to_name.get(c['group_id']),
                 'group_names': [group_id_to_name[i] for i in groups_of.get(c['id'], []) if i in group_id_to_name],
@@ -6632,6 +6778,7 @@ def _import_manifest(db, zf, manifest, campaign_id):
         new_char_id = cur.lastrowid
         stats['added'] += 1
         _save_attacks(db, new_char_id, c['attacks'])
+        _save_magic(db, new_char_id, c.get('slots'), c.get('spells'))
         for pos, gid_ in enumerate(import_group_ids):
             db.execute('INSERT INTO character_groups (character_id, group_id, position) VALUES (?, ?, ?) RETURNING character_id', (new_char_id, gid_, pos))
 
@@ -6821,6 +6968,7 @@ def _import_campaign(db, zf, c, *, owner_id=None, enforce_quota=True, decoded=No
         new_id = cur.lastrowid
         char_ids[ch['ref']] = new_id
         _save_attacks(db, new_id, ch['attacks'])
+        _save_magic(db, new_id, ch.get('slots'), ch.get('spells'))
         member_of = [faction_ids[r] for r in ch['faction_refs']]
         if member_of:
             _set_character_factions(db, new_id, member_of)          # the first one is the main faction

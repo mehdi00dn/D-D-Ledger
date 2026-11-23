@@ -267,7 +267,11 @@ def _spell(d):
     body = _text(d.get('description') or d.get('desc'))
     if d.get('higher_level'):
         body += '\n\nUsing a higher-level spell slot: ' + _text(d['higher_level'])
-    return {'title': d.get('name', ''), 'subtitle': sub, 'facts': [(k, v) for k, v in facts if v], 'body': body}
+    dmg, dmg_type = dnd5e.spell_damage_from_text(_text(d.get('description') or d.get('desc')))
+    note = ' · '.join(str(x) for x in (d.get('range'), d.get('casting_time'), 'Concentration' if d.get('concentration') else '') if x)
+    # what a character's spell list can take from the spell book: name, level, a first guess at the damage roll, and a short note (DL-185)
+    meta = {'name': str(d.get('name', ''))[:60], 'level': level if isinstance(level, int) else 0, 'damage': dmg, 'damage_type': dmg_type, 'note': note[:100]}
+    return {'title': d.get('name', ''), 'subtitle': sub, 'facts': [(k, v) for k, v in facts if v], 'body': body, 'spell': meta}
 
 
 def _item(coll, d):
