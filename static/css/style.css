@@ -6365,23 +6365,23 @@ body:has(.tool-flyout.open) .pin-action-bubble.is-docked { opacity: 0; pointer-e
    character peek.  The spell list reuses the attack rows.
    ========================================================================== */
 /* the slot steppers on the character form: minus, the count, plus, and a row of small gems that mirrors the count.  Kept small: the
-   buttons are 32px to look at, with a 44px hit area around each so a thumb still lands. */
-.slot-steps { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 8px; margin-block-end: 8px; }
-.slot-step { display: grid; gap: 1px; padding: 6px 6px 7px; border: 1px solid var(--paper-line); border-radius: var(--radius-m); background: rgba(255, 252, 244, 0.28); transition: background-color 160ms var(--ease-out), border-color 160ms var(--ease-out); }
+   buttons are 24px to look at, with a 44px hit area around each so a thumb still lands. */
+.slot-steps { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 8px; margin-block-end: 8px; }
+.slot-step { display: grid; gap: 0; padding: 5px 5px 6px; border: 1px solid var(--paper-line); border-radius: var(--radius-m); background: rgba(255, 252, 244, 0.28); transition: background-color 160ms var(--ease-out), border-color 160ms var(--ease-out); }
 .slot-step.has-slots { background: rgba(255, 252, 244, 0.62); border-color: var(--paper-line-strong); }
 .slot-step-label { padding-inline-start: 4px; font: 500 var(--fs-2xs) var(--font-mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--paper-ink-dim); }
-.slot-step-ctl { display: grid; grid-template-columns: 32px minmax(0, 1fr) 32px; align-items: center; gap: 2px; }
-.slot-step-btn { position: relative; display: grid; place-items: center; inline-size: 32px; block-size: 32px; padding: 0; border: 1px solid var(--paper-line-strong); border-radius: 50%; background: rgba(255, 252, 244, 0.6); color: var(--paper-ink); cursor: pointer; touch-action: manipulation; user-select: none; transition: transform 160ms var(--ease-out), background-color 160ms var(--ease-out), border-color 160ms var(--ease-out), opacity 160ms var(--ease-out); }
-.slot-step-btn::after { content: ""; position: absolute; inset: -6px; }
-.slot-step-btn .icon { inline-size: 14px; block-size: 14px; }
+.slot-step-ctl { display: grid; grid-template-columns: 24px minmax(0, 1fr) 24px; align-items: center; gap: 2px; }
+.slot-step-btn { position: relative; display: grid; place-items: center; inline-size: 24px; block-size: 24px; padding: 0; border: 1px solid var(--paper-line-strong); border-radius: 50%; background: rgba(255, 252, 244, 0.6); color: var(--paper-ink); cursor: pointer; touch-action: manipulation; user-select: none; transition: transform 160ms var(--ease-out), background-color 160ms var(--ease-out), border-color 160ms var(--ease-out), opacity 160ms var(--ease-out); }
+.slot-step-btn::after { content: ""; position: absolute; inset: -10px; }
+.slot-step-btn .icon { inline-size: 12px; block-size: 12px; }
 .slot-step-btn:active:not(:disabled) { transform: scale(0.9); }
 .slot-step-btn:disabled { opacity: 0.32; cursor: default; }
 .slot-step-btn:focus-visible, .slot-step-val:focus-visible { outline: 2px solid var(--paper-accent-ink); outline-offset: 2px; }
 @media (hover: hover) and (pointer: fine) { .slot-step-btn:hover:not(:disabled) { background: rgba(255, 252, 244, 0.95); border-color: var(--paper-accent-ink); } }
-.cf-card .slot-step input.slot-step-val { inline-size: 100%; min-inline-size: 0; padding: 0; border: 0; border-radius: var(--radius-s); background: transparent; box-shadow: none; text-align: center; font: 600 var(--fs-xl) var(--font-mono); font-variant-numeric: tabular-nums; color: var(--paper-ink); -moz-appearance: textfield; appearance: textfield; }
+.cf-card .slot-step input.slot-step-val { inline-size: 100%; min-inline-size: 0; padding: 0; border: 0; border-radius: var(--radius-s); background: transparent; box-shadow: none; text-align: center; font: 600 var(--fs-lg) var(--font-mono); font-variant-numeric: tabular-nums; color: var(--paper-ink); -moz-appearance: textfield; appearance: textfield; }
 .cf-card .slot-step input.slot-step-val::-webkit-inner-spin-button, .cf-card .slot-step input.slot-step-val::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 .slot-step:not(.has-slots) input.slot-step-val { color: var(--paper-ink-faint); }
-.slot-step-pips { display: flex; flex-wrap: wrap; justify-content: center; gap: 2px 4px; min-block-size: 8px; padding-inline: 4px; }
+.slot-step-pips { display: flex; flex-wrap: wrap; justify-content: center; gap: 2px; min-block-size: 8px; padding-inline: 2px; }
 .slot-step-pips i { display: block; inline-size: 6px; block-size: 6px; border-radius: 1px; background: var(--paper-accent-ink); transform: rotate(45deg); animation: slot-gem-in 160ms var(--ease-out); }
 @keyframes slot-gem-in { from { opacity: 0; transform: rotate(45deg) scale(0.4); } to { opacity: 1; transform: rotate(45deg) scale(1); } }
 
@@ -6389,16 +6389,21 @@ body:has(.tool-flyout.open) .pin-action-bubble.is-docked { opacity: 0; pointer-e
 .spl-edit { display: grid; gap: 10px; margin-block-end: 12px; }
 .spl-empty { margin: 0; padding: 14px 12px; border: 1px dashed var(--paper-line-strong); border-radius: var(--radius-m); text-align: center; font-size: var(--fs-md); color: var(--paper-ink-dim); }
 .spl-edit:has(.spl-edit-row) .spl-empty { display: none; }
-.spl-edit-row { display: grid; grid-template-columns: minmax(0, 1fr) 44px; gap: 10px 8px; align-items: end; padding: 12px; border: 1px solid var(--paper-line); border-radius: var(--radius-m); background: rgba(255, 252, 244, 0.4); }
+.spl-edit-row { display: grid; grid-template-columns: minmax(0, 1fr) 36px; gap: 10px 8px; align-items: end; padding: 12px; border: 1px solid var(--paper-line); border-radius: var(--radius-m); background: rgba(255, 252, 244, 0.4); }
 .spl-f { display: grid; gap: 4px; min-inline-size: 0; }
-.spl-f > span { font: 500 var(--fs-2xs) var(--font-mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--paper-ink-dim); }
-.spl-f input, .spl-f select { inline-size: 100%; min-inline-size: 0; }
+.spl-f > span { padding-inline-start: 2px; font: 500 var(--fs-2xs) var(--font-mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--paper-ink-dim); }
+.cf-card .spl-f input, .cf-card .spl-f select { inline-size: 100%; min-inline-size: 0; block-size: 44px; padding-block: 0; padding-inline: 12px; border: 1px solid var(--paper-line-strong); border-radius: var(--radius-s); background-color: rgba(255, 252, 244, 0.92); box-shadow: none; font: inherit; font-size: var(--fs-lg); color: var(--paper-ink); }
+.cf-card .spl-f input::placeholder { color: var(--paper-ink-faint); }
+.cf-card .spl-f input:focus-visible, .cf-card .spl-f select:focus-visible { outline: 2px solid var(--paper-accent-ink); outline-offset: 1px; border-color: transparent; }
+.cf-card .spl-f select { appearance: none; padding-inline-end: 28px; background-image: linear-gradient(45deg, transparent 50%, var(--paper-ink-dim) 50%), linear-gradient(135deg, var(--paper-ink-dim) 50%, transparent 50%); background-position: calc(100% - 17px) 50%, calc(100% - 12px) 50%; /* phys: a chevron drawn in the corner */ background-size: 5px 5px; background-repeat: no-repeat; }
 .spl-meta, .spl-f--note, .spl-edit-row .atk-error { grid-column: 1 / -1; }
-.spl-meta { display: grid; grid-template-columns: minmax(0, 0.95fr) minmax(0, 1fr) minmax(0, 1.1fr); gap: 8px; }
-.spl-remove { inline-size: 44px; block-size: 44px; padding: 0; display: grid; place-items: center; }
-.spl-edit-row input.is-invalid { border-color: var(--blood-ink); box-shadow: 0 0 0 1px var(--blood-ink); }
-.spl-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px; }
-.spl-actions .btn { justify-content: center; min-block-size: 44px; }
+.spl-meta { display: grid; grid-template-columns: minmax(0, 0.95fr) minmax(0, 0.85fr) minmax(0, 1.1fr); gap: 8px; }
+.spl-remove { position: relative; inline-size: 36px; block-size: 36px; margin-block-end: 4px; padding: 0; display: grid; place-items: center; border-radius: 50%; }
+.spl-remove::after { content: ""; position: absolute; inset: -4px; }
+.cf-card .spl-edit-row input.is-invalid { border-color: var(--blood-ink); box-shadow: 0 0 0 1px var(--blood-ink); }
+.spl-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.spl-actions .btn { justify-content: center; min-block-size: 44px; touch-action: manipulation; transition: transform 160ms var(--ease-out), background-color 160ms var(--ease-out), filter 160ms var(--ease-out); }
+.spl-actions .btn:active { transform: scale(0.97); }
 .spl-book { display: grid; gap: 10px; margin-block-start: 14px; padding-block-start: 14px; border-block-start: 1px solid var(--paper-line); }
 .spl-book[hidden] { display: none; }
 .spl-book-bar { display: grid; gap: 8px; }
