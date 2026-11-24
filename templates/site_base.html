@@ -28,13 +28,14 @@
   <button type="button" class="btn-icon lightbox-close" id="lightbox-close-btn" aria-label="Close image">{{ icon('x') }}</button>
   <button type="button" class="btn btn-danger lightbox-delete" id="lightbox-delete-btn" hidden>{{ icon('trash-2') }} Delete this image</button>
   <div class="lightbox-row">
-    <button type="button" class="btn-icon lightbox-nav lightbox-prev" id="lightbox-prev-btn" title="Previous image">{{ icon('chevron-left') }}</button>
+    <button type="button" class="btn-icon lightbox-nav lightbox-prev" id="lightbox-prev-btn" title="Previous image" aria-label="Previous image">{{ icon('chevron-left') }}</button>
     <div class="lightbox-stage">
       <img id="lightbox-img" src="" alt="Enlarged image">
     </div>
-    <button type="button" class="btn-icon lightbox-nav lightbox-next" id="lightbox-next-btn" title="Next image">{{ icon('chevron-right') }}</button>
+    <button type="button" class="btn-icon lightbox-nav lightbox-next" id="lightbox-next-btn" title="Next image" aria-label="Next image">{{ icon('chevron-right') }}</button>
+    <p class="lightbox-count" id="lightbox-count" role="status" aria-live="polite"></p>
   </div>
-  <p class="lightbox-hint">Click or scroll to zoom &middot; hold and drag to pan</p>
+  <p class="lightbox-hint"><span class="lightbox-hint-mouse">Click or scroll to zoom &middot; hold and drag to pan</span><span class="lightbox-hint-touch">Pinch or double-tap to zoom &middot; swipe to browse</span></p>
 </div>
 
 <div class="modal-overlay" id="confirm-modal" hidden>

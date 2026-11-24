@@ -504,6 +504,27 @@ The hover burn (DL-180 parts 5 and 7, a scorch drawn in CSS along a panel's edge
 - The Died? and Remove buttons were 34px; on a touch screen they are 40px. INIT and AC keep their deliberately small boxes (at most 32px by 44px, a DL-169 rule that `tests/test_e2e_battle_responsive.py` holds); only their text grows, to 16px.
 Not changed: a phone held sideways (844 by 390) still has very little room, and the Battle log bar and the floating buttons sit over the rows while you scroll, as they do upright. `tests/test_battle_rows_cards.py` has 3 style sheet tests and a touch-phone browser test at 390x844, 360x640 and 844x390 (rounded corners, gaps between cards, 16px fields, `manipulation`, 40px end buttons, no sideways scroll); all six fail on the old style sheet.
 
+### Image preview on phones (DL-180, part 37)
+
+The image preview (the lightbox that opens when you tap a picture) was designed for a mouse. On phones it is now built for fingers. The code and CSS call this work DL-186. There is no migration.
+
+On a screen up to 760 px wide the picture fills the whole screen. The previous and next arrows sit in a bar underneath it, either side of an "N of M" count, so thumbs never cover the picture. The close button is top right and "Delete this image" is top left, both kept clear of the notch and home bar. A single picture gets no arrow bar and no count.
+
+Gestures, all on the picture itself:
+
+- Swipe left or right to turn the page. The picture follows the finger one to one, and a flick or a drag past a quarter of the width commits. At the first or last picture the swipe stretches and springs back instead of stopping dead.
+- Swipe up or down to close. The picture shrinks and the backdrop fades as you drag, and a short fling is enough.
+- Double-tap zooms in where you tapped; double-tap again zooms out.
+- Pinch zooms around the point between your fingers. Pinching below normal size lets go with a spring back to 1, and zooming past the maximum eases off.
+- When zoomed, one finger pans, stops softly at the edge, and carries on with the speed it had when you let go. A swipe never turns the page while zoomed.
+- A new touch catches a picture that is still moving, so nothing locks you out while it settles.
+
+The arrows react when the finger lifts rather than waiting for the browser's click, because some browsers swallow the click that follows a swipe. The click that arrives afterwards is ignored, and mouse and keyboard still use the normal click.
+
+On desktop nothing changes: arrows beside the picture, click or scroll to zoom, drag to pan. The hint line under the picture now matches the device (touch wording on touch screens). Reduced motion keeps its fades and drops the sliding.
+
+Code: `static/js/lightbox.js` (touch engine built on Pointer Events), lightbox markup in `templates/base.html` and `templates/site_base.html` (a count element), phone layout at the end of the lightbox section of `static/css/style.css`. Tests: `tests/test_e2e_lightbox_touch.py` drives real touch input through the browser and checks layout, swipes, edge bounce, taps, double-tap, pinch, pan limits and swipe-to-close. The desktop lightbox tests in `tests/test_e2e_browser.py` still pass unchanged.
+
 ### Smaller slot steppers and tidier spell cards (DL-180, part 36)
 
 A second design pass on the character form, with no database change. The minus and plus buttons on the spell slot steppers are smaller (24px to look at, still a 44px tap area), so the nine levels sit three to a row on a phone instead of two. In the spell cards, every field is the same 44px height with rounded corners, the level menu has a drawn chevron and lines up with the fields beside it, and the remove button is a small round button. The two buttons under the list sit side by side: "Add spell" and a brass "Spell book" button that opens the search.
