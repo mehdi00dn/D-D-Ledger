@@ -6364,23 +6364,58 @@ body:has(.tool-flyout.open) .pin-action-bubble.is-docked { opacity: 0; pointer-e
    Slots are rows of pips (a full pip is a slot left, an empty one is spent); the rows sit in a card on the character page and in the
    character peek.  The spell list reuses the attack rows.
    ========================================================================== */
-.slot-edit { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 10px; margin-block-end: 8px; }
-.slot-edit-cell { display: grid; gap: 4px; font-size: var(--fs-sm); }
-.slot-edit-cell span { font: 500 var(--fs-xs) var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--parchment-faint); }
-.slot-edit-cell input { inline-size: 100%; }
+/* the slot steppers on the character form: minus, the count, plus, and a row of small gems that mirrors the count.  Kept small: the
+   buttons are 32px to look at, with a 44px hit area around each so a thumb still lands. */
+.slot-steps { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 8px; margin-block-end: 8px; }
+.slot-step { display: grid; gap: 1px; padding: 6px 6px 7px; border: 1px solid var(--paper-line); border-radius: var(--radius-m); background: rgba(255, 252, 244, 0.28); transition: background-color 160ms var(--ease-out), border-color 160ms var(--ease-out); }
+.slot-step.has-slots { background: rgba(255, 252, 244, 0.62); border-color: var(--paper-line-strong); }
+.slot-step-label { padding-inline-start: 4px; font: 500 var(--fs-2xs) var(--font-mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--paper-ink-dim); }
+.slot-step-ctl { display: grid; grid-template-columns: 32px minmax(0, 1fr) 32px; align-items: center; gap: 2px; }
+.slot-step-btn { position: relative; display: grid; place-items: center; inline-size: 32px; block-size: 32px; padding: 0; border: 1px solid var(--paper-line-strong); border-radius: 50%; background: rgba(255, 252, 244, 0.6); color: var(--paper-ink); cursor: pointer; touch-action: manipulation; user-select: none; transition: transform 160ms var(--ease-out), background-color 160ms var(--ease-out), border-color 160ms var(--ease-out), opacity 160ms var(--ease-out); }
+.slot-step-btn::after { content: ""; position: absolute; inset: -6px; }
+.slot-step-btn .icon { inline-size: 14px; block-size: 14px; }
+.slot-step-btn:active:not(:disabled) { transform: scale(0.9); }
+.slot-step-btn:disabled { opacity: 0.32; cursor: default; }
+.slot-step-btn:focus-visible, .slot-step-val:focus-visible { outline: 2px solid var(--paper-accent-ink); outline-offset: 2px; }
+@media (hover: hover) and (pointer: fine) { .slot-step-btn:hover:not(:disabled) { background: rgba(255, 252, 244, 0.95); border-color: var(--paper-accent-ink); } }
+.cf-card .slot-step input.slot-step-val { inline-size: 100%; min-inline-size: 0; padding: 0; border: 0; border-radius: var(--radius-s); background: transparent; box-shadow: none; text-align: center; font: 600 var(--fs-xl) var(--font-mono); font-variant-numeric: tabular-nums; color: var(--paper-ink); -moz-appearance: textfield; appearance: textfield; }
+.cf-card .slot-step input.slot-step-val::-webkit-inner-spin-button, .cf-card .slot-step input.slot-step-val::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.slot-step:not(.has-slots) input.slot-step-val { color: var(--paper-ink-faint); }
+.slot-step-pips { display: flex; flex-wrap: wrap; justify-content: center; gap: 2px 4px; min-block-size: 8px; padding-inline: 4px; }
+.slot-step-pips i { display: block; inline-size: 6px; block-size: 6px; border-radius: 1px; background: var(--paper-accent-ink); transform: rotate(45deg); animation: slot-gem-in 160ms var(--ease-out); }
+@keyframes slot-gem-in { from { opacity: 0; transform: rotate(45deg) scale(0.4); } to { opacity: 1; transform: rotate(45deg) scale(1); } }
 
-.spl-edit { display: grid; gap: 8px; margin-block-end: 10px; }
-.spl-edit-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: 6px; align-items: center; padding-block-end: 8px; border-block-end: 1px solid var(--hairline); }
-.spl-edit-row input[name="spell_name"] { grid-column: 1 / 3; }
-.spl-edit-row .btn-icon { grid-column: 3; grid-row: 1; }
-.spl-edit-row .atk-error { grid-column: 1 / -1; }
+/* the spell list on the character form: each spell is a small card (name, then level / damage / type, then a note) */
+.spl-edit { display: grid; gap: 10px; margin-block-end: 12px; }
+.spl-empty { margin: 0; padding: 14px 12px; border: 1px dashed var(--paper-line-strong); border-radius: var(--radius-m); text-align: center; font-size: var(--fs-md); color: var(--paper-ink-dim); }
+.spl-edit:has(.spl-edit-row) .spl-empty { display: none; }
+.spl-edit-row { display: grid; grid-template-columns: minmax(0, 1fr) 44px; gap: 10px 8px; align-items: end; padding: 12px; border: 1px solid var(--paper-line); border-radius: var(--radius-m); background: rgba(255, 252, 244, 0.4); }
+.spl-f { display: grid; gap: 4px; min-inline-size: 0; }
+.spl-f > span { font: 500 var(--fs-2xs) var(--font-mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--paper-ink-dim); }
+.spl-f input, .spl-f select { inline-size: 100%; min-inline-size: 0; }
+.spl-meta, .spl-f--note, .spl-edit-row .atk-error { grid-column: 1 / -1; }
+.spl-meta { display: grid; grid-template-columns: minmax(0, 0.95fr) minmax(0, 1fr) minmax(0, 1.1fr); gap: 8px; }
+.spl-remove { inline-size: 44px; block-size: 44px; padding: 0; display: grid; place-items: center; }
 .spl-edit-row input.is-invalid { border-color: var(--blood-ink); box-shadow: 0 0 0 1px var(--blood-ink); }
-.spl-actions { display: flex; flex-wrap: wrap; gap: 8px; }
-.spl-book { display: grid; gap: 8px; margin-block-start: 12px; padding-block-start: 12px; border-block-start: 1px solid var(--hairline); }
+.spl-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px; }
+.spl-actions .btn { justify-content: center; min-block-size: 44px; }
+.spl-book { display: grid; gap: 10px; margin-block-start: 14px; padding-block-start: 14px; border-block-start: 1px solid var(--paper-line); }
 .spl-book[hidden] { display: none; }
-.spl-book-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.spl-book-bar .ref-search { flex: 1 1 220px; }
-.spl-book .ref-list--inline { margin-block-start: 0; }
+.spl-book-bar { display: grid; gap: 8px; }
+.cf-card.o-paper .spl-book .ref-search { background: rgba(255, 252, 244, 0.78); border-color: var(--paper-line-strong); }
+.cf-card.o-paper .spl-book .ref-search input { color: var(--paper-ink); }
+.cf-card.o-paper .spl-book .ref-search input::placeholder { color: var(--paper-ink-faint); }
+.cf-card.o-paper .spl-book .ref-search svg { color: var(--paper-ink-dim); }
+.cf-card.o-paper .spl-book .ref-search:focus-within { border-color: var(--paper-accent-ink); }
+.spl-book .ref-edition { justify-self: start; }
+.spl-book .ref-list--inline { margin-block-start: 0; max-block-size: 280px; overflow-y: auto; overscroll-behavior: contain; border: 1px solid var(--paper-line); border-radius: var(--radius-m); background: rgba(255, 252, 244, 0.4); padding: 4px; }
+.cf-card.o-paper .spl-book .ref-item { min-block-size: 44px; color: var(--paper-ink); transition: background-color 140ms var(--ease-out), transform 160ms var(--ease-out); touch-action: manipulation; }
+.cf-card.o-paper .spl-book .ref-item:active:not(:disabled) { transform: scale(0.985); }
+@media (hover: hover) and (pointer: fine) { .cf-card.o-paper .spl-book .ref-item:hover:not(:disabled) { background: rgba(120, 86, 24, 0.1); } }
+.cf-card.o-paper .spl-book .ref-item-sub, .cf-card.o-paper .spl-book .ref-empty { color: var(--paper-ink-dim); }
+.spl-book .ref-item.is-added { opacity: 0.7; cursor: default; }
+.spl-book .ref-item-added { font: 500 var(--fs-xs) var(--font-mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--paper-accent-ink); white-space: nowrap; }
+.cf-card.o-paper .spl-book .hint-text { color: var(--paper-ink-dim); }
 .spl-level { margin: 14px 0 6px; font: 500 var(--fs-xs) var(--font-mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--brass-ink); }
 .spl-level:first-of-type { margin-block-start: 4px; }
 .atk-btn--cast { border-color: color-mix(in srgb, var(--moss-ink, #6fae8a) 55%, transparent); }
@@ -6413,7 +6448,7 @@ button.slot-pip:disabled { cursor: default; opacity: .6; }
 .slot-summary li { display: inline-flex; align-items: baseline; gap: 8px; padding: 6px 12px; border: 1px solid var(--hairline); border-radius: var(--radius-ctl); }
 .slot-summary span { font: 500 var(--fs-xs) var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; opacity: .7; }
 .slot-summary b { font: 600 var(--fs-lg) var(--font-mono); }
-.cf-card.o-paper .slot-level, .cf-card.o-paper .slot-edit-cell span { color: var(--paper-ink-dim); }
+.cf-card.o-paper .slot-level { color: var(--paper-ink-dim); }
 .cf-card.o-paper .slot-pip { color: var(--paper-accent-ink); }
 .cf-card.o-paper .slot-summary li { border-color: var(--paper-line-strong); }
 
