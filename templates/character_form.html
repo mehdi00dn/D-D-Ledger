@@ -2,6 +2,19 @@
 {% extends "base.html" if g.campaign_id else "site_base.html" %}
 {% from "_icons.html" import icon, class_icon %}
 {% set active_page = 'library' if library else 'characters' %}
+{% set spell_ords = ['Cantrip', '1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th', '9th'] %}
+{% macro spell_row(s=None) %}
+<div class="spl-edit-row">
+  <label class="spl-f spl-f--name"><span>Spell</span><input type="text" name="spell_name" value="{{ s.name if s else '' }}" maxlength="60" placeholder="Fireball" autocomplete="off"></label>
+  <button type="button" class="btn-icon spl-remove" data-spell-remove title="Remove spell" aria-label="Remove spell">{{ icon('x') }}</button>
+  <div class="spl-meta">
+    <label class="spl-f"><span>Level</span><select name="spell_level" aria-label="Spell level">{% for l in range(10) %}<option value="{{ l }}"{{ ' selected' if s and s.spell_level == l }}>{{ spell_ords[l] }}</option>{% endfor %}</select></label>
+    <label class="spl-f"><span>Damage</span><input type="text" name="spell_damage" value="{{ s.damage if s else '' }}" maxlength="12" placeholder="8d6" autocomplete="off" autocapitalize="none" spellcheck="false"></label>
+    <label class="spl-f"><span>Type</span><input type="text" name="spell_type" value="{{ s.damage_type if s else '' }}" maxlength="16" placeholder="fire" autocomplete="off"></label>
+  </div>
+  <label class="spl-f spl-f--note"><span>Note</span><input type="text" name="spell_note" value="{{ s.note if s else '' }}" maxlength="100" placeholder="150 ft, Dexterity save" autocomplete="off"></label>
+</div>
+{% endmacro %}
 {% macro note_block(content='', hidden=False) %}
 <div class="note-block" data-note-block>
   <div class="note-toolbar">
@@ -245,12 +258,20 @@
       <h2 class="cf-title" id="cf-slots">Spell slots <span class="cf-count">how many of each level</span></h2>
       <input type="hidden" name="slots_present" value="1">
       {% set slot_max = {} %}{% for s in (slots or []) %}{% set _x = slot_max.update({s.level: s.max}) %}{% endfor %}
-      <div class="slot-edit">
-        {% for lvl in range(1, 10) %}
-        <label class="slot-edit-cell"><span>Level {{ lvl }}</span><input type="number" name="slot_max_{{ lvl }}" value="{{ slot_max.get(lvl, 0) }}" min="0" max="9" inputmode="numeric"></label>
+      <div class="slot-steps" data-slot-steps>
+        {% for lvl in range(1, 10) %}{% set n = slot_max.get(lvl, 0) %}
+        <div class="slot-step{{ ' has-slots' if n }}" data-slot-step role="group" aria-label="Level {{ lvl }} slots">
+          <span class="slot-step-label">Level {{ lvl }}</span>
+          <div class="slot-step-ctl">
+            <button type="button" class="slot-step-btn" data-step="-1" aria-label="Remove a level {{ lvl }} slot"{{ ' disabled' if n <= 0 }}>{{ icon('minus') }}</button>
+            <input type="number" class="slot-step-val" name="slot_max_{{ lvl }}" value="{{ n }}" min="0" max="9" inputmode="numeric" aria-label="Level {{ lvl }} slots">
+            <button type="button" class="slot-step-btn" data-step="1" aria-label="Add a level {{ lvl }} slot"{{ ' disabled' if n >= 9 }}>{{ icon('plus') }}</button>
+          </div>
+          <span class="slot-step-pips" aria-hidden="true" data-step-pips>{% for _ in range(n) %}<i></i>{% endfor %}</span>
+        </div>
         {% endfor %}
       </div>
-      <p class="hint-text">Leave a level at 0 when there are no slots of that level. You spend and restore them in the battle list and on the character's page; a long rest in the battle list refills them all.</p>
+      <p class="hint-text">Tap + to add a slot of a level. You spend and restore them from the character's page and its quick view; a long rest in the battle menu refills them all.</p>
     </section>
 
     {% set ref_base = '/api/reference/' if library else (url_for('reference_view')|replace('/reference', '') ~ '/api/reference/') %}
@@ -258,16 +279,8 @@
       <h2 class="cf-title" id="cf-spells">Spells <span class="cf-count">known or prepared</span></h2>
       <input type="hidden" name="spells_present" value="1">
       <div class="spl-edit" data-spells>
-        {% for s in (spells or []) %}
-        <div class="spl-edit-row field">
-          <input type="text" name="spell_name" value="{{ s.name }}" maxlength="60" placeholder="Fireball" aria-label="Spell name">
-          <select name="spell_level" aria-label="Spell level"><option value="0"{{ ' selected' if s.spell_level == 0 }}>Cantrip</option>{% for l in range(1, 10) %}<option value="{{ l }}"{{ ' selected' if s.spell_level == l }}>Level {{ l }}</option>{% endfor %}</select>
-          <button type="button" class="btn-icon" data-spell-remove title="Remove spell" aria-label="Remove spell">{{ icon('x') }}</button>
-          <input type="text" name="spell_damage" value="{{ s.damage }}" maxlength="12" placeholder="8d6" aria-label="Damage dice">
-          <input type="text" name="spell_type" value="{{ s.damage_type }}" maxlength="16" placeholder="fire" aria-label="Damage type">
-          <input type="text" name="spell_note" value="{{ s.note }}" maxlength="100" placeholder="150 ft, Dexterity save" aria-label="Spell note">
-        </div>
-        {% endfor %}
+        <p class="spl-empty">No spells yet. Add one by hand, or search the spell book.</p>
+        {% for s in (spells or []) %}{{ spell_row(s) }}{% endfor %}
       </div>
       <div class="spl-actions">
         <button type="button" class="btn btn-ghost" data-spell-add>{{ icon('plus') }} Add spell</button>
@@ -275,7 +288,7 @@
       </div>
       <div class="spl-book" id="spellbook-panel" data-spellbook-panel hidden>
         <div class="spl-book-bar">
-          <div class="ref-search">{{ icon('search') }}<input type="search" data-spellbook-query placeholder="Search spells (e.g. fireball, cure wounds)…" aria-label="Search the spell book"></div>
+          <div class="ref-search">{{ icon('search') }}<input type="search" data-spellbook-query placeholder="Search spells" aria-label="Search the spell book"></div>
           <div class="segmented-switch ref-edition" role="group" aria-label="Rulebook">
             {% for key in srd_editions|sort(reverse=true) %}<button type="button" data-spellbook-edition="{{ key }}" class="{{ 'active' if key == srd_default_edition else '' }}" aria-pressed="{{ 'true' if key == srd_default_edition else 'false' }}">{{ key }}</button>{% endfor %}
           </div>
@@ -283,16 +296,7 @@
         <ul class="ref-list ref-list--inline" data-spellbook-list></ul>
         <p class="hint-text" data-spellbook-status role="status">Pick a spell to add it to the list with its level, range and a first guess at its damage.</p>
       </div>
-      <template data-spell-template>
-        <div class="spl-edit-row field">
-          <input type="text" name="spell_name" maxlength="60" placeholder="Fireball" aria-label="Spell name">
-          <select name="spell_level" aria-label="Spell level"><option value="0">Cantrip</option>{% for l in range(1, 10) %}<option value="{{ l }}">Level {{ l }}</option>{% endfor %}</select>
-          <button type="button" class="btn-icon" data-spell-remove title="Remove spell" aria-label="Remove spell">{{ icon('x') }}</button>
-          <input type="text" name="spell_damage" maxlength="12" placeholder="8d6" aria-label="Damage dice">
-          <input type="text" name="spell_type" maxlength="16" placeholder="fire" aria-label="Damage type">
-          <input type="text" name="spell_note" maxlength="100" placeholder="150 ft, Dexterity save" aria-label="Spell note">
-        </div>
-      </template>
+      <template data-spell-template>{{ spell_row() }}</template>
     </section>
 
     <section class="cf-card o-paper" aria-labelledby="cf-sheets">
@@ -357,6 +361,7 @@
 <script src="{{ url_for('static', filename='js/character-proficiencies.js') }}"></script>
 <script src="{{ url_for('static', filename='js/character-levels.js') }}"></script>
 <script src="{{ url_for('static', filename='js/character-attacks.js') }}"></script>
+<script src="{{ url_for('static', filename='js/character-slots.js') }}"></script>
 <script src="{{ url_for('static', filename='js/character-spells.js') }}"></script>
 {% if not character and not library %}<script src="{{ url_for('static', filename='js/reference.js') }}"></script>{% endif %}
 {% endblock %}

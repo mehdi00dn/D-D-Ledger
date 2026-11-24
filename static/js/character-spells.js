@@ -54,6 +54,18 @@
     return !msg;
   }
 
+  function names() { return rows().map(function (r) { return r.querySelector('[name="spell_name"]').value.trim().toLowerCase(); }); }
+  function markAdded(button) {
+    if (button.classList.contains('is-added')) return;
+    button.classList.add('is-added');
+    button.setAttribute('aria-disabled', 'true');
+    var sub = button.querySelector('.ref-item-sub');
+    if (sub) sub.remove();
+    var tag = document.createElement('span');
+    tag.className = 'ref-item-added';
+    tag.textContent = 'Added';
+    button.append(tag);
+  }
   function rows() { return Array.prototype.slice.call(list.querySelectorAll('.spl-edit-row')); }
   function say(text) { if (status) status.textContent = text; }
 
@@ -114,6 +126,7 @@
         b.setAttribute('data-ref', row.id);
         b.append(el('span', 'ref-item-name', row.name));
         if (row.sub) b.append(el('span', 'ref-item-sub', row.sub));
+        if (names().indexOf(String(row.name).toLowerCase()) >= 0) markAdded(b);
         li.append(b);
         results.append(li);
       });
@@ -133,7 +146,7 @@
 
   results.addEventListener('click', function (ev) {
     var b = ev.target.closest('[data-ref]');
-    if (!b || b.disabled) return;
+    if (!b || b.disabled || b.classList.contains('is-added')) return;
     var name = b.querySelector('.ref-item-name').textContent;
     var have = rows().some(function (r) { return r.querySelector('[name="spell_name"]').value.trim().toLowerCase() === name.toLowerCase(); });
     if (have) { say(name + ' is already on the list.'); return; }
@@ -145,7 +158,8 @@
       var blank = rows().filter(isBlank)[0];
       var row = blank || newRow();
       fill(row, s);
-      say('Added ' + s.name + '. Search again to add more.');
+      markAdded(b);
+      say('Added ' + s.name + '. Pick another, or edit it in the list above.');
     }).catch(function (e) { say(e.message); }).then(function () { b.disabled = false; });
   });
 

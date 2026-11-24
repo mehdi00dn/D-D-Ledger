@@ -84,3 +84,80 @@ def test_slots_on_the_form_the_page_and_the_peek_but_not_the_battle_row(shared_s
     playwright.expect(page.locator('#detail-modal [data-peek-slots] [data-slot-level="1"].slot-pip.is-full')).to_have_count(4, timeout=10000)
     ctx.close()
     assert not [e for e in errors if 'favicon' not in e], errors
+
+
+def test_steppers_and_the_spell_book_on_a_phone(pw):
+    """The Spell slots card is a stepper per level and the spell book adds a spell that was found by search."""
+    import json as _json
+    import threading
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+    import test_reference as ref
+    from test_e2e_browser import SESSION_COOKIE
+
+    class H(BaseHTTPRequestHandler):
+        def do_GET(self):
+            path = self.path.split('?')[0].replace('/api/2024', '', 1)
+            body = ref.LISTS.get(path) or ref.DETAILS.get(path)
+            self.send_response(200 if body else 404); self.send_header('Content-Type', 'application/json'); self.end_headers()
+            self.wfile.write(_json.dumps(body or {}).encode())
+        def log_message(self, *a): pass
+    api = HTTPServer(('127.0.0.1', 0), H); threading.Thread(target=api.serve_forever, daemon=True).start()
+    from conftest import Server
+    srv = Server({'SRD_API_BASE': f'http://127.0.0.1:{api.server_port}'})
+    try:
+        base = srv.url
+        dm = Api(base)
+        cid = dm.campaign('Phone')
+        ch = dm.character(cid, 'Mira', level=5, max_hp=24, armor_class=14)
+        for scheme in ('dark', 'light'):
+            ctx = pw.new_context(viewport={'width': 390, 'height': 844}, device_scale_factor=2, is_mobile=True, has_touch=True, color_scheme=scheme)
+            ctx.add_cookies([{'name': SESSION_COOKIE, 'value': dm.s.cookies.get(SESSION_COOKIE), 'url': base}])
+            page = ctx.new_page()
+            errors = []
+            page.on('pageerror', lambda x: errors.append(str(x)))
+            page.goto(f'{base}/campaigns/{cid}/characters/{ch}/edit')
+            page.wait_for_selector('[data-slot-steps]')
+            if scheme == 'light':
+                page.evaluate("document.documentElement.dataset.theme = 'light'")
+            first = page.locator('[data-slot-step]').first
+            minus, plus = first.locator('[data-step="-1"]'), first.locator('[data-step="1"]')
+            assert minus.is_disabled()
+            for _ in range(4):
+                plus.tap()
+            assert first.locator('.slot-step-val').input_value() == '4' and first.locator('[data-step-pips] i').count() == 4
+            minus.tap()
+            assert first.locator('.slot-step-val').input_value() == '3' and 'has-slots' in first.get_attribute('class')
+            third = page.locator('[data-slot-step]').nth(2)
+            third.locator('[data-step="1"]').tap(); third.locator('[data-step="1"]').tap()
+            nine = page.locator('[data-slot-step]').nth(8)
+            for _ in range(9):
+                nine.locator('[data-step="1"]').tap()
+            assert nine.locator('.slot-step-val').input_value() == '9' and nine.locator('[data-step="1"]').is_disabled()
+            page.locator('#cf-slots').scroll_into_view_if_needed()
+            if scheme == 'dark':
+                page.locator('section[aria-labelledby="cf-slots"]').screenshot(path=os.path.join(os.environ.get('SHOT_DIR', '/tmp'), 'form-slots-phone-dark.png'))
+            page.locator('[data-spellbook-open]').scroll_into_view_if_needed()
+            assert page.locator('.spl-empty').is_visible()
+            page.locator('[data-spellbook-open]').tap()
+            page.wait_for_selector('[data-spellbook-list] .ref-item')
+            page.locator('[data-spellbook-list] .ref-item', has_text='Fireball').tap()
+            page.wait_for_selector('.spl-edit-row')
+            row = page.locator('.spl-edit-row').first
+            assert row.locator('[name=spell_name]').input_value() == 'Fireball' and row.locator('[name=spell_level]').input_value() == '3'
+            assert not page.locator('.spl-empty').is_visible()
+            playwright.expect(page.locator('[data-spellbook-list] .ref-item.is-added')).to_have_count(1)
+            page.locator('[data-spell-add]').tap()
+            page.locator('section[aria-labelledby="cf-spells"]').screenshot(path=os.path.join(os.environ.get('SHOT_DIR', '/tmp'), f'form-spells-phone-{scheme}.png'))
+            _shot(page, f'form-phone-{scheme}')
+            assert not errors, errors
+            ctx.close()
+        dctx = pw.new_context(viewport={'width': 1280, 'height': 900}, device_scale_factor=1)
+        dctx.add_cookies([{'name': SESSION_COOKIE, 'value': dm.s.cookies.get(SESSION_COOKIE), 'url': base}])
+        page = dctx.new_page()
+        page.goto(f'{base}/campaigns/{cid}/characters/{ch}/edit')
+        page.wait_for_selector('[data-slot-steps]')
+        page.locator('[data-slot-step]').first.locator('[data-step="1"]').click()
+        page.locator('section[aria-labelledby="cf-slots"]').screenshot(path=os.path.join(os.environ.get('SHOT_DIR', '/tmp'), 'form-slots-desktop.png'))
+        dctx.close()
+    finally:
+        srv.stop()
