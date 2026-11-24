@@ -1955,6 +1955,9 @@ body.page-leaving .content {
   animation: overlay-fade-in 0.22s ease;
 }
 .lightbox-overlay[hidden] { display: none; }
+/* swiping the picture away fades the dark backdrop and the buttons with it (--lb-dim goes 1 to 0) */
+.lightbox-overlay { background: rgba(5, 6, 9, calc(0.88 * var(--lb-dim, 1))); }
+.lightbox-overlay :is(.lightbox-nav, .lightbox-count, .lightbox-hint, .lightbox-close, .lightbox-delete) { opacity: var(--lb-dim, 1); }
 
 .lightbox-stage {
   position: relative;
@@ -1972,7 +1975,10 @@ body.page-leaving .content {
   max-height: 80vh;
   object-fit: contain;
   cursor: zoom-in;
-  transition: transform 0.35s ease;
+  transition: transform 0.32s cubic-bezier(0.32, 0.72, 0, 1);
+  will-change: transform;
+  user-select: none;
+  -webkit-user-drag: none;
 }
 #lightbox-img.zoomed { cursor: grab; }
 .lightbox-stage.is-dragging #lightbox-img { transition: none; cursor: grabbing; }
@@ -2007,11 +2013,45 @@ body.page-leaving .content {
 }
 .lightbox-delete[hidden] { display: none; }
 
+.lightbox-count { display: none; }
+.lightbox-hint-touch { display: none; }
+@media (hover: none) and (pointer: coarse) {
+  .lightbox-hint-mouse { display: none; }
+  .lightbox-hint-touch { display: inline; }
+}
 .lightbox-hint {
   margin-top: 16px;
   font-family: var(--font-mono);
   font-size: var(--fs-sm);
   color: var(--parchment-faint);
+}
+
+/* On a phone the picture takes the whole screen and the arrows move to a bar underneath it, with the count between them (DL-186). */
+@media (max-width: 760px) {
+  .lightbox-overlay { padding: 0; justify-content: stretch; align-items: stretch; backdrop-filter: none; overscroll-behavior: contain; background: rgba(5, 6, 9, calc(0.99 * var(--lb-dim, 1))); }
+  .lightbox-row {
+    flex: 1 1 auto; min-block-size: 0; inline-size: 100%; max-inline-size: none; gap: 0;
+    display: grid; grid-template-columns: 64px minmax(0, 1fr) 64px; grid-template-rows: minmax(0, 1fr) auto;
+    grid-template-areas: "stage stage stage" "prev count next";
+  }
+  .lightbox-stage {
+    grid-area: stage; inline-size: 100%; block-size: 100%; max-inline-size: none; max-block-size: none;
+    border: 0; border-radius: 0; box-shadow: none; animation: none;
+    display: grid; place-items: center; touch-action: none; overscroll-behavior: contain;
+  }
+  #lightbox-img { max-inline-size: 100vw; max-block-size: 100%; cursor: default; }
+  .lightbox-stage:is(.is-loading, .is-failed) { min-inline-size: 0; background: none; }
+  .lightbox-prev { grid-area: prev; }
+  .lightbox-next { grid-area: next; }
+  .lightbox-nav { inline-size: 48px; block-size: 48px; justify-self: center; align-self: center; margin-block: 8px; touch-action: manipulation; transition: transform 160ms var(--ease-out), background-color 160ms var(--ease-out); }
+  .lightbox-nav:active:not(.is-off) { transform: scale(0.92); }
+  .lightbox-count { grid-area: count; display: block; margin: 0; text-align: center; font: 500 var(--fs-md) var(--font-mono); letter-spacing: 0.04em; color: var(--parchment-dim); }
+  .lightbox-overlay.is-single :is(.lightbox-prev, .lightbox-next, .lightbox-count) { display: none; }
+  .lightbox-overlay.is-single .lightbox-row { grid-template-rows: minmax(0, 1fr); grid-template-areas: "stage stage stage"; }
+  .lightbox-hint { margin: 0; padding: 0 16px calc(10px + env(safe-area-inset-bottom)); text-align: center; font-size: var(--fs-xs); }
+  .lightbox-overlay .lightbox-close, .lightbox-overlay .lightbox-delete { position: absolute; z-index: 3; }   /* the picture fills the screen under them; .btn-icon later in the file sets position: relative */
+  .lightbox-overlay .lightbox-close { inset-block-start: max(12px, env(safe-area-inset-top)); inset-inline-end: 12px; inline-size: 44px; block-size: 44px; }
+  .lightbox-delete { inset-block-start: max(12px, env(safe-area-inset-top)); inset-inline-start: 12px; min-block-size: 44px; }
 }
 
 .confirm-modal-panel { max-width: 380px; }
