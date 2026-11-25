@@ -248,7 +248,7 @@ h3 { font-family: var(--font-display); font-size: 1.18rem; font-weight: 500; lin
 .demo-campaign { background: #20251f; }
 .demo-window--hero { padding: clamp(16px, 2.5vw, 28px); }
 .demo-campaign-head { display: flex; align-items: start; justify-content: space-between; gap: 16px; padding-block: clamp(16px, 2.6vw, 28px) 20px; }
-.demo-campaign-head h3 { margin-block: 5px 3px; color: #f0e8d6; font: 500 clamp(20px, 2.7vw, 31px)/1.05 var(--font-display); }
+.demo-campaign-head .demo-campaign-name { margin-block: 5px 3px; color: #f0e8d6; font: 500 clamp(20px, 2.7vw, 31px)/1.05 var(--font-display); }
 .demo-status { flex: none; padding: 5px 9px; border: 1px solid rgba(185,154,87,.28); border-radius: 999px; color: #cdb77d; font-size: 10px; }
 .demo-hero-grid { display: grid; grid-template-columns: .9fr 1.1fr; gap: 12px; }
 .demo-panel { min-inline-size: 0; padding: 14px; border: 1px solid rgba(237,228,207,.1); border-radius: 8px; background: rgba(12,15,12,.24); }
