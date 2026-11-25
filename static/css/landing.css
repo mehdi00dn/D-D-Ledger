@@ -437,3 +437,10 @@ h3 { font-family: var(--font-display); font-size: 1.18rem; font-weight: 500; lin
 .demo-dice-row output[data-roll="natural-one"] { border-color: #8b4e3c; background: rgba(139,78,60,.12); }
 .demo-dice-row button:focus-visible { outline-color: var(--brass-ink); }
 @media (hover: hover) and (pointer: fine) { .demo-dice-row button:hover { background: rgba(185,154,87,.26); } }
+
+.demo-combatant.is-active::after { content: "Turn"; margin-inline-start: auto; color: #d1b779; font-size: 9px; }
+.demo-combatant.is-active > i { display: none; }
+.demo-map-token { z-index: 1; }
+.demo-map-fog { z-index: 2; }
+.demo-map-marker { z-index: 4; }
+.demo-map-scale { z-index: 3; }
