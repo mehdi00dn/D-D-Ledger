@@ -28,7 +28,7 @@
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Oaken">
 <meta property="og:title" content="Oaken: your world, your party, your adventure">
-<meta property="og:description" content="Organize your world, manage your characters, prepare encounters, and keep your players connected.">
+<meta property="og:description" content="Organize your world, manage your characters, run battles, and keep your players connected.">
 <link rel="icon" href="{{ url_for('static', filename='logo/favicon.ico') }}" sizes="any">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/oaken.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/public.css') }}">
@@ -48,7 +48,7 @@
     <div class="hero-copy">
       <p class="eyebrow eyebrow--dark">Campaign management, reimagined</p>
       <h1 id="hero-title">Your world. Your party. Your adventure.</h1>
-      <p class="lede">Everything you need to bring a tabletop campaign together. Organize your world, manage your characters, prepare encounters, and keep your players connected.</p>
+      <p class="lede">Everything you need to bring a tabletop campaign together. Organize your world, manage your characters, run battles, and keep your players connected.</p>
       <div class="cta-row">
         {%- if signed_in %}
         <a class="pub-btn pub-btn--primary pub-btn--lg" href="{{ resume.url if resume else url_for('campaigns_list') }}">{{ 'Continue to ' ~ resume.name if resume else 'Open your campaigns' }}</a>
@@ -60,8 +60,8 @@
       <p class="reassure">{% if signed_in %}Welcome back, {{ who }}.{% else %}Built for Dungeon Masters and players alike.{% endif %}</p>
     </div>
     <div class="hero-visual">
-      <figure class="shot shot--hero shot--empty" data-slot="IMG-01" aria-hidden="true"></figure>{#- IMG-01: hero product preview: campaign overview / dashboard -#}
-      <figure class="shot shot--float shot--empty" data-slot="IMG-01b" aria-hidden="true"></figure>{#- IMG-01b: hero overlay: a character card -#}
+      <figure class="shot shot--hero shot--empty demo-campaign" data-slot="IMG-01" aria-label="Interactive campaign overview preview"><div class="demo-window demo-window--hero"><div class="demo-topbar"><span class="demo-brand-mark" aria-hidden="true">o</span><span>Campaign overview</span><span class="demo-topbar-end">Tonight · 7:30</span></div><div class="demo-campaign-head"><div><p class="demo-kicker">YOUR CAMPAIGN</p><h3>The Ashen Coast</h3><p class="demo-muted">A tale of salt, shadow, and old gods</p></div><span class="demo-status">In progress</span></div><div class="demo-hero-grid"><div class="demo-panel demo-panel--party"><div class="demo-panel-label">The party <span>4 members</span></div><div class="demo-party-row"><span class="demo-avatar demo-avatar--gold">M</span><span class="demo-avatar demo-avatar--sage">T</span><span class="demo-avatar demo-avatar--clay">R</span><span class="demo-avatar demo-avatar--blue">E</span><span class="demo-avatar demo-avatar--add">+</span></div><p class="demo-muted">Mira, Thorne, Rowan, Elowen</p></div><div class="demo-panel demo-panel--quest"><div class="demo-panel-label">Current thread</div><strong>The lighthouse has gone dark</strong><p class="demo-muted">Find the keeper before the tide turns.</p><span class="demo-progress"><i></i></span></div></div><div class="demo-footer-line"><span>Session 08</span><span>3 open quests</span><span>Last played 2 days ago</span></div></div></figure>{#- IMG-01: hero product preview: campaign overview / dashboard -#}
+      <figure class="shot shot--float shot--empty demo-float-card" data-slot="IMG-01b" aria-label="Character card preview"><div class="demo-float-inner"><span class="demo-avatar demo-avatar--gold demo-avatar--large">M</span><div><strong>Mira Vale</strong><p>Elf · Ranger</p><span class="demo-level">Level 5</span></div><span class="demo-float-hp">38 <small>/ 45 HP</small></span></div></figure>{#- IMG-01b: hero overlay: a character card -#}
     </div>
   </div>
 </section>
@@ -106,7 +106,7 @@
         <li>Track campaign details without losing sight of the bigger picture.</li>
       </ul>
     </div>
-    <figure class="shot shot--empty" data-slot="IMG-02" aria-hidden="true"></figure>{#- IMG-02: campaign overview with party and details -#}
+    <figure class="shot shot--empty demo-campaign-detail" data-slot="IMG-02" aria-label="Interactive campaign details preview"><div class="demo-window"><div class="demo-topbar"><span>Campaign journal</span><span class="demo-topbar-end">The Ashen Coast</span></div><div class="demo-tabs" role="group" aria-label="Campaign preview sections" data-demo="campaign-tabs"><button type="button" data-demo-tab="party" aria-pressed="true">Party</button><button type="button" data-demo-tab="journal" aria-pressed="false">Journal</button></div><div class="demo-view" data-demo-view="party"><div class="demo-party-list"><div><span class="demo-avatar demo-avatar--gold">M</span><span><strong>Mira Vale</strong><small>Elf Ranger · Level 5</small></span><em>Ready</em></div><div><span class="demo-avatar demo-avatar--sage">T</span><span><strong>Thorne Ashford</strong><small>Human Fighter · Level 5</small></span><em>Ready</em></div><div><span class="demo-avatar demo-avatar--clay">R</span><span><strong>Rowan Bell</strong><small>Halfling Bard · Level 5</small></span><em>In session</em></div></div></div><div class="demo-view" data-demo-view="journal" hidden><div class="demo-journal-entry"><span class="demo-date-stamp">SESSION 08 · 14 OCT</span><strong>The lighthouse has gone dark</strong><p>Salt-stained footprints lead down to the old sea gate. The keeper's lantern is still warm.</p><span class="demo-note-tag">Clue recorded</span></div></div><div class="demo-footer-line"><span>Campaign details stay connected</span><span>Preview · not a live campaign</span></div></div></figure>{#- IMG-02: campaign overview with party and details -#}
   </div>
 </section>
 
@@ -124,8 +124,8 @@
       </ul>
     </div>
     <div class="shot-stack">
-      <figure class="shot shot--empty" data-slot="IMG-03" aria-hidden="true"></figure>{#- IMG-03: character sheet with portrait and stats -#}
-      <figure class="shot shot--inset shot--empty" data-slot="IMG-04" aria-hidden="true"></figure>{#- IMG-04: character library or selection cards -#}
+      <figure class="shot shot--empty demo-character-sheet" data-slot="IMG-03" aria-label="Interactive character sheet preview"><div class="demo-window"><div class="demo-topbar"><span>Character sheet</span><span class="demo-topbar-end">Player character</span></div><div class="demo-sheet-head"><div class="demo-portrait" aria-hidden="true"><span>M</span><i></i></div><div class="demo-sheet-name"><p class="demo-kicker">LEVEL 5 · ELF</p><h3>Mira Vale</h3><p class="demo-muted">Ranger · Gloom Stalker</p><div class="demo-sheet-meta"><span>AC <b>16</b></span><span>HP <b>38 / 45</b></span><span>Speed <b>35 ft</b></span></div></div></div><div class="demo-stat-grid" aria-label="Ability scores"><div><span>STR</span><b>10</b><small>+0</small></div><div><span>DEX</span><b>18</b><small>+4</small></div><div><span>CON</span><b>14</b><small>+2</small></div><div><span>INT</span><b>12</b><small>+1</small></div><div><span>WIS</span><b>16</b><small>+3</small></div><div><span>CHA</span><b>11</b><small>+0</small></div></div><div class="demo-sheet-bottom"><span><b>Proficiency</b> +3</span><span><b>Initiative</b> +4</span><span><b>Passive Perception</b> 16</span></div></div></figure>{#- IMG-03: character sheet with portrait and stats -#}
+      <figure class="shot shot--inset shot--empty demo-actions-card" data-slot="IMG-04" aria-label="Interactive attack and spell preview"><div class="demo-action-inner"><div class="demo-tabs demo-tabs--compact" role="group" aria-label="Character action preview" data-demo="action-tabs"><button type="button" data-action-tab="attack" aria-pressed="true">Attack</button><button type="button" data-action-tab="spell" aria-pressed="false">Spell</button></div><div class="demo-action-view" data-action-panel="attack"><p class="demo-kicker">WEAPON · RANGED</p><strong>Longbow</strong><div class="demo-action-damage"><b>+7</b><span>to hit</span><i>1d8 + 4</i></div><p class="demo-muted">Range 150 / 600 ft</p></div><div class="demo-action-view" data-action-panel="spell" hidden><p class="demo-kicker">1ST LEVEL · EVOCATION</p><strong>Hunter's Mark</strong><div class="demo-action-damage"><b>Bonus</b><span>action</span><i>+1d6</i></div><p class="demo-muted">Mark a creature you can see.</p></div></div></figure>{#- IMG-04: character library or selection cards -#}
     </div>
   </div>
 </section>
@@ -143,7 +143,7 @@
         <li>Keep encounter information available to the people who need it.</li>
       </ul>
     </div>
-    <figure class="shot shot--empty" data-slot="IMG-05" aria-hidden="true"></figure>{#- IMG-05: battle tracker: initiative order and health controls -#}
+    <figure class="shot shot--empty demo-battle" data-slot="IMG-05" aria-label="Interactive battle tracker preview"><div class="demo-window"><div class="demo-topbar"><span>Battle tracker</span><span class="demo-round">ROUND <b data-demo-round>03</b></span></div><div class="demo-battle-layout"><div class="demo-initiative"><p class="demo-panel-label">Initiative <span>3 combatants</span></p><div class="demo-combatant is-active" data-combatant><span class="demo-init">18</span><span><strong>Mira Vale</strong><small>Ranger · 38 HP</small></span><i>Turn</i></div><div class="demo-combatant" data-combatant><span class="demo-init">14</span><span><strong>Goblin warrior</strong><small>Enemy · 11 HP</small></span></div><div class="demo-combatant" data-combatant><span class="demo-init">09</span><span><strong>Thorne Ashford</strong><small>Fighter · 42 HP</small></span></div></div><div class="demo-hp-panel"><p class="demo-panel-label">Mira's hit points</p><div class="demo-hp-value"><strong data-demo-hp>38</strong><span>/ 45 HP</span></div><div class="demo-hp-bar"><i data-demo-hp-bar></i></div><div class="demo-hp-controls"><button type="button" data-hp-step="-1" aria-label="Decrease Mira's hit points by one">−</button><span>1</span><button type="button" data-hp-step="1" aria-label="Increase Mira's hit points by one">+</button></div><p class="demo-hp-hint" data-demo-hp-status aria-live="polite">Mira is ready for her turn.</p></div></div><div class="demo-battle-footer"><span data-demo-turn-status aria-live="polite">Mira's turn</span><button type="button" class="demo-next-turn" data-turn-next>Next turn <span aria-hidden="true">→</span></button></div></div></figure>{#- IMG-05: battle tracker: initiative order and health controls -#}
   </div>
 </section>
 
@@ -157,7 +157,7 @@
       </div>
       <p class="lede">Bring locations and encounters to the table with interactive maps. Place tokens, mark important areas, measure distances, and reveal the world as your players explore.</p>
     </div>
-    <figure class="shot shot--wide shot--empty" data-slot="IMG-06" aria-hidden="true"></figure>{#- IMG-06: map editor with grid, tokens and fog of war -#}
+    <figure class="shot shot--wide shot--empty demo-map" data-slot="IMG-06" aria-label="Interactive tabletop map preview"><div class="demo-map-toolbar"><span class="demo-map-title">The old sea gate <small>Encounter map · 30 ft grid</small></span><div class="demo-map-controls"><button type="button" data-map-fog aria-pressed="true">Reveal area</button><button type="button" data-map-marker aria-pressed="false">Place marker</button></div></div><div class="demo-map-canvas" data-map-canvas><div class="demo-map-terrain demo-map-terrain--water"></div><div class="demo-map-terrain demo-map-terrain--shore"></div><div class="demo-map-ruin demo-map-ruin--one"></div><div class="demo-map-ruin demo-map-ruin--two"></div><div class="demo-map-fog" data-map-fog-layer data-on="true" aria-hidden="true"></div><span class="demo-map-token demo-map-token--mira" aria-label="Mira token">M</span><span class="demo-map-token demo-map-token--goblin" aria-label="Goblin token">G</span><span class="demo-map-token demo-map-token--thorne" aria-label="Thorne token">T</span><span class="demo-map-marker" data-map-marker-dot hidden aria-hidden="true">✦</span><span class="demo-map-scale">30 ft</span></div><div class="demo-map-footer"><span data-map-status aria-live="polite">A hidden passage waits beyond the fog.</span><span>Player view preview</span></div></figure>{#- IMG-06: map editor with grid, tokens and fog of war -#}
     <ul class="points points--cols">
       <li>Use maps as a shared space for exploration and encounters.</li>
       <li>Place and manage tokens.</li>
@@ -195,19 +195,19 @@
     </div>
     <ol class="steps">
       <li class="step">
-        <figure class="shot shot--small shot--empty" data-slot="IMG-08a" aria-hidden="true"></figure>{#- IMG-08a: how it works, step 1: create a campaign -#}
+        <figure class="shot shot--small shot--empty demo-step-card" data-slot="IMG-08a" aria-label="Create a campaign preview"><div class="demo-step-window"><p class="demo-kicker">NEW CAMPAIGN</p><h3>The Ashen Coast</h3><p class="demo-muted">A place for your next story.</p><div class="demo-step-setting"><span>Setting</span><strong>Homebrew <span aria-hidden="true">⌄</span></strong></div><button type="button" class="demo-step-button" data-step-toggle="campaign" aria-pressed="false">Preview campaign <span aria-hidden="true">→</span></button><p class="demo-step-feedback" data-step-feedback="campaign" hidden>Campaign details are ready to shape.</p></div></figure>{#- IMG-08a: how it works, step 1: create a campaign -#}
         <p class="step-num" aria-hidden="true">01</p>
         <h3>Create your campaign</h3>
         <p>Set up your campaign and give your adventure a home.</p>
       </li>
       <li class="step">
-        <figure class="shot shot--small shot--empty" data-slot="IMG-08b" aria-hidden="true"></figure>{#- IMG-08b: how it works, step 2: bring the party together -#}
+        <figure class="shot shot--small shot--empty demo-step-card" data-slot="IMG-08b" aria-label="Bring your party together preview"><div class="demo-step-window"><p class="demo-kicker">YOUR PARTY</p><h3>Four seats at the table</h3><div class="demo-mini-party"><span><i class="demo-avatar demo-avatar--gold">M</i><b>Mira</b></span><span><i class="demo-avatar demo-avatar--sage">T</i><b>Thorne</b></span><span><i class="demo-avatar demo-avatar--clay">R</i><b>Rowan</b></span><span><i class="demo-avatar demo-avatar--blue">E</i><b>Elowen</b></span></div><button type="button" class="demo-step-button" data-step-toggle="party" aria-pressed="false">View party <span aria-hidden="true">→</span></button><p class="demo-step-feedback" data-step-feedback="party" hidden>Your party, ready for the journey.</p></div></figure>{#- IMG-08b: how it works, step 2: bring the party together -#}
         <p class="step-num" aria-hidden="true">02</p>
         <h3>Bring your party together</h3>
         <p>Add characters, invite your players, and organize the details of your world.</p>
       </li>
       <li class="step">
-        <figure class="shot shot--small shot--empty" data-slot="IMG-08c" aria-hidden="true"></figure>{#- IMG-08c: how it works, step 3: play -#}
+        <figure class="shot shot--small shot--empty demo-step-card" data-slot="IMG-08c" aria-label="Start a session preview"><div class="demo-step-window"><p class="demo-kicker">SESSION 01</p><h3>The story begins</h3><div class="demo-session-line"><span class="demo-session-dot"></span><span>Party assembled</span><span class="demo-session-ready">4 / 4</span></div><div class="demo-session-line"><span class="demo-session-dot"></span><span>Map prepared</span><span class="demo-session-ready">Ready</span></div><button type="button" class="demo-step-button" data-step-toggle="session" aria-pressed="false">Enter session preview <span aria-hidden="true">→</span></button><p class="demo-step-feedback" data-step-feedback="session" hidden>Your table is ready to play.</p></div></figure>{#- IMG-08c: how it works, step 3: play -#}
         <p class="step-num" aria-hidden="true">03</p>
         <h3>Play your way</h3>
         <p>Prepare encounters, use your maps, and keep the adventure moving.</p>
@@ -242,5 +242,6 @@
 {% include "_public_footer.html" %}
 
 <script src="{{ url_for('static', filename='js/public.js') }}" defer></script>
+<script src="{{ url_for('static', filename='js/landing-demo.js') }}" defer></script>
 </body>
 </html>
