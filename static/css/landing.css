@@ -344,8 +344,8 @@ h3 { font-family: var(--font-display); font-size: 1.18rem; font-weight: 500; lin
 .demo-hp-value span { color: #9f9e8d; font-size: 9px; }
 .demo-hp-bar { block-size: 5px; margin-block: 10px 12px; overflow: hidden; border-radius: 999px; background: #41463a; }
 .demo-hp-bar i { display: block; inline-size: 84%; block-size: 100%; border-radius: inherit; background: #9da88b; transition: width 180ms var(--ease-out); }
-.demo-hp-bar[data-level="mid"] i { inline-size: 55%; background: #c4a767; }
-.demo-hp-bar[data-level="low"] i { inline-size: 24%; background: #bd8972; }
+.demo-hp-bar i[data-level="mid"] { inline-size: 55%; background: #c4a767; }
+.demo-hp-bar i[data-level="low"] { inline-size: 24%; background: #bd8972; }
 .demo-hp-controls { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #a8a696; font-size: 10px; }
 .demo-hp-controls button { display: grid; place-items: center; inline-size: 28px; block-size: 28px; border: 1px solid rgba(237,228,207,.15); border-radius: 6px; background: #30372d; color: #e6decc; font: 500 18px/1 var(--font-body); cursor: pointer; }
 .demo-hp-hint { min-block-size: 28px; margin-block-start: 9px; color: #9f9e8d; font-size: 9px; line-height: 1.35; }
