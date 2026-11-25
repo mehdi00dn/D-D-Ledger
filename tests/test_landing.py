@@ -67,11 +67,28 @@ def test_headings_in_order_and_images_have_alt_or_are_hidden(visitor):
     assert 'aria-label="Oaken, home"' in html and 'Skip to content' in html
 
 
-def test_empty_frames_name_their_slot(visitor):
+def test_product_previews_replace_the_empty_frames(visitor):
     html = visitor.get('/').get_data(as_text=True)
     slots = re.findall(r'data-slot="(IMG-[0-9a-c]+)"', html)
-    assert {'IMG-01', 'IMG-02', 'IMG-03', 'IMG-04', 'IMG-05', 'IMG-06'} <= set(slots)
-    assert all('aria-hidden="true"' in f for f in re.findall(r'<figure[^>]*data-slot[^>]*>', html))
+    assert {'IMG-01', 'IMG-01b', 'IMG-02', 'IMG-03', 'IMG-04', 'IMG-05', 'IMG-06', 'IMG-08a', 'IMG-08b', 'IMG-08c'} <= set(slots)
+    for slot in slots:
+        frame = re.search(r'<figure[^>]*data-slot="' + re.escape(slot) + r'"[^>]*>', html)
+        assert frame and 'aria-label=' in frame.group(0), slot
+        assert 'aria-hidden="true"' not in frame.group(0), slot
+    for control in ('data-demo-tab="party"', 'data-action-tab="attack"', 'data-action-tab="spell"',
+                    'data-hp-step="-1"', 'data-turn-next', 'data-map-fog', 'data-map-marker',
+                    'data-step-toggle="campaign"', 'data-roll-d20'):
+        assert control in html, control
+    assert 'data-demo-view="journal"' in html and 'data-action-panel="spell"' in html
+    assert 'data-demo-hp' in html and 'data-map-fog-layer' in html
+    assert 'data-d20-result' in html and 'Preview · not a live campaign' in html
+
+
+def test_landing_demo_script_is_served(visitor):
+    assert visitor.get('/static/js/landing-demo.js').status_code == 200
+    script = visitor.get('/static/js/landing-demo.js').get_data(as_text=True)
+    assert 'Math.random()' in script and 'data-map-fog' in script
+    assert 'document.createElement' not in script
 
 
 def test_signed_in_people_get_the_same_page_with_the_app_menu(make_user):
@@ -125,7 +142,7 @@ def test_a_signed_out_session_is_a_visitor_again(make_user):
 
 
 def test_landing_assets_are_served(visitor):
-    for path in ('/static/css/public.css', '/static/css/landing.css', '/static/js/public.js'):
+    for path in ('/static/css/public.css', '/static/css/landing.css', '/static/js/public.js', '/static/js/landing-demo.js'):
         assert visitor.get(path).status_code == 200
     css = visitor.get('/static/css/landing.css').get_data(as_text=True)
     for font in re.findall(r"url\('\.\./fonts/([^']+)'\)", css):
