@@ -17,6 +17,18 @@
 {%- endif -%}
 </svg>
 {%- endmacro %}
+{#- DL-186: the previews.  The party and the text come from the tutorial campaign that every new account gets, so a visitor sees what they will get.
+    Demo data only: nothing here is read from the database. -#}
+{% set party = [
+  {'id': 'kael', 'name': 'Kael Thorne', 'key': 'fighter', 'hp': 12, 'ac': 19, 'img': 'kael-thorne.webp', 'note': 'recognizes the merchant\'s insignia from his former employer.'},
+  {'id': 'sera', 'name': 'Sera Veyl', 'key': 'ranger', 'hp': 10, 'ac': 14, 'img': 'sera-veyl.webp', 'note': 'has been investigating strange markings around abandoned watchtowers.'},
+  {'id': 'thalric', 'name': 'Thalric Stonefist', 'key': 'cleric', 'hp': 11, 'ac': 18, 'img': 'thalric-stonefist.webp', 'note': 'needs the stolen medical supplies delivered to the village.'},
+  {'id': 'nyx', 'name': 'Nyx', 'key': 'rogue', 'hp': 10, 'ac': 14, 'img': 'nyx.webp', 'note': 'recognizes a mysterious symbol on one of the crates.'},
+] %}
+{#- a class icon from the same sprite the app uses -#}
+{% macro class_icon(key) -%}
+<svg class="lp-cls" aria-hidden="true" focusable="false"><use href="{{ url_for('static', filename='icons/classes.svg') }}#{{ key }}"/></svg>
+{%- endmacro %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -33,6 +45,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='css/oaken.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/public.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/landing.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/landing-previews.css') }}">
 <script nonce="{{ csp_nonce() }}">document.documentElement.classList.add('js');</script>
 </head>
 <body>
@@ -106,7 +119,47 @@
         <li>Track campaign details without losing sight of the bigger picture.</li>
       </ul>
     </div>
-    <figure class="shot shot--empty" data-slot="IMG-02" aria-hidden="true"></figure>{#- IMG-02: campaign overview with party and details -#}
+    {#- IMG-02: campaign overview with party and details: the tutorial campaign's overview, lighter.  Pick a hero and their line in the notes lights up. -#}
+    <figure class="shot lp lp-home" data-slot="IMG-02" data-lp="campaign" role="group" aria-label="Campaign overview preview. Pick a party member to see their part of the story, or tick the quest off.">
+      <header class="lp-banner">
+        <span class="lp-pill">Active</span>
+        <p class="lp-banner-title">Tutorial</p>
+        <p class="lp-banner-sub">Welcome to your first adventure! A campaign to learn the basics, with a party ready to play.</p>
+        <p class="lp-stats"><span class="lp-stat"><strong>6</strong> <span>Characters</span></span><span class="lp-stat"><strong>1</strong> <span>Faction</span></span><span class="lp-stat"><strong>1</strong> <span>Map</span></span></p>
+      </header>
+      <section class="o-paper lp-card" aria-labelledby="lp-party-title">
+        <p class="lp-card-title" id="lp-party-title">{{ ico('users') }}The party <span class="lp-count">4</span></p>
+        <ul class="lp-party">
+          {%- for m in party %}
+          <li><button type="button" class="lp-pc" data-pc="{{ m.id }}" aria-pressed="false">
+            <span class="lp-pc-avatar"><img src="{{ url_for('static', filename='assets/landing/' ~ m.img) }}" alt="" width="144" height="144" loading="lazy" decoding="async"></span>
+            <span class="lp-pc-name">{{ class_icon(m.key) }}<span>{{ m.name }}</span></span>
+            <span class="lp-pc-meta">Lvl 1 · {{ m.hp }} HP · AC {{ m.ac }}</span>
+          </button></li>
+          {%- endfor %}
+        </ul>
+      </section>
+      <div class="lp-lower">
+        <section class="o-paper lp-card" aria-labelledby="lp-notes-title">
+          <p class="lp-card-title" id="lp-notes-title">{{ ico('book') }}Campaign notes</p>
+          <ul class="lp-notes-list" data-notes>
+            {%- for m in party %}
+            <li data-note-for="{{ m.id }}"><b>{{ m.name.split(' ')[0] }}</b> {{ m.note }}</li>
+            {%- endfor %}
+          </ul>
+        </section>
+        <section class="o-paper lp-card" aria-labelledby="lp-quest-title">
+          <p class="lp-card-title" id="lp-quest-title">{{ ico('quest') }}Quests <span class="lp-count">1</span></p>
+          <label class="lp-quest">
+            <input type="checkbox"><span class="lp-ring" aria-hidden="true"></span>
+            <div>
+              <p class="lp-quest-title"><span class="lp-quest-name">Complete the encounter and explore the tools available in Oaken</span><span class="lp-tag">Done</span></p>
+              <p class="lp-quest-details">A merchant's supply cart has disappeared on the forest road near the village of Millbrook. Tracks lead to a clearing where a group of goblins has stolen the cart.</p>
+            </div>
+          </label>
+        </section>
+      </div>
+    </figure>
   </div>
 </section>
 
@@ -242,5 +295,6 @@
 {% include "_public_footer.html" %}
 
 <script src="{{ url_for('static', filename='js/public.js') }}" defer></script>
+<script src="{{ url_for('static', filename='js/landing-previews.js') }}" defer></script>
 </body>
 </html>

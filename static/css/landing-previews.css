@@ -1,0 +1,100 @@
+/* DL-186: the landing page previews.  Small working pieces of the real product, built from the app's own look (the paper cards, the painted banner,
+   the round portraits in a ring) and from the tutorial campaign every new account gets, so what a visitor sees here is what they get.
+   They fill the frames the page used to leave empty.  Demo data only: nothing here is saved, sent or read from the server.
+   Loaded after landing.css.  Every class starts with lp- so it can sit beside landing.css and public.css.
+   No inline styles (the Content-Security-Policy forbids them).  Motion is transform and opacity only, 150 to 240 ms, ease-out, and off under
+   prefers-reduced-motion. */
+
+.lp {
+  --lp-ease: cubic-bezier(0.23, 1, 0.32, 1);
+  container-type: inline-size;
+  background: linear-gradient(180deg, #1c211d, #141813);
+  color: var(--oak-parchment-200);
+  font-family: var(--font-body); font-size: 14px; line-height: 1.4; text-align: start;
+}
+:where(.lp) :is(p, ul, ol) { margin: 0; padding: 0; list-style: none; }   /* :where keeps this reset from outranking the classes below */
+.lp :focus-visible { outline: 2px solid var(--oak-brass-300); outline-offset: 2px; border-radius: 8px; }
+.lp .o-paper :focus-visible { outline-color: var(--paper-accent-ink); }
+
+/* ---------- The window: a painted banner and paper cards on the dark page, like the campaign overview in the app ---------- */
+.lp-home { display: grid; gap: 12px; padding: 12px; }
+
+.lp-banner {
+  position: relative; display: grid; gap: 8px; justify-items: start; padding: 20px 22px 18px; border-radius: 10px; overflow: hidden;
+  background: linear-gradient(90deg, rgba(14, 18, 15, 0.9) 0%, rgba(14, 18, 15, 0.62) 55%, rgba(14, 18, 15, 0.3) 100%), var(--bg-valley) center 40% / cover no-repeat;
+  box-shadow: inset 0 0 0 1px rgba(237, 228, 207, 0.16);
+}
+.lp-pill { display: inline-flex; align-items: center; gap: 7px; padding: 5px 10px 5px 9px; border: 1px solid rgba(237, 228, 207, 0.22); border-radius: 999px; background: rgba(14, 18, 15, 0.5); font: 600 10.5px/1 var(--font-body); letter-spacing: 0.14em; text-transform: uppercase; color: var(--oak-parchment-200); }
+.lp-pill::before { content: ''; inline-size: 7px; block-size: 7px; border-radius: 50%; background: #8fb596; }
+.lp-banner-title { margin: 0; font: 500 clamp(1.9rem, 6.2cqi, 2.45rem)/1.05 var(--font-display); letter-spacing: -0.012em; color: var(--oak-parchment-100); }
+.lp-banner-sub { max-inline-size: 34ch; font-size: 14px; color: rgba(237, 228, 207, 0.88); }
+.lp-stats { display: flex; gap: 22px; margin-block-start: 4px; }
+.lp-stat { display: flex; align-items: baseline; gap: 7px; }
+.lp-stat strong { font: 500 1.5rem/1 var(--font-display); color: var(--oak-brass-300); }
+.lp-stat span { font-size: 10.5px; font-weight: 600; letter-spacing: 0.13em; text-transform: uppercase; color: rgba(237, 228, 207, 0.78); }
+
+/* paper card: the .o-paper material (oaken.css) with the app's card title */
+.lp-card { padding: 16px 18px 18px; border-radius: 10px; }
+.lp-card-title { display: flex; align-items: center; gap: 9px; margin: 0 0 13px; padding-block-end: 9px; border-block-end: 1px solid var(--paper-line-strong); font: 500 1.12rem/1.2 var(--font-display); color: var(--paper-ink); }
+.lp-card-title .ico { flex: none; inline-size: 18px; block-size: 18px; color: var(--paper-accent-ink); }
+.lp-count { margin-inline-start: auto; font: 500 12px/1 var(--font-mono); color: var(--paper-ink-dim); }
+
+/* ---------- The party: four portraits, pick one ---------- */
+.lp-party { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.lp-pc {
+  display: flex; flex-direction: column; align-items: center; gap: 7px; inline-size: 100%; padding: 12px 6px 10px;
+  border: 1px solid var(--paper-line-strong); border-radius: 10px; background: var(--bg-panel-inset); color: var(--paper-ink);
+  font: inherit; text-align: center; cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+}
+.lp-pc-avatar { inline-size: 58px; block-size: 58px; border-radius: 50%; overflow: hidden; background: rgba(255, 252, 244, 0.7); box-shadow: 0 0 0 3px rgba(255, 252, 244, 0.6), 0 0 0 4px var(--paper-line); }
+.lp-pc-avatar img { display: block; inline-size: 100%; block-size: 100%; object-fit: cover; }
+.lp-pc-name { display: flex; align-items: flex-start; justify-content: center; gap: 5px; font-weight: 600; font-size: 13.5px; line-height: 1.2; text-wrap: balance; }
+.lp-cls { flex: none; inline-size: 15px; block-size: 15px; margin-block-start: 1px; fill: currentColor; color: var(--paper-accent-ink); }
+.lp-pc-meta { font: 500 11px/1.2 var(--font-mono); color: var(--paper-ink-dim); }
+.lp-pc[aria-pressed="true"] { border-color: var(--paper-accent-ink); background: rgba(255, 252, 244, 0.88); box-shadow: 0 6px 14px -6px rgba(70, 50, 20, 0.45); }
+@media (hover: hover) { .lp-pc:hover { border-color: var(--paper-accent-ink); } }
+@media (prefers-reduced-motion: no-preference) {
+  .lp-pc { transition: transform 160ms var(--lp-ease), border-color 160ms ease, background-color 160ms ease, box-shadow 160ms ease; }
+  .lp-pc:hover, .lp-pc[aria-pressed="true"] { transform: translateY(-2px); }
+  .lp-pc:active { transform: scale(0.98); }
+}
+
+/* ---------- Campaign notes and the quest ---------- */
+.lp-lower { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr); gap: 12px; }
+.lp-notes-list { display: grid; gap: 3px; margin-inline: -6px; }
+.lp-notes-list li { padding: 7px 10px; border-inline-start: 3px solid transparent; border-radius: 6px; font-size: 13.5px; line-height: 1.4; color: var(--paper-ink); }
+.lp-notes-list li.is-lit { background: rgba(255, 252, 244, 0.7); border-inline-start-color: var(--paper-accent-ink); }
+.lp-notes-list[data-lit] li:not(.is-lit) { opacity: 0.72; }   /* dimmed, still above 4.5:1 on the paper */
+@media (prefers-reduced-motion: no-preference) { .lp-notes-list li { transition: opacity 200ms ease, background-color 200ms ease, border-color 200ms ease; } }
+
+.lp-quest { position: relative; display: grid; grid-template-columns: auto 1fr; gap: 12px; align-items: start; cursor: pointer; }
+.lp-quest input { position: absolute; inline-size: 1px; block-size: 1px; opacity: 0; }
+.lp-ring { position: relative; inline-size: 22px; block-size: 22px; margin-block-start: 1px; border: 1.5px solid var(--paper-ink-dim); border-radius: 50%; }
+.lp-ring::after { content: ''; position: absolute; inset-inline-start: 6px; inset-block-start: 2px; inline-size: 5px; block-size: 10px; border: solid #fbf6e9; border-width: 0 2px 2px 0; transform: rotate(45deg) scale(0); }
+.lp-quest input:checked + .lp-ring { background: var(--paper-accent-ink); border-color: var(--paper-accent-ink); }
+.lp-quest input:checked + .lp-ring::after { transform: rotate(45deg) scale(1); }
+.lp-quest input:focus-visible + .lp-ring { outline: 2px solid var(--paper-accent-ink); outline-offset: 2px; }
+.lp-quest-title { margin: 0; font-size: 14.5px; font-weight: 600; line-height: 1.3; color: var(--paper-ink); }
+.lp-quest-details { margin-block-start: 4px; font-size: 13px; line-height: 1.45; color: var(--paper-ink-dim); display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+.lp-tag { display: none; margin-inline-start: 6px; padding: 1px 8px; border: 1px solid var(--paper-line-strong); border-radius: 999px; font: 500 11px/1.5 var(--font-body); color: #27503a; vertical-align: 1px; }
+.lp-quest input:checked ~ div .lp-tag { display: inline-block; }
+.lp-quest input:checked ~ div .lp-quest-name { text-decoration: line-through; text-decoration-color: var(--paper-line-strong); }
+.lp-quest input:checked ~ div .lp-quest-details { opacity: 0.7; }
+@media (prefers-reduced-motion: no-preference) {
+  .lp-ring { transition: background-color 160ms ease, border-color 160ms ease; }
+  .lp-ring::after { transition: transform 180ms var(--lp-ease); }
+}
+
+/* ---------- Narrow frames (the frame, not the window, is measured) ---------- */
+@container (max-width: 540px) {
+  .lp-lower { grid-template-columns: 1fr; }
+  .lp-stats { gap: 16px; }
+}
+@container (max-width: 440px) {
+  .lp-home { padding: 10px; gap: 10px; }
+  .lp-banner { padding: 16px 16px 14px; }
+  .lp-card { padding: 14px 14px 16px; }
+  .lp-party { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .lp-pc-avatar { inline-size: 54px; block-size: 54px; }
+  .lp-pc-name { min-block-size: 2.4em; }   /* two columns: a long name may take two lines, so the tiles stay level */
+}

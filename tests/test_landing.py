@@ -71,7 +71,9 @@ def test_empty_frames_name_their_slot(visitor):
     html = visitor.get('/').get_data(as_text=True)
     slots = re.findall(r'data-slot="(IMG-[0-9a-c]+)"', html)
     assert {'IMG-01', 'IMG-02', 'IMG-03', 'IMG-04', 'IMG-05', 'IMG-06'} <= set(slots)
-    assert all('aria-hidden="true"' in f for f in re.findall(r'<figure[^>]*data-slot[^>]*>', html))
+    for frame in re.findall(r'<figure[^>]*data-slot[^>]*>', html):
+        # an empty frame is hidden from assistive tech; a frame that holds a working preview (DL-186 and on) is a named group instead
+        assert 'aria-hidden="true"' in frame or ('role="group"' in frame and 'aria-label="' in frame), frame
 
 
 def test_signed_in_people_get_the_same_page_with_the_app_menu(make_user):
@@ -146,3 +148,30 @@ def test_the_header_and_footer_are_the_shared_ones(visitor):
     other = visitor.get('/about').get_data(as_text=True)
     assert 'href="#features"' in home and 'href="/#features"' in other               # anchors on the home page, a way back from the others
     assert 'aria-current="page">About' in other and 'aria-current="page"' not in home
+
+
+def test_the_campaign_preview_is_the_tutorial_campaign(visitor):
+    """DL-186: IMG-02 is a working, lighter campaign overview built from the tutorial campaign every new account gets."""
+    html = visitor.get('/').get_data(as_text=True)
+    frame = html[html.index('data-slot="IMG-02"'):html.index('<!-- 05 ')]
+    assert 'shot--empty' not in frame and 'data-lp="campaign"' in frame
+    for name in ('Kael Thorne', 'Sera Veyl', 'Thalric Stonefist', 'Nyx'):                        # the party is the tutorial party
+        assert name in frame, name
+    tiles = re.findall(r'<button type="button" class="lp-pc"[^>]*>', frame)
+    assert len(tiles) == 4 and all('aria-pressed="false"' in b for b in tiles)                   # real buttons that say whether they are picked
+    assert len(re.findall(r'data-note-for="', frame)) == 4                                       # one line of the story per hero
+    assert frame.count('<input type="checkbox"') == 1 and 'class="o-paper lp-card"' in frame      # the quest is a real checkbox; the cards use the app's paper
+    assert all('alt=' in i for i in re.findall(r'<img\b[^>]*>', frame)) and ' style="' not in frame
+
+
+def test_every_preview_image_is_served(visitor):
+    html = visitor.get('/').get_data(as_text=True)
+    srcs = re.findall(r'src="(/static/assets/landing/[^"]+)"', html)
+    assert len(srcs) >= 4
+    for src in srcs:
+        r = visitor.get(src)
+        assert r.status_code == 200 and r.headers['Content-Type'].startswith('image/'), src
+    for path in ('/static/css/landing-previews.css', '/static/js/landing-previews.js'):
+        assert visitor.get(path).status_code == 200, path
+    css = visitor.get('/static/css/landing-previews.css').get_data(as_text=True)
+    assert 'prefers-reduced-motion' in css                                                      # motion respects the setting
