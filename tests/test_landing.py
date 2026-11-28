@@ -150,11 +150,12 @@ def test_the_header_and_footer_are_the_shared_ones(visitor):
     assert 'aria-current="page">About' in other and 'aria-current="page"' not in home
 
 
-def test_the_campaign_preview_is_a_scene_from_the_tutorial_campaign(visitor):
-    """DL-186: IMG-02 is a working scene (a painted world, the party as a radio group, a hero card, a mission) built from the tutorial campaign."""
+def test_the_campaign_preview_is_a_working_dashboard(visitor):
+    """DL-186: IMG-02 is one wide dashboard card: a cover with the campaign's name and the party (a radio group), the picked hero's card, and three quests."""
     html = visitor.get('/').get_data(as_text=True)
     frame = html[html.index('data-slot="IMG-02"'):html.index('<!-- 05 ')]
     assert 'shot--empty' not in frame and 'data-lp="campaign"' in frame
+    assert 'The Ashen Road' in frame
     for name in ('Kael Thorne', 'Sera Veyl', 'Thalric Stonefist', 'Nyx'):                        # the party is the tutorial party
         assert name in frame, name
     assert 'role="radiogroup"' in frame
@@ -165,14 +166,20 @@ def test_the_campaign_preview_is_a_scene_from_the_tutorial_campaign(visitor):
     assert len(cards) == 4 and sum('is-off' not in c for c, _id in cards) == 1                   # four cards, one shown (the first state works without the script)
     for r in radios:
         assert re.search(r'aria-controls="(lp-hero-[a-z]+)"', r).group(1) in {i for _c, i in cards}
-    assert frame.count('<input type="checkbox"') == 3 and 'class="o-paper lp-mission' in frame    # the mission steps are real checkboxes on the app's paper
+    first = frame[frame.index('id="lp-hero-kael"'):frame.index('id="lp-hero-sera"')]             # Kael is the first card: Fighter, level 1, 12 HP, 19 AC
+    assert 'Fighter · Level 1' in first and '<b>12</b> HP' in first and '<b>19</b> AC' in first
+    boxes = re.findall(r'<input type="checkbox"[^>]*>', frame)
+    assert len(boxes) == 3 and sum('checked' in b for b in boxes) == 1                           # three quests, real checkboxes, one done at first
+    assert 'class="lp-quests' in frame and '>1 / 3<' in frame                                    # the count matches the markup's first state
+    for gone in ('lp-mission', 'lp-stamp', 'lp-inlay', 'lp-pill'):                               # the first version's layers are gone
+        assert gone not in frame, gone
     assert all('alt=' in i for i in re.findall(r'<img\b[^>]*>', frame)) and ' style="' not in frame
 
 
 def test_every_preview_image_is_served(visitor):
     html = visitor.get('/').get_data(as_text=True)
     srcs = re.findall(r'src="(/static/assets/landing/[^"]+)"', html)
-    assert len(srcs) >= 4
+    assert len(srcs) >= 8 and any('-card.webp' in x for x in srcs)                       # the party's round portraits and their card portraits
     for src in srcs:
         r = visitor.get(src)
         assert r.status_code == 200 and r.headers['Content-Type'].startswith('image/'), src

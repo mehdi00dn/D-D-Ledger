@@ -17,17 +17,29 @@
 {%- endif -%}
 </svg>
 {%- endmacro %}
-{#- DL-186: the previews.  The party and the text come from the tutorial campaign that every new account gets, so a visitor sees the people they will meet.
-    Demo data only: nothing here is read from the database. -#}
+{#- DL-186: the previews.  The party is the tutorial campaign's (their portraits and numbers come from its export); the campaign in the scene is "The Ashen Road",
+    a demo, so a visitor sees what a campaign looks like once it has a name and a story.  Demo data only: nothing here is read from the database. -#}
 {% set party = [
-  {'id': 'kael', 'name': 'Kael Thorne', 'key': 'fighter', 'cls': 'Fighter', 'hp': 12, 'ac': 19, 'img': 'kael-thorne.webp', 'note': 'recognizes the merchant\'s insignia from his former employer.'},
-  {'id': 'sera', 'name': 'Sera Veyl', 'key': 'ranger', 'cls': 'Ranger', 'hp': 10, 'ac': 14, 'img': 'sera-veyl.webp', 'note': 'has been investigating strange markings around abandoned watchtowers.'},
-  {'id': 'thalric', 'name': 'Thalric Stonefist', 'key': 'cleric', 'cls': 'Cleric', 'hp': 11, 'ac': 18, 'img': 'thalric-stonefist.webp', 'note': 'needs the stolen medical supplies delivered to the village.'},
-  {'id': 'nyx', 'name': 'Nyx', 'key': 'rogue', 'cls': 'Rogue', 'hp': 10, 'ac': 14, 'img': 'nyx.webp', 'note': 'recognizes a mysterious symbol on one of the crates.'},
+  {'id': 'kael', 'name': 'Kael Thorne', 'key': 'fighter', 'cls': 'Fighter', 'hp': 12, 'ac': 19, 'img': 'kael-thorne'},
+  {'id': 'sera', 'name': 'Sera Veyl', 'key': 'ranger', 'cls': 'Ranger', 'hp': 10, 'ac': 14, 'img': 'sera-veyl'},
+  {'id': 'thalric', 'name': 'Thalric Stonefist', 'key': 'cleric', 'cls': 'Cleric', 'hp': 11, 'ac': 18, 'img': 'thalric-stonefist'},
+  {'id': 'nyx', 'name': 'Nyx', 'key': 'rogue', 'cls': 'Rogue', 'hp': 10, 'ac': 14, 'img': 'nyx'},
+] %}
+{% set quests = [
+  {'text': 'Complete the encounter', 'done': True},
+  {'text': 'Explore the ruins', 'done': False},
+  {'text': 'Recover the stolen goods', 'done': False},
 ] %}
 {#- a class icon from the same sprite the app uses -#}
 {% macro class_icon(key) -%}
 <svg class="lp-cls" aria-hidden="true" focusable="false"><use href="{{ url_for('static', filename='icons/classes.svg') }}#{{ key }}"/></svg>
+{%- endmacro %}
+{#- the two numbers on a hero card: a heart for hit points, a shield for armor class -#}
+{% macro stat_icon(name) -%}
+<svg class="lp-stat-ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+{%- if name == 'hp' %}<path d="M12 20.5C6.2 16.2 3.2 13 3.2 9.2 3.2 6.6 5.2 4.8 7.6 4.8c1.8 0 3.3 1 4.4 2.6 1.1-1.6 2.6-2.6 4.4-2.6 2.4 0 4.4 1.8 4.4 4.4 0 3.8-3 7-8.8 11.3z"/>
+{%- else %}<path d="M12 2.8l7.6 2.6v6.1c0 4.7-3 8.2-7.6 9.9-4.6-1.7-7.6-5.2-7.6-9.9V5.4z"/><path class="lp-stat-cut" d="M12 5.6v13.2c3.2-1.5 5.1-4.1 5.1-7.4V7.3z"/>{%- endif -%}
+</svg>
 {%- endmacro %}
 <!DOCTYPE html>
 <html lang="en">
@@ -119,46 +131,45 @@
         <li>Track campaign details without losing sight of the bigger picture.</li>
       </ul>
     </div>
-    {#- IMG-02: campaign overview with party and details: a composed scene, not a copy of the overview page.  The painted world behind; the party as a
-        column of portraits that picks who is on the card; the mission on paper over it.  The people and the text are the tutorial campaign's. -#}
-    <figure class="shot lp" data-slot="IMG-02" data-lp="campaign" role="group" aria-label="Campaign preview. Pick a party member to see their card, and tick off the steps of the mission.">
+    {#- IMG-02: the campaign dashboard in miniature: one wide card, a painted cover with the campaign's name and its party, then the picked hero's card and the quest list.
+        Pick a portrait and the card changes; tick a quest and the progress follows.  The people are the tutorial campaign's. -#}
+    <figure class="shot lp" data-slot="IMG-02" data-lp="campaign" role="group" aria-label="Campaign preview. Pick a party member to see their card, and tick off quests.">
       <div class="lp-scene">
-      <span class="lp-inlay" aria-hidden="true"></span>
-      <header class="lp-head lp-rise lp-rise-1">
-        <span class="lp-pill">Active</span>
-        <p class="lp-scene-title">Tutorial</p>
-        <p class="lp-scene-sub">Welcome to your first adventure!</p>
-        <p class="lp-facts">6 characters · 1 faction · 1 map</p>
-      </header>
-      <div class="lp-rail lp-rise lp-rise-2" role="radiogroup" aria-label="Party members">
-        {%- for m in party %}
-        <button type="button" class="lp-rail-btn" role="radio" aria-checked="{{ 'true' if loop.first else 'false' }}" aria-label="{{ m.name }}" aria-controls="lp-hero-{{ m.id }}" tabindex="{{ 0 if loop.first else -1 }}"><img src="{{ url_for('static', filename='assets/landing/' ~ m.img) }}" alt="" width="144" height="144" loading="lazy" decoding="async"></button>
-        {%- endfor %}
+      <div class="lp-cover">
+        <header class="lp-head lp-rise lp-rise-1">
+          <p class="lp-scene-title">The Ashen Road</p>
+          <span class="lp-orn" aria-hidden="true"></span>
+        </header>
+        <div class="lp-rail lp-rise lp-rise-2" role="radiogroup" aria-label="Party members">
+          {%- for m in party %}
+          <button type="button" class="lp-rail-btn" role="radio" aria-checked="{{ 'true' if loop.first else 'false' }}" aria-label="{{ m.name }}" aria-controls="lp-hero-{{ m.id }}" tabindex="{{ 0 if loop.first else -1 }}"><img src="{{ url_for('static', filename='assets/landing/' ~ m.img ~ '.webp') }}" alt="" width="144" height="144" loading="lazy" decoding="async"></button>
+          {%- endfor %}
+        </div>
       </div>
       <div class="lp-main">
         <div class="lp-heroes lp-rise lp-rise-3">
         {%- for m in party %}
         <article class="o-paper lp-hero{% if not loop.first %} is-off{% endif %}" id="lp-hero-{{ m.id }}" data-hero-card aria-label="{{ m.name }}">
-          <span class="lp-hero-avatar"><img src="{{ url_for('static', filename='assets/landing/' ~ m.img) }}" alt="" width="144" height="144" loading="lazy" decoding="async"></span>
-          <div class="lp-hero-id">
+          <span class="lp-hero-art"><img src="{{ url_for('static', filename='assets/landing/' ~ m.img ~ '-card.webp') }}" alt="" width="300" height="300" loading="lazy" decoding="async"></span>
+          <div class="lp-hero-body">
             <p class="lp-hero-name">{{ m.name }}</p>
             <p class="lp-hero-class">{{ class_icon(m.key) }}{{ m.cls }} · Level 1</p>
+            <ul class="lp-chips"><li>{{ stat_icon('hp') }}<b>{{ m.hp }}</b> HP</li><li>{{ stat_icon('ac') }}<b>{{ m.ac }}</b> AC</li></ul>
           </div>
-          <ul class="lp-chips"><li><b>{{ m.hp }}</b> HP</li><li><b>{{ m.ac }}</b> AC</li></ul>
-          <p class="lp-hero-note"><span class="lp-kicker">In the campaign notes</span>{{ m.name.split(' ')[0] }} {{ m.note }}</p>
         </article>
         {%- endfor %}
         </div>
-        <section class="o-paper lp-mission lp-rise lp-rise-4" aria-labelledby="lp-mission-kicker">
-          <span class="lp-kicker" id="lp-mission-kicker">Your mission</span>
-          <p class="lp-mission-title">Complete the encounter and explore the tools available in Oaken</p>
+        <section class="lp-quests lp-rise lp-rise-4" aria-labelledby="lp-quests-title">
+          <header class="lp-quests-head">
+            <p class="lp-quests-title" id="lp-quests-title">Quests</p>
+            <span class="lp-rule" aria-hidden="true"><span class="lp-rule-fill"></span></span>
+            <p class="lp-count" data-steps aria-live="polite">{{ quests | selectattr('done') | list | length }} / {{ quests | length }}</p>
+          </header>
           <ul class="lp-steps">
-            <li><label class="lp-step"><input type="checkbox"><span class="lp-ring" aria-hidden="true"></span><span>Investigate the camp</span></label></li>
-            <li><label class="lp-step"><input type="checkbox"><span class="lp-ring" aria-hidden="true"></span><span>Face the goblins</span></label></li>
-            <li><label class="lp-step"><input type="checkbox"><span class="lp-ring" aria-hidden="true"></span><span>Recover the stolen goods</span></label></li>
+            {%- for q in quests %}
+            <li><label class="lp-step"><input type="checkbox"{% if q.done %} checked{% endif %}><span class="lp-ring" aria-hidden="true"></span><span class="lp-step-text">{{ q.text }}</span></label></li>
+            {%- endfor %}
           </ul>
-          <p class="lp-meter-row"><span data-steps>0 of 3 steps</span><span class="lp-meter" aria-hidden="true"><span class="lp-meter-fill"></span></span></p>
-          <span class="lp-stamp" aria-hidden="true">Quest complete</span>
         </section>
       </div>
       </div>

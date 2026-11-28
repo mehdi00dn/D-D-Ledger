@@ -29,7 +29,7 @@
 
   var pieces = {};
 
-  // -- 01: the campaign scene.  The portraits are a radio group: pick a hero and the card shows them.  The mission steps tick off; the last one stamps it. --
+  // -- 01: the campaign dashboard.  The portraits are a radio group: pick a hero and the card shows them.  The quests tick off and the count and the rule follow. --
   pieces.campaign = function (root) {
     var radios = $$('[role="radio"]', root);
     var cards = $$('[data-hero-card]', root);
@@ -57,15 +57,15 @@
       });
     });
 
-    var mission = $$('.lp-mission', root)[0];
+    var quests = $$('.lp-quests', root)[0];
     var boxes = $$('.lp-step input[type="checkbox"]', root);
     var count = $$('[data-steps]', root)[0];
-    var meter = $$('.lp-meter-fill', root)[0];
+    var meter = $$('.lp-rule-fill', root)[0];
     function tally() {
       var done = boxes.filter(function (b) { return b.checked; }).length;
-      if (count) count.textContent = done + ' of ' + boxes.length + ' steps';
+      if (count) count.textContent = done + ' / ' + boxes.length;
       paintMeter(meter, done, boxes.length);
-      if (mission) mission.classList.toggle('is-complete', done === boxes.length && boxes.length > 0);
+      if (quests) quests.classList.toggle('is-complete', done === boxes.length && boxes.length > 0);
     }
     boxes.forEach(function (b) { b.addEventListener('change', tally); });
     tally();

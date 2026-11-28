@@ -29,9 +29,15 @@ descendants, never the container itself.
 - Framing and edges: a scene gets a rounder frame (20px) than a plain screenshot (12px, `landing.css`), with a hairline, a light top edge and layered shadows. Anything inset from the frame is concentric with it (the brass inlay line is the frame radius minus the border minus its inset), paper cards get a hairline and the light catching their top edge, and portraits get a hairline rim so their edge never looks cut out.
 - Changing what a card shows is a CSS transition, never a keyframe, so it can be interrupted and retargeted when someone clicks through quickly.
 
-## 01, Keep the story organized (DL-186)
+## 01, Keep the story organized (DL-186, third version)
 
-IMG-02 is the campaign scene: the painted valley behind a "Tutorial" title (Active, 6 characters, 1 faction, 1 map), the party as a column of round portraits
-(a radio group: click, or the arrow keys, Home and End), the picked hero's card (portrait in a ring, class icon, level, HP, AC, and their line from the campaign notes),
-and the mission on paper over it: three steps from the quest text (investigate the camp, face the goblins, recover the stolen goods). Tick them all and a
-"Quest complete" stamp lands. On a phone the party becomes a row above the cards.
+IMG-02 is the campaign dashboard in miniature: **one wide, rounded card**, not layers. Top, a painted cover (the valley, under a light scrim that fades into the card's base)
+with the campaign's name, **The Ashen Road**, a hairline with a brass diamond under it, and the party as a row of round portraits (a radio group: click, or the arrow keys,
+Home and End). Below, on the card's dark base, two panels: the picked hero's card on paper (portrait that melts into the paper, name, class icon · Level 1, HP and AC chips; Kael is
+Fighter · Level 1, 12 HP, 19 AC) and the **Quests** panel on dark glass: three real checkboxes ("Complete the encounter" is done at first, "Explore the ruins", "Recover the stolen goods"),
+a count (`1 / 3`) and a brass rule between the title and the count that fills as quests are done (`--p`, default 0.333 so the first state needs no script). All three done: the count and rule turn brass.
+Narrow frames (under 560px, measured on the frame) stack the two panels.
+
+The campaign is a demo ("The Ashen Road"), the party and their portraits are the tutorial campaign's. `*-card.webp` (300px) are the card portraits; `<name>.webp` (144px) the round ones.
+Details that keep it feeling like the app: the selected portrait gets a brass ring and lifts 3px; quest rows take a hover wash; the check ring presses in on `:active` (all 150 to 260ms,
+transform, opacity and colour only, ease-out, off under reduced motion); picking a hero cross-fades the stacked cards (a transition, so it can be interrupted).
