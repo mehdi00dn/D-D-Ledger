@@ -43,7 +43,7 @@ def test_backend_choice(monkeypatch):
 
 
 def test_build_rejects_header_injection_and_bad_addresses(monkeypatch):
-    monkeypatch.setenv('MAIL_FROM', 'Ledger <no-reply@example.com>')
+    monkeypatch.setenv('MAIL_FROM', 'Oaken <no-reply@example.com>')
     msg = mailer.build('a@example.com', 'Hi\r\nBcc: evil@example.com', 'body', '<p>body</p>')
     assert 'Bcc' not in msg and '\n' not in msg['Subject']
     for bad in ('nobody', 'a@b.c\r\nBcc: x@y.z', ''):

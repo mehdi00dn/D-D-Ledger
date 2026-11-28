@@ -1,8 +1,9 @@
-{% extends "base.html" %}
+{#- DL-180 part 30: inside a campaign this is a campaign page (the sidebar shell); outside one it is a site page (the home page's look). -#}
+{% extends "base.html" if g.campaign_id else "site_base.html" %}
 {% from "_icons.html" import icon %}
 {% from "_note_editor.html" import note_block %}
 {% if campaign %}{% set active_page = 'settings' %}{% endif %}
-{% block title %}{{ 'Edit' if campaign else 'New' }} Campaign — Campaign Ledger{% endblock %}
+{% block title %}{{ 'Edit' if campaign else 'New' }} Campaign — Oaken{% endblock %}
 
 {% block content %}
 {% set is_owner = (not campaign) or g.campaign_role == 'owner' %}
@@ -16,23 +17,23 @@
 </div>
 
 <div class="campaign-edit-layout">
-<form class="form-panel" method="POST" enctype="multipart/form-data" id="campaign-form">{{ csrf_field() }}
+<form class="form-panel o-paper" method="POST" enctype="multipart/form-data" id="campaign-form">{{ csrf_field() }}
   <div class="form-section">
-    <p class="form-section-title">Campaign Identity</p>
-    <div class="field" style="margin-bottom:14px;">
+    <p class="form-section-title">Campaign identity</p>
+    <div class="field u-mb14">
       <label for="name">Name</label>
       <input type="text" id="name" name="name" value="{{ campaign.name if campaign else '' }}" placeholder="e.g. The Ashfall Chronicles" required {{ 'disabled' if not is_owner }}>
     </div>
 
-    <div class="field" style="margin-bottom:14px;">
-      <label>Campaign Image</label>
+    <div class="field u-mb14">
+      <label>Campaign image</label>
       <div class="avatar-preview-row">
         <div class="avatar-frame-wrap">
           <div class="avatar-frame avatar-frame--banner">
             {% if campaign and campaign.avatar_path %}
               <img id="campaign-avatar-preview" src="{{ url_for('uploaded_file', filename=campaign.avatar_path) }}" alt="avatar preview">
             {% else %}
-              <img id="campaign-avatar-preview" style="display:none;" alt="avatar preview">
+              <img id="campaign-avatar-preview" hidden alt="avatar preview">
               {{ icon('scroll', 'avatar-placeholder-icon') }}
             {% endif %}
           </div>
@@ -68,7 +69,7 @@
   {% if is_owner and campaign %}
   <div class="form-section">
     <p class="form-section-title">Campaign notes</p>
-    <p class="field-hint" style="margin:0 0 10px;">Shown on the campaign's Home page. Mark a note as hidden to keep it to yourself and the other DMs.</p>
+    <p class="field-hint u-m0-10">Shown on the campaign's Overview page. Mark a note as hidden to keep it to yourself and the other DMs.</p>
     <div class="note-blocks" id="campnotes-blocks">
       {% for e in notes_entries %}{{ note_block(e.t, e.h, 'notes', 'Plot threads, house rules, what the party knows...') }}{% endfor %}
     </div>
@@ -79,10 +80,10 @@
   {% endif %}
 
   <div class="form-section">
-    <p class="form-section-title">Campaign Details</p>
+    <p class="form-section-title">Campaign details</p>
     <div class="field-row-2">
       <div class="field" id="setting-field">
-        <label for="setting-preset">Setting / World <span class="field-optional">optional</span></label>
+        <label for="setting-preset">Setting / world <span class="field-optional">optional</span></label>
         <select id="setting-preset" name="setting_preset" {{ 'disabled' if not is_owner }}>
           <option value="" {{ 'selected' if setting_preset == '' else '' }}>Not set</option>
           {% for preset in ('Forgotten Realms', 'Eberron', 'Homebrew') %}
@@ -91,17 +92,17 @@
           <option value="__custom__" {{ 'selected' if setting_preset == '__custom__' else '' }}>Custom&hellip;</option>
         </select>
         <input type="text" id="setting-custom" name="setting_custom" value="{{ setting_custom }}"
-               placeholder="Name your setting..." style="margin-top:8px;{{ '' if setting_preset == '__custom__' else ' display:none;' }}"
+               placeholder="Name your setting..." class="u-mt8"{{ '' if setting_preset == '__custom__' else ' hidden' }}
                {{ 'disabled' if not is_owner }}>
       </div>
 
       <div class="field">
-        <label for="status">Campaign Status <span class="field-optional">optional</span></label>
+        <label for="status">Campaign status <span class="field-optional">optional</span></label>
         <div class="status-field">
           <span class="status-dot" id="status-dot" data-status="{{ cur_status }}"></span>
           <select id="status" name="status" {{ 'disabled' if not is_owner }}>
             <option value="active" {{ 'selected' if cur_status == 'active' else '' }}>Active</option>
-            <option value="on_hold" {{ 'selected' if cur_status == 'on_hold' else '' }}>On Hold</option>
+            <option value="on_hold" {{ 'selected' if cur_status == 'on_hold' else '' }}>On hold</option>
             <option value="completed" {{ 'selected' if cur_status == 'completed' else '' }}>Completed</option>
             <option value="archived" {{ 'selected' if cur_status == 'archived' else '' }}>Archived</option>
           </select>
@@ -111,7 +112,7 @@
   </div>
 
   <div class="form-section">
-    <p class="form-section-title">Access &amp; Privacy</p>
+    <p class="form-section-title">Access &amp; privacy</p>
     <div class="access-options">
       <label class="access-option">
         <input type="radio" name="access_mode" value="private" {{ 'checked' if cur_access == 'private' else '' }} {{ 'disabled' if not is_owner }}>
@@ -127,7 +128,7 @@
         <input type="radio" name="access_mode" value="invite_link" {{ 'checked' if cur_access == 'invite_link' else '' }} {{ 'disabled' if not is_owner }}>
         <span class="access-option-card">
           <span class="access-option-card-header">
-            <span class="access-option-card-title">{{ icon('globe') }} Invite Link</span>
+            <span class="access-option-card-title">{{ icon('globe') }} Invite link</span>
             <span class="access-option-card-check">{{ icon('check') }}</span>
           </span>
           <p class="access-option-card-desc">Anyone with a valid invite link can join as a Player. Create links after saving.</p>
@@ -139,7 +140,7 @@
   {% if is_owner %}
   <div class="form-actions">
     <a href="{{ url_for('campaigns_list') }}" class="btn btn-ghost">Cancel</a>
-    <button type="submit" class="btn btn-primary">{{ icon('check') }} {{ 'Save Changes' if campaign else 'Create Campaign' }}</button>
+    <button type="submit" class="btn btn-primary">{{ icon('check') }} {{ 'Save changes' if campaign else 'Create campaign' }}</button>
   </div>
   {% endif %}
 </form>
@@ -149,22 +150,34 @@
 {% set owner_count = members|selectattr('role', 'equalto', 'owner')|list|length %}
 {% set can_leave_freely = not is_owner or owner_count > 1 %}
 {% if g.real_is_dm or is_owner %}
-<div class="form-panel">
-  <div class="form-section" style="margin-bottom:0;">
+<div class="form-panel o-paper">
+  <div class="form-section u-mb0">
     <p class="form-section-title">Players &amp; NPCs</p>
     <form method="POST" action="{{ url_for('campaign_npc_visibility', campaign_id=campaign.id) }}" id="npc-visibility-form">{{ csrf_field() }}
       <label class="toggle-switch">
         <input type="checkbox" name="hide_npcs" {{ 'checked' if campaign.hide_npcs else '' }} data-auto-submit>
         <span class="toggle-switch-track"></span>
-        <span class="toggle-switch-label">Hide NPCs from Players</span>
+        <span class="toggle-switch-label">Hide NPCs from players</span>
       </label>
-      <p class="field-hint">While this is on, Players don't see NPCs anywhere: the character list, factions, battle, map, dice log or activity. An NPC a Player made themselves stays visible to them. The DM sees everything.</p>
+      <p class="field-hint">While this is on, Players don't see NPC cards in the character list. NPCs still show on the map and in the battle, with their stats hidden as usual. An NPC a Player made themselves stays in their list. The DM sees everything.</p>
     </form>
   </div>
 </div>
 {% endif %}
-<div class="form-panel members-panel">
-  <div class="form-section" style="margin-bottom:0;">
+{% if g.is_dm %}
+<div class="form-panel o-paper">
+  <div class="form-section u-mb0">
+    <p class="form-section-title">Back up or move this campaign</p>
+    {% if request.args.get('export_error') == 'size' %}
+    <div class="banner-notice banner-error" role="alert">The images in this campaign add up to more than 50 MB, which is too much for one export file. Delete some images you no longer need and try again.</div>
+    {% endif %}
+    <a href="{{ url_for('campaign_export', campaign_id=campaign.id) }}" class="btn btn-ghost">{{ icon('upload') }} Export whole campaign</a>
+    <p class="field-hint">One file with the campaign settings and image, characters and NPCs, factions, maps with their tokens, drawings and fog, quests, the session journal and the treasury. Players, invitations, the activity feed, dice rolls and the live battle are not included. The file holds your hidden notes, so keep it to yourself. Import it from the Campaigns page to start a new campaign from it.</p>
+  </div>
+</div>
+{% endif %}
+<div class="form-panel o-paper members-panel">
+  <div class="form-section u-mb0">
     <p class="form-section-title">Members</p>
     <div class="member-list" id="member-list">
       {% for m in members %}
@@ -202,7 +215,7 @@
         <details class="member-chars">
           <summary>{{ icon('user') }} {% if mine %}Plays {{ mine|map(attribute='name')|join(', ') }}{% else %}Attach characters{% endif %}</summary>
           <form method="POST" action="{{ url_for('campaign_member_characters', campaign_id=campaign.id, user_id=m.id) }}">{{ csrf_field() }}
-            <p class="field-hint" style="margin:4px 0 8px;">{{ m.username }} can edit these characters and move their tokens on the maps.</p>
+            <p class="field-hint u-m4-8">{{ m.username }} can edit these characters and move their tokens on the maps.</p>
             <ul class="member-chars-list">
               {% for c in assignable %}
               <li><label><input type="checkbox" name="character_ids" value="{{ c.id }}" {{ 'checked' if c.player_id == m.id else '' }}>
@@ -309,7 +322,7 @@
     <div class="leave-campaign-row">
       {% if can_leave_freely %}
       <form method="POST" action="{{ url_for('campaign_leave', campaign_id=campaign.id) }}" data-confirm="Leave '{{ campaign.name }}'? You'll need a new invite to get back in.">{{ csrf_field() }}
-        <button type="submit" class="btn btn-ghost btn-sm">{{ icon('arrow-left') }} Leave Campaign</button>
+        <button type="submit" class="btn btn-ghost btn-sm">{{ icon('arrow-left') }} Leave campaign</button>
       </form>
       {% elif members|length > 1 %}
       <p class="hint-text">You're the only owner — promote another member to Owner before you can leave.</p>
@@ -393,7 +406,7 @@
   var customInput = document.getElementById('setting-custom');
   if (presetSelect && customInput) {
     presetSelect.addEventListener('change', function () {
-      customInput.style.display = presetSelect.value === '__custom__' ? '' : 'none';
+      customInput.hidden = presetSelect.value !== '__custom__';
     });
   }
   var statusSelect = document.getElementById('status');

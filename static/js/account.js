@@ -68,18 +68,18 @@
       document.documentElement.setAttribute('data-theme', theme);
     };
     var stored = null;
-    try { stored = localStorage.getItem('ledger-theme'); } catch (e) { /* ignore */ }
+    try { stored = (localStorage.getItem('oaken-theme') || localStorage.getItem('ledger-theme')); } catch (e) { /* ignore */ }
     var current = stored === 'light' || stored === 'dark' || stored === 'system' ? stored : (document.documentElement.getAttribute('data-theme') || 'dark');
     radios.forEach(function (r) { r.checked = r.value === current; });
     radios.forEach(function (r) {
       r.addEventListener('change', function () {
-        try { localStorage.setItem('ledger-theme', r.value); } catch (e) { /* ignore */ }
+        try { localStorage.setItem('oaken-theme', r.value); } catch (e) { /* ignore */ }
         apply(r.value);
       });
     });
     var onDeviceChange = function () {
       var now = null;
-      try { now = localStorage.getItem('ledger-theme'); } catch (e) { /* ignore */ }
+      try { now = (localStorage.getItem('oaken-theme') || localStorage.getItem('ledger-theme')); } catch (e) { /* ignore */ }
       if (now === 'system') apply('system');
     };
     if (media.addEventListener) media.addEventListener('change', onDeviceChange);

@@ -1,10 +1,11 @@
-/* Character details page: the thumbnails in the card pick which sheet the big viewer on the right shows.
-   Clicking the viewer opens the shared lightbox on the same sheet, with every sheet one arrow away. */
+/* Character details page: the "Additional images" viewer on the right (a character sheet, a portrait variant, a map, a reference: anything).
+   The arrows step through the images; clicking the picture opens the shared lightbox on the same image, with every image one arrow away.
+   The images come from a hidden list in the page ([data-sheet-list]); there is no thumbnail strip. */
 (function () {
   'use strict';
   var panel = document.querySelector('[data-sheet-viewer]');
   var img = document.getElementById('sheet-viewer-img');
-  var thumbs = Array.prototype.slice.call(document.querySelectorAll('[data-sheet-thumbs] img[data-sheet-src]'));
+  var thumbs = Array.prototype.slice.call(document.querySelectorAll('[data-sheet-list] [data-sheet-src]'));
   if (!panel || !img || !thumbs.length) return;
   var count = panel.querySelector('[data-sheet-count]');
   var prev = panel.querySelector('[data-sheet-prev]');
@@ -24,30 +25,48 @@
     turn.onfinish = turn.oncancel = function () { turn = null; };
   }
 
+  // On a slow connection a new <img src> keeps painting the OLD picture until the new one has arrived, so the arrows looked like they
+  // repeated one image.  Now the old picture is hidden (and a spinner shown) while the next one loads; a failed load says so and a click retries.
+  var stage = img.parentElement, wait = null;
+  function setSource(url, force) {
+    clearTimeout(wait);
+    stage.classList.remove('is-failed');
+    if (!force && img.getAttribute('src') === url) { stage.classList.remove('is-loading'); return; }
+    if (force) img.removeAttribute('src');
+    img.src = url;
+    wait = setTimeout(function () { if (!img.complete) stage.classList.add('is-loading'); }, 120);   // quick loads never flash a spinner
+  }
+  img.addEventListener('load', function () {
+    clearTimeout(wait);
+    stage.classList.remove('is-loading', 'is-failed');
+    [index - 1, index + 1].forEach(function (n) { if (thumbs[n]) (new Image()).src = thumbs[n].dataset.sheetSrc; });   // the next arrow press is instant
+  });
+  img.addEventListener('error', function () {
+    clearTimeout(wait);
+    stage.classList.remove('is-loading');
+    stage.classList.add('is-failed');
+  });
+
   function show(i) {
     var before = index;
     index = Math.max(0, Math.min(thumbs.length - 1, i));
     var changed = index !== before;
-    img.src = thumbs[index].dataset.sheetSrc;
+    setSource(thumbs[index].dataset.sheetSrc);
     if (changed) pageTurn(index > before ? 1 : -1);
-    thumbs.forEach(function (t, n) { t.parentNode.classList.toggle('is-active', n === index); });
-    img.alt = 'Character sheet ' + (index + 1) + ' of ' + thumbs.length;
+    img.alt = 'Additional image ' + (index + 1) + ' of ' + thumbs.length;
     if (count) count.textContent = (index + 1) + ' / ' + thumbs.length;
     if (prev) prev.disabled = index === 0;
     if (next) next.disabled = index === thumbs.length - 1;
   }
 
-  thumbs.forEach(function (t, n) {
-    t.addEventListener('click', function () { show(n); });
-    t.addEventListener('keydown', function (e) {
-      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); show(n); }
-    });
-  });
   if (prev) prev.addEventListener('click', function () { show(index - 1); });
   if (next) next.addEventListener('click', function () { show(index + 1); });
 
+  stage.addEventListener('click', function () {
+    if (stage.classList.contains('is-failed')) setSource(thumbs[index].dataset.sheetSrc, true);   // retry the picture that did not arrive
+  });
   img.addEventListener('click', function () {
-    if (!window.openLightbox) return;
+    if (!window.openLightbox || stage.classList.contains('is-failed')) return;
     var items = thumbs.map(function (t) { return { src: t.dataset.sheetSrc, deleteUrl: t.dataset.viewerDeleteUrl || null }; });
     window.openLightbox(items[index].src, items[index].deleteUrl, items);
   });

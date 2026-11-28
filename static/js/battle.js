@@ -38,7 +38,7 @@
     return (str == null ? '' : String(str)).replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
   }
 
-  // Colours end up inside style="..." attributes: only hex colours and var(--token) get through.
+  // Colours end up inside data-bg / data-bc attributes (applied by dyn-style.js): only hex colours and var(--token) get through.
   function safeColor(value, fallback) {
     return typeof value === 'string' && (/^#[0-9a-fA-F]{3,8}$/.test(value) || /^var\(--[a-z-]+\)$/.test(value)) ? value : fallback;
   }
@@ -167,7 +167,7 @@
     const pct = hidden ? 0 : hpPercent(p);
     const dead = !!p.is_dead;
     const showDiedBtn = isDM && !hidden && p.current_hp <= 0 && !dead;
-    const groupDot = p.group_color ? `<span class="group-dot" style="background:${safeColor(p.group_color, '#c9a24b')}"></span>` : '';
+    const groupDot = p.group_color ? `<span class="group-dot" data-bg="${safeColor(p.group_color, '#c9a24b')}"></span>` : '';
     const tempHp = p.temp_hp || 0;
     const tempPct = p.char_max_hp ? (tempHp / p.char_max_hp) * 100 : 0;
     const tempBarWidth = Math.max(0, Math.min(100 - pct, tempPct));
@@ -200,7 +200,7 @@
         <div class="stat-chip stats-fogged" aria-hidden="true"><label>INIT</label><input type="number" class="stat-chip-input" value="00" disabled tabindex="-1"></div>
         <div class="stat-chip stats-fogged" aria-hidden="true"><label>AC</label><input type="number" class="stat-chip-input" value="00" disabled tabindex="-1"></div>
         <div class="hp-block stats-fogged" aria-hidden="true">
-          <div class="hp-bar-track hp-bar-track-static"><div class="hp-bar-fill ${hpColorClass(70)}" style="--p:0.7"></div></div>
+          <div class="hp-bar-track hp-bar-track-static"><div class="hp-bar-fill ${hpColorClass(70)}" data-p="0.7"></div></div>
           <span class="hp-readout">00 / 00</span>
         </div>
       </div>`;
@@ -217,8 +217,8 @@
       </div>
       <div class="hp-block">
         <div class="hp-bar-track${isDM ? '' : ' hp-bar-track-static'}" ${isDM ? `data-hp-scrub="${p.id}"` : ''} data-max="${p.char_max_hp}" title="${isDM ? 'Hold and drag to set HP' : ''}">
-          <div class="hp-bar-fill ${hpColorClass(pct)}" style="--p:${pct / 100}"></div>
-          ${tempBarWidth > 0 ? `<div class="hp-bar-temp" style="left:${pct}%; width:${tempBarWidth}%;"></div>` : ''}
+          <div class="hp-bar-fill ${hpColorClass(pct)}" data-p="${(pct / 100).toFixed(4)}"></div>
+          ${tempBarWidth > 0 ? `<div class="hp-bar-temp" data-left="${pct.toFixed(2)}" data-width="${tempBarWidth.toFixed(2)}"></div>` : ''}
         </div>
         <span class="hp-readout">${p.current_hp} / ${p.char_max_hp}${tempHp > 0 ? ` <span class="temp-hp-badge">+${tempHp}</span>` : ''}</span>
       </div>
@@ -244,14 +244,14 @@
       ? ' data-action="view" role="button" tabindex="0" title="View details"' : '';
 
     return `
-    <div class="battle-row ${dead ? 'is-dead' : ''} ${p.is_active ? 'is-active' : ''}" data-pid="${p.id}"${hidden ? '' : ` data-hp="${p.current_hp}"`}${p.is_active ? ' aria-current="true"' : ''}>
+    <div class="battle-row ${dead ? 'is-dead' : ''} ${p.is_active ? 'is-active' : ''} ${p.is_npc && !p.is_ally ? 'is-foe' : ''}" data-pid="${p.id}"${hidden ? '' : ` data-hp="${p.current_hp}"`}${p.is_active ? ' aria-current="true"' : ''}>
       ${rank ? `<span class="battle-rank" aria-hidden="true">${rank}</span>` : ''}
-      <div class="battle-avatar${openAttrs ? ' is-link' : ''}"${openAttrs} aria-label="${escapeHtml(p.display_name)}: details" style="border-color:${safeColor(p.group_color, 'var(--brass)')};">${avatarMarkup(p)}</div>
+      <div class="battle-avatar${openAttrs ? ' is-link' : ''}"${openAttrs} aria-label="${escapeHtml(p.display_name)}: details" data-bc="${safeColor(p.group_color, 'var(--brass)')}">${avatarMarkup(p)}</div>
 
       <div class="battle-name-block">
         <div class="battle-name${openAttrs ? ' is-link' : ''}"${openAttrs}>${classIconHtml(p.class_key)}${escapeHtml(p.display_name)}</div>
         <div class="battle-sub">
-          <div class="battle-meta">${groupDot}${p.group_name ? escapeHtml(p.group_name) : 'No Faction'} &middot; ${p.is_npc ? 'NPC' : 'PC'}</div>
+          <div class="battle-meta">${groupDot}${p.group_name ? escapeHtml(p.group_name) : 'No faction'} &middot; ${p.is_npc ? 'NPC' : 'PC'}</div>
           ${conditionChips(p)}
         </div>
       </div>
@@ -287,7 +287,7 @@
     const groups = new Map();
     arr.forEach((p) => {
       const key = p.gid || 'none';
-      if (!groups.has(key)) groups.set(key, { name: p.group_name || 'No Faction', color: p.group_color, items: [] });
+      if (!groups.has(key)) groups.set(key, { name: p.group_name || 'No faction', color: p.group_color, items: [] });
       groups.get(key).items.push(p);
     });
     groups.forEach((g) => g.items.sort((a, b) => b.initiative - a.initiative || a.sort_order - b.sort_order));
@@ -312,12 +312,13 @@
     let html = '';
     sections.forEach((section) => {
       if (section.heading) {
-        html += `<div class="group-heading"><span class="group-dot" style="background:${safeColor(section.heading.color, '#c9a24b')}"></span>${escapeHtml(section.heading.name)}</div>`;
+        html += `<div class="group-heading"><span class="group-dot" data-bg="${safeColor(section.heading.color, '#c9a24b')}"></span>${escapeHtml(section.heading.name)}</div>`;
       }
-      html += '<div class="battle-list">' + section.items.map((p, i) => rowMarkup(p, isDM && sortMode === 'initiative' ? i + 1 : 0)).join('') + '</div>';
+      html += '<div class="battle-list o-paper">' + section.items.map((p, i) => rowMarkup(p, isDM && sortMode === 'initiative' ? i + 1 : 0)).join('') + '</div>';
     });
     const before = snapshotRows();
     root.innerHTML = html;
+    if (window.oakenApplyDataStyles) window.oakenApplyDataStyles(root);      // colours and bar fills come as data-* (dyn-style.js); apply before anything measures the rows
     condSeen = condNow; condNow = new Set();
     animateRows(before);
   }
@@ -515,9 +516,9 @@
       body: JSON.stringify(body || {}),
     });
     if (!res.ok) {
-      const message = await LedgerApi.message(res, 'That did not work. Please try again.');
-      LedgerApi.notify(message);                 // say why (no permission, session ended, ...) instead of failing silently
-      throw new LedgerApi.Error(message, res.status);
+      const message = await OakenApi.message(res, 'That did not work. Please try again.');
+      OakenApi.notify(message);                 // say why (no permission, session ended, ...) instead of failing silently
+      throw new OakenApi.Error(message, res.status);
     }
     refreshLogSoon();                              // whatever just changed may have a line in the log
     return res.json();
@@ -715,11 +716,11 @@
       return;
     }
     addModalGroups.innerHTML = `
-      <p class="hint-text" style="margin:0 0 8px;">Add a whole faction at once</p>
+      <p class="hint-text u-m0-8">Add a whole faction at once</p>
       <div class="add-modal-groups-row">
         ${groups.map((g) => `
-          <button type="button" class="chip add-whole-group-chip" data-add-group="${g.id}" style="border-color:${safeColor(g.color, '#c9a24b')};">
-            <span class="group-dot" style="background:${safeColor(g.color, '#c9a24b')}"></span>${escapeHtml(g.name)}
+          <button type="button" class="chip add-whole-group-chip" data-add-group="${g.id}" data-bc="${safeColor(g.color, '#c9a24b')}">
+            <span class="group-dot" data-bg="${safeColor(g.color, '#c9a24b')}"></span>${escapeHtml(g.name)}
           </button>
         `).join('')}
       </div>
@@ -743,10 +744,10 @@
     }
     addModalList.innerHTML = filtered.map((c) => `
       <div class="add-character-item">
-        <div class="battle-avatar" style="width:36px;height:36px;border-color:${safeColor(c.group_color, 'var(--brass)')};">${c.avatar_path ? `<img src="/uploads/${escapeHtml(c.avatar_path)}" alt="">` : ICONS.user}</div>
+        <div class="battle-avatar battle-avatar-sm" data-bc="${safeColor(c.group_color, 'var(--brass)')}">${c.avatar_path ? `<img src="/uploads/${escapeHtml(c.avatar_path)}" alt="">` : ICONS.user}</div>
         <div class="battle-name-block">
-          <div class="battle-name" style="font-size:14px;">${classIconHtml(c.class_key)}${escapeHtml(c.name)}</div>
-          <div class="battle-meta">${(c.factions || []).length ? escapeHtml(c.factions.map((f) => f.name).join(', ')) : 'No Faction'}</div>
+          <div class="battle-name battle-name-sm">${classIconHtml(c.class_key)}${escapeHtml(c.name)}</div>
+          <div class="battle-meta">${(c.factions || []).length ? escapeHtml(c.factions.map((f) => f.name).join(', ')) : 'No faction'}</div>
         </div>
         <button type="button" class="btn btn-primary btn-sm" data-add-char="${c.id}">Add</button>
       </div>
@@ -772,7 +773,7 @@
       if (standing.some((p) => p.initiative) && !(await window.confirmAction('Roll initiative for ' + scopeLabel[scope] + ' again? The numbers already entered are replaced.'))) return;
       rollInitBtn.disabled = true;
       try { participants = await apiCall('/api/battle/roll-initiative', { scope }); render(); }
-      catch (e) { if (window.LedgerDice) LedgerDice.announceError('Could not roll initiative.'); }
+      catch (e) { if (window.OakenDice) OakenDice.announceError('Could not roll initiative.'); }
       rollInitBtn.disabled = false;
     };
     // A mouse hovers to see the choices and a click still rolls for everyone; a touch screen has no hover, so the first tap opens them.
@@ -1048,12 +1049,12 @@
   // heals/damage/initiative/new arrivals after a manual reload. Skipped
   // mid-HP-scrub or while an amount/search input has focus so a poll can't
   // wipe out something half-typed.
-  // Live refresh runs through the shared LedgerPoll scheduler: it pauses while this tab is
+  // Live refresh runs through the shared OakenPoll scheduler: it pauses while this tab is
   // hidden, backs off while nothing changes, and snaps back to full speed on any change.
   // The server snapshot is compared with what is ON SCREEN (not just the previous
   // snapshot), so an optimistic local edit that never reached the server is still corrected.
   let lastBattleSig = null;
-  const battlePoll = LedgerPoll.every(async () => {
+  const battlePoll = OakenPoll.every(async () => {
     if (scrubbing) return 'skip';
     const active = document.activeElement;
     if (active && active.tagName === 'INPUT' && (root.contains(active) || (addModal && addModal.contains(active)))) return 'skip';
@@ -1072,7 +1073,7 @@
   }, { base: 3000, max: 12000 });
 
   // Real-time: a ping from the server means "something changed" -> refresh right now.  Polling above stays as the safety net.
-  if (window.LEDGER_REALTIME && window.LedgerRealtime) {
-    LedgerRealtime.connect(window.LEDGER_REALTIME, (p) => { if (p.s !== 'map' && p.s !== 'dice') battlePoll.poke(); });
+  if (window.OAKEN_REALTIME && window.OakenRealtime) {
+    OakenRealtime.connect(window.OAKEN_REALTIME, (p) => { if (p.s !== 'map' && p.s !== 'dice') battlePoll.poke(); });
   }
 })();

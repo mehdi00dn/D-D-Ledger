@@ -27,10 +27,8 @@ def test_sign_up_then_fill_in_the_profile(pw, shared_server):
     assert page.input_value('#username') == 'welcome_walker'
     page.check('[name=accept_terms]'); page.check('[name=accept_cookies]')
     page.click('.auth-submit')
-    page.wait_for_url('**/confirm-email**')                                   # DL-165: ask for the email confirmation first
-    expect(page.locator('h1')).to_have_text('Check your inbox')
-    page.click('text=Continue without confirming')
-    page.wait_for_url('**/welcome**')
+    page.wait_for_url('**/welcome**')                                         # test servers run with EMAIL_CONFIRM_REQUIRED=0 (DL-167), so no confirm step;
+                                                                              # the "Check your inbox" page itself is covered in tests/test_email_gate.py
     expect(page.locator('h1')).to_have_text('Set up your profile')
     shot = os.environ.get('WELCOME_SHOT')
     if shot:

@@ -1,5 +1,6 @@
 """DL-93: inviting someone creates a pending invitation + notification; they join only by accepting."""
 import pytest
+import pubid
 from conftest import BACKEND, q
 
 pytestmark = pytest.mark.skipif(BACKEND == 'sqlite', reason='new-code tests')
@@ -21,15 +22,15 @@ def test_an_invitation_adds_nobody_and_notifies_the_invitee(make_user):
     assert pl.name not in _members(cid)
     page = pl.get('/notifications').data.decode()
     assert 'invited you to Quest' in page and 'Accept' in page and 'Decline' in page and f'/invitations/{inv}/accept' in page
-    assert 'nav-badge' in pl.get('/campaigns').data.decode()                   # unread badge in the sidebar
-    assert 'nav-badge' not in dm.get('/campaigns').data.decode()
+    assert 'pub-badge' in pl.get('/campaigns').data.decode()                   # unread badge in the site header
+    assert 'pub-badge' not in dm.get('/campaigns').data.decode()
 
 
 def test_accepting_joins_with_the_offered_status_and_tells_the_owner(make_user):
     dm, pl = make_user(), make_user(); cid = dm.new_campaign('Quest')
     inv = _invite(dm, cid, pl, 'dm')
     r = pl.post(f'/invitations/{inv}/accept')
-    assert r.status_code == 302 and f'/campaigns/{cid}/' in r.headers['Location']
+    assert r.status_code == 302 and f'/campaigns/%s/' % pubid.short('campaigns', cid) in r.headers['Location']
     assert _members(cid)[pl.name] == 'dm'
     assert q('SELECT role FROM campaign_members cm JOIN users u ON u.id = cm.user_id WHERE u.username = ? AND cm.campaign_id = ?', pl.name, cid)[0]['role'] == 'member'
     assert q('SELECT read_at IS NOT NULL AS r FROM notifications n JOIN users u ON u.id = n.user_id WHERE u.username = ? AND n.kind = ?', pl.name, 'campaign_invite')[0]['r']

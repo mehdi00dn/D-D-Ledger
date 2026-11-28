@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon %}
 {% set active_page = 'maps' %}
-{% block title %}{{ map.name }} — Campaign Ledger{% endblock %}
+{% block title %}{{ map.name }} — Oaken{% endblock %}
 
 {% block content %}
 <div class="page-header">
@@ -23,9 +23,26 @@
       <span class="toggle-switch-label">Link to current battle</span>
     </label>
     {% endif %}
-    <a href="{{ url_for('maps_list', browse=1) }}" class="btn btn-ghost map-back-btn">{{ icon('arrow-left') }} <span>Back to maps</span></a>
+    <button type="button" class="btn btn-ghost map-help-btn" data-open-dialog="map-guide" aria-label="How the map works">{{ icon('info') }} <span>How it works</span></button>
+    <a href="{{ url_for('maps_list', browse=1) }}" class="btn btn-ghost map-back-btn" aria-label="Back to maps">{{ icon('arrow-left') }} <span>Back to maps</span></a>
   </div>
 </div>
+
+<dialog class="pick-dialog map-guide-dialog" id="map-guide" aria-labelledby="map-guide-title">
+  <div class="pick-head"><h2 id="map-guide-title">How the map works</h2><button type="button" class="btn-icon" data-close-dialog aria-label="Close">{{ icon('x') }}</button></div>
+  <div class="map-guide-body"><div class="guide-card o-ondark">
+  <ol class="guide-steps">
+    <li>{{ icon('cursor') }}<div><b>Move things.</b> Pick the Select tool, then drag a token, shape or picture. Tap or click one to get its buttons: resize, rotate, lock{% if g.is_dm %}, hide from players{% endif %} and delete.</div></li>
+    <li>{{ icon('shapes-group') }}<div><b>Draw.</b> Lines, rectangles, ovals, free draw and cones live under the shapes button. Pick a colour first; a new shape is selected as soon as you finish it. The link button on a selected shape attaches it to a token so they move together.</div></li>
+    <li>{{ icon('images') }}<div><b>Add a picture.</b> The pictures button in the shapes menu adds a handout, a room or a clue beside the map, as part of the canvas. Move it, resize it, turn it or remove it; the grid runs over it and tokens can stand on it. Undo brings back a deleted one.</div></li>
+    <li>{{ icon('ruler') }}<div><b>Measure.</b> Drag with the ruler for the true distance in squares and feet, diagonals included. Cone, sphere, line and cube show a spell's reach. With "Show to table" on, everyone sees it for a few seconds.</div></li>
+    <li>{{ icon('maximize') }}<div><b>Look around.</b> Zoom with Ctrl + scroll (or pinch with two fingers) and pan by holding Space and dragging (or dragging with two fingers). Reset zoom puts it back.</div></li>
+    <li>{{ icon('user') }}<div><b>Tokens.</b> Pick a character from the Characters list, then click the map to drop its token. The marker buttons drop an animal, a monster or a weapon the same way. {% if g.is_dm %}Assign a token to a player so they can move it themselves, and use fog to hide what the party has not found yet.{% else %}You can move the tokens that are assigned to you, unless the DM has locked the map.{% endif %}</div></li>
+  </ol>
+  <p class="guide-note"><b>Shortcuts:</b> <kbd>V</kbd> select · <kbd>E</kbd> eraser · <kbd>Del</kbd> delete the selected object · <kbd>Ctrl</kbd>+<kbd>Z</kbd> undo · <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> redo · <kbd>Esc</kbd> clear a measure or stop placing · <kbd>Shift</kbd> while drawing grows a shape from its centre · <kbd>Alt</kbd> keeps it square or round, and snaps a line to 45°.</p>
+  </div></div>
+  <div class="pick-foot"><button type="button" class="btn btn-ghost" data-close-dialog>Close</button></div>
+</dialog>
 
 <div class="map-content-area {{ 'map-readonly' if map.locked_for_players and not g.is_dm else '' }}" id="map-content-area">
 <div class="map-toolbar-sentinel" id="map-toolbar-sentinel"></div>
@@ -49,6 +66,8 @@
         <button type="button" class="map-tool-btn" data-tool="oval" title="Oval">{{ icon('oval-tool') }}</button>
         <button type="button" class="map-tool-btn" data-tool="pen" title="Free draw">{{ icon('pen-tool') }}</button>
         <button type="button" class="map-tool-btn" data-tool="angle" title="Angle / cone: click a start point, click again to set the reach, then drag its edges to widen or narrow">{{ icon('angle-tool') }}</button>
+        <button type="button" class="map-tool-btn" id="map-add-image-btn" title="Add image: put a picture beside the map (a handout, a room, a clue). Move, resize, turn or remove it" aria-label="Add image">{{ icon('images') }}</button>
+        <input type="file" id="map-image-input" aria-label="Choose a picture to put beside the map" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
       </div></div>
     </div>
 
@@ -115,24 +134,24 @@
   <div class="map-tool-group" id="shape-style-group" hidden>
     <div class="tool-flyout" id="colors-flyout" data-flyout-group="colors">
       <button type="button" class="map-tool-btn flyout-trigger" id="colors-flyout-trigger" data-flyout-trigger title="Shape color">
-        <span class="color-flyout-swatch" id="colors-flyout-swatch" style="background:#c9a24b;"></span>
+        <span class="color-flyout-swatch" id="colors-flyout-swatch" data-bg="#c9a24b"></span>
       </button>
       <div class="tool-flyout-menu"><div class="tool-flyout-menu-inner">
-        <div class="color-swatch-row" data-color-group="#map-color-input" style="gap:6px;">
+        <div class="color-swatch-row u-gap6" data-color-group="#map-color-input">
           {% for c in ['#c9a24b', '#e63946', '#5f9174', '#4d7ea8', '#8e6bb0', '#8a5a34', '#f2f2f2', '#1a1a1a'] %}
-          <button type="button" class="color-swatch {{ 'selected' if loop.first }}" data-color="{{ c }}" aria-label="Colour {{ c }}" style="background:{{ c }}; width:22px; height:22px;"></button>
+          <button type="button" class="color-swatch color-swatch-sm {{ 'selected' if loop.first }}" data-color="{{ c }}" aria-label="Colour {{ c }}" data-bg="{{ c }}"></button>
           {% endfor %}
         </div>
       </div></div>
     </div>
     <input type="hidden" id="map-color-input" value="#c9a24b">
-    <span class="hint-text" style="margin:0 2px;">|</span>
+    <span class="hint-text u-mx2">|</span>
     <label class="grid-size-label">Fill</label>
     <input type="range" id="fill-opacity" min="0" max="95" value="25" title="Fill opacity (0 = no fill)">
   </div>
 
   <div class="map-tool-group map-tool-group--more">
-    <button type="button" class="btn btn-ghost btn-sm" id="clear-drawings-btn">{{ icon('trash-2') }} Clear Drawings</button>
+    <button type="button" class="btn-icon btn-icon-danger" id="clear-drawings-btn" title="Clear all drawings" aria-label="Clear all drawings">{{ icon('trash-2') }}</button>
   </div>
 
   <div class="map-tool-group map-tool-group--more">
@@ -141,14 +160,22 @@
   </div>
 
   <div class="map-tool-group map-tool-group-persistent">
-    <button type="button" class="map-tool-btn" data-tool="ruler" title="Ruler: drag to measure in squares and feet (Esc clears it)" aria-label="Ruler">{{ icon('ruler') }}</button>
-    <button type="button" class="btn btn-ghost btn-sm" id="zoom-reset-btn" title="Reset zoom to 100%">Reset Zoom</button>
+    <button type="button" class="map-tool-btn" data-tool="ruler" title="Measure: drag for a ruler, cone, sphere, line or cube, in squares and feet (Esc clears it)" aria-label="Measure">{{ icon('ruler') }}</button>
+    <div class="measure-picker" id="measure-picker" hidden role="group" aria-label="What to measure">
+      <button type="button" class="measure-kind" data-measure-kind="ruler" aria-pressed="true" title="Ruler: a straight distance">Ruler</button>
+      <button type="button" class="measure-kind" data-measure-kind="cone" aria-pressed="false" title="Cone: as wide at the end as it is long">Cone</button>
+      <button type="button" class="measure-kind" data-measure-kind="sphere" aria-pressed="false" title="Sphere: drag out from the centre to the radius">Sphere</button>
+      <button type="button" class="measure-kind" data-measure-kind="line" aria-pressed="false" title="Line: one square wide">Line</button>
+      <button type="button" class="measure-kind" data-measure-kind="cube" aria-pressed="false" title="Cube: grows from its corner">Cube</button>
+      <label class="measure-share" title="Everyone looking at this map sees what you measure; templates fade after a few seconds"><input type="checkbox" id="measure-share" checked> Show to table</label>
+    </div>
+    <button type="button" class="btn btn-ghost btn-sm" id="zoom-reset-btn" title="Reset zoom to 100%">Reset zoom</button>
     <span class="map-setup-value" id="zoom-level-label">100%</span>
-    <span class="hint-text" id="hold-space-hint" style="margin:0;">Hold Space to pan</span>
+    <span class="hint-text u-m0" id="hold-space-hint">Hold Space to pan</span>
   </div>
 </div>
 
-<div class="map-stage-wrap" id="map-stage-wrap" data-natural-width="{{ map.image_width }}" data-natural-height="{{ map.image_height }}" style="aspect-ratio: {{ map.image_width or 16 }} / {{ map.image_height or 9 }};">
+<div class="map-stage-wrap" id="map-stage-wrap" data-natural-width="{{ map.image_width }}" data-natural-height="{{ map.image_height }}" data-aspect="{{ map.image_width or 16 }}/{{ map.image_height or 9 }}">
   <div class="map-stage-inner" id="map-stage-inner">
     <canvas id="map-canvas"></canvas>
     <div id="map-fog-layer" class="map-fog-layer" hidden
@@ -172,7 +199,7 @@
       </div>
       <button type="button" class="pin-radial-btn pin-pc-npc-toggle" id="pin-pc-npc-toggle" title="Toggle between PC and NPC">PC</button>
       {% endif %}
-      <div class="pin-owner-wrap" id="pin-shapes-wrap" style="display:none">
+      <div class="pin-owner-wrap" id="pin-shapes-wrap" hidden>
         <button type="button" class="pin-radial-btn" id="pin-shapes-btn" title="Shapes attached to this token" aria-haspopup="true" aria-expanded="false">{{ icon('link') }}</button>
         <div class="pin-owner-menu pin-shapes-menu" id="pin-shapes-menu" role="menu" hidden></div>
       </div>
@@ -278,5 +305,6 @@
 {% if g.is_dm %}<script id="map-roster-data" type="application/json">{{ roster | tojson }}</script>{% endif %}
 <script src="{{ url_for('static', filename='js/map-fog.js') }}"></script>
 <script src="{{ url_for('static', filename='js/map-live.js') }}"></script>
+<script src="{{ url_for('static', filename='js/map-pointer.js') }}"></script>
 <script src="{{ url_for('static', filename='js/map.js') }}"></script>
 {% endblock %}

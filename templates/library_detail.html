@@ -1,7 +1,7 @@
-{% extends "base.html" %}
+{% extends "site_base.html" %}
 {% from "_icons.html" import icon, class_icon %}
 {% set active_page = 'library' %}
-{% block title %}{{ character.name }} — Your characters — Campaign Ledger{% endblock %}
+{% block title %}{{ character.name }} — Your characters — Oaken{% endblock %}
 
 {% block content %}
 <a href="{{ url_for('library_list') }}" class="back-link">{{ icon('arrow-left') }} Your characters</a>
@@ -35,7 +35,7 @@
 <div class="detail-layout has-viewer">
 <div class="cd-main">
 
-  <section class="cf-card cd-hero{{ ' has-class' if character.class_key else '' }}" aria-label="Character summary">
+  <section class="cf-card o-paper cd-hero{{ ' has-class' if character.class_key else '' }}" aria-label="Character summary">
     {% if character.class_key %}<div class="class-badge">{{ class_icon(character.class_key) }}</div>{% endif %}
     <div class="avatar-frame cd-avatar">
       {% if character.avatar_path %}
@@ -55,7 +55,7 @@
     </div>
   </section>
 
-  <section class="cf-card lib-actions-card" aria-label="Campaigns">
+  <section class="cf-card o-paper lib-actions-card" aria-label="Campaigns">
     <h2 class="cf-title">Campaigns</h2>
     <div class="lib-placed">
       <span class="lib-placed-label">In campaigns</span>
@@ -80,7 +80,7 @@
     <p class="hint-text lib-hint">Adding makes a separate copy, so changes at a table never alter this sheet.</p>
   </section>
 
-  <section class="cf-card" aria-label="Combat stats">
+  <section class="cf-card o-paper" aria-label="Combat stats">
     <h2 class="cf-title">Vitals</h2>
     <div class="cd-vitals">
       <div class="cd-vital cd-vital--hp"><span class="cd-vital-label">{{ icon('heart') }} HP</span><span class="cd-vital-val">{{ character.max_hp }}</span></div>
@@ -88,12 +88,12 @@
       <div class="cd-vital" title="Walking speed"><span class="cd-vital-label">{{ icon('move') }} Speed</span><span class="cd-vital-val">{{ sheet.speed }} ft</span></div>
       <div class="cd-vital" title="Initiative bonus (Dexterity modifier)"><span class="cd-vital-label">Init.</span><span class="cd-vital-val">{{ sheet.initiative_text }}</span></div>
       <div class="cd-vital" title="Proficiency bonus (from level)"><span class="cd-vital-label">Prof.</span><span class="cd-vital-val">{{ sheet.prof_text }}</span></div>
-      <div class="cd-vital" title="Passive Perception: 10 + Perception bonus"><span class="cd-vital-label">Passive Perc.</span><span class="cd-vital-val">{{ sheet.passive_perception }}</span></div>
+      <div class="cd-vital" title="Passive perception: 10 + Perception bonus"><span class="cd-vital-label">Passive perc.</span><span class="cd-vital-val">{{ sheet.passive_perception }}</span></div>
     </div>
   </section>
 
-  <section class="cf-card" aria-label="Abilities and saving throws">
-    <h2 class="cf-title">Abilities &amp; Saving throws</h2>
+  <section class="cf-card o-paper" aria-label="Abilities and saving throws">
+    <h2 class="cf-title">Abilities &amp; saving throws</h2>
     <div class="cd-abilities">
       {% for ab in sheet.abilities %}
       {% set sv = sheet.saves[loop.index0] %}
@@ -101,27 +101,27 @@
         <span class="lbl cd-ab-name">{{ ab.label }}</span>
         <span class="val">{{ ab.score }}</span>
         <span class="mod cd-ab-mod">{{ ab.text }}</span>
-        <span class="cd-ab-save{{ ' is-prof' if sv.proficient }}" title="{{ ab.name }} saving throw{{ ' (proficient)' if sv.proficient }}"><span class="mark" aria-hidden="true">{{ '●' if sv.proficient else '○' }}</span> Save <b>{{ sv.text }}</b></span>
+        <span class="cd-ab-save{{ ' is-prof' if sv.proficient }}" title="{{ ab.name }} saving throw{{ ' (proficient)' if sv.proficient }}"><span class="mark pm pm-{{ 1 if sv.proficient else 0 }}" aria-hidden="true">{{ '●' if sv.proficient else '○' }}</span> Save <b>{{ sv.text }}</b></span>
       </div>
       {% endfor %}
     </div>
   </section>
 
-  <section class="cf-card" aria-label="Skills">
+  <section class="cf-card o-paper" aria-label="Skills">
     <h2 class="cf-title">Skills <span class="cf-count">{{ sheet.skills|selectattr('level')|list|length }} trained</span></h2>
     <div class="cd-skills">
       {% for sk in sheet.skills %}
       <div class="sheet-skill{{ ' is-prof' if sk.level == 1 }}{{ ' is-expert' if sk.level == 2 }}" title="{{ sk.label }} ({{ sk.ability }}){{ ' - proficient' if sk.level == 1 }}{{ ' - expertise' if sk.level == 2 }}">
-        <span class="mark" aria-hidden="true">{{ '◆' if sk.level == 2 else ('●' if sk.level == 1 else '○') }}</span>
+        <span class="mark pm pm-{{ sk.level }}" aria-hidden="true">{{ '◆' if sk.level == 2 else ('●' if sk.level == 1 else '○') }}</span>
         <span class="lbl">{{ sk.label }} <small>{{ sk.ability }}</small></span><span class="val">{{ sk.text }}</span>
       </div>
       {% endfor %}
     </div>
-    <p class="cd-legend">○ untrained &nbsp; ● proficient &nbsp; ◆ expertise (double proficiency)</p>
+    <p class="cd-legend"><i class="pm pm-0" aria-hidden="true">○</i> untrained &nbsp; <i class="pm pm-1" aria-hidden="true">●</i> proficient &nbsp; <i class="pm pm-2" aria-hidden="true">◆</i> expertise (double proficiency)</p>
   </section>
 
   {% if attacks %}
-  <section class="cf-card" aria-label="Attacks">
+  <section class="cf-card o-paper" aria-label="Attacks">
     <h2 class="cf-title">Attacks <span class="cf-count">{{ attacks|length }}</span></h2>
     <ul class="atk-list">
       {% for a in attacks %}
@@ -135,8 +135,32 @@
   </section>
   {% endif %}
 
+  {% if slots %}
+  <section class="cf-card o-paper" aria-label="Spell slots">
+    <h2 class="cf-title">Spell slots <span class="cf-count">per level</span></h2>
+    <ul class="slot-summary">{% for s in slots %}<li><span>Level {{ s.level }}</span><b>{{ s.max }}</b></li>{% endfor %}</ul>
+  </section>
+  {% endif %}
+
+  {% if spells %}
+  <section class="cf-card o-paper" aria-label="Spells">
+    <h2 class="cf-title">Spells <span class="cf-count">{{ spells|length }}</span></h2>
+    {% for lvl, group in spells|groupby('spell_level') %}
+    <h3 class="spl-level">{{ 'Cantrips' if lvl == 0 else 'Level ' ~ lvl }}</h3>
+    <ul class="atk-list">
+      {% for s in group %}
+      <li class="atk-row">
+        <span class="atk-name">{{ s.name }}{% if s.note %}<small class="atk-type">{{ s.note }}</small>{% endif %}</span>
+        {% if s.damage %}<span class="atk-btn atk-btn--dmg"><small>Damage</small><b>{{ s.damage }}</b></span>{% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% endfor %}
+  </section>
+  {% endif %}
+
   {% if level_history|length > 1 %}
-  <section class="cf-card" aria-label="Stats by level">
+  <section class="cf-card o-paper" aria-label="Stats by level">
     <h2 class="cf-title">Stats by level <span class="cf-count">{{ level_history|length }} saved</span></h2>
     <div class="lv-scroll">
       <table class="lv-table">
@@ -154,47 +178,36 @@
   </section>
   {% endif %}
 
-  <section class="cf-card" aria-label="Notes">
+  <section class="cf-card o-paper" aria-label="Notes">
     <h2 class="cf-title">Notes</h2>
     <div class="detail-notes">{% if notes_html %}{{ notes_html | safe }}{% else %}<em>No notes recorded.</em>{% endif %}</div>
   </section>
 
   {% if sheets %}
-  <section class="cf-card" aria-label="Sheets">
-    <h2 class="cf-title">Sheets <span class="cf-count">{{ sheets|length }}</span></h2>
-    <div class="sheet-thumbs" data-sheet-thumbs>
-      {% for s in sheets %}
-      <div class="sheet-thumb{{ ' is-active' if loop.first else '' }}">
-        <img src="{{ url_for('uploaded_file', filename=s.image_path) }}" alt="Sheet {{ loop.index }}"
-             role="button" tabindex="0" aria-label="Show sheet {{ loop.index }}"
-             data-sheet-src="{{ url_for('uploaded_file', filename=s.image_path) }}">
-        <button type="button" class="btn-icon" title="Remove" aria-label="Remove sheet {{ loop.index }}"
-                data-sheet-delete-url="{{ url_for('library_sheet_delete', char_id=character.id, sheet_id=s.id) }}"
-                data-confirm-msg="Remove this sheet image?">{{ icon('x') }}</button>
-      </div>
-      {% endfor %}
-    </div>
-  </section>
+  <ul hidden data-sheet-list>
+    {% for s in sheets %}<li data-sheet-src="{{ url_for('uploaded_file', filename=s.image_path) }}"></li>
+    {% endfor %}
+  </ul>
   {% endif %}
 </div>
 
-<aside class="sheet-viewer-panel" data-sheet-viewer aria-label="Character sheet viewer">
+<aside class="sheet-viewer-panel o-paper" data-sheet-viewer aria-label="Additional images">
   <div class="sheet-viewer-head">
-    <h2 class="cf-title">Character sheet</h2>
+    <h2 class="cf-title">Additional images</h2>
     {% if sheets|length > 1 %}
     <span class="sheet-viewer-nav">
-      <button type="button" class="btn-icon" data-sheet-prev title="Previous sheet" aria-label="Previous sheet">&#8249;</button>
+      <button type="button" class="btn-icon" data-sheet-prev title="Previous image" aria-label="Previous image">&#8249;</button>
       <span class="sheet-viewer-count" data-sheet-count>1 / {{ sheets|length }}</span>
-      <button type="button" class="btn-icon" data-sheet-next title="Next sheet" aria-label="Next sheet">&#8250;</button>
+      <button type="button" class="btn-icon" data-sheet-next title="Next image" aria-label="Next image">&#8250;</button>
     </span>
     {% endif %}
   </div>
   {% if sheets %}
   <div class="sheet-viewer-stage">
-    <img id="sheet-viewer-img" src="{{ url_for('uploaded_file', filename=sheets[0].image_path) }}" alt="Character sheet" title="Click to enlarge">
+    <img id="sheet-viewer-img" src="{{ url_for('uploaded_file', filename=sheets[0].image_path) }}" alt="Additional image" title="Click to enlarge">
   </div>
   {% else %}
-  <p class="hint-text">No sheet images attached.</p>
+  <p class="hint-text">No additional images attached.</p>
   {% endif %}
 </aside>
 </div>

@@ -2,6 +2,7 @@
 Set SHOT_DIR to save screenshots."""
 import os
 import re
+import pubid
 import pytest
 if os.path.isdir('/opt/pw-browsers'):
     os.environ.setdefault('PLAYWRIGHT_BROWSERS_PATH', '/opt/pw-browsers')
@@ -30,7 +31,7 @@ def test_settings_link_and_hide_npcs_switch(shared_server, pw):
     page.goto(f'{base}/campaigns/{cid}/characters')
     assert page.locator('.sidebar-nav .nav-group').all_text_contents() == ['Table', 'Play', 'Lore', 'Campaign']
     page.get_by_role('link', name='Settings').first.click()
-    page.wait_for_url(f'**/campaigns/{cid}/edit')
+    page.wait_for_url(f'**/campaigns/{pubid.short("campaigns", cid)}/edit')
     assert page.locator('.sidebar-nav a.nav-tab.active').inner_text().strip() == 'Settings'
     assert page.locator('#npc-visibility-form input[name=hide_npcs]').is_checked() is False
     page.locator('#npc-visibility-form .toggle-switch').click()
@@ -53,7 +54,7 @@ def test_campaign_home_page(shared_server, pw):
     dm = Api(base)
     r = dm.post('/campaigns/new', data={'name': 'The Ashfall Chronicles', 'description': 'Ash falls on the Cinder Coast.\nThe party hunts the Ember King.'},
                 files={'avatar': ('c.png', png_bytes(640, 384, (120, 60, 30)), 'image/png')})
-    cid = int(re.search(r'/campaigns/(\d+)/', r.headers['Location']).group(1))
+    cid = pubid.pk('campaigns', r.headers['Location'])
     ids = [dm.character(cid, n, level=lv, max_hp=hp, armor_class=ac) for n, lv, hp, ac in (('Kael Thorne', 3, 28, 16), ('Nyx', 3, 21, 14), ('Sera Veyl', 3, 24, 14))]
     r = dm.post(f'/campaigns/{cid}/api/dice/roll', json={'dice': {'20': 1}, 'modifier': 4, 'label': 'Perception', 'character_id': ids[1]})
     ctx = dm.context(pw, base)
@@ -64,7 +65,7 @@ def test_campaign_home_page(shared_server, pw):
     assert page.locator('.home-pc').count() == 3
     assert page.locator('.home-banner img').count() == 1 and 'Ember King' in page.locator('.home-bio').inner_text()
     assert page.locator('.home-member-list li').count() == 1
-    assert page.locator('.sidebar-nav a.nav-tab.active').inner_text().strip() == 'Home'
+    assert page.locator('.sidebar-nav a.nav-tab.active').inner_text().strip() == 'Overview'
     _shot(page, 'home-desktop')
     page.set_viewport_size({'width': 390, 'height': 780})
     _shot(page, 'home-phone')
@@ -130,3 +131,49 @@ def test_sidebar_menu_scrolls_on_a_short_window_and_keeps_the_footer(shared_serv
     page.set_viewport_size({'width': 1280, 'height': 900})
     assert not nav.evaluate('e => e.scrollHeight > e.clientHeight')
     ctx.close()
+
+
+def _page_at(pw, dm, base, width, height, touch=False):
+    from test_e2e_browser import SESSION_COOKIE
+    ctx = pw.new_context(viewport={'width': width, 'height': height}, has_touch=touch, is_mobile=touch)
+    ctx.add_cookies([{'name': SESSION_COOKIE, 'value': dm.s.cookies.get(SESSION_COOKIE), 'url': base}])
+    return ctx.new_page()
+
+
+def test_tablets_get_the_phone_layout_and_desktops_keep_the_sidebar(shared_server, pw):
+    base = shared_server.url
+    dm = Api(base)
+    cid = dm.campaign('Tablet')
+    url = f'{base}/campaigns/{cid}/home'
+    for width, height, touch, phone in ((390, 844, False, True), (1024, 768, False, True), (1180, 820, True, True),
+                                        (1100, 900, False, False), (1440, 900, False, False)):
+        page = _page_at(pw, dm, base, width, height, touch)
+        page.goto(url)
+        bar = page.locator('.sidebar-nav').bounding_box()
+        if phone:
+            assert bar['width'] == width and bar['y'] + bar['height'] == height, f'{width}x{height}: bottom bar expected'
+        else:
+            assert bar['x'] == 0 and bar['width'] < 300, f'{width}x{height}: sidebar expected'
+        page.context.close()
+
+
+def test_phone_top_bar_icons_and_notification_tab_line_up(shared_server, pw):
+    base = shared_server.url
+    dm = Api(base)
+    cid = dm.campaign('Margins')
+    page = _page_at(pw, dm, base, 390, 844)
+    page.goto(f'{base}/campaigns/{cid}/home')
+    mark = page.locator('.sidebar-brand').bounding_box()
+    icon = page.locator('.sidebar-foot .foot-bell').bounding_box()
+    assert abs((icon['y'] + icon['height'] / 2) - (mark['y'] + mark['height'] / 2)) <= 1, 'the bell sits on the logo\'s centre line'
+    shown = page.locator('.sidebar-nav .nav-tab:visible')                 # tabs that live in the More sheet on a phone are hidden
+    tabs = [shown.nth(i).locator('svg').bounding_box()['y'] for i in range(shown.count())]
+    inactive = [y for y, cls in zip(tabs, shown.evaluate_all('els => els.map(e => e.className)')) if 'active' not in cls]
+    assert max(inactive) - min(inactive) <= 1, f'bottom-bar icons share one line: {tabs}'
+    page.locator('#nav-more-btn').click()
+    page.wait_for_timeout(700)                                     # the sheet slides up first
+    chips = page.locator('.more-quick .more-chip:visible')
+    ys = sorted({round(chips.nth(i).bounding_box()['y'] / 10) for i in range(chips.count())})       # rows, not pixels
+    assert page.locator('.more-quick').count() == 1 and chips.count() >= 1 and len(ys) <= 2
+    names = [c.strip() for c in chips.all_text_contents()]
+    page.context.close()

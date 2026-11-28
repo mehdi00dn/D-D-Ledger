@@ -1,0 +1,12 @@
+{% from "_icons.html" import icon %}
+{% macro person(p) %}
+<span class="friend-who">
+  <span class="friend-avatar">{% if p.avatar_path %}<img src="{{ url_for('uploaded_file', filename=p.avatar_path) }}" alt="">{% else %}{{ icon('user') }}{% endif %}</span>
+  <a href="{{ url_for('profile_view', username=p.username) }}">{{ p.display_name or p.username }}</a>
+  {% if p.display_name %}<span class="hint-text">@{{ p.username }}</span>{% endif %}
+</span>
+{% endmacro %}
+
+{% macro act(p, action, label, cls='btn btn-ghost btn-sm', confirm='') %}
+<form method="POST" action="{{ url_for('friend_action', username=p.username, action=action) }}"{% if confirm %} data-confirm="{{ confirm }}"{% endif %}>{{ csrf_field() }}<button type="submit" class="{{ cls }}">{{ label }}</button></form>
+{% endmacro %}

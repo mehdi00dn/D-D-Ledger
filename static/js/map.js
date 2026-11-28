@@ -7,10 +7,10 @@
   async function mapWrite(url, init) {
     try {
       const res = await fetch(url, init);
-      if (!res.ok) await LedgerApi.fail(res, "That change wasn't saved.");
+      if (!res.ok) await OakenApi.fail(res, "That change wasn't saved.");
       return res;
     } catch (err) {
-      LedgerApi.notify(LedgerApi.networkMessage);
+      OakenApi.notify(OakenApi.networkMessage);
       throw err;
     }
   }
@@ -79,10 +79,16 @@
   let bgImage = new Image();
   let bgLoaded = false;
   let attachMode = false;   // true while the next token click attaches the selected shapes to it (DL-159)
+  let activeDrag = null;  // manipulating an existing shape or pin
   let drawings = [];   // shape objects: {id, kind, cx, cy, w, h, rotation, color, fill, fill_opacity, data, locked}
   let pins = [];        // {id, pin_type, x, y, scale, rotation, locked, ...}
   let currentTool = 'select';
-  let ruler = null;           // {a, b, dragging}: the measuring line, in natural image pixels; each person's own, never saved or shared
+  let ruler = null;           // {kind, a, b, dragging, until}: your own measurement, in natural image pixels
+  const remoteMeasures = new Map();   // other people's measurements: user id -> {kind, a, b, until, name, liveAt}
+  const measurePicker = document.getElementById('measure-picker');
+  const measureShareBox = document.getElementById('measure-share');
+  let rulerKind = 'ruler';
+  try { if (measureShareBox && localStorage.getItem('oaken-map-share-measure') === '0') measureShareBox.checked = false; } catch (e) { /* storage is optional */ }
   let selectedShapeId = null;      // the single selected shape, only meaningful when selectedShapeIds.size === 1
   let selectedShapeIds = new Set(); // multi-select (Ctrl/Cmd+click)
   let selectedPinId = null;
@@ -107,7 +113,7 @@
     return (str == null ? '' : String(str)).replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
   }
 
-  // Colours end up inside style="..." attributes: only hex colours and var(--token) get through.
+  // Colours end up inside data-bg / data-bc attributes (applied by dyn-style.js): only hex colours and var(--token) get through.
   function safeColor(value, fallback) {
     return typeof value === 'string' && (/^#[0-9a-fA-F]{3,8}$/.test(value) || /^var\(--[a-z-]+\)$/.test(value)) ? value : fallback;
   }
@@ -118,8 +124,83 @@
   // ---------------------------------------------------------------------
   canvas.width = naturalWidth;
   canvas.height = naturalHeight;
-  rulerCanvas.width = naturalWidth;
-  rulerCanvas.height = naturalHeight;
+
+  // ---------------------------------------------------------------------
+  // The canvas world.  Coordinates stay "map pixels, origin at the map's top left", but pictures placed beside the map (kind 'image')
+  // make the canvas bigger than the map: `world` is the box that holds the map and every picture (left and top can be negative).
+  // The grid, drawings, tokens, measuring and pointers all work anywhere inside it.  With no pictures the world is exactly the map.
+  // ---------------------------------------------------------------------
+  const IMAGE_REACH = 1.5;                         // a picture may reach 1.5 map sizes past an edge (the server keeps the same limit)
+  const WORLD_MAX_PIXELS = 16000000;               // phones refuse a canvas much bigger than this; a larger world is drawn a little softer
+  let world = { x0: 0, y0: 0, x1: naturalWidth, y1: naturalHeight };
+  let worldScale = 1;                              // canvas pixels per map pixel
+  let worldTimer = 0;
+
+  function imageHalfExtent(d) {                    // half width and half height of the box a (turned) picture takes up
+    const r = toRad(d.rotation || 0);
+    return { x: (Math.abs(d.w * Math.cos(r)) + Math.abs(d.h * Math.sin(r))) / 2, y: (Math.abs(d.w * Math.sin(r)) + Math.abs(d.h * Math.cos(r))) / 2 };
+  }
+  // Keep a picture within reach of the map (the server clamps the same way).
+  function limitImage(d) {
+    const side = 2 * Math.max(naturalWidth, naturalHeight);
+    d.w = Math.min(Math.max(d.w, 6), side); d.h = Math.min(Math.max(d.h, 6), side);
+    const half = imageHalfExtent(d);
+    const fit = (c, h, size) => { const lo = -IMAGE_REACH * size + h, hi = (1 + IMAGE_REACH) * size - h; return lo > hi ? (lo + hi) / 2 : Math.min(Math.max(c, lo), hi); };
+    d.cx = fit(d.cx, half.x, naturalWidth); d.cy = fit(d.cy, half.y, naturalHeight);
+  }
+  const isPicture = (d) => !!d && d.kind === 'image';
+
+  function computeWorld(slack) {
+    const w = { x0: 0, y0: 0, x1: naturalWidth, y1: naturalHeight };
+    drawings.forEach((raw) => {
+      if (!isPicture(raw)) return;
+      const d = live ? live.shapeView(raw) : raw;
+      // Room round each picture for its handles (the turn handle sits well out from the edge), so they can always be grabbed.
+      const half = imageHalfExtent(d), pad = Math.max(30, naturalWidth / 25) + Math.max(14, naturalWidth / 80) + (slack ? Math.max(naturalWidth, naturalHeight) * 0.1 : 0);
+      w.x0 = Math.min(w.x0, d.cx - half.x - pad); w.y0 = Math.min(w.y0, d.cy - half.y - pad);
+      w.x1 = Math.max(w.x1, d.cx + half.x + pad); w.y1 = Math.max(w.y1, d.cy + half.y + pad);
+    });
+    return w;
+  }
+  const sameWorld = (a, b) => Math.abs(a.x0 - b.x0) < 0.5 && Math.abs(a.y0 - b.y0) < 0.5 && Math.abs(a.x1 - b.x1) < 0.5 && Math.abs(a.y1 - b.y1) < 0.5;
+
+  // Size and place the canvas and the measuring canvas to cover the world.  A map with no pictures keeps the plain stylesheet layout.
+  function layoutWorld() {
+    const ww = world.x1 - world.x0, wh = world.y1 - world.y0;
+    const plain = world.x0 === 0 && world.y0 === 0 && ww === naturalWidth && wh === naturalHeight;
+    worldScale = plain ? 1 : Math.min(1, Math.sqrt(Math.max(naturalWidth * naturalHeight, WORLD_MAX_PIXELS) / (ww * wh)));
+    const px = Math.max(1, Math.round(ww * worldScale)), py = Math.max(1, Math.round(wh * worldScale));
+    if (canvas.width !== px) canvas.width = px;
+    if (canvas.height !== py) canvas.height = py;
+    [canvas, rulerCanvas].forEach((el) => {
+      ['left', 'top', 'right', 'bottom', 'width', 'height'].forEach((k) => el.style.removeProperty(k));
+      el.classList.toggle('on-world', !plain);
+      if (plain) return;
+      el.style.left = `${(world.x0 / naturalWidth) * 100}%`;
+      el.style.top = `${(world.y0 / naturalHeight) * 100}%`;
+      el.style.right = 'auto'; el.style.bottom = 'auto';
+      el.style.width = `${(ww / naturalWidth) * 100}%`;
+      el.style.height = `${(wh / naturalHeight) * 100}%`;
+    });
+  }
+  // While something is being dragged the world only grows (with some room to spare, so the canvas is not rebuilt on every mouse move);
+  // when the hand lets go it is tightened around the map and the pictures again.
+  function syncWorld() {
+    const dragging = !!activeDrag;
+    const next = computeWorld(dragging);
+    if (dragging) {
+      next.x0 = Math.min(next.x0, world.x0); next.y0 = Math.min(next.y0, world.y0);
+      next.x1 = Math.max(next.x1, world.x1); next.y1 = Math.max(next.y1, world.y1);
+      clearTimeout(worldTimer); worldTimer = setTimeout(() => { worldTimer = 0; redraw(); }, 300);
+    }
+    if (sameWorld(next, world)) return false;
+    world = next;
+    layoutWorld();
+    return true;
+  }
+  function worldBounds() { return { x0: world.x0, y0: world.y0, x1: world.x1, y1: world.y1 }; }
+  rulerCanvas.width = 1;       // drawRuler() sizes it to the screen (a full-size canvas for a big map is too much for a phone)
+  rulerCanvas.height = 1;
   bgImage.onload = () => { bgLoaded = true; redraw(); };
   // The picture comes from the fog-aware route (a Player's copy has fogged areas painted out).
   const mapImageUrl = (v) => initData.image_url + (v ? '?v=' + v : '');
@@ -292,10 +373,10 @@
     if (d.kind === 'angle') {
       const sweep = (((d.data && d.data.sweepDeg) || 60) * Math.PI) / 180;
       const yMax = d.w * Math.sin(sweep / 2);
-      const dist = yMax + Math.max(30, canvas.width / 25);
+      const dist = yMax + Math.max(30, naturalWidth / 25);
       return localOffsetToNatural(d, d.w / 2, -dist);
     }
-    const dist = d.h / 2 + Math.max(30, canvas.width / 25);
+    const dist = d.h / 2 + Math.max(30, naturalWidth / 25);
     return localOffsetToNatural(d, 0, -dist);
   }
 
@@ -317,12 +398,20 @@
     return Math.hypot(p.x - cx, p.y - cy);
   }
 
+  // Drawings from the top down, then the pictures: a picture is the bottom layer of the canvas, so a line drawn on it is picked first.
+  function topFirst() {
+    const above = [], below = [];
+    for (let i = drawings.length - 1; i >= 0; i--) (isPicture(drawings[i]) ? below : above).push(drawings[i]);
+    return above.concat(below);
+  }
+
   function hitTestShape(d, pos) {
     const local = naturalToLocalOffset(d, pos.x, pos.y);
     const lx = local.x, ly = local.y;
     const hw = d.w / 2, hh = d.h / 2;
-    const pad = Math.max(6, canvas.width / 300);
+    const pad = Math.max(6, naturalWidth / 300);
     const hasFill = (d.fill_opacity || 0) > 0.001;
+    if (d.kind === 'image') return lx >= -hw && lx <= hw && ly >= -hh && ly <= hh;
     if (d.kind === 'rect') {
       if (hasFill) return lx >= -hw - pad && lx <= hw + pad && ly >= -hh - pad && ly <= hh + pad;
       const nearVert = Math.abs(Math.abs(lx) - hw) < pad && ly >= -hh - pad && ly <= hh + pad;
@@ -368,7 +457,7 @@
 
   function hitTestResizeHandle(d, pos) {
     const corners = getShapeCorners(d);
-    const hs = Math.max(12, canvas.width / 90);
+    const hs = Math.max(12, naturalWidth / 90);
     for (let i = 0; i < 4; i++) {
       if (Math.hypot(pos.x - corners[i].x, pos.y - corners[i].y) < hs) return i;
     }
@@ -377,29 +466,31 @@
 
   function hitTestRotateHandle(d, pos) {
     const rp = getRotateHandlePos(d);
-    const hs = Math.max(14, canvas.width / 80);
+    const hs = Math.max(14, naturalWidth / 80);
     return Math.hypot(pos.x - rp.x, pos.y - rp.y) < hs;
   }
 
   // ---------------------------------------------------------------------
   // Rendering
   // ---------------------------------------------------------------------
-  function drawGridOnto(targetCtx, w, h, size, offX, offY, color, visible) {
+  // `area` (optional) is the part of the canvas to draw lines over, in the same coordinates as the offsets; the default is 0..w by 0..h.
+  function drawGridOnto(targetCtx, w, h, size, offX, offY, color, visible, area) {
     if (!visible || !size || size < 2) return;
     targetCtx.save();
-    const startX = ((offX % size) + size) % size;
-    const startY = ((offY % size) + size) % size;
+    const a = area || { x0: 0, y0: 0, x1: w, y1: h };
+    const startX = a.x0 + ((((offX - a.x0) % size) + size) % size);
+    const startY = a.y0 + ((((offY - a.y0) % size) + size) % size);
     const outerWidth = Math.max(1, w / 700);
     const innerWidth = Math.max(0.5, w / 1400);
 
     function strokeLines(strokeColor, width) {
       targetCtx.strokeStyle = strokeColor;
       targetCtx.lineWidth = width;
-      for (let x = startX; x < w; x += size) {
-        targetCtx.beginPath(); targetCtx.moveTo(x, 0); targetCtx.lineTo(x, h); targetCtx.stroke();
+      for (let x = startX; x < a.x1; x += size) {
+        targetCtx.beginPath(); targetCtx.moveTo(x, a.y0); targetCtx.lineTo(x, a.y1); targetCtx.stroke();
       }
-      for (let y = startY; y < h; y += size) {
-        targetCtx.beginPath(); targetCtx.moveTo(0, y); targetCtx.lineTo(w, y); targetCtx.stroke();
+      for (let y = startY; y < a.y1; y += size) {
+        targetCtx.beginPath(); targetCtx.moveTo(a.x0, y); targetCtx.lineTo(a.x1, y); targetCtx.stroke();
       }
     }
 
@@ -418,69 +509,227 @@
 
   function drawGrid() {
     if (suppressMainGrid) return;
-    drawGridOnto(ctx, canvas.width, canvas.height, gridSize, gridOffsetX, gridOffsetY, gridColor, gridVisible);
+    drawGridOnto(ctx, naturalWidth, naturalHeight, gridSize, gridOffsetX, gridOffsetY, gridColor, gridVisible, world);   // over the whole canvas, pictures included
   }
 
-  // The ruler counts squares the 5e way (a diagonal step is one square, like a straight one) and turns them into feet.
-  function rulerReading() {
-    const dx = Math.abs(ruler.b.x - ruler.a.x), dy = Math.abs(ruler.b.y - ruler.a.y);
-    const squares = gridSize > 0 ? Math.round(Math.max(dx, dy) / gridSize) : 0;
-    return { squares, feet: squares * feetPerSquare, text: `${squares} ${squares === 1 ? 'square' : 'squares'} \u00b7 ${squares * feetPerSquare} ft` };
+  // ---- Measuring: the ruler and the cone / sphere / line / cube templates (DL-153) ----
+  // The ruler shows the real distance: a diagonal is longer than a straight run of the same squares (3 across and 2 down reads 3.6 squares,
+  // 18 ft, not 3).  It is the straight-line length between the two ends, in squares and in feet, to one decimal place (DL-180 part 15).
+  // Templates use the same square-to-feet maths: a cone is as wide at its far end as it is long, a sphere is measured from
+  // its centre, a line is one square wide, and a cube grows from its corner towards where you drag.
+  const MEASURE_NAMES = { cone: 'Cone', sphere: 'Sphere', line: 'Line', cube: 'Cube' };
+  const MEASURE_HOLD_MS = 8000, MEASURE_FADE_MS = 1500;
+  const MEASURE_OWN = '#f0d58a', MEASURE_OTHERS = '#8ec9ff';
+  function measureInfo(kind, a, b) {
+    const dx = Math.abs(b.x - a.x), dy = Math.abs(b.y - a.y), len = Math.hypot(dx, dy);
+    const sq = (px) => (gridSize > 0 ? Math.round(px / gridSize) : 0);
+    if (kind === 'ruler') {
+      const exact = gridSize > 0 ? len / gridSize : 0;
+      const n = Math.round(exact * 10) / 10, ft = Math.round(exact * feetPerSquare * 10) / 10;
+      return { squares: Math.floor(exact + 1e-9), text: `${n} ${n === 1 ? 'square' : 'squares'} · ${ft} ft` };
+    }
+    const n = kind === 'cube' ? sq(Math.max(dx, dy)) : sq(len), ft = n * feetPerSquare;
+    const text = kind === 'sphere' ? `Sphere · ${ft} ft radius`
+      : kind === 'line' ? `Line · ${ft} ft × ${feetPerSquare} ft`
+      : `${MEASURE_NAMES[kind] || 'Measure'} · ${ft} ft`;
+    return { squares: n, text };
+  }
+  function rulerReading() { return measureInfo(ruler.kind || 'ruler', ruler.a, ruler.b); }
+
+  // Builds the outline of a template in map pixels, and returns where its label should hang.
+  function measurePath(c, kind, a, b) {
+    const dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy) || 1e-6;
+    const nx = -dy / len, ny = dx / len;
+    c.beginPath();
+    if (kind === 'cone') {
+      const h = len / 2;
+      c.moveTo(a.x, a.y); c.lineTo(b.x + nx * h, b.y + ny * h); c.lineTo(b.x - nx * h, b.y - ny * h); c.closePath();
+      return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    }
+    if (kind === 'sphere') { c.arc(a.x, a.y, len, 0, Math.PI * 2); return { x: a.x, y: a.y }; }
+    if (kind === 'line') {
+      const h = (gridSize > 0 ? gridSize : 20) / 2;
+      c.moveTo(a.x + nx * h, a.y + ny * h); c.lineTo(b.x + nx * h, b.y + ny * h);
+      c.lineTo(b.x - nx * h, b.y - ny * h); c.lineTo(a.x - nx * h, a.y - ny * h); c.closePath();
+      return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    }
+    const side = Math.max(Math.abs(dx), Math.abs(dy));          // cube
+    const x0 = dx >= 0 ? a.x : a.x - side, y0 = dy >= 0 ? a.y : a.y - side;
+    c.rect(x0, y0, side, side);
+    return { x: x0 + side / 2, y: y0 + side / 2 };
   }
 
-  // The ruler has a canvas of its own above the tokens, the fog and the shapes, so nothing can cover the line or its label.
-  // That canvas is as sharp as the screen (not as the map picture) and the ruler is drawn in screen pixels, so it keeps the
-  // same small size at any zoom or map size.
+  // One measurement, drawn in screen-sized units (`unit` = one screen pixel in map pixels) so it stays small and sharp at any zoom.
+  function drawMeasure(m, colour, alpha, unit, label) {
+    const a = m.a, b = m.b, kind = m.kind || 'ruler';
+    const { text, squares } = measureInfo(kind, a, b);
+    const len = Math.hypot(b.x - a.x, b.y - a.y);
+    rctx.save();
+    rctx.globalAlpha = alpha;
+    rctx.lineCap = 'round'; rctx.lineJoin = 'round';
+    let anchor = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    if (kind !== 'ruler') {
+      anchor = measurePath(rctx, kind, a, b);
+      rctx.globalAlpha = alpha * 0.22; rctx.fillStyle = colour; rctx.fill();
+      rctx.globalAlpha = alpha;
+      rctx.strokeStyle = 'rgba(14,16,24,0.7)'; rctx.lineWidth = 4 * unit; rctx.stroke();
+      rctx.strokeStyle = colour; rctx.lineWidth = 2 * unit; rctx.stroke();
+    } else {
+      rctx.shadowColor = 'rgba(0,0,0,0.55)'; rctx.shadowBlur = 4 * unit;
+      rctx.beginPath(); rctx.moveTo(a.x, a.y); rctx.lineTo(b.x, b.y);
+      rctx.strokeStyle = 'rgba(14,16,24,0.7)'; rctx.lineWidth = 4 * unit; rctx.stroke();       // a dark edge keeps it readable on a pale map
+      rctx.shadowBlur = 0;
+      rctx.strokeStyle = colour; rctx.lineWidth = 2 * unit; rctx.stroke();
+      if (len > 0 && squares >= 1 && squares <= 60) {                // a small tick at every whole square along the line
+        const nx = -(b.y - a.y) / len, ny = (b.x - a.x) / len;
+        rctx.lineWidth = 1.25 * unit;
+        for (let i = 1; i <= squares; i++) {
+          const t = (i * gridSize) / len, tx = a.x + (b.x - a.x) * t, ty = a.y + (b.y - a.y) * t, h = 3.5 * unit;
+          if (t >= 1) break;
+          rctx.beginPath(); rctx.moveTo(tx - nx * h, ty - ny * h); rctx.lineTo(tx + nx * h, ty + ny * h); rctx.stroke();
+        }
+      }
+    }
+    [a, b].forEach((p, i) => {                                      // hollow end rings (a template only marks where it starts)
+      if (kind !== 'ruler' && i === 1) return;
+      rctx.beginPath(); rctx.arc(p.x, p.y, 4.5 * unit, 0, Math.PI * 2);
+      rctx.fillStyle = 'rgba(14,16,24,0.88)'; rctx.fill();
+      rctx.strokeStyle = colour; rctx.lineWidth = 2 * unit; rctx.stroke();
+    });
+    if (len > 14 * unit) {
+      const full = label ? `${label} · ${text}` : text;
+      const size = 12 * unit;
+      rctx.font = `500 ${size}px Lato, "Segoe UI", sans-serif`;
+      rctx.textAlign = 'center'; rctx.textBaseline = 'middle';
+      const w = rctx.measureText(full).width + 16 * unit, h = size + 10 * unit;
+      const mx = Math.min(Math.max(anchor.x, world.x0 + w / 2 + 2 * unit), world.x1 - w / 2 - 2 * unit);
+      const my = Math.min(Math.max(anchor.y - 18 * unit, world.y0 + h / 2 + 2 * unit), world.y1 - h / 2 - 2 * unit);
+      rctx.beginPath();
+      if (rctx.roundRect) rctx.roundRect(mx - w / 2, my - h / 2, w, h, h / 2); else rctx.rect(mx - w / 2, my - h / 2, w, h);
+      rctx.fillStyle = 'rgba(14,16,24,0.92)'; rctx.fill();
+      rctx.strokeStyle = colour; rctx.lineWidth = 1 * unit; rctx.stroke();
+      rctx.fillStyle = '#f6efdc'; rctx.fillText(full, mx, my + 0.5 * unit);
+    }
+    rctx.restore();
+  }
+
+  function fadeAlpha(until) {                                       // 1 while held, then a short fade, then 0
+    const left = until - Date.now();
+    return left >= MEASURE_FADE_MS ? 1 : Math.max(0, left / MEASURE_FADE_MS);
+  }
+
+  // The measuring canvas sits above the tokens, the fog and the shapes, so nothing can cover a line or its label.
+  // It is as sharp as the screen (not as the map picture).
   function drawRuler() {
     const readout = document.getElementById('ruler-readout');
     const rect = rulerCanvas.getBoundingClientRect();
     const dpr = window.devicePixelRatio || 1;
-    const px = Math.max(1, Math.round(rect.width * dpr)), py = Math.max(1, Math.round(rect.height * dpr));
+    // The canvas covers the whole zoomed map, so at 6x zoom on a 3x screen it would be 6000+ pixels wide.  Phones refuse a canvas over about
+    // 16 million pixels (iOS Safari draws nothing at all), which is why the ruler vanished when you zoomed in.  Keep it under 8 million pixels
+    // and 4096 on a side; the line and its label are drawn in screen-sized units, so they only get a little softer.
+    const scale = Math.min(dpr, 4096 / Math.max(rect.width, 1), 4096 / Math.max(rect.height, 1), Math.sqrt(8000000 / Math.max(rect.width * rect.height, 1)));
+    const px = Math.max(1, Math.round(rect.width * scale)), py = Math.max(1, Math.round(rect.height * scale));
     if (rulerCanvas.width !== px || rulerCanvas.height !== py) { rulerCanvas.width = px; rulerCanvas.height = py; }
     rctx.setTransform(1, 0, 0, 1, 0, 0);
     rctx.clearRect(0, 0, rulerCanvas.width, rulerCanvas.height);
-    if (!ruler) { if (readout) readout.textContent = ''; return; }
-    const { text, squares } = rulerReading();
-    if (readout) readout.textContent = text;
-    const k = px / naturalWidth;                                   // natural map pixels -> canvas pixels
-    const unit = rect.width > 0 ? naturalWidth / rect.width : 1;   // one unit = one screen pixel, in map pixels
-    rctx.setTransform(k, 0, 0, k, 0, 0);
-    const a = ruler.a, b = ruler.b;
-    const len = Math.hypot(b.x - a.x, b.y - a.y);
-    rctx.save();
-    rctx.lineCap = 'round';
-    rctx.shadowColor = 'rgba(0,0,0,0.55)'; rctx.shadowBlur = 4 * unit;
-    rctx.beginPath(); rctx.moveTo(a.x, a.y); rctx.lineTo(b.x, b.y);
-    rctx.strokeStyle = 'rgba(14,16,24,0.7)'; rctx.lineWidth = 4 * unit; rctx.stroke();       // a dark edge keeps it readable on a pale map
-    rctx.shadowBlur = 0;
-    rctx.strokeStyle = '#f0d58a'; rctx.lineWidth = 2 * unit; rctx.stroke();
-    if (len > 0 && squares > 1 && squares <= 60) {                 // a small tick at every square
-      const nx = -(b.y - a.y) / len, ny = (b.x - a.x) / len;
-      rctx.lineWidth = 1.25 * unit;
-      for (let i = 1; i < squares; i++) {
-        const t = i / squares, tx = a.x + (b.x - a.x) * t, ty = a.y + (b.y - a.y) * t, h = 3.5 * unit;
-        rctx.beginPath(); rctx.moveTo(tx - nx * h, ty - ny * h); rctx.lineTo(tx + nx * h, ty + ny * h); rctx.stroke();
-      }
-    }
-    [a, b].forEach((p) => {                                        // hollow end rings
-      rctx.beginPath(); rctx.arc(p.x, p.y, 4.5 * unit, 0, Math.PI * 2);
-      rctx.fillStyle = 'rgba(14,16,24,0.88)'; rctx.fill();
-      rctx.strokeStyle = '#f0d58a'; rctx.lineWidth = 2 * unit; rctx.stroke();
+    if (ruler && ruler.until && Date.now() >= ruler.until) ruler = null;      // a finished template has faded away
+    if (readout) readout.textContent = ruler ? rulerReading().text : '';
+    if (!ruler && !remoteMeasures.size) return;
+    const worldW = world.x1 - world.x0;
+    const k = px / worldW;                                         // natural map pixels -> canvas pixels
+    const unit = rect.width > 0 ? worldW / rect.width : 1;         // one unit = one screen pixel, in map pixels
+    rctx.setTransform(k, 0, 0, k, -world.x0 * k, -world.y0 * k);
+    remoteMeasures.forEach((m) => { const al = fadeAlpha(m.until); if (al > 0) drawMeasure(m, MEASURE_OTHERS, al, unit, m.name); });
+    if (ruler) drawMeasure(ruler, MEASURE_OWN, ruler.until ? fadeAlpha(ruler.until) : 1, unit, '');
+  }
+
+  // Other people's measurements: from the live channel (smooth) or from the saved refresh (the safety net).
+  let measureTimer = 0;
+  function pruneRemoteMeasures() {
+    const t = Date.now();
+    remoteMeasures.forEach((m, id) => { if (m.until <= t) remoteMeasures.delete(id); });
+  }
+  function keepMeasuresFading() {
+    if (measureTimer) return;
+    measureTimer = setInterval(() => {
+      pruneRemoteMeasures();
+      drawRuler();
+      if (!remoteMeasures.size && !(ruler && ruler.until)) { clearInterval(measureTimer); measureTimer = 0; }
+    }, 100);
+  }
+  function numOr(v, d) { v = Number(v); return Number.isFinite(v) ? v : d; }
+  function setRemoteMeasure(userId, kind, a, b, ttlMs, name, viaLive) {
+    if (!['ruler', 'cone', 'sphere', 'line', 'cube'].includes(kind)) return;
+    const id = String(userId);
+    if (id === String(window.USER_ID)) return;
+    const old = remoteMeasures.get(id);
+    if (!viaLive && old && old.liveAt && Date.now() - old.liveAt < 2500) { old.name = name || old.name; return; }   // live is fresher than the saved copy
+    remoteMeasures.set(id, {
+      kind, a: { x: numOr(a.x, 0), y: numOr(a.y, 0) }, b: { x: numOr(b.x, 0), y: numOr(b.y, 0) },
+      until: Date.now() + Math.max(0, Math.min(MEASURE_HOLD_MS + 2000, numOr(ttlMs, 0))),
+      name: name || (old && old.name) || '', liveAt: viaLive ? Date.now() : (old ? old.liveAt : 0),
     });
-    if (len > 14 * unit) {
-      const size = 12 * unit;
-      rctx.font = `600 ${size}px Inter, system-ui, sans-serif`;
-      rctx.textAlign = 'center'; rctx.textBaseline = 'middle';
-      const w = rctx.measureText(text).width + 16 * unit, h = size + 10 * unit;
-      const mx = Math.min(Math.max((a.x + b.x) / 2, w / 2 + 2 * unit), naturalWidth - w / 2 - 2 * unit);
-      const my = Math.min(Math.max((a.y + b.y) / 2 - 18 * unit, h / 2 + 2 * unit), naturalHeight - h / 2 - 2 * unit);
-      rctx.beginPath();
-      if (rctx.roundRect) rctx.roundRect(mx - w / 2, my - h / 2, w, h, h / 2); else rctx.rect(mx - w / 2, my - h / 2, w, h);
-      rctx.fillStyle = 'rgba(14,16,24,0.92)'; rctx.fill();
-      rctx.strokeStyle = 'rgba(240,213,138,0.75)'; rctx.lineWidth = 1 * unit; rctx.stroke();
-      rctx.fillStyle = '#f6efdc'; rctx.fillText(text, mx, my + 0.5 * unit);
+    keepMeasuresFading(); drawRuler();
+  }
+  function applyServerMeasures(list) {
+    const seen = new Set();
+    (Array.isArray(list) ? list : []).forEach((m) => {
+      seen.add(String(m.user_id));
+      setRemoteMeasure(m.user_id, m.kind, { x: m.ax, y: m.ay }, { x: m.bx, y: m.by }, m.ttl_ms, String(m.name || '').slice(0, 40), false);
+    });
+    remoteMeasures.forEach((m, id) => { if (!seen.has(id) && !(m.liveAt && Date.now() - m.liveAt < 2500)) remoteMeasures.delete(id); });
+    drawRuler();
+  }
+
+  // Sharing what you measure: a few small messages a second while you drag, and one when you let go.
+  const measureApi = `/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/measure`;
+  let measureSentAt = 0, measureSaveTimer = 0, measureBeat = 0;
+  function sharedOn() { return !!(measureShareBox && measureShareBox.checked); }
+  function postMeasure(done) {
+    if (!ruler || !sharedOn()) return;
+    fetch(measureApi, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ kind: ruler.kind || 'ruler', a: ruler.a, b: ruler.b, done: !!done }) }).catch(() => {});
+  }
+  function shareMeasureMoving() {
+    if (!ruler || !sharedOn()) return;
+    if (live) live.measure({ kind: ruler.kind || 'ruler', a: ruler.a, b: ruler.b, end: 0 });
+    const wait = 400 - (Date.now() - measureSentAt);
+    if (wait <= 0) { measureSentAt = Date.now(); postMeasure(false); }
+    else if (!measureSaveTimer) measureSaveTimer = setTimeout(() => { measureSaveTimer = 0; measureSentAt = Date.now(); postMeasure(false); }, wait);
+  }
+  function shareMeasureDone() {
+    clearTimeout(measureSaveTimer); measureSaveTimer = 0;
+    if (!ruler || !sharedOn()) return;
+    if (live) live.measure({ kind: ruler.kind || 'ruler', a: ruler.a, b: ruler.b, end: 1 });
+    postMeasure(true);
+    clearInterval(measureBeat); measureBeat = 0;
+    if ((ruler.kind || 'ruler') === 'ruler') measureBeat = setInterval(() => { if (ruler && !ruler.dragging) postMeasure(true); else { clearInterval(measureBeat); measureBeat = 0; } }, 6000);   // a held ruler stays up for the table
+  }
+  function clearOwnMeasure() {
+    const had = !!ruler;
+    ruler = null;
+    clearTimeout(measureSaveTimer); measureSaveTimer = 0;
+    clearInterval(measureBeat); measureBeat = 0;
+    if (had && sharedOn()) {
+      fetch(`${measureApi}/clear`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).catch(() => {});
+      if (live) live.measure({ end: 2 });
     }
-    rctx.restore();
+    redraw();
+  }
+
+  // Pictures placed on the map: one Image per file, kept for the life of the page and drawn once it has loaded.
+  const shapeImages = new Map();
+  function mapImageFor(d) {
+    if (!d.url) return null;
+    let img = shapeImages.get(d.url);
+    if (!img) {
+      img = new Image();
+      img.decoding = 'async';
+      img.onload = () => redraw();
+      img.src = d.url;
+      shapeImages.set(d.url, img);
+    }
+    return img;
   }
 
   function drawShape(d) {
@@ -488,18 +737,26 @@
     ctx.translate(d.cx, d.cy);
     ctx.rotate(toRad(d.rotation));
     // A DM-only shape is drawn faint with a dashed edge, so the DM can tell it is hidden at a glance.
-    const base = d.dm_only ? 0.5 : 1;
+    const base = d.dm_only && !isPicture(d) ? 0.5 : 1;
     ctx.globalAlpha = base;
-    if (d.dm_only) ctx.setLineDash([Math.max(6, canvas.width / 160), Math.max(5, canvas.width / 200)]);
+    if (d.dm_only && !isPicture(d)) ctx.setLineDash([Math.max(6, naturalWidth / 160), Math.max(5, naturalWidth / 200)]);
     ctx.strokeStyle = d.color;
     ctx.fillStyle = d.color;
-    ctx.lineWidth = Math.max(2, canvas.width / 450);
+    ctx.lineWidth = Math.max(2, naturalWidth / 450);
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     const w = d.w, h = d.h;
 
     const hasFill = (d.fill_opacity || 0) > 0.001;
-    if (d.kind === 'rect') {
+    if (d.kind === 'image') {
+      const img = mapImageFor(d);
+      if (img && img.complete && img.naturalWidth) {
+        ctx.drawImage(img, -w / 2, -h / 2, w, h);
+      } else {                                           // still loading: a dashed frame holds the place
+        ctx.setLineDash([Math.max(6, naturalWidth / 160), Math.max(5, naturalWidth / 200)]);
+        ctx.strokeRect(-w / 2, -h / 2, w, h);
+      }
+    } else if (d.kind === 'rect') {
       if (hasFill) { ctx.globalAlpha = d.fill_opacity * base; ctx.fillRect(-w / 2, -h / 2, w, h); ctx.globalAlpha = base; }
       ctx.strokeRect(-w / 2, -h / 2, w, h);
     } else if (d.kind === 'oval') {
@@ -548,8 +805,8 @@
     if (selectedShapeIds.size === 0) return;
     ctx.save();
     ctx.strokeStyle = '#4d9eff';
-    ctx.lineWidth = Math.max(1.5, canvas.width / 900);
-    ctx.setLineDash([canvas.width / 150, canvas.width / 220]);
+    ctx.lineWidth = Math.max(1.5, naturalWidth / 900);
+    ctx.setLineDash([naturalWidth / 150, naturalWidth / 220]);
 
     let primaryCorners = null;
     selectedShapeIds.forEach((id) => {
@@ -562,7 +819,7 @@
 
     // A dotted line from each selected shape to the token it follows.
     ctx.strokeStyle = '#d4a847';
-    ctx.setLineDash([canvas.width / 400, canvas.width / 300]);
+    ctx.setLineDash([naturalWidth / 400, naturalWidth / 300]);
     selectedShapeIds.forEach((id) => {
       const d = drawings.find((s) => s.id === id);
       const pin = d && d.attached_pin_id ? pins.find((q) => q.id === d.attached_pin_id) : null;
@@ -575,7 +832,7 @@
     if (primaryCorners) {
       const { d, corners } = primaryCorners;
       if (shapeHandleMode === 'resize') {
-        const hs = Math.max(9, canvas.width / 130);
+        const hs = Math.max(9, naturalWidth / 130);
         ctx.fillStyle = '#4d9eff';
         corners.forEach((c) => ctx.fillRect(c.x - hs / 2, c.y - hs / 2, hs, hs));
       }
@@ -587,13 +844,13 @@
         ctx.lineTo(rp.x, rp.y);
         ctx.stroke();
         ctx.beginPath();
-        ctx.arc(rp.x, rp.y, Math.max(8, canvas.width / 140), 0, Math.PI * 2);
+        ctx.arc(rp.x, rp.y, Math.max(8, naturalWidth / 140), 0, Math.PI * 2);
         ctx.fillStyle = '#4d9eff';
         ctx.fill();
       }
       if (shapeHandleMode === 'angle-adjust' && d.kind === 'angle') {
         const handles = getAngleHandlePositions(d);
-        const hs = Math.max(9, canvas.width / 130);
+        const hs = Math.max(9, naturalWidth / 130);
         ctx.fillStyle = '#4d9eff';
         handles.forEach((p) => {
           ctx.beginPath();
@@ -605,7 +862,7 @@
     ctx.restore();
   }
 
-  function lockIconRadius() { return Math.max(15, canvas.width / 55); }
+  function lockIconRadius() { return Math.max(15, naturalWidth / 55); }
 
   function drawLockHoverIcon() {
     if (hoveredLockedShapeId == null) return;
@@ -643,15 +900,19 @@
       const labelPos = localOffsetToNatural(d, d.w * 0.45, 0);
       const leftPct = (labelPos.x / naturalWidth) * 100;
       const topPct = (labelPos.y / naturalHeight) * 100;
-      return `<div class="angle-degree-label" style="left:${leftPct}%; top:${topPct}%;">${sweepDeg}\u00b0</div>`;
+      return `<div class="angle-degree-label" data-left="${leftPct.toFixed(3)}" data-top="${topPct.toFixed(3)}">${sweepDeg}\u00b0</div>`;
     }).join('');
   }
 
   function redraw() {
+    syncWorld();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    if (bgLoaded) ctx.drawImage(bgImage, 0, 0, canvas.width, canvas.height);
+    ctx.setTransform(worldScale, 0, 0, worldScale, -world.x0 * worldScale, -world.y0 * worldScale);      // everything below is in map pixels
+    if (bgLoaded) ctx.drawImage(bgImage, 0, 0, naturalWidth, naturalHeight);
+    drawings.forEach((d) => { if (isPicture(d)) drawShape(live ? live.shapeView(d) : d); });      // pictures are part of the canvas: under the grid and the drawings
     drawGrid();
-    drawings.forEach((d) => drawShape(live ? live.shapeView(d) : d));
+    drawings.forEach((d) => { if (!isPicture(d)) drawShape(live ? live.shapeView(d) : d); });
     if (live) live.drafts().forEach(drawShape);                 // other people's shapes while they are still drawing them
     if (previewShape) drawShape(previewShape);
     drawSelectionOverlay();
@@ -666,7 +927,9 @@
   async function loadDrawings() {
     const res = await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/drawings`);
     drawings = await res.json();
+    drawings.forEach((d) => { if (isPicture(d)) { d.locked = false; d.dm_only = false; d.attached_pin_id = null; } });      // pictures cannot be locked, hidden or attached
     redraw();
+    if (!viewFitted) { viewFitted = true; fitView(); }
   }
 
   async function loadPins() {
@@ -700,8 +963,8 @@
     return `
       <div class="map-pin${mine ? '' : ' pin-not-yours'}${p.dm_only ? ' is-dm-only' : ''}" data-pin-id="${p.id}" data-pin-type="${escapeHtml(p.pin_type)}" data-locked="${!!p.locked}" title="${escapeHtml(ownerTip)}"
            data-character-id="${escapeHtml(p.character_id || '')}" data-x="${p.x}" data-y="${p.y}"
-           style="left:${leftPct}%; top:${topPct}%; width:${wPct}%; height:${hPct}%;">
-        <div class="map-pin-visual ${dead ? 'is-dead' : ''}" style="border-color:${borderColor}; transform: rotate(${p.rotation || 0}deg);">
+           data-left="${Number(leftPct).toFixed(3)}" data-top="${Number(topPct).toFixed(3)}" data-width="${Number(wPct).toFixed(3)}" data-height="${Number(hPct).toFixed(3)}">
+        <div class="map-pin-visual ${dead ? 'is-dead' : ''}" data-bc="${borderColor}" data-rot="${Number(p.rotation || 0).toFixed(2)}">
           <div class="map-pin-avatar">${avatarInner}</div>
         </div>
         <span class="map-pin-label">${label}${p.owner_name && window.IS_DM ? `<small class="pin-owner-chip">${escapeHtml(p.owner_name)}</small>` : ''}</span>
@@ -711,6 +974,7 @@
 
   function renderPins() {
     pinLayer.innerHTML = pins.map(pinMarkup).join('');
+    if (window.oakenApplyDataStyles) window.oakenApplyDataStyles(pinLayer);
     if (typeof renderRoster === 'function') renderRoster();
     markFoggedPins();
     if (selectedPinId) positionPinBubble(selectedPinId);
@@ -724,6 +988,18 @@
     const cellX = Math.round((x - gridOffsetX - gridSize / 2) / gridSize);
     const cellY = Math.round((y - gridOffsetY - gridSize / 2) / gridSize);
     return { x: gridOffsetX + gridSize / 2 + cellX * gridSize, y: gridOffsetY + gridSize / 2 + cellY * gridSize };
+  }
+
+  // Pictures follow the grid too (when "snap to grid" is on): the corner of a picture meets a grid line.
+  function snapToGridLines(p) {
+    if (!snapToGrid || !gridSize || gridSize < 2) return p;
+    return { x: gridOffsetX + Math.round((p.x - gridOffsetX) / gridSize) * gridSize, y: gridOffsetY + Math.round((p.y - gridOffsetY) / gridSize) * gridSize };
+  }
+  function snapPictureCorner(d) {                       // the top left of the box the picture takes up
+    if (!snapToGrid || !gridSize || gridSize < 2) return;
+    const half = imageHalfExtent(d);
+    const c = snapToGridLines({ x: d.cx - half.x, y: d.cy - half.y });
+    d.cx = c.x + half.x; d.cy = c.y + half.y;
   }
 
   function applyPinStyle(pin, el) {
@@ -789,7 +1065,7 @@
     }
     if (pinShapesWrap) {
       const n = drawings.filter((d) => d.attached_pin_id === pin.id).length;
-      pinShapesWrap.style.display = (n && canMovePin(pin) && !readOnly()) ? '' : 'none';
+      pinShapesWrap.hidden = !(n && canMovePin(pin) && !readOnly());
       pinShapesBtn.title = n === 1 ? '1 shape is attached to this token' : `${n} shapes are attached to this token`;
       closeShapesMenu();
     }
@@ -830,7 +1106,7 @@
 
   function layoutPinRadial(cx, cy, halfPx, stageW, stageH, k = 1) {
     const vis = visibleStageBox(stageW, stageH);
-    const items = Array.from(pinBubble.children).filter((c) => c.style.display !== 'none');
+    const items = Array.from(pinBubble.children).filter((c) => c.style.display !== 'none' && !c.hidden);
     const n = items.length;
     if (!n) return;
     const BTN = 36 * k, GAP = 6 * k, PAD = BTN / 2 + 4;
@@ -961,7 +1237,7 @@
 
   // On a phone the shape's action bubble is docked at the bottom centre of the screen instead of floating beside
   // the shape: it can never be cut off by the screen edge, hidden under a finger, or thrown off by zoom and pan.
-  const phoneBubbleQuery = window.matchMedia ? window.matchMedia('(max-width: 880px), (max-height: 500px) and (orientation: landscape)') : null;
+  const phoneBubbleQuery = window.matchMedia ? window.matchMedia('(max-width: 1024px), (pointer: coarse) and (max-width: 1400px), (max-height: 500px) and (orientation: landscape)') : null;
   const bubbleHome = shapeBubble.parentNode;
   function dockShapeBubble(on) {
     const host = on ? document.getElementById('map-content-area') : bubbleHome;
@@ -978,6 +1254,7 @@
   function positionShapeBubble() {
     const d = drawings.find((s) => s.id === selectedShapeId);
     if (!d) { shapeBubble.hidden = true; return; }
+    shapeBubble.classList.toggle('is-picture', isPicture(d));      // a picture only has: size, turn, remove
     syncHideButton(shapeHideBtn, selectedShapeIds.size > 1 ? [...selectedShapeIds].every((id) => (drawings.find((x) => x.id === id) || {}).dm_only) : d.dm_only);
     syncAttachButton();
     applyBubbleScale();
@@ -1640,7 +1917,7 @@
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ owner_user_id: ownerId }),
       });
-      if (!res.ok) { LedgerApi.fail(res, "Couldn't change who controls that token."); return; }
+      if (!res.ok) { OakenApi.fail(res, "Couldn't change who controls that token."); return; }
       pin.owner_user_id = ownerId;
       const m = members.find((x) => Number(x.id) === ownerId);
       pin.owner_name = m ? m.username : null;
@@ -1721,7 +1998,12 @@
   // ---------------------------------------------------------------------
   // Toolbar
   // ---------------------------------------------------------------------
-  const MODIFIER_HINT_KEY = 'ledger-map-modifier-hint-dismissed';
+  const COARSE = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);       // a finger, not a mouse and keyboard
+  const PLACE_HINT_HTML = COARSE
+    ? 'Placing <strong id="place-hint-name"></strong> &middot; tap the map to drop &middot; pick <strong>Select</strong> to stop'
+    : 'Placing <strong id="place-hint-name"></strong> &middot; click the map to drop &middot; <strong>Esc</strong> to stop';
+  if (COARSE && attachHint) attachHint.textContent = 'Tap the token to attach the shape to. Tap the link button again to cancel.';
+  const MODIFIER_HINT_KEY = 'oaken-map-modifier-hint-dismissed';
   const modifierHintEl = document.getElementById('modifier-hint');
   let modifierHintTimer = null;
 
@@ -1734,6 +2016,7 @@
     try { localStorage.setItem(MODIFIER_HINT_KEY, '1'); } catch (err) { /* ignore */ }
   }
   function showModifierHintIfNeeded() {
+    if (COARSE) return;                                      // Shift and Alt do not exist on a touch screen
     let alreadySeen = false;
     try { alreadySeen = !!localStorage.getItem(MODIFIER_HINT_KEY); } catch (err) { /* ignore */ }
     if (alreadySeen) return;
@@ -1751,7 +2034,7 @@
 
   // Zoom/pan hint: shown once on load, dismissed after a timeout or the
   // first time the person actually zooms or pans.
-  const NAV_HINT_KEY = 'ledger-map-nav-hint-dismissed';
+  const NAV_HINT_KEY = 'oaken-map-nav-hint-dismissed';
   const navHintEl = document.getElementById('nav-hint');
   let navHintTimer = null;
   function hideNavHint() {
@@ -1774,7 +2057,7 @@
 
   // "Hold Space to pan" toolbar hint disappears for good the first time
   // it's actually used.
-  const SPACE_HINT_KEY = 'ledger-map-space-hint-dismissed';
+  const SPACE_HINT_KEY = 'oaken-map-space-hint-dismissed';
   const holdSpaceHintEl = document.getElementById('hold-space-hint');
   if (holdSpaceHintEl) {
     let spaceHintSeen = false;
@@ -1789,7 +2072,8 @@
   const SHAPE_TOOLS = ['line', 'rect', 'oval', 'pen', 'angle'];
   const styleGroup = document.getElementById('shape-style-group');
   function updateStylePanelVisibility() {
-    const show = SHAPE_TOOLS.includes(currentTool) || selectedShapeIds.size > 0;
+    // A picture has no colour or fill, so selecting only pictures does not open the style panel.
+    const show = SHAPE_TOOLS.includes(currentTool) || [...selectedShapeIds].some((id) => !isPicture(drawings.find((s) => s.id === id)));
     styleGroup.hidden = !show;
   }
 
@@ -1803,7 +2087,8 @@
       deselectShape();
       canvas.classList.toggle('tool-eraser', currentTool === 'eraser');
       pinLayer.classList.toggle('draw-mode', SHAPE_TOOLS.includes(currentTool) || currentTool === 'ruler' || isFogTool(currentTool));
-      if (currentTool !== 'ruler' && ruler) { ruler = null; redraw(); }
+      if (measurePicker) measurePicker.hidden = currentTool !== 'ruler';
+      if (currentTool !== 'ruler' && ruler) clearOwnMeasure();
       if (fogOptions) fogOptions.hidden = !isFogTool(currentTool);
       canvas.classList.toggle('tool-fog', isFogTool(currentTool));
       if (fog && isFogTool(currentTool)) fog.setMode(currentTool === 'fog-erase' ? 'erase' : 'paint');
@@ -1857,6 +2142,53 @@
     if (e.target.closest('.tool-flyout')) return;
     document.querySelectorAll('.tool-flyout').forEach((f) => f.classList.remove('open'));
   });
+
+  // ---- Add image: a picture is added to the canvas, beside the map ----
+  const MAP_IMAGE_MAX_SIDE = 1600, MAP_IMAGE_SEND_LIMIT = 3 * 1024 * 1024;     // the server keeps 1600 px; Vercel takes ~4.5 MB a request
+  async function fitForUpload(file) {
+    if (file.type === 'image/gif' || (file.size <= MAP_IMAGE_SEND_LIMIT && !/^image\/(png|jpeg|webp)$/.test(file.type))) return file;
+    let bitmap;
+    try { bitmap = await createImageBitmap(file); } catch (e) { return file; }
+    const scale = Math.min(1, MAP_IMAGE_MAX_SIDE / Math.max(bitmap.width, bitmap.height));
+    if (scale === 1 && file.size <= MAP_IMAGE_SEND_LIMIT) { bitmap.close && bitmap.close(); return file; }
+    const c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round(bitmap.width * scale));
+    c.height = Math.max(1, Math.round(bitmap.height * scale));
+    c.getContext('2d').drawImage(bitmap, 0, 0, c.width, c.height);
+    bitmap.close && bitmap.close();
+    const blob = await new Promise((resolve) => c.toBlob(resolve, 'image/webp', 0.9));
+    return blob || file;
+  }
+
+  const addImageBtn = document.getElementById('map-add-image-btn');
+  const addImageInput = document.getElementById('map-image-input');
+  if (addImageBtn && addImageInput) {
+    if (readOnly()) addImageBtn.hidden = true;
+    addImageBtn.addEventListener('click', () => { if (!readOnly()) addImageInput.click(); });
+    addImageInput.addEventListener('change', async () => {
+      const file = addImageInput.files && addImageInput.files[0];
+      addImageInput.value = '';
+      if (!file) return;
+      addImageBtn.disabled = true;
+      try {
+        const body = new FormData();
+        body.append('image', await fitForUpload(file), file.name);
+        const res = await mapWrite(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/images`, { method: 'POST', body });
+        const shape = await res.json();                       // the server puts it beside what is already on the canvas
+        drawings.push(shape);
+        redraw();
+        fitView();                                            // so the new picture is on screen
+        pushCommand(makeAddShapeCommand(shape));
+        const selectBtn = document.querySelector('.map-tool-btn[data-tool="select"]');
+        if (selectBtn) selectBtn.click();
+        selectShape(shape.id);
+      } catch (err) {
+        /* mapWrite already told the person why */
+      } finally {
+        addImageBtn.disabled = false;
+      }
+    });
+  }
 
   function getColor() { return document.getElementById('map-color-input').value; }
   function getFillOpacity() { return parseInt(document.getElementById('fill-opacity').value, 10) / 100; }
@@ -1930,7 +2262,7 @@
 
   // Every open map tab refreshes through ONE request to /sync (grid/lock state, drawings and,
   // while linked to the battle, pins) so grid settings, the lock, the battle-link toggle,
-  // shapes and pins all take effect live. It runs through the shared LedgerPoll scheduler:
+  // shapes and pins all take effect live. It runs through the shared OakenPoll scheduler:
   // paused while the tab is hidden, slower while nothing changes, instant on activity.
   // Skipped while this tab's own grid-settings dialog is open so it can't clobber an
   // in-progress edit, and shapes/pins are left alone mid-drag or mid-draw.
@@ -1964,7 +2296,7 @@
   }
 
   let lastSyncSig = '';
-  syncPoll = LedgerPoll.every(async () => {
+  syncPoll = OakenPoll.every(async () => {
     if (!setupOverlay.hidden) return 'skip';
     const res = await fetch(`/campaigns/${window.CAMPAIGN_ID}/api/maps/${mapId}/sync`);
     if (!res.ok) return false;
@@ -1974,6 +2306,7 @@
     lastSyncSig = sig;
 
     applyMapState(d.state);
+    applyServerMeasures(d.measures);
 
     if (!(activeDrag || previewShape) && JSON.stringify(d.drawings) !== JSON.stringify(drawings)) {
       drawings = d.drawings;
@@ -1989,10 +2322,20 @@
   }, { base: 3000, max: 12000 });
 
   // Real-time: a ping from the server means "something changed" -> refresh right now.  Polling above stays as the safety net.
-  if (window.LEDGER_REALTIME && window.LedgerRealtime) {
+  // Right-click and hold: your cursor becomes a small dot that everyone on the map sees live (map-pointer.js; sent over the live channel, never saved).
+  const pointerUi = window.MapPointer ? window.MapPointer.create({
+    stage: stageWrap, inner: stageInner,
+    natural: () => ({ w: naturalWidth, h: naturalHeight }),
+    bounds: worldBounds,                                  // a dot can go anywhere on the canvas, pictures included
+    toNatural: (cx, cy) => getNaturalPos(cx, cy),
+    send: (m) => { if (live) live.pointer(m); },
+    myId: () => window.USER_ID,
+  }) : null;
+
+  if (window.OAKEN_REALTIME && window.OakenRealtime) {
     if (window.MapLive) {
       live = window.MapLive.create({
-        mapId, fog,
+        mapId, fog, userId: window.USER_ID,
         pins: () => pins, drawings: () => drawings,
         attachedShapes: (pinId) => drawings.filter((d) => d.attached_pin_id === pinId && !d.dm_only),
         pinEl: (id) => pinLayer.querySelector(`[data-pin-id="${Number(id)}"]`),
@@ -2005,10 +2348,16 @@
         draggingPin: (id) => !!(activeDrag && activeDrag.pin && activeDrag.pin.id === id),
         draggingShape: (id) => !!(activeDrag && ((activeDrag.d && activeDrag.d.id === id) || (activeDrag.ids && activeDrag.ids.includes(id)))),
         safeColor, finalizePenShape,
+        measure: (msg) => {
+          if (msg.end === 2) { remoteMeasures.delete(String(msg.w)); drawRuler(); return; }
+          if (!msg.a || !msg.b) return;
+          setRemoteMeasure(msg.w, msg.kind, msg.a, msg.b, msg.end ? MEASURE_HOLD_MS : 5000, '', true);
+        },
         redraw: () => redraw(),
+        pointer: (from, m) => { if (pointerUi) pointerUi.receive(from, m); },
       });
     }
-    const conn = LedgerRealtime.connect(window.LEDGER_REALTIME, (p) => { if (p.s !== 'dice') syncPoll.poke(); }, live ? (m) => live.receive(m) : null);
+    const conn = OakenRealtime.connect(window.OAKEN_REALTIME, (p) => { if (p.s !== 'dice') syncPoll.poke(); }, live ? (m) => live.receive(m) : null);
     if (live) live.attach(conn);
   }
 
@@ -2081,19 +2430,45 @@
   // ---------------------------------------------------------------------
   // Canvas interactions
   // ---------------------------------------------------------------------
-  window.addEventListener('mouseup', () => { if (ruler && ruler.dragging) ruler.dragging = false; });   // the line stays up until the next drag, Esc or another tool
+  window.addEventListener('mouseup', () => {                                                        // a ruler stays up until the next drag, Esc or another tool; a template fades by itself
+    if (!(ruler && ruler.dragging)) return;
+    ruler.dragging = false;
+    if (ruler.kind !== 'ruler') { ruler.until = Date.now() + MEASURE_HOLD_MS; keepMeasuresFading(); }
+    shareMeasureDone();
+  });
+  if (measurePicker) {
+    measurePicker.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-measure-kind]');
+      if (!btn) return;
+      rulerKind = btn.dataset.measureKind;
+      measurePicker.querySelectorAll('[data-measure-kind]').forEach((b) => b.setAttribute('aria-pressed', b === btn ? 'true' : 'false'));
+      if (ruler) clearOwnMeasure();
+    });
+  }
+  if (measureShareBox) {
+    measureShareBox.addEventListener('change', () => {
+      try { localStorage.setItem('oaken-map-share-measure', measureShareBox.checked ? '1' : '0'); } catch (e) { /* storage is optional */ }
+      if (!measureShareBox.checked) {                                                                // switching sharing off takes your line off everyone else's screen
+        const mine = ruler; ruler = null;
+        fetch(`${measureApi}/clear`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).catch(() => {});
+        if (live) live.measure({ end: 2 });
+        ruler = mine; redraw();
+      }
+    });
+  }
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && ruler && !e.target.closest('input, textarea, select')) { ruler = null; redraw(); }
+    if (e.key === 'Escape' && ruler && !e.target.closest('input, textarea, select')) clearOwnMeasure();
   });
   let drawState = null;   // creating a brand-new shape, or moving the grid
   let angleDrawState = null; // {vertex} while placing an angle/cone shape (click, then click again)
-  let activeDrag = null;  // manipulating an existing shape or pin
 
   canvas.addEventListener('mousedown', (e) => {
     if (currentTool === 'ruler') {                       // measuring changes nothing, so it works on a locked map too
       if (e.button !== 0) return;
       const p = eventPos(e);
-      ruler = { a: p, b: p, dragging: true };
+      if (ruler) clearOwnMeasure();
+      ruler = { kind: rulerKind, a: p, b: p, dragging: true };
+      shareMeasureMoving();
       redraw();
       return;
     }
@@ -2146,7 +2521,7 @@
         const d = drawings.find((s) => s.id === selectedShapeId);
         if (d && d.kind === 'angle') {
           const handles = getAngleHandlePositions(d);
-          const hs = Math.max(14, canvas.width / 80);
+          const hs = Math.max(14, naturalWidth / 80);
           const hitIdx = handles.findIndex((p) => Math.hypot(pos.x - p.x, pos.y - p.y) < hs);
           if (hitIdx !== -1) {
             const before = { data: { ...d.data } };
@@ -2156,9 +2531,8 @@
         }
       }
       const multiKey = e.ctrlKey || e.metaKey;
-      for (let i = drawings.length - 1; i >= 0; i--) {
-        const cand = drawings[i];
-        if (cand.locked) continue;
+      for (const cand of topFirst()) {
+        if (cand.locked && !isPicture(cand)) continue;
         if (hitTestShape(cand, pos)) {
           if (multiKey) {
             toggleShapeSelection(cand.id);
@@ -2174,9 +2548,9 @@
     }
 
     if (currentTool === 'eraser') {
-      for (let i = drawings.length - 1; i >= 0; i--) {
-        if (drawings[i].locked) continue;
-        if (hitTestShape(drawings[i], pos)) { deleteShape(drawings[i]); return; }
+      for (const cand of topFirst()) {
+        if (cand.locked && !isPicture(cand)) continue;
+        if (hitTestShape(cand, pos)) { deleteShape(cand); return; }
       }
       return;
     }
@@ -2225,7 +2599,7 @@
 
   canvas.addEventListener('mousemove', (e) => {
     if (currentTool === 'ruler') {
-      if (ruler && ruler.dragging) { ruler.b = eventPos(e); redraw(); }
+      if (ruler && ruler.dragging) { ruler.b = eventPos(e); shareMeasureMoving(); redraw(); }
       return;
     }
     if (isFogTool(currentTool)) { if (fog && window.IS_DM) fog.move(e); return; }
@@ -2289,6 +2663,10 @@
         const start = activeDrag.starts.get(id);
         if (d && start) { d.cx = start.cx + dx; d.cy = start.cy + dy; }
       });
+      if (activeDrag.ids.length === 1) {
+        const d = drawings.find((s) => s.id === activeDrag.ids[0]);
+        if (isPicture(d)) { snapPictureCorner(d); limitImage(d); }
+      }
       redraw();
       if (selectedShapeId != null) positionShapeBubble();
       return;
@@ -2300,6 +2678,7 @@
       const ratio = dist / activeDrag.startDist;
       d.w = Math.max(6, activeDrag.startW * ratio);
       d.h = Math.max(6, activeDrag.startH * ratio);
+      if (isPicture(d)) limitImage(d);
       redraw();
       positionShapeBubble();
       return;
@@ -2319,10 +2698,18 @@
       const pos = eventPos(e);
       const d = activeDrag.d;
       const axes = activeDrag.axes;
-      const vec = { x: pos.x - activeDrag.anchor.x, y: pos.y - activeDrag.anchor.y };
+      let target = pos;
+      if (isPicture(d) && Math.abs(((d.rotation || 0) % 360)) < 0.01) target = snapToGridLines(pos);   // an upright picture's corner meets the grid
+      const vec = { x: target.x - activeDrag.anchor.x, y: target.y - activeDrag.anchor.y };
       let du = vec.x * axes.u.x + vec.y * axes.u.y;
       let dv = vec.x * axes.v.x + vec.y * axes.v.y;
-      if (e.altKey) {
+      if (isPicture(d)) {
+        // A picture keeps its proportions: the corner follows whichever side moved further.
+        const b = activeDrag.before;
+        const s = Math.max(Math.abs(du) / Math.max(1, b.w), Math.abs(dv) / Math.max(1, b.h));
+        du = (du < 0 ? -1 : 1) * s * b.w;
+        dv = (dv < 0 ? -1 : 1) * s * b.h;
+      } else if (e.altKey) {
         // Lock to a 1:1 aspect ratio, using whichever axis moved further.
         const mag = Math.max(Math.abs(du), Math.abs(dv));
         du = (du < 0 ? -1 : 1) * mag;
@@ -2346,6 +2733,7 @@
         d.cx = (activeDrag.anchor.x + effX) / 2;
         d.cy = (activeDrag.anchor.y + effY) / 2;
       }
+      if (isPicture(d)) limitImage(d);
       redraw();
       positionShapeBubble();
       return;
@@ -2355,6 +2743,7 @@
       const d = activeDrag.d;
       const angleNow = Math.atan2(pos.y - d.cy, pos.x - d.cx) * (180 / Math.PI);
       d.rotation = activeDrag.startRotation + (angleNow - activeDrag.startAngle);
+      if (isPicture(d)) limitImage(d);
       redraw();
       positionShapeBubble();
       return;
@@ -2521,7 +2910,7 @@
     if (!shown.length) { rosterList.innerHTML = '<p class="roster-empty">No character matches that name.</p>'; return; }
     rosterList.innerHTML = shown.map((c) => `
       <button type="button" draggable="true" class="roster-item${placingChar && placingChar.id === c.id ? ' is-picked' : ''}" data-roster-id="${Number(c.id)}">
-        <span class="roster-avatar" style="border-color:${safeColor(c.group_color, 'var(--hairline-strong)')}">${c.avatar_path ? `<img src="/uploads/${escapeHtml(c.avatar_path)}" alt="">` : USER_FALLBACK_ICON}</span>
+        <span class="roster-avatar" data-bc="${safeColor(c.group_color, 'var(--hairline-strong)')}">${c.avatar_path ? `<img src="/uploads/${escapeHtml(c.avatar_path)}" alt="">` : USER_FALLBACK_ICON}</span>
         <span class="roster-name">${classIconHtml(c.class_key)}${escapeHtml(c.name)}</span>
         <span class="roster-meta">${c.is_npc ? '<span class="roster-tag">NPC</span>' : ''}${onMap[c.id] ? `<span class="roster-count" title="Already on this map">&times;${onMap[c.id]}</span>` : ''}</span>
       </button>`).join('');
@@ -2530,6 +2919,7 @@
   function updatePlaceHint() {
     if (!placeHint) return;
     placeHint.hidden = !placingChar;
+    if (COARSE && placeHint.dataset.touchText !== '1') { placeHint.innerHTML = PLACE_HINT_HTML; placeHint.dataset.touchText = '1'; }
     const nameEl = document.getElementById('place-hint-name');
     if (placingChar && nameEl) nameEl.textContent = placingChar.name;
     canvas.classList.toggle('tool-place', !!placingChar);
@@ -2542,7 +2932,7 @@
     placeHint.hidden = false;
     clearTimeout(placeFlashTimer);
     placeFlashTimer = setTimeout(() => {
-      placeHint.innerHTML = 'Placing <strong id="place-hint-name"></strong> &middot; click the map to drop &middot; <strong>Esc</strong> to stop';
+      placeHint.innerHTML = PLACE_HINT_HTML;
       updatePlaceHint();
     }, 3500);
   }
@@ -2576,7 +2966,7 @@
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ pin_type: 'character', character_id: character.id, x: snapped.x, y: snapped.y, scale: 1.0, rotation: 0, dm_only: window.IS_DM && newObjectsHidden }),
     });
-    if (!res.ok) { flashPlaceHint(await LedgerApi.message(res, "Couldn't place that character. Please try again.")); return; }
+    if (!res.ok) { flashPlaceHint(await OakenApi.message(res, "Couldn't place that character. Please try again.")); return; }
     const json = await res.json();
     await loadPins();                                         // the server numbers duplicates and links the battle row
     const pin = pins.find((p) => p.id === json.id);
@@ -2618,7 +3008,7 @@
     rosterList.addEventListener('dragstart', (e) => {
       const item = e.target.closest('[data-roster-id]');
       if (!item) return;
-      e.dataTransfer.setData('application/x-ledger-character', item.dataset.rosterId);
+      e.dataTransfer.setData('application/x-oaken-character', item.dataset.rosterId);
       e.dataTransfer.setData('text/plain', item.textContent.trim());
       e.dataTransfer.effectAllowed = 'copy';
       // Keep the panel "open" (so the dragged row stays rendered) but see-through, so the map underneath is a clear target.
@@ -2626,7 +3016,7 @@
       setTimeout(() => rosterFlyout.classList.add('open', 'roster-dragging'), 0);
     });
     rosterList.addEventListener('dragend', () => rosterFlyout.classList.remove('open', 'roster-dragging'));
-    const isRosterDrag = (e) => Array.from(e.dataTransfer ? e.dataTransfer.types : []).includes('application/x-ledger-character');
+    const isRosterDrag = (e) => Array.from(e.dataTransfer ? e.dataTransfer.types : []).includes('application/x-oaken-character');
     stageWrap.addEventListener('dragover', (e) => {
       if (!isRosterDrag(e)) return;
       e.preventDefault();
@@ -2636,7 +3026,7 @@
       if (!isRosterDrag(e)) return;
       e.preventDefault();
       rosterFlyout.classList.remove('open', 'roster-dragging');
-      const character = ROSTER.find((c) => c.id === Number(e.dataTransfer.getData('application/x-ledger-character')));
+      const character = ROSTER.find((c) => c.id === Number(e.dataTransfer.getData('application/x-oaken-character')));
       if (character) placeCharacter(eventPos(e), character);
     });
     rosterList.addEventListener('click', (e) => {
@@ -2846,7 +3236,7 @@
 
   function applyZoomTransform() {
     stageInner.style.transform = `translate(${panX}px, ${panY}px) scale(${zoomLevel})`;
-    stageInner.style.setProperty('--ledger-zoom-inv', String(1 / zoomLevel));
+    stageInner.style.setProperty('--oaken-zoom-inv', String(1 / zoomLevel));
     if (zoomLevelLabel) zoomLevelLabel.textContent = `${Math.round(zoomLevel * 100)}%`;
     if (ruler) drawRuler();                                        // its size follows the zoom
     applyBubbleScale();
@@ -2875,9 +3265,23 @@
     applyZoomTransform();
   }, { passive: false });
 
-  zoomResetBtn.addEventListener('click', () => {
-    zoomLevel = 1; panX = 0; panY = 0;
+  // The whole canvas on screen: the map alone is the plain 100% view; with pictures beside it the view pulls back to hold them all.
+  let viewFitted = false;
+  function fitView() {
+    const ww = world.x1 - world.x0, wh = world.y1 - world.y0;
+    const beside = ww > naturalWidth || wh > naturalHeight || world.x0 < 0 || world.y0 < 0;
+    const z = Math.max(ZOOM_MIN, Math.min(1, (beside ? 0.94 : 1) * Math.min(naturalWidth / ww, naturalHeight / wh)));   // a little room round the edge, so a corner is easy to grab
+    const box = stageWrap.getBoundingClientRect();
+    const left = (world.x0 / naturalWidth) * box.width, top = (world.y0 / naturalHeight) * box.height;
+    const widthPx = (ww / naturalWidth) * box.width, heightPx = (wh / naturalHeight) * box.height;
+    zoomLevel = z;
+    panX = (box.width - widthPx * z) / 2 - left * z;
+    panY = (box.height - heightPx * z) / 2 - top * z;
     applyZoomTransform();
+  }
+
+  zoomResetBtn.addEventListener('click', () => {
+    fitView();
   });
 
   // Hold Space to pan by dragging, regardless of the active tool — a
@@ -2959,10 +3363,23 @@
       dismissNavHintForGood();
       return;
     }
+    if (e.target.closest && e.target.closest('#pin-resize-btn, #pin-rotate-btn, #shape-resize-toggle, #shape-rotate-toggle')) return;   // their own handler above owns this finger
     const t = e.touches[0];
     touchMode = (currentTool === 'select' && !fingerGrabsSomething(t.clientX, t.clientY, e.target)) ? 'scroll-maybe' : 'maybe';
     touchStart = { x: t.clientX, y: t.clientY, lastX: t.clientX, lastY: t.clientY, target: e.target };
   }, { passive: true });
+
+  // The four hold-and-drag buttons (token resize / rotate, shape resize / rotate) sit outside the map, so the
+  // handler above never sees them; they listen for mousedown.  A finger that goes down on one and moves becomes that
+  // mouse drag too (a tap still clicks it, which toggles the handles).
+  [pinResizeBtn, pinRotateBtn, shapeResizeToggle, shapeRotateToggle].forEach((btn) => {
+    btn.addEventListener('touchstart', (e) => {
+      if (e.touches.length !== 1) return;
+      const t = e.touches[0];
+      touchMode = 'maybe';
+      touchStart = { x: t.clientX, y: t.clientY, lastX: t.clientX, lastY: t.clientY, target: btn };
+    }, { passive: true });
+  });
 
   window.addEventListener('touchmove', (e) => {
     if (!touchMode) return;
@@ -3009,6 +3426,7 @@
 
   function touchFinished(e) {
     if (!touchMode) return;
+    if (fog && isFogTool(currentTool)) setTimeout(() => fog.showRing(false), 0);        // the brush ring follows a mouse; a lifted finger leaves it behind
     if (touchMode === 'scroll') e.preventDefault();
     if (touchMode === 'mouse' && touchStart) { e.preventDefault(); endMouseDrag(touchStart.lastX, touchStart.lastY); }
     if (e.touches.length === 0) { touchMode = null; touchStart = null; pinch = null; }
@@ -3031,6 +3449,17 @@
   // ---------------------------------------------------------------------
   const mapToolbar = document.getElementById('map-toolbar');
   const toolbarSentinel = document.getElementById('map-toolbar-sentinel');
+  // On a phone the toolbar is a dock at the bottom and grows when its tray (or the shape style row) opens; the token and
+  // shape buttons, hints and dice button sit above it, so they follow its real height instead of a fixed one.
+  if (mapToolbar && 'ResizeObserver' in window && phoneBubbleQuery) {
+    const syncDockHeight = () => {
+      if (phoneBubbleQuery.matches) document.documentElement.style.setProperty('--dock-h', `${Math.ceil(mapToolbar.getBoundingClientRect().height)}px`);
+      else document.documentElement.style.removeProperty('--dock-h');
+    };
+    new ResizeObserver(syncDockHeight).observe(mapToolbar);
+    phoneBubbleQuery.addEventListener('change', syncDockHeight);
+    syncDockHeight();
+  }
   if (mapToolbar && toolbarSentinel && 'IntersectionObserver' in window) {
     const toolbarPinObserver = new IntersectionObserver(
       ([entry]) => mapToolbar.classList.toggle('is-pinned', !entry.isIntersecting),

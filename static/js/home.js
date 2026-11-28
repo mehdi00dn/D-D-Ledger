@@ -1,4 +1,4 @@
-// Campaign Home: long text (the bio, the campaign notes) is cut to a few lines with a "Read more" button.
+// Campaign Overview: long text (the bio, the campaign notes) is cut to a few lines with a "Read more" button.
 (function () {
   function sync(box) {
     var btn = box.nextElementSibling;

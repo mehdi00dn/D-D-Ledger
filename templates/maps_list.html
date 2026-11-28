@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon %}
 {% set active_page = 'maps' %}
-{% block title %}Maps — Campaign Ledger{% endblock %}
+{% block title %}Maps — Oaken{% endblock %}
 
 {% block content %}
 <div class="page-header">
@@ -9,13 +9,13 @@
     <h1 class="page-title">Maps</h1>
     <p class="page-sub">{{ maps|length }} {{ 'map' if maps|length == 1 else 'maps' }} saved.</p>
   </div>
-  <button type="button" class="btn btn-primary" id="open-new-map-modal">{{ icon('plus') }} Import Map</button>
+  <button type="button" class="btn btn-primary" id="open-new-map-modal">{{ icon('plus') }} Import map</button>
 </div>
 
 {% if maps %}
 <div class="map-grid">
   {% for m in maps %}
-  <div class="map-card">
+  <div class="map-card o-paper o-lift">
     <a href="{{ url_for('map_editor', map_id=m.id) }}" class="map-card-image-link">
       <div class="map-card-image">
         <img src="{{ url_for('map_image', map_id=m.id, v=m.fog_version) }}" alt="{{ m.name }}">
@@ -36,22 +36,22 @@
   {% endfor %}
 </div>
 {% else %}
-<div class="empty-state">
+<div class="empty-state o-paper">
   {{ icon('map') }}
   <h2>No maps yet</h2>
   <p>Import a battle map image to start placing your grid and pins.</p>
-  <button type="button" class="btn btn-primary" id="open-new-map-modal-2">{{ icon('plus') }} Import Map</button>
+  <button type="button" class="btn btn-primary" id="open-new-map-modal-2">{{ icon('plus') }} Import map</button>
 </div>
 {% endif %}
 
 <div class="modal-overlay" id="new-map-modal" hidden>
   <div class="modal-panel">
     <div class="modal-header">
-      <h3>Import Map</h3>
+      <h3>Import map</h3>
       <button type="button" class="btn-icon" id="close-new-map-modal" aria-label="Close">{{ icon('x') }}</button>
     </div>
     <form class="modal-body" method="POST" action="{{ url_for('map_new') }}" enctype="multipart/form-data">{{ csrf_field() }}
-      <div class="form-row cols-2" style="margin-bottom:14px; align-items: end;">
+      <div class="form-row cols-2 u-form-row-end">
         <div class="field">
           <label for="map-name">Map name</label>
           <input type="text" id="map-name" name="name" placeholder="e.g. The Sunken Crypt" required>
@@ -59,8 +59,8 @@
         <div class="field">
           <label>Source</label>
           <div class="sort-toggle" id="map-source-toggle">
-            <button type="button" class="sort-option active" data-source="image">Upload Image</button>
-            <button type="button" class="sort-option" data-source="blank">Blank Canvas</button>
+            <button type="button" class="sort-option active" data-source="image">Upload image</button>
+            <button type="button" class="sort-option" data-source="blank">Blank canvas</button>
           </div>
         </div>
       </div>
@@ -74,12 +74,12 @@
           <input type="file" name="image" id="map-image-input" accept="image/*" data-multi-input aria-label="Choose a map image">
           <div class="upload-progress upload-progress-circle" hidden></div>
         </div>
-        <div id="map-image-preview-wrap" hidden style="margin-top:12px;">
-          <canvas id="map-image-preview-canvas" style="max-width:100%; max-height:220px; display:block; margin:0 auto; border-radius:var(--radius-s); border:1px solid var(--hairline);"></canvas>
-          <div style="display:flex; gap:8px; justify-content:center; margin-top:10px;">
+        <div class="u-mt12" id="map-image-preview-wrap" hidden>
+          <canvas class="map-preview-canvas" id="map-image-preview-canvas"></canvas>
+          <div class="u-actions-center">
             <button type="button" class="btn btn-ghost btn-sm" id="map-image-rotate-btn">{{ icon('rotate') }} Rotate 90&deg;</button>
           </div>
-          <p class="hint-text" style="text-align:center; margin-top:6px;">The canvas will match the image's size automatically.</p>
+          <p class="hint-text u-center-mt6">The canvas will match the image's size automatically.</p>
         </div>
       </div>
 
@@ -96,7 +96,7 @@
 
       <div class="form-actions">
         <button type="button" class="btn btn-ghost" id="cancel-new-map">Cancel</button>
-        <button type="submit" class="btn btn-primary">{{ icon('check') }} Create Map</button>
+        <button type="submit" class="btn btn-primary">{{ icon('check') }} Create map</button>
       </div>
     </form>
   </div>

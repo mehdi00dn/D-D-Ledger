@@ -7,7 +7,7 @@
   const clearTrayBtn = document.getElementById('clear-tray-btn');
   const modifierInput = document.getElementById('modifier');
 
-  const Art = window.LedgerDiceArt;
+  const Art = window.OakenDiceArt;
   const EASE_OUT = 'cubic-bezier(0.23, 1, 0.32, 1)';
   const calm = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : { matches: false };
   const formulaEl = document.getElementById('dice-formula');
@@ -116,7 +116,7 @@
     rollBtn.disabled = true;
     let roll;
     try {
-      roll = await LedgerDice.roll({
+      roll = await OakenDice.roll({
         dice: spec,
         modifier: parseInt(modifierInput.value, 10) || 0,
         label: labelInput.value,
@@ -165,7 +165,7 @@
 
     // On a phone the result sits below the Roll button: bring it into view.
     const stage = resultsRoot.closest('.dice-stage');
-    if (stage && window.matchMedia('(max-width: 880px)').matches) stage.scrollIntoView({ block: 'nearest', behavior: calm.matches ? 'auto' : 'smooth' });
+    if (stage && window.matchMedia('(max-width: 1024px), (pointer: coarse) and (max-width: 1400px)').matches) stage.scrollIntoView({ block: 'nearest', behavior: calm.matches ? 'auto' : 'smooth' });
 
     // Each die drops in turning, shows flickering numbers while it lands, then settles on the real value.
     // 40 ms stagger, 560 ms throw (ease-out, so it decelerates into place); reduced motion = a plain fade.
@@ -236,14 +236,14 @@
     const total = document.createElement('strong');
     total.className = 'roll-log-total';
     total.textContent = roll.total;
-    li.append(who, LedgerDice.chips(roll), total);
+    li.append(who, OakenDice.chips(roll), total);
     if (prepend) logRoot.prepend(li); else logRoot.append(li);
     while (logRoot.children.length > 30) logRoot.lastElementChild.remove();
     const empty = document.getElementById('roll-log-empty');
     if (empty) empty.hidden = true;
   }
-  LedgerDice.on((roll) => addLogRow(roll, true));
-  LedgerDice.recent().then((rolls) => rolls.slice().reverse().forEach((r) => addLogRow(r, false))).catch(() => {});
+  OakenDice.on((roll) => addLogRow(roll, true));
+  OakenDice.recent().then((rolls) => rolls.slice().reverse().forEach((r) => addLogRow(r, false))).catch(() => {});
 
   renderEmpty();
 })();

@@ -41,7 +41,7 @@ def test_add_attacks_and_roll_them(shared_server, pw):
     row.locator('[name=attack_name]').fill('Longsword'); row.locator('[name=attack_bonus]').fill('5')
     row.locator('[name=attack_damage]').fill('1d8+3'); row.locator('[name=attack_type]').fill('slashing')
     _shot(page, 'attacks-form')
-    page.get_by_role('button', name='Save Changes').click()
+    page.get_by_role('button', name='Save changes').click()
     end = time.time() + 15
     while time.time() < end and page.url.rstrip('/').endswith('/edit'):
         time.sleep(0.2)

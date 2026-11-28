@@ -6,7 +6,7 @@
   window.classIconHtml = function (key) {
     if (!key || !LABELS[key]) return '';
     const name = LABELS[key];
-    return `<span class="class-icon" title="${name}" role="img" aria-label="${name}"><svg aria-hidden="true"><use href="/static/icons/classes.svg#${key}"></use></svg></span>`;
+    return `<span class="class-icon" data-class="${key}" title="${name}" role="img" aria-label="${name}"><svg aria-hidden="true"><use href="/static/icons/classes.svg#${key}"></use></svg></span>`;
   };
 
   // ---- Dropdown on the character form ----
@@ -24,6 +24,7 @@
     const opt = options.find((o) => o.dataset.value === value) || options[0];
     options.forEach((o) => o.setAttribute('aria-selected', String(o === opt)));
     triggerText.textContent = value ? opt.dataset.tipTitle : 'No class';
+    if (value) triggerIcon.dataset.class = value; else delete triggerIcon.dataset.class;
     triggerIcon.innerHTML = value ? `<svg aria-hidden="true"><use href="/static/icons/classes.svg#${value}"></use></svg>` : '';
     picker.classList.toggle('has-value', !!value);
   }
@@ -44,6 +45,7 @@
     let left = m.right + 10;
     if (left + w > window.innerWidth - 8) left = m.left - w - 10;          // no room on the right: go left
     if (left < 8) { left = Math.max(8, Math.min(m.left, window.innerWidth - w - 8)); }
+    if (left < m.right && left + w > m.left) { tip.hidden = true; return; }      // a phone has no room beside the menu: never cover the options
     let top = Math.max(8, Math.min(r.top + r.height / 2 - h / 2, window.innerHeight - h - 8));
     tip.style.left = `${left + window.scrollX}px`;
     tip.style.top = `${top + window.scrollY}px`;
@@ -59,6 +61,7 @@
   }
   function open() {
     menu.hidden = false; trigger.setAttribute('aria-expanded', 'true');
+    menu.scrollIntoView({ block: 'nearest' });                       // the whole menu in view, even low on the page
     setActive(Math.max(0, options.findIndex((o) => o.dataset.value === input.value)));
   }
   function close(focus) {
@@ -72,8 +75,11 @@
   trigger.addEventListener('keydown', (e) => {
     if (menu.hidden && ['ArrowDown', 'ArrowUp'].includes(e.key)) { e.preventDefault(); open(); }
     else if (!menu.hidden) {
-      if (e.key === 'ArrowDown') { e.preventDefault(); setActive(active + 1); }
-      else if (e.key === 'ArrowUp') { e.preventDefault(); setActive(active - 1); }
+      // The menu is two columns: left/right step by one, up/down by a row ("No class" sits alone above the grid).
+      if (e.key === 'ArrowDown') { e.preventDefault(); setActive(active === 0 ? 1 : active + 2); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); setActive(active <= 2 ? 0 : active - 2); }
+      else if (e.key === 'ArrowRight') { e.preventDefault(); setActive(active + 1); }
+      else if (e.key === 'ArrowLeft') { e.preventDefault(); setActive(active - 1); }
       else if (e.key === 'Home') { e.preventDefault(); setActive(0); }
       else if (e.key === 'End') { e.preventDefault(); setActive(options.length - 1); }
       else if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (active >= 0) choose(options[active]); }

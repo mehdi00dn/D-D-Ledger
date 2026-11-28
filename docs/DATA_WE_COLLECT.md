@@ -1,4 +1,4 @@
-# What Campaign Ledger collects about a person
+# What Oaken collects about a person
 
 This is the working inventory behind "only collect what is necessary" (DL-84). It describes what the code does today, so it can feed the Privacy Policy and Cookies pages. `tests/test_data_inventory.py` fails when a column is added to `users` without being listed here, which keeps it honest.
 
@@ -9,17 +9,28 @@ This is the working inventory behind "only collect what is necessary" (DL-84). I
 | `password_hash` | Checking the password at sign-in. Only a salted hash is stored; empty for Google-only accounts. | Nobody. Never exported. |
 | `email`, `email_verified_at` | Account recovery and confirmation mail. Required at sign-up. | Only the owner. Never shown to other players. |
 | `google_sub` | Google's stable id for the person, kept only when they sign in with Google. | Nobody. |
-| `display_name`, `bio`, `avatar_path` | Optional profile details the person chooses to add. | Follows `profile_visibility`. |
-| `profile_visibility` | Who may open the public profile: everyone signed in, people they play with, or only them. | The owner. |
+| `display_name`, `bio`, `avatar_path` | Optional profile details the person chooses to add. | Follows `profile_visibility`; the bio can be narrower (`bio_visibility`). |
+| `profile_visibility` | Who may open the public profile: everyone signed in, people they play with, friends only, or only them. | The owner. |
+| `bio_visibility`, `showcase_visibility` | Whether the bio and the featured characters follow the profile, are for friends only, or only for the owner. | The owner. |
+| `favourite_classes`, `play_style`, `timezone` | Optional player details the person chooses to show on their profile (up to three class names, a play style, an IANA timezone such as Europe/London). | Follows `details_visibility`. Included in the person's own download. |
+| `friends_visibility` | Whether the friends list on the profile follows the profile, is for friends only (the default), or only for the owner. People whose own profile the viewer cannot open are left out of the list. | The owner. |
+| `details_visibility` | Whether those details, with the counts of campaigns joined and player characters kept, follow the profile, are for friends only, or only for the owner. | The owner. |
 | `profile_setup_at` | Remembers that the one-time profile page was saved or skipped. | Nobody. |
 | `email_confirm_required` | Whether this account still has to confirm its email before it can create or join a campaign. Set at sign-up, never changed by the person. | Nobody. |
 | `cookies_accepted_at` | When the "I accept the cookies" box was ticked at sign-up (the site only sets its one sign-in cookie). | Nobody. |
 | `terms_accepted_at` | When the account was made, which counts as agreeing to the Terms and Privacy page (the first tick box on the sign-up page). | Nobody. |
+| `tutorial_campaign_at` | Remembers that the account has been given its copy of the Tutorial campaign, so deleting it does not bring it back. | Nobody. |
 | `session_version` | Lets "sign out everywhere" end other devices' sessions. | Nobody. |
 | `created_at` | When the account was made. | Nobody. |
 
 ## Things people create
 Campaigns, characters, maps, notes, treasury entries, dice rolls and uploaded images belong to the campaign or to the person who made them. A person can download all of it from Account settings (JSON) and delete the account. Deleting removes the account and the characters they keep in Your characters; a campaign they alone own is either handed to another member (their choice) or deleted with it.
+
+Session journal (`session_journal`, DL-121): a recap the DM writes for a session (title, date, notes). Every member of the campaign can read the notes the DM did not mark as hidden; hidden notes, and recaps made only of hidden notes, are for the DM. It is removed with the campaign, and the author's own entries are in their download. The author link is cleared if the account is deleted.
+
+One short-lived exception: while someone shows a ruler or a cone, sphere, line or cube on a map (`map_measures`, DL-153), the two points and the shape are kept for a few seconds so other people at the table can see them. There is one row per person per map, it is replaced as they move and ignored once it expires (about 5 to 8 seconds after the last update), and it is removed with the map or the account. It is never exported because it is not map content.
+
+Friends (`friendships`, DL-98): one row per pair of people with who asked, and whether it is pending, accepted or a block. Both people see a pending request; a friendship can also appear in the friends list on either person's profile, as each of them has chosen (`friends_visibility`); only the person who blocked sees the block. The row is removed when either person removes it, or when either account is deleted. Friendship is never needed to join a campaign.
 
 ## What is deliberately not collected
 No analytics, advertising or tracking scripts, and no third-party fonts or embeds (the Content-Security-Policy only allows the app's own files). No phone number, real name, birth date or address is asked for.
@@ -28,7 +39,7 @@ No analytics, advertising or tracking scripts, and no third-party fonts or embed
 Raw IP addresses are not stored. For sign-in and sign-up throttling the server keeps a keyed hash of the address (HMAC with the app secret) in `login_attempts`, and rows older than 24 hours are deleted. Normal request logs carry a request id, method, path and status.
 
 ## Cookies and browser storage
-- One session cookie (`__Host-ledger` on https), HttpOnly, SameSite=Lax, Secure. It keeps the person signed in for up to 30 days when "remember me" is on, and ends with the browser session when it is off. It also carries the CSRF token.
+- One session cookie (`__Host-oaken` on https), HttpOnly, SameSite=Lax, Secure. It keeps the person signed in for up to 30 days when "remember me" is on, and ends with the browser session when it is off. It also carries the CSRF token.
 - `localStorage`, only on the person's own device and never sent anywhere: theme, sidebar collapsed, map dock tucked, and three "already shown this tip" flags.
 
 ## Sent to other services

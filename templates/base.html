@@ -4,26 +4,28 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="csrf-token" content="{{ csrf_token() }}">
-<title>{% block title %}Campaign Ledger{% endblock %}</title>
+<title>{% block title %}Oaken{% endblock %}</title>
 <script nonce="{{ csp_nonce() }}">
   (function () {
-    var saved = localStorage.getItem('ledger-theme');
+    var saved = (localStorage.getItem('oaken-theme') || localStorage.getItem('ledger-theme'));
     if (saved === 'system') saved = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
     if (saved === 'light' || saved === 'dark') {
       document.documentElement.setAttribute('data-theme', saved);
     }
     // Applied before paint (like the theme above) to avoid a flash of the
     // expanded sidebar before sidebar.js has a chance to run.
-    if (localStorage.getItem('ledger-sidebar-collapsed') === '1') {
+    if ((localStorage.getItem('oaken-sidebar-collapsed') || localStorage.getItem('ledger-sidebar-collapsed')) === '1') {
       document.documentElement.setAttribute('data-sidebar', 'collapsed');
     }
   })();
 </script>
+<script src="{{ url_for('static', filename='js/dyn-style.js') }}"></script>
 <link rel="icon" href="{{ url_for('static', filename='logo/favicon.ico') }}" sizes="any">
 <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='logo/favicon-16x16.png') }}">
 <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='logo/favicon-32x32.png') }}">
 <link rel="icon" type="image/png" sizes="64x64" href="{{ url_for('static', filename='logo/favicon-64x64.png') }}">
 <link rel="apple-touch-icon" href="{{ url_for('static', filename='logo/logo-128.png') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/oaken.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 {% block extra_head %}{% endblock %}
 </head>
@@ -37,9 +39,9 @@
         <img src="{{ url_for('static', filename='logo/logo-128.png') }}" alt="">
       </span>
       <span class="brand-text">
-        <span class="brand-title">Campaign</span>
-        <span class="brand-subtitle">Ledger</span>
+        <span class="brand-title">Oaken</span>
       </span>
+      <a class="brand-link" href="{{ url_for('index') }}" aria-label="Oaken home" title="Home"></a>
       <button type="button" class="sidebar-toggle-btn" id="sidebar-toggle-btn" title="Collapse menu">
         {{ icon('sidebar-collapse') }}
       </button>
@@ -57,8 +59,8 @@
         </span>
         <span class="cs-swap" aria-hidden="true">{{ icon('swap') }}</span>
       </a>
-      <a href="{{ url_for('campaign_home') }}" data-more class="nav-tab {{ 'active' if active_page == 'home' else '' }}" title="Campaign home">
-        {{ icon('home') }}<span>Home</span>
+      <a href="{{ url_for('campaign_home') }}" data-more class="nav-tab {{ 'active' if active_page == 'home' else '' }}" title="Campaign overview">
+        {{ icon('scroll') }}<span>Overview</span>
       </a>
       <span class="nav-group">Table</span>
       <a href="{{ url_for('characters_list') }}" class="nav-tab {{ 'active' if active_page == 'characters' else '' }}" title="Characters">
@@ -82,7 +84,10 @@
       </a>
       <span class="nav-group">Lore</span>
       <a href="{{ url_for('reference_view') }}" data-more class="nav-tab {{ 'active' if active_page == 'reference' else '' }}" title="Spells, monsters and items">
-        {{ icon('book-open') }}<span>Reference</span>
+        {{ icon('book-open') }}<span>Compendium</span>
+      </a>
+      <a href="{{ url_for('journal_list') }}" data-more class="nav-tab {{ 'active' if active_page == 'journal' else '' }}" title="Session recaps">
+        {{ icon('pencil') }}<span>Journal</span>
       </a>
       <a href="{{ url_for('activity_view') }}" data-more class="nav-tab {{ 'active' if active_page == 'activity' else '' }}" title="What happened lately">
         {{ icon('history') }}<span>Activity</span>
@@ -98,22 +103,6 @@
           {{ icon('eye') }}<span>{{ 'Exit player view' if g.previewing else 'View as player' }}</span>
         </button>
       </form>
-      {% endif %}
-      {% else %}
-      <a href="{{ url_for('campaigns_list') }}" class="nav-tab {{ 'active' if active_page == 'campaigns' else '' }}" title="Campaigns">
-        {{ icon('scroll') }}<span>Campaigns</span>
-      </a>
-      {% if session.user_id %}
-      <a href="{{ url_for('library_list') }}" class="nav-tab {{ 'active' if active_page == 'library' else '' }}" title="Your characters, kept outside any campaign">
-        {{ icon('archive') }}<span>Your characters</span>
-      </a>
-      {% endif %}
-      {% if session.user_id %}
-      {% set unread = unread_notification_count() %}
-      <a href="{{ url_for('notifications_page') }}" class="nav-tab nav-notifications {{ 'active' if active_page == 'notifications' else '' }}" title="Notifications">
-        {{ icon('bell') }}<span>Notifications</span>
-        {% if unread %}<em class="nav-badge" aria-label="{{ unread }} unread">{{ unread if unread < 100 else '99+' }}</em>{% endif %}
-      </a>
       {% endif %}
       {% endif %}
       {# Phone only: the bar keeps four places; everything else (and the quick settings) lives in this sheet. #}
@@ -143,7 +132,6 @@
           <span class="theme-icon theme-icon-sun">{{ icon('sun') }}</span>
           <span class="theme-icon theme-icon-moon">{{ icon('moon') }}</span>
         </button>
-        {% if not g.campaign_id %}<a href="{{ url_for('privacy') }}" class="foot-bell foot-privacy" title="Privacy" aria-label="Privacy">{{ icon('shield') }}</a>{% endif %}
         {% if g.campaign_id and session.user_id %}
         {% set unread = unread_notification_count() %}
         <a href="{{ url_for('notifications_page') }}" class="foot-bell" title="Notifications{{ ' (%d unread)' % unread if unread else '' }}" aria-label="Notifications{{ ' (%d unread)' % unread if unread else '' }}">
@@ -153,7 +141,7 @@
         {% endif %}
       </div>
       <span class="foot-line"></span>
-      <span class="foot-label">Campaign Ledger v0.1</span>
+      <span class="foot-label">Oaken v0.1</span>
     </div>
   </aside>
 
@@ -161,7 +149,7 @@
     {% if g.previewing %}
     <div class="preview-banner" role="status">
       {{ icon('eye') }}
-      <span><b>Viewing as a Player.</b> You are seeing exactly what the server sends your Players. DM tools are off.</span>
+      <span><b>Viewing as a player.</b> You are seeing exactly what the server sends your Players. DM tools are off.</span>
       <form method="POST" action="{{ url_for('preview_as_player') }}">{{ csrf_field() }}
         <input type="hidden" name="on" value="0">
         <button type="submit" class="btn btn-sm btn-primary">Exit player view</button>
@@ -195,10 +183,11 @@
   <div class="more-grip" id="more-grip"><span class="more-grabber"></span></div>
   {% if g.campaign_id %}
   <div class="more-links">
-    <a href="{{ url_for('campaign_home') }}" class="more-link {{ 'active' if active_page == 'home' else '' }}">{{ icon('home') }}<span>Home</span></a>
+    <a href="{{ url_for('campaign_home') }}" class="more-link {{ 'active' if active_page == 'home' else '' }}">{{ icon('scroll') }}<span>Overview</span></a>
     <a href="{{ url_for('factions_list') }}" class="more-link {{ 'active' if active_page == 'factions' else '' }}">{{ icon('faction') }}<span>Factions</span></a>
     <a href="{{ url_for('treasury_view') }}" class="more-link {{ 'active' if active_page == 'treasury' else '' }}">{{ icon('coins') }}<span>Treasury</span></a>
-    <a href="{{ url_for('reference_view') }}" class="more-link {{ 'active' if active_page == 'reference' else '' }}">{{ icon('book-open') }}<span>Reference</span></a>
+    <a href="{{ url_for('reference_view') }}" class="more-link {{ 'active' if active_page == 'reference' else '' }}">{{ icon('book-open') }}<span>Compendium</span></a>
+    <a href="{{ url_for('journal_list') }}" class="more-link {{ 'active' if active_page == 'journal' else '' }}">{{ icon('pencil') }}<span>Journal</span></a>
     {% if g.real_is_dm %}
     <form method="POST" action="{{ url_for('preview_as_player') }}">{{ csrf_field() }}
       <input type="hidden" name="on" value="{{ '0' if g.previewing else '1' }}">
@@ -214,7 +203,6 @@
     <button type="button" class="more-chip js-theme-toggle" title="Toggle light/dark mode"><span class="more-chip-ico"><span class="theme-icon theme-icon-sun">{{ icon('sun') }}</span><span class="theme-icon theme-icon-moon">{{ icon('moon') }}</span></span><span class="more-chip-label">Theme</span></button>
     <button type="button" class="more-chip js-fullscreen" title="Full screen" hidden><span class="fs-on">{{ icon('maximize') }}</span><span class="fs-off">{{ icon('minimize') }}</span><span class="more-chip-label">Full screen</span></button>
   </div>
-  {% if not g.campaign_id %}<div class="more-quick"><a href="{{ url_for('privacy') }}" class="more-chip"><span class="more-chip-ico">{{ icon('shield') }}</span><span class="more-chip-label">Privacy</span></a></div>{% endif %}
   {% if session.username %}
   <div class="more-user">
     {% set me = my_profile() %}
@@ -230,14 +218,14 @@
   <button type="button" class="btn-icon lightbox-close" id="lightbox-close-btn" aria-label="Close image">{{ icon('x') }}</button>
   <button type="button" class="btn btn-danger lightbox-delete" id="lightbox-delete-btn" hidden>{{ icon('trash-2') }} Delete this image</button>
   <div class="lightbox-row">
-    <button type="button" class="btn-icon lightbox-nav lightbox-prev" id="lightbox-prev-btn" title="Previous image">{{ icon('chevron-left') }}</button>
+    <button type="button" class="btn-icon lightbox-nav lightbox-prev" id="lightbox-prev-btn" title="Previous image" aria-label="Previous image">{{ icon('chevron-left') }}</button>
     <div class="lightbox-stage">
       <img id="lightbox-img" src="" alt="Enlarged image">
     </div>
-    <button type="button" class="btn-icon lightbox-nav lightbox-next" id="lightbox-next-btn" title="Next image">{{ icon('chevron-right') }}</button>
+    <button type="button" class="btn-icon lightbox-nav lightbox-next" id="lightbox-next-btn" title="Next image" aria-label="Next image">{{ icon('chevron-right') }}</button>
+    <p class="lightbox-count" id="lightbox-count" role="status" aria-live="polite"></p>
   </div>
-  <p class="lightbox-size" id="lightbox-size" hidden></p>
-  <p class="lightbox-hint">Click or scroll to zoom &middot; hold and drag to pan</p>
+  <p class="lightbox-hint"><span class="lightbox-hint-mouse">Click or scroll to zoom &middot; hold and drag to pan</span><span class="lightbox-hint-touch">Pinch or double-tap to zoom &middot; swipe to browse</span></p>
 </div>
 
 <div class="modal-overlay" id="confirm-modal" hidden>
@@ -255,7 +243,7 @@
 <div class="modal-overlay" id="crop-modal" hidden>
   <div class="modal-panel crop-modal-panel">
     <div class="modal-header">
-      <h3 id="crop-modal-title">Position Avatar</h3>
+      <h3 id="crop-modal-title">Position avatar</h3>
       <button type="button" class="btn-icon" id="crop-cancel-btn" aria-label="Cancel crop">{{ icon('x') }}</button>
     </div>
     <div class="modal-body">
@@ -263,21 +251,21 @@
         <canvas id="crop-canvas" width="480" height="480"></canvas>
         <div class="crop-circle-guide" id="crop-circle-guide"></div>
       </div>
-      <p class="hint-text" style="text-align:center; margin-top:10px;">Drag to reposition &middot; use the slider to zoom</p>
+      <p class="hint-text u-center-mt10">Drag to reposition &middot; use the slider to zoom</p>
       <div class="crop-zoom-row">
         <label>{{ icon('images') }}</label>
         <input type="range" id="crop-zoom-slider" min="0" max="100" value="0" aria-label="Zoom">
       </div>
       <div class="form-actions">
         <button type="button" class="btn btn-ghost" id="crop-cancel-btn-2">Cancel</button>
-        <button type="button" class="btn btn-primary" id="crop-apply-btn">{{ icon('check') }} Apply Crop</button>
+        <button type="button" class="btn btn-primary" id="crop-apply-btn">{{ icon('check') }} Apply crop</button>
       </div>
     </div>
   </div>
 </div>
 
 {% if g.campaign_id %}<script nonce="{{ csp_nonce() }}">window.CAMPAIGN_ID = {{ g.campaign_id | tojson }}; window.IS_DM = {{ g.is_dm | default(false) | tojson }}; window.USER_ID = {{ session.user_id | tojson }}; window.CLASS_LABELS = {{ class_labels | tojson }};</script>{% endif %}
-{% if g.campaign_id and realtime_settings %}<script nonce="{{ csp_nonce() }}">window.LEDGER_REALTIME = {{ realtime_settings | tojson }};</script>{% endif %}
+{% if g.campaign_id and realtime_settings %}<script nonce="{{ csp_nonce() }}">window.OAKEN_REALTIME = {{ realtime_settings | tojson }};</script>{% endif %}
 <script src="{{ url_for('static', filename='js/csrf.js') }}"></script>
 <script src="{{ url_for('static', filename='js/api.js') }}"></script>
 <script src="{{ url_for('static', filename='js/poller.js') }}"></script>
@@ -293,6 +281,7 @@
 <script src="{{ url_for('static', filename='js/loading-ring.js') }}"></script>
 <script src="{{ url_for('static', filename='js/lightbox.js') }}"></script>
 <script src="{{ url_for('static', filename='js/confirm.js') }}"></script>
+<script src="{{ url_for('static', filename='js/modals.js') }}"></script>
 <script src="{{ url_for('static', filename='js/class-icons.js') }}"></script>
 <script src="{{ url_for('static', filename='js/phone-ui.js') }}"></script>
 <script src="{{ url_for('static', filename='js/menus.js') }}"></script>
@@ -300,6 +289,7 @@
 <script src="{{ url_for('static', filename='js/character-rolls.js') }}"></script>
 <script src="{{ url_for('static', filename='js/dice-art.js') }}"></script>
 {% if active_page != 'dice' %}<script src="{{ url_for('static', filename='js/dice-widget.js') }}"></script>{% endif %}
+<script src="{{ url_for('static', filename='js/spell-slots.js') }}"></script>
 <script src="{{ url_for('static', filename='js/char-peek.js') }}"></script>{% endif %}
 {% block extra_scripts %}{% endblock %}
 </body>

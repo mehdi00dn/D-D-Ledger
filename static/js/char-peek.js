@@ -1,5 +1,5 @@
 /* The small character card that opens from a map pin or a battle row.  A compact version of the details page:
- * who it is, the vitals, the six abilities with their checks and saves, skills, notes and sheet images.
+ * who it is, the vitals, the six abilities with their checks and saves, skills, notes and additional images.
  * Every bonus is click-to-roll (see character-rolls.js), exactly like on the full page.
  *
  *   CharPeek.open(characterId, participantId?)      fills and shows #detail-modal
@@ -36,7 +36,7 @@
       '<span class="cd-chip cd-chip--' + (c.is_npc ? 'npc' : 'pc') + '">' + (c.is_npc ? (c.is_ally ? 'NPC · Ally' : 'NPC') : 'PC') + '</span>';
     var fs = c.factions && c.factions.length ? c.factions : (c.group_name ? [{ name: c.group_name, color: c.group_color }] : []);
     fs.forEach(function (f) {
-      out += '<span class="cd-chip cd-chip--faction"><span class="group-dot" style="background:' + safeColor(f.color, '#c9a24b') + '"></span>' + esc(f.name) + '</span>';
+      out += '<span class="cd-chip cd-chip--faction"><span class="group-dot" data-bg="' + safeColor(f.color, '#c9a24b') + '"></span>' + esc(f.name) + '</span>';
     });
     return out;
   }
@@ -50,7 +50,7 @@
     var fogged = !!c.hidden_stats;
     var s = c.sheet;
     var html = '<div class="peek-top">' +
-      '<div class="avatar-frame peek-avatar">' + (c.avatar_path ? '<img src="/uploads/' + esc(c.avatar_path) + '" alt="">' : '') + '</div>' +
+      '<div class="avatar-frame peek-avatar"' + (c.avatar_path ? ' data-lightbox-src="/uploads/' + esc(c.avatar_path) + '" role="button" tabindex="0" aria-label="View avatar larger"' : '') + '>' + (c.avatar_path ? '<img src="/uploads/' + esc(c.avatar_path) + '" alt="">' : '') + '</div>' +
       '<div class="peek-id"><div class="peek-chips">' + chips(c) + '</div>' +
       '<div class="made-by">Made by ' + esc(c.made_by || 'a former member') + '</div></div>' +
       '<a class="btn-icon peek-open" href="/campaigns/' + window.CAMPAIGN_ID + '/characters/' + c.id + '" title="Open the full page" aria-label="Open the full page">&#8599;</a>' +
@@ -84,7 +84,7 @@
           roll(ab.mod, ab.name + ' check', 'peek-ab-mod', ab.text, 'Roll ' + ab.name + ' check') +
           '<span class="peek-ab-score">' + esc(ab.score) + '</span>' +
           roll(sv.bonus, ab.name + ' saving throw', 'peek-ab-save' + (sv.proficient ? ' is-prof' : ''),
-            '<span class="mark" aria-hidden="true">' + (sv.proficient ? '●' : '○') + '</span> Save <b>' + sv.text + '</b>',
+            '<span class="mark pm pm-' + (sv.proficient ? 1 : 0) + '" aria-hidden="true">' + (sv.proficient ? '●' : '○') + '</span> Save <b>' + sv.text + '</b>',
             'Roll ' + ab.name + ' saving throw' + (sv.proficient ? ' (proficient)' : '')) + '</div>';
       }).join('') + '</div>';
 
@@ -98,6 +98,23 @@
               (a.damage && a.dice_json ? '<button type="button" class="atk-btn atk-btn--dmg" title="Roll ' + esc(a.name) + ' damage" data-roll-bonus="' + a.damage_bonus +
                 '" data-roll-dice="' + esc(a.dice_json) + '" data-roll-label="' + esc(a.name) + ' damage' + (a.damage_type ? ' (' + esc(a.damage_type) + ')' : '') +
                 '"><small>Damage</small><b>' + esc(a.damage) + '</b></button>' : '') + '</li>';
+          }).join('') + '</ul></div>';
+      }
+
+      if (c.slots && c.slots.length && window.SpellSlots) {     // spell slots (DL-185): the DM and the character's player can spend and restore them here
+        html += '<div class="peek-section" aria-label="Spell slots"><div class="peek-section-title">Spell slots</div>' +
+          '<div class="peek-slots" data-peek-slots>' + SpellSlots.markup(c.slots, !!c.can_edit_slots, c.name) + '</div>' +
+          '<p class="peek-slots-status" data-peek-slots-status role="status" aria-live="polite"></p></div>';
+      }
+
+      if (c.spells && c.spells.length) {       // the spell list (DL-185): damage rolls like the attacks, grouped by level
+        html += '<div class="peek-section" aria-label="Spells"><div class="peek-section-title">Spells</div><ul class="atk-list">' +
+          c.spells.map(function (sp) {
+            return '<li class="atk-row"><span class="atk-name">' + esc(sp.name) +
+              '<small class="atk-type">' + (sp.spell_level ? 'Level ' + sp.spell_level : 'Cantrip') + (sp.note ? ' \u00b7 ' + esc(sp.note) : '') + '</small></span>' +
+              (sp.damage && sp.dice_json ? '<button type="button" class="atk-btn atk-btn--dmg" title="Roll ' + esc(sp.name) + ' damage" data-roll-bonus="' + sp.damage_bonus +
+                '" data-roll-dice="' + esc(sp.dice_json) + '" data-roll-label="' + esc(sp.name) + ' damage' + (sp.damage_type ? ' (' + esc(sp.damage_type) + ')' : '') +
+                '"><small>Damage</small><b>' + esc(sp.damage) + '</b></button>' : '') + '</li>';
           }).join('') + '</ul></div>';
       }
 
@@ -117,7 +134,7 @@
 
     if (!fogged && c.sheets && c.sheets.length) {
       var canDelete = !!c.can_delete;
-      html += '<details class="peek-more"><summary>Sheets <span class="cf-count">' + c.sheets.length + '</span></summary><div class="sheet-thumbs">' +
+      html += '<details class="peek-more"><summary>Additional images <span class="cf-count">' + c.sheets.length + '</span></summary><div class="sheet-thumbs">' +
         c.sheets.map(function (sh) {
           var src = '/uploads/' + esc(sh.image_path);
           return '<div class="sheet-thumb"><img src="' + src + '" alt="Sheet" data-lightbox-src="' + src + '"' +
@@ -142,6 +159,21 @@
         modal.hidden = false;
       });
   }
+
+  var slotState = [];
+  body.addEventListener('click', function (ev) {
+    var b = ev.target.closest('[data-action="slot-pip"]');
+    if (!b || b.disabled || !window.SpellSlots || !body.contains(b)) return;
+    var box = body.querySelector('[data-peek-slots]'), note = body.querySelector('[data-peek-slots-status]');
+    var id = currentId, mine = token;
+    b.disabled = true;
+    SpellSlots.send(id, b.getAttribute('data-slot-do'), parseInt(b.getAttribute('data-slot-level'), 10)).then(function (out) {
+      if (mine !== token || !box) return;
+      slotState = out.slots;
+      box.innerHTML = SpellSlots.markup(slotState, true, title.textContent);
+      if (note) note.textContent = '';
+    }).catch(function (e) { if (note) note.textContent = e.message; b.disabled = false; });
+  });
 
   if (window.CharacterRolls) window.CharacterRolls.bind(body, function () { return currentId; }, 'peek-roll-mode', function () { return currentParticipant; });
 

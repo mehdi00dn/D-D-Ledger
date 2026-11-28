@@ -13,7 +13,7 @@ def st(request):
     if request.param == 'local':
         return LocalStorage(os.path.join(_TMP, 'contract-uploads'), 'secret')
     if FAKE is None:
-        pytest.skip('fake supabase not running (LEDGER_TEST_STORAGE=local)')
+        pytest.skip('fake supabase not running (OAKEN_TEST_STORAGE=local)')
     return SupabaseStorage(FAKE.url, FAKE.key, 'ledger-uploads', 'ledger-temp')
 
 

@@ -1,4 +1,4 @@
--- Storage buckets for Campaign Ledger (Supabase SQL editor).  Idempotent: safe to re-run.
+-- Storage buckets for Oaken (Supabase SQL editor).  Idempotent: safe to re-run.
 --   ledger-uploads  final, validated images     (private; the app serves them behind login)
 --   ledger-temp     short-lived staging: direct browser uploads, import ZIPs, large exports
 -- Both are PRIVATE.  Supabase enforces the size/type limits itself, on top of the app's checks.

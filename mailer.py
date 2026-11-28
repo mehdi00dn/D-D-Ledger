@@ -9,7 +9,7 @@ Settings (environment):
     MAIL_BACKEND    smtp | console | off      default: smtp when MAIL_HOST is set, else console locally, else off
     MAIL_HOST, MAIL_PORT (587), MAIL_USER, MAIL_PASSWORD
     MAIL_SECURITY   starttls (default) | ssl | none
-    MAIL_FROM       e.g. "Campaign Ledger <no-reply@example.com>"  (required for smtp)
+    MAIL_FROM       e.g. "Oaken <no-reply@example.com>"  (required for smtp)
     MAIL_TIMEOUT    seconds, default 8
 The console backend only logs a short note (never the message body: it contains one-time links); the tests use
 the `outbox` list instead.

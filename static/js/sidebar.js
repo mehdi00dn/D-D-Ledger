@@ -16,7 +16,7 @@
     } else {
       document.documentElement.removeAttribute('data-sidebar');
     }
-    localStorage.setItem('ledger-sidebar-collapsed', collapsed ? '1' : '0');
+    localStorage.setItem('oaken-sidebar-collapsed', collapsed ? '1' : '0');
     toggleBtn.title = collapsed ? 'Expand menu' : 'Collapse menu';
   }
 

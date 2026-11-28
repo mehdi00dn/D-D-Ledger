@@ -1,5 +1,6 @@
 """DL-64: map fog of war -- the server must never hand a Player anything that sits under fog."""
 import io
+import pubid
 import json
 
 import fog
@@ -126,7 +127,7 @@ def test_players_never_receive_the_raw_map_key(make_user):
         assert key not in body and 'fog_mask' not in body
     # The editor page points at the fog-aware route instead.
     page = player.get(f'/campaigns/{cid}/maps/{mid}').data.decode()
-    assert f'/campaigns/{cid}/maps/{mid}/image' in page
+    assert f'/campaigns/%s/maps/%s/image' % (pubid.short('campaigns', cid), pubid.short('maps', mid)) in page
 
 
 def test_fog_is_scoped_to_the_campaign(make_user):
@@ -182,7 +183,7 @@ def test_fog_on_a_jpeg_upload_is_stored_as_webp_and_hidden(make_user):
                 content_type='multipart/form-data')
     assert r.status_code == 302
     import re
-    mid = int(re.search(r'/maps/(\d+)', r.headers['Location']).group(1))
+    mid = pubid.pk('maps', r.headers['Location'])
     dm.json(f'/campaigns/{cid}/api/maps/{mid}/fog', {'fill': True})
     resp = player.get(f'/campaigns/{cid}/maps/{mid}/image')
     assert resp.status_code == 200 and resp.mimetype == 'image/webp'

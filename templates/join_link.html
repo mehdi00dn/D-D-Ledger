@@ -1,9 +1,9 @@
-{% extends "base.html" %}
+{% extends "site_base.html" %}
 {% from "_icons.html" import icon %}
-{% block title %}Join campaign — Campaign Ledger{% endblock %}
+{% block title %}Join campaign — Oaken{% endblock %}
 
 {% block content %}
-<div class="join-link-card form-panel">
+<div class="join-link-card form-panel o-paper">
   {% if link %}
   <p class="pending-invites-title">You've been invited</p>
   <h1 class="page-title">{{ link.campaign_name }}</h1>

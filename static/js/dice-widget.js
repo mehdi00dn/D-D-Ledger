@@ -1,13 +1,13 @@
 /* Quick-roll dice widget: a small d20 button in the corner of every campaign page (except the Dice page itself).
  * It opens a little tray: pick how many, a modifier, advantage / disadvantage, then tap a die.  Rolls go through
- * LedgerDice, so they are made on the server and everyone in the campaign sees them, exactly like the Dice page.
+ * OakenDice, so they are made on the server and everyone in the campaign sees them, exactly like the Dice page.
  * The roller sees the result right in the tray, so their own roll is not also toasted.
  */
 (function () {
   'use strict';
-  if (!window.LedgerDice || !window.LedgerDiceArt || window.DICE_PAGE) return;
+  if (!window.OakenDice || !window.OakenDiceArt || window.DICE_PAGE) return;
 
-  var SIDES = LedgerDiceArt.SIDES;
+  var SIDES = OakenDiceArt.SIDES;
   var EASE_OUT = 'cubic-bezier(0.23, 1, 0.32, 1)';
   var reduce = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : { matches: false };
 
@@ -17,7 +17,7 @@
     if (text !== undefined) n.textContent = text;
     return n;
   }
-  function dieSvg(sides) { return LedgerDiceArt.svg(sides); }
+  function dieSvg(sides) { return OakenDiceArt.svg(sides); }
   function signed(n) { return (n >= 0 ? '+' : '−') + Math.abs(n); }
 
   // ---- markup ----
@@ -179,7 +179,7 @@
     total.classList.add('is-rolling');
     detail.textContent = count + 'd' + sides + (modifier ? ' ' + signed(modifier) : '') + '…';
     window.DICE_QUIET = true;                                // this roll is shown here, not toasted
-    var request = LedgerDice.roll({ dice: spec, modifier: modifier, mode: useMode, private: privateRoll, label: '' });
+    var request = OakenDice.roll({ dice: spec, modifier: modifier, mode: useMode, private: privateRoll, label: '' });
     function flicker() {
       if (!busy) return;
       showTotal(1 + Math.floor(Math.random() * (sides === 100 ? 100 : sides) * Math.max(1, count)));

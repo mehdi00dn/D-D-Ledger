@@ -24,9 +24,9 @@
   // keeps the original square avatar crop; banner matches the actual
   // 5:3-ish aspect ratio group/campaign cards render their image at.
   const SHAPES = {
-    circle: { w: 480, h: 480, displayW: 300, displayH: 300, guide: true, panelMax: 420, title: 'Position Avatar' },
-    campaign: { w: 1200, h: 720, displayW: 420, displayH: 252, guide: false, panelMax: 500, title: 'Position Campaign Image' },   // DL-164: saved at 1200 x 720
-    banner: { w: 640, h: 384, displayW: 420, displayH: 252, guide: false, panelMax: 500, title: 'Position Banner Image' },
+    circle: { w: 480, h: 480, displayW: 300, displayH: 300, guide: true, panelMax: 420, title: 'Position avatar' },
+    campaign: { w: 1200, h: 720, displayW: 420, displayH: 252, guide: false, panelMax: 500, title: 'Position campaign image' },   // DL-164: saved at 1200 x 720
+    banner: { w: 640, h: 384, displayW: 420, displayH: 252, guide: false, panelMax: 500, title: 'Position banner image' },
   };
   let shape = SHAPES.circle;
 
@@ -156,12 +156,13 @@
       const previewUrl = URL.createObjectURL(blob);
       if (preview) {
         preview.src = previewUrl;
+        preview.hidden = false;
         preview.style.display = 'block';
         const placeholder = preview.parentElement.querySelector('.avatar-placeholder-icon');
         if (placeholder) placeholder.style.display = 'none';
       }
       const nameLabel = activeInput.parentElement.querySelector('.file-name');
-      if (nameLabel) nameLabel.textContent = 'Avatar cropped ✓';
+      if (nameLabel) nameLabel.textContent = 'Avatar cropped';
 
       // A fresh avatar was chosen, so cancel any pending "remove" request and show the remove button
       if (activeInput.dataset.removeInput) {
@@ -193,6 +194,7 @@
           input.value = '';
           const preview = document.querySelector(input.dataset.avatarInput);
           if (preview) {
+            preview.hidden = true;
             preview.style.display = 'none';
             preview.src = '';
             const placeholder = preview.parentElement.querySelector('.avatar-placeholder-icon');

@@ -1,8 +1,8 @@
 /* Shared dice: rolls are made on the server, so everyone in the campaign sees the same result.
  *
- *   LedgerDice.roll({dice: {'20': 1}, modifier: 5, label: 'Stealth', mode: 'advantage', character_id: 7, private: false})
+ *   OakenDice.roll({dice: {'20': 1}, modifier: 5, label: 'Stealth', mode: 'advantage', character_id: 7, private: false})
  *       -> Promise of the stored roll (rejects with an Error whose message is fit to show)
- *   LedgerDice.on(fn)    // fn(roll) for every roll this page learns about (own and other people's)
+ *   OakenDice.on(fn)    // fn(roll) for every roll this page learns about (own and other people's)
  *
  * Every campaign page runs this: it polls the roll feed (and wakes up early on a Realtime "dice" ping) and shows
  * each new roll as a small toast in the corner, whatever page the person is on.  Opening a page never replays
@@ -131,13 +131,13 @@
     });
   }
 
-  var poll = window.LedgerPoll ? LedgerPoll.every(check, { base: 4000, max: window.LEDGER_REALTIME ? 30000 : 15000 }) : null;   // a Realtime ping wakes it sooner
+  var poll = window.OakenPoll ? OakenPoll.every(check, { base: 4000, max: window.OAKEN_REALTIME ? 30000 : 15000 }) : null;   // a Realtime ping wakes it sooner
   if (poll) check();                                           // learn the newest id right away, so nothing old is replayed
-  if (window.LEDGER_REALTIME && window.LedgerRealtime && poll) {
-    LedgerRealtime.connect(window.LEDGER_REALTIME, function (p) { if (p.s === 'dice') poll.poke(); });
+  if (window.OAKEN_REALTIME && window.OakenRealtime && poll) {
+    OakenRealtime.connect(window.OAKEN_REALTIME, function (p) { if (p.s === 'dice') poll.poke(); });
   }
 
-  window.LedgerDice = {
+  window.OakenDice = {
     roll: roll,
     on: function (fn) { listeners.push(fn); },
     chips: diceChips,

@@ -6,6 +6,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 ALLOWED_HOSTS = ('www.w3.org',)       # XML namespace URIs in SVG, not network requests
+# DL-171: these two pages may link OUT to a licence or a source (a plain <a>, only followed when the visitor clicks it);
+# nothing on them may load from another site.
+LINK_OUT_PAGES = ('about.html', 'reference.html')
+ANCHOR = re.compile(r'<a\b[^>]*>.*?</a>', re.S)
 URL = re.compile(r'https?://[^\s"\'<>)\\]+')
 
 
@@ -14,7 +18,10 @@ def test_no_external_url_in_templates_styles_scripts_or_svg():
     files = list((ROOT / 'templates').glob('*.html')) + [p for p in (ROOT / 'static').rglob('*')
                                                           if p.suffix in ('.html', '.js', '.css', '.svg') and p.is_file()]
     for f in files:
-        for m in URL.finditer(f.read_text(errors='ignore')):
+        text = f.read_text(errors='ignore')
+        if f.name in LINK_OUT_PAGES and f.parent.name == 'templates':
+            text = ANCHOR.sub('', text)
+        for m in URL.finditer(text):
             if not any(h in m.group(0) for h in ALLOWED_HOSTS):
                 bad.append(f'{f.relative_to(ROOT)}: {m.group(0)[:80]}')
     assert not bad, 'External URL found (update THIRD_PARTY.md and the privacy pages first):\n' + '\n'.join(bad)
@@ -35,3 +42,25 @@ def test_known_tracker_names_are_absent():
     hits = [str(p.relative_to(ROOT)) for p in list((ROOT / 'templates').glob('*.html')) + list((ROOT / 'static' / 'js').glob('*.js'))
             if names.search(p.read_text(errors='ignore'))]
     assert not hits, hits
+
+
+def test_skull_pin_is_the_credited_game_icons_skull_not_a_gpl_svg_repo_file():
+    """DL-180 part 21: the previous skull pin was a GPL icon from SVG Repo; the replacement is CC BY 3.0 and credited on the About page."""
+    import pathlib
+    svg = pathlib.Path('static/icons/pins/skull.svg').read_text()
+    assert 'svgrepo' not in svg.lower() and 'Lorc' in svg and 'CC BY 3.0' in svg
+    about = pathlib.Path('templates/about.html').read_text()
+    assert 'Fanged Skull' in about and 'Lorc' in about
+
+
+def test_pins_and_interface_icons_are_credited_game_icons_not_svg_repo_files():
+    """DL-180 part 22: the sword, hand and paw pins and the characters, battle and dice icons are game-icons.net (CC BY 3.0), credited on the About page."""
+    import pathlib
+    for name, title in (('sword', 'Broadsword'), ('hand', 'Hand'), ('paw', 'Flat paw print')):
+        svg = pathlib.Path(f'static/icons/pins/{name}.svg').read_text()
+        assert 'svgrepo' not in svg.lower() and 'svg repo' not in svg.lower() and 'Lorc' in svg and 'CC BY 3.0' in svg, name
+    icons = pathlib.Path('templates/_icons.html').read_text()
+    assert 'svgrepo' not in icons.lower() and 'svg repo' not in icons.lower() and '800px' not in icons and '<?xml' not in icons
+    about = pathlib.Path('templates/about.html').read_text()
+    for credit in ('Broadsword', 'Hand', 'Flat paw print', 'Crossed swords', 'Dice twenty faces twenty', 'Delapouite', 'Lorc'):
+        assert credit in about, credit

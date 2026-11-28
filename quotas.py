@@ -5,9 +5,9 @@ Per-file size is already capped by images.KIND_MAX_BYTES (input) and the importe
 (an 8 MB photo that becomes a 60 KB avatar counts 60 KB).
 
 Change the limits with environment variables, no code change needed:
-    LEDGER_QUOTA_USER_MB       total per user      (default 150)
-    LEDGER_QUOTA_CAMPAIGN_MB   total per campaign  (default 300)
-Set either to 0 to turn that limit off.
+    OAKEN_QUOTA_USER_MB       total per user      (default 150)
+    OAKEN_QUOTA_CAMPAIGN_MB   total per campaign  (default 300)
+Set either to 0 to turn that limit off.  The old LEDGER_QUOTA_* names are still read when the OAKEN_ ones are not set.
 
 Sizing note: Supabase Free keeps 1 GB of storage, Pro 100 GB; with the defaults ~3 full campaigns fit in
 the free tier, and the temp bucket (staging + exports) is cleaned by scripts/cleanup_temp.py.
@@ -28,18 +28,19 @@ class QuotaExceeded(Exception):
 
 
 def _limit(name, default_mb):
+    old = name.replace('OAKEN_', 'LEDGER_', 1)        # the pre-rename variable name keeps working
     try:
-        return max(0, int(float(os.environ.get(name, default_mb)) * MB))
+        return max(0, int(float(os.environ.get(name, os.environ.get(old, default_mb))) * MB))
     except ValueError:
         return int(default_mb * MB)
 
 
 def user_limit():
-    return _limit('LEDGER_QUOTA_USER_MB', DEFAULT_USER_MB)
+    return _limit('OAKEN_QUOTA_USER_MB', DEFAULT_USER_MB)
 
 
 def campaign_limit():
-    return _limit('LEDGER_QUOTA_CAMPAIGN_MB', DEFAULT_CAMPAIGN_MB)
+    return _limit('OAKEN_QUOTA_CAMPAIGN_MB', DEFAULT_CAMPAIGN_MB)
 
 
 def _mb(n):

@@ -1,4 +1,4 @@
-# Deploying Campaign Ledger (Vercel + Supabase)
+# Deploying Oaken (Vercel + Supabase)
 
 Everything durable lives in Supabase, so any number of serverless instances see the same data:
 
@@ -99,7 +99,7 @@ to Production** (instant rollback). Nothing in the database changes.
   SPF and DKIM records the provider gives you for the sending domain, or messages land in spam. Until `MAIL_HOST` is
   set the account page says addresses cannot be confirmed.
   Resend example (Resend's SMTP is `smtp.resend.com`): `MAIL_HOST=smtp.resend.com`, `MAIL_PORT=587`, `MAIL_USER=resend`,
-  `MAIL_PASSWORD=<your Resend API key>` (mark it Sensitive in Vercel), `MAIL_FROM="Campaign Ledger <onboarding@resend.dev>"`.
+  `MAIL_PASSWORD=<your Resend API key>` (mark it Sensitive in Vercel), `MAIL_FROM="Oaken <onboarding@resend.dev>"`.
   Until a domain is verified in Resend, `onboarding@resend.dev` only delivers to the Resend account owner's own address. Sending is limited per account, per address and per
   visitor (`MAIL_LIMIT_*`), and messages carry no tracking pixels or tracked links.
 * **Vercel storage.** Every deployment stores its own copy of the app (about 50 MB, almost all of it
@@ -115,7 +115,7 @@ to Production** (instant rollback). Nothing in the database changes.
   stack trace. `/healthz` is the uptime-check URL: the `Uptime` GitHub Action pings it every 15 minutes (set the repository variable `SITE_URL`, e.g. `https://your-app.vercel.app`; a failed run emails the repo's watchers; `python scripts/check_uptime.py <url>` does the same by hand). Optional Sentry: set `SENTRY_DSN` and add `sentry-sdk` to
   `requirements.in`, recompile the lock file, redeploy.
 * **Upload quotas.** Defaults are 150 MB of stored images per user and 300 MB per campaign (Supabase Free holds 1 GB
-  in total, so size them against your plan). Override with `LEDGER_QUOTA_USER_MB` / `LEDGER_QUOTA_CAMPAIGN_MB` in
+  in total, so size them against your plan). Override with `OAKEN_QUOTA_USER_MB` / `OAKEN_QUOTA_CAMPAIGN_MB` in
   Vercel (`0` = off) and redeploy. After applying migration 0021 run `python scripts/backfill_storage_usage.py`
   once (use `--dry-run` first) so images uploaded earlier are counted. Browsers still upload large files straight
   to Supabase; the server checks the quota again when it processes the staged file, so the limit cannot be skipped.
@@ -125,7 +125,7 @@ to Production** (instant rollback). Nothing in the database changes.
 ## 5. Local development
     pip install -r requirements-dev.txt
     cp .env.example .env          # AUTO_MIGRATE=1 creates the tables on start
-    docker run -d -p 5432:5432 -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=ledger postgres:16
+    docker run -d -p 5432:5432 -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=oaken postgres:16
     python app.py                 # images are stored in ./uploads (no Supabase needed locally)
 
 ### Dependencies
@@ -137,7 +137,7 @@ Dependabot opens a weekly pull request with newer versions; CI runs the tests an
 on every push, so merge those pull requests when CI is green.
 
 ## 6. Tests and CI
-    LEDGER_TEST_BACKEND=postgres pytest tests
+    OAKEN_TEST_BACKEND=postgres pytest tests
 The suite creates and drops its own throw-away database (set `TEST_PG_ADMIN` if your local Postgres
 is not the default) and starts a fake Supabase Storage server in-process, so it needs no internet
 or credentials. GitHub Actions (`.github/workflows/ci.yml`) runs the same suite on every push and

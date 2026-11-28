@@ -128,7 +128,7 @@ def test_production_starts_with_a_strong_secret_and_secure_cookies():
     r = run_python("import app; c=app.app.config; print(c['SESSION_COOKIE_NAME'], c['SESSION_COOKIE_SECURE'], c['SESSION_COOKIE_HTTPONLY'], c['SESSION_COOKIE_SAMESITE'])",
                    {'VERCEL': '1', 'SECRET_KEY': 'k' * 40, 'DATABASE_URL': os.environ['DATABASE_URL']})
     assert r.returncode == 0, r.stderr[-300:]
-    assert r.stdout.split() == ['__Host-ledger', 'True', 'True', 'Lax']
+    assert r.stdout.split() == ['__Host-oaken', 'True', 'True', 'Lax']
 
 
 def test_development_without_a_secret_gets_a_random_one_not_a_known_constant():
@@ -165,7 +165,7 @@ def test_security_headers_on_pages_and_api(appmod, user):
         script_src = [d for d in csp.split('; ') if d.startswith('script-src')][0]
         assert "'unsafe-inline'" not in script_src                      # DL-123: injected scripts must not run
         style_src = [d for d in csp.split('; ') if d.startswith('style-src ')][0]
-        assert "'unsafe-inline'" not in style_src and "style-src-attr 'unsafe-inline'" in csp      # DL-140: no injected <style> blocks; style="" attributes stay
+        assert "'unsafe-inline'" not in csp and 'style-src-attr' not in csp      # DL-140 / DL-172: no injected <style> blocks and no style="" attributes
         assert h['Cross-Origin-Resource-Policy'] == 'same-origin' and 'report-uri /csp-report' in csp
 
 
@@ -190,6 +190,37 @@ def test_uploaded_images_keep_their_own_cache_policy(appmod, user):
     user.post(f'/campaigns/{cid}/characters/new', data={'name': 'P', 'avatar': (io.BytesIO(png_bytes()), 'a.png')}, content_type='multipart/form-data')
     path = q('SELECT avatar_path FROM characters WHERE name = ?', 'P')[0]['avatar_path']
     assert 'immutable' in user.get('/uploads/' + path).headers['Cache-Control']
+
+
+def test_a_stored_image_can_be_kept_by_the_browser_between_page_loads(appmod, user):
+    # The session cookie is signed again on every response, so a "Vary: Cookie" image response never matched the browser's copy and every
+    # avatar and campaign picture was downloaded again on each reload.  Image responses carry neither the Vary nor a new cookie.
+    import io
+    from conftest import png_bytes
+    cid = user.new_campaign()
+    user.post(f'/campaigns/{cid}/characters/new', data={'name': 'P2', 'avatar': (io.BytesIO(png_bytes()), 'a.png')}, content_type='multipart/form-data')
+    path = q('SELECT avatar_path FROM characters WHERE name = ?', 'P2')[0]['avatar_path']
+    first = user.get('/uploads/' + path)
+    again = user.get('/uploads/' + path)
+    for r in (first, again):
+        assert r.status_code == 200 and 'immutable' in r.headers['Cache-Control'] and 'max-age=31536000' in r.headers['Cache-Control']
+        assert 'Vary' not in r.headers and 'Set-Cookie' not in r.headers, dict(r.headers)
+    # a signed-out visitor is still turned away, and ordinary pages still keep the session alive
+    anon = appmod.app.test_client()
+    assert anon.get('/uploads/' + path).status_code in (302, 401, 403)
+    assert 'Set-Cookie' in user.get('/campaigns').headers
+
+
+def test_the_map_picture_is_rechecked_by_etag_and_not_downloaded_again(appmod, user):
+    from conftest import png_bytes
+    import io
+    cid = user.new_campaign()
+    user.post(f'/campaigns/{cid}/maps/new', data={'name': 'M', 'image': (io.BytesIO(png_bytes(200, 100)), 'm.png')}, content_type='multipart/form-data')
+    mid = q('SELECT id FROM maps WHERE name = ?', 'M')[0]['id']
+    first = user.get(f'/campaigns/{cid}/maps/{mid}/image')
+    assert first.status_code == 200 and first.headers['ETag'] and 'Vary' not in first.headers and 'Set-Cookie' not in first.headers
+    again = user.get(f'/campaigns/{cid}/maps/{mid}/image', headers={'If-None-Match': first.headers['ETag']})
+    assert again.status_code == 304
 
 
 # ------------------------------------------------------------------ open redirect

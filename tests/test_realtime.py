@@ -143,17 +143,17 @@ def test_members_get_their_campaigns_channel_and_nobody_else_does(rt, appmod, ma
     chan = realtime.channel_name(appmod.app.secret_key, c1)
     for who in (owner, player):
         html = who.get(f'/campaigns/{c1}/battle').get_data(as_text=True)
-        assert 'window.LEDGER_REALTIME' in html and chan in html and PUBLIC_KEY in html
+        assert 'window.OAKEN_REALTIME' in html and chan in html and PUBLIC_KEY in html
         assert SECRET_KEY not in html                                                 # the server key never reaches a browser
     assert chan not in owner.get(f'/campaigns/{c2}/battle').get_data(as_text=True)
     assert stranger.get(f'/campaigns/{c1}/battle').status_code == 404                  # no page, so no channel name
-    assert 'LEDGER_REALTIME' not in owner.get('/campaigns').get_data(as_text=True)     # not on pages outside a campaign
+    assert 'OAKEN_REALTIME' not in owner.get('/campaigns').get_data(as_text=True)     # not on pages outside a campaign
 
 
 def test_pages_have_no_realtime_when_it_is_not_configured(appmod, make_user, monkeypatch):
     monkeypatch.delenv('SUPABASE_PUBLISHABLE_KEY', raising=False)
     u = make_user(); cid = u.new_campaign()
-    assert 'LEDGER_REALTIME' not in u.get(f'/campaigns/{cid}/battle').get_data(as_text=True)
+    assert 'OAKEN_REALTIME' not in u.get(f'/campaigns/{cid}/battle').get_data(as_text=True)
 
 
 def test_the_csp_allows_the_realtime_socket_only_when_configured(rt, appmod, make_user, monkeypatch):

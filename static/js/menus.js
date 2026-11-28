@@ -7,6 +7,19 @@
   document.addEventListener('click', (ev) => {
     menus().forEach((m) => { if (!m.contains(ev.target) || ev.target.closest('a.menu-item, button.menu-item')) m.open = false; });
   });
+  // A menu is lined up with its button, so one whose button sits near a screen edge (the "..." beside Edit on a phone) would open partly
+  // off the screen. When it opens, measure it and slide it back inside, keeping a small margin.
+  document.addEventListener('toggle', (ev) => {
+    const m = ev.target;
+    if (!(m instanceof HTMLDetailsElement) || !m.classList.contains('menu')) return;
+    const list = m.querySelector('.menu-list');
+    if (!list) return;
+    list.style.translate = '';
+    if (!m.open) return;
+    const r = list.getBoundingClientRect(), vw = document.documentElement.clientWidth, edge = 8;
+    const dx = r.left < edge ? edge - r.left : (r.right > vw - edge ? vw - edge - r.right : 0);
+    if (dx) list.style.translate = Math.round(dx) + 'px 0';
+  }, true);
   document.addEventListener('keydown', (ev) => {
     if (ev.key !== 'Escape') return;
     menus().forEach((m) => { m.open = false; const s = m.querySelector('summary'); if (s) s.focus(); });

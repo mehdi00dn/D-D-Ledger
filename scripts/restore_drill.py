@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Rehearse a restore: prove a backup made by scripts/backup.py can bring the app back.
 
-    DRILL_PG_ADMIN="postgresql://postgres:PASSWORD@localhost:5432/postgres"  python scripts/restore_drill.py backups/ledger-20261014-221500Z
+    DRILL_PG_ADMIN="postgresql://postgres:PASSWORD@localhost:5432/postgres"  python scripts/restore_drill.py backups/oaken-20261014-221500Z
 
 It never touches production.  It creates a throw-away database on the Postgres server DRILL_PG_ADMIN points at
 (a local Postgres or Docker container -- NOT your Supabase project), restores the dump into it, and checks that
@@ -93,7 +93,7 @@ def drill(backup_dir, admin_dsn, keep_db=False, log=print):
     rep.check(f"all {len(man['files'])} stored files match their checksums", not bad, f'{len(bad)} damaged or missing: {bad[:3]}' if bad else '')
 
     # 2. restore into a throw-away database
-    name = 'ledger_drill_' + uuid.uuid4().hex[:8]
+    name = 'oaken_drill_' + uuid.uuid4().hex[:8]
     with psycopg.connect(_admin(admin_dsn, 'postgres'), autocommit=True) as c:
         c.execute(f'CREATE DATABASE "{name}"')
     target = _admin(admin_dsn, name)

@@ -1,6 +1,7 @@
 """Who made it: every character, faction and map records its maker, shows "Made by <name>", and only the maker
 or the campaign owner can delete it -- nobody else, DMs included."""
 import io
+import pubid
 from conftest import q, png_bytes
 
 
@@ -80,13 +81,13 @@ def test_delete_buttons_appear_only_where_deleting_is_allowed(make_user):
     mine = player.new_map(cid, 'Pip Map'); theirs = owner.new_map(cid, 'Owner Map')
     pc = player.new_character(cid, 'Pip'); boss = owner.new_character(cid, 'Boss')
     maps = player.get(f'/campaigns/{cid}/maps?browse=1').get_data(as_text=True)
-    assert f'/maps/{mine}/delete' in maps and f'/maps/{theirs}/delete' not in maps
+    assert f'/maps/%s/delete' % pubid.short('maps', mine) in maps and f'/maps/%s/delete' % pubid.short('maps', theirs) not in maps
     chars = player.get(f'/campaigns/{cid}/characters').get_data(as_text=True)
-    assert f'/characters/{pc}/delete' in chars and f'/characters/{boss}/delete' not in chars
+    assert f'/characters/%s/delete' % pubid.short('characters', pc) in chars and f'/characters/%s/delete' % pubid.short('characters', boss) not in chars
     dm_chars = dm.get(f'/campaigns/{cid}/characters').get_data(as_text=True)
-    assert f'/characters/{pc}/delete' not in dm_chars and f'/characters/{boss}/delete' not in dm_chars
+    assert f'/characters/%s/delete' % pubid.short('characters', pc) not in dm_chars and f'/characters/%s/delete' % pubid.short('characters', boss) not in dm_chars
     owner_maps = owner.get(f'/campaigns/{cid}/maps?browse=1').get_data(as_text=True)
-    assert f'/maps/{mine}/delete' in owner_maps and f'/maps/{theirs}/delete' in owner_maps
+    assert f'/maps/%s/delete' % pubid.short('maps', mine) in owner_maps and f'/maps/%s/delete' % pubid.short('maps', theirs) in owner_maps
 
 
 def test_existing_rows_are_backfilled_to_each_campaigns_owner(appmod, make_user):

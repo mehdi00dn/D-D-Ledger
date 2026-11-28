@@ -1,0 +1,138 @@
+/* DL-186: the landing page previews.  Small working scenes from the real product, composed for the page rather than copied from it: the painted
+   world behind, paper cards from the app's own material (.o-paper, oaken.css) laid over it, the tutorial campaign's real people and text.
+   They fill the frames the page used to leave empty.  Demo data only: nothing here is saved, sent or read from the server.
+   Loaded after landing.css.  Every class starts with lp- so it can sit beside landing.css and public.css.
+   No inline styles (the Content-Security-Policy forbids them).  Motion is transform and opacity only, 150 to 450 ms, ease-out, and off under
+   prefers-reduced-motion. */
+
+.lp {
+  --lp-ease: cubic-bezier(0.23, 1, 0.32, 1);
+  container-type: inline-size;
+  border-radius: 20px;                                       /* a scene is a picture, so it gets a rounder frame than a plain screenshot (landing.css: 12px) */
+  border-color: rgba(237, 228, 207, 0.16);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), 0 2px 4px rgba(0, 0, 0, 0.28), 0 14px 26px -12px rgba(0, 0, 0, 0.5), 0 44px 80px -30px rgba(0, 0, 0, 0.78);
+  color: var(--oak-parchment-200);
+  font-family: var(--font-body); font-size: 14px; line-height: 1.4; text-align: start;
+}
+:where(.lp) :is(p, ul, ol) { margin: 0; padding: 0; list-style: none; }   /* :where keeps this reset from outranking the classes below */
+.lp :focus-visible { outline: 2px solid var(--oak-brass-300); outline-offset: 3px; border-radius: 10px; }
+.lp .o-paper :focus-visible { outline-color: var(--paper-accent-ink); }
+.lp-kicker { display: block; font-size: 10.5px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--paper-accent-ink); }
+
+/* ---------- Entrance: a frame that starts below the fold is armed by the script (.lp-reveal), and its pieces rise in once when it scrolls into view (.is-in).
+   A frame already in view, or no script, or reduced motion: the pieces are simply there. ---------- */
+@media (prefers-reduced-motion: no-preference) {
+  .lp-reveal:not(.is-in) .lp-rise { opacity: 0; transform: translateY(16px) scale(0.985); }
+  .lp-reveal.is-in .lp-rise { animation: lp-rise 480ms var(--lp-ease) both; }
+  .lp-reveal.is-in .lp-rise-2 { animation-delay: 80ms; }
+  .lp-reveal.is-in .lp-rise-3 { animation-delay: 160ms; }
+  .lp-reveal.is-in .lp-rise-4 { animation-delay: 260ms; }
+  @keyframes lp-rise { from { opacity: 0; transform: translateY(16px) scale(0.985); } to { opacity: 1; transform: none; } }
+}
+
+/* ======================================================================== 01 / the campaign dashboard (DL-186) ========================================================================
+   One wide card.  Top: a painted cover (the valley, under a scrim) with the campaign's name and the party as a row of portraits.  Below, on the card's dark
+   base: the picked hero on paper, and the quest list on dark glass.  Nothing floats outside the card. */
+.lp-scene { --lp-base: var(--oak-charcoal-700); position: relative; isolation: isolate; background: var(--lp-base); }
+
+/* the cover: the painting behind the title and the portraits, fading into the card's base */
+.lp-cover { position: relative; isolation: isolate; display: grid; align-content: space-between; gap: 18px; min-block-size: clamp(190px, 33cqi, 236px); padding: clamp(18px, 4.4cqi, 28px) clamp(18px, 4.4cqi, 28px) clamp(14px, 3cqi, 20px); }
+.lp-cover::before { content: ''; position: absolute; inset: 0; z-index: -2; background: var(--bg-valley) 66% 30% / cover no-repeat; }
+.lp-cover::after { content: ''; position: absolute; inset: 0; z-index: -1; background:
+  linear-gradient(180deg, rgba(12, 16, 13, 0) 0%, rgba(12, 16, 13, 0) 52%, var(--lp-base) 100%),            /* on top, so the cover ends exactly on the card's base */
+  linear-gradient(90deg, rgba(12, 16, 13, 0.5) 0%, rgba(12, 16, 13, 0.22) 46%, rgba(12, 16, 13, 0.04) 100%),
+  linear-gradient(180deg, rgba(12, 16, 13, 0.2) 0%, rgba(12, 16, 13, 0) 40%); }
+
+.lp-head { display: grid; justify-items: start; gap: 9px; }
+.lp-scene-title { font: 500 clamp(1.9rem, 6.2cqi, 2.7rem)/1.02 var(--font-display); letter-spacing: -0.015em; color: var(--oak-parchment-50); text-shadow: 0 2px 22px rgba(0, 0, 0, 0.55); }
+/* a hairline with a small brass diamond in the middle, under the title */
+.lp-orn { position: relative; display: block; inline-size: min(100%, 15rem); block-size: 7px; }
+.lp-orn::before { content: ''; position: absolute; inset-block-start: 3px; inset-inline: 0; block-size: 1px; background: linear-gradient(90deg, rgba(210, 181, 116, 0.16), rgba(210, 181, 116, 0.62) 50%, rgba(210, 181, 116, 0.16)); }
+.lp-orn::after { content: ''; position: absolute; inset-block-start: 0; inset-inline-start: calc(50% - 3.5px); inline-size: 7px; block-size: 7px; background: var(--oak-brass-300); transform: rotate(45deg) scale(0.72); box-shadow: 0 0 0 3px rgba(20, 24, 19, 0.55); }
+
+/* the party: a row of round portraits that picks who is on the card */
+.lp-rail { display: flex; gap: clamp(10px, 2.4cqi, 16px); padding-block: 4px 2px; }
+.lp-rail-btn {
+  position: relative; display: block; inline-size: clamp(48px, 10.6cqi, 70px); aspect-ratio: 1; padding: 0; border: 0; border-radius: 50%; overflow: hidden;
+  background: rgba(255, 252, 244, 0.7); cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+  box-shadow: 0 0 0 2px rgba(237, 228, 207, 0.4), 0 8px 16px -6px rgba(0, 0, 0, 0.7);
+}
+.lp-rail-btn img { display: block; inline-size: 100%; block-size: 100%; object-fit: cover; }
+.lp-rail-btn::after { content: ''; position: absolute; inset: 0; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(20, 14, 6, 0.24); pointer-events: none; }
+.lp-rail-btn[aria-checked="false"] img { opacity: 0.8; }
+.lp-rail-btn[aria-checked="true"] { box-shadow: 0 0 0 3px var(--oak-brass-300), 0 0 0 7px rgba(210, 181, 116, 0.26), 0 0 22px 2px rgba(210, 181, 116, 0.34), 0 10px 20px -6px rgba(0, 0, 0, 0.75); }
+@media (hover: hover) { .lp-rail-btn:hover { box-shadow: 0 0 0 2px var(--oak-brass-300), 0 8px 16px -6px rgba(0, 0, 0, 0.7); } .lp-rail-btn[aria-checked="true"]:hover { box-shadow: 0 0 0 3px var(--oak-brass-300), 0 0 0 7px rgba(210, 181, 116, 0.26), 0 0 22px 2px rgba(210, 181, 116, 0.34), 0 10px 20px -6px rgba(0, 0, 0, 0.75); } .lp-rail-btn:hover img { opacity: 1; } }
+@media (prefers-reduced-motion: no-preference) {
+  .lp-rail-btn { transition: transform 200ms var(--lp-ease), box-shadow 200ms ease; }
+  .lp-rail-btn img { transition: opacity 200ms ease; }
+  .lp-rail-btn[aria-checked="true"] { transform: translateY(-3px); }
+  .lp-rail-btn:active { transform: scale(0.95); }
+  .lp-rail-btn[aria-checked="true"]:active { transform: translateY(-3px) scale(0.95); }
+}
+
+/* below the cover: the hero's card and the quests, side by side */
+.lp-main { display: grid; grid-template-columns: minmax(0, 1.04fr) minmax(0, 1fr); gap: 14px; padding: 0 clamp(14px, 3.4cqi, 22px) clamp(14px, 3.4cqi, 22px); }
+.lp-heroes { display: grid; }                                  /* the four cards share one cell, so the card never changes size when you pick someone else */
+.lp-hero { grid-area: 1 / 1; display: grid; grid-template-columns: minmax(0, 0.66fr) minmax(0, 1fr); align-items: stretch; overflow: hidden;
+  border: 1px solid rgba(98, 70, 30, 0.36); border-radius: 14px; box-shadow: inset 0 1px 0 rgba(255, 252, 244, 0.78), 0 1px 1px rgba(30, 20, 8, 0.3), 0 10px 18px -8px rgba(0, 0, 0, 0.5); }
+.lp-hero-art { position: relative; min-inline-size: 0; }
+.lp-hero-art img { position: absolute; inset: 0; inline-size: 100%; block-size: 100%; object-fit: cover; object-position: 50% 18%;
+  -webkit-mask-image: linear-gradient(90deg, #000 58%, transparent 100%); mask-image: linear-gradient(90deg, #000 58%, transparent 100%); }   /* the portrait's own paper melts into the card's */
+.lp-hero-body { display: grid; align-content: center; gap: 5px; min-inline-size: 0; padding: 16px 12px 16px 0; }
+.lp-hero-name { font: 500 clamp(1.25rem, 4.8cqi, 1.65rem)/1.1 var(--font-display); letter-spacing: -0.01em; color: var(--paper-ink); text-wrap: balance; }
+.lp-hero-class { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--paper-ink-dim); }
+.lp-cls { flex: none; inline-size: 16px; block-size: 16px; fill: currentColor; color: var(--paper-accent-ink); }
+.lp-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-block-start: 10px; }
+.lp-chips li { display: inline-flex; align-items: center; gap: 5px; padding: 5px 8px 5px 7px; border: 1px solid var(--paper-line-strong); border-radius: 999px; background: var(--bg-panel-inset); font: 500 10.5px/1.2 var(--font-body); letter-spacing: 0.08em; text-transform: uppercase; color: var(--paper-ink-dim); }
+.lp-chips b { font: 500 1.2rem/1 var(--font-display); letter-spacing: 0; text-transform: none; color: var(--paper-ink); }
+.lp-stat-ico { flex: none; inline-size: 15px; block-size: 15px; fill: var(--paper-accent-ink); }
+.lp-stat-cut { fill: rgba(251, 246, 233, 0.42); }
+/* picking another hero is a transition, not a keyframe, so it can be interrupted and retargeted when someone clicks through the party quickly */
+.lp-hero { transition: opacity 220ms ease-out; }
+.lp-hero.is-off { visibility: hidden; opacity: 0; pointer-events: none; transition: opacity 150ms ease-in, visibility 0s linear 150ms; }
+@media (prefers-reduced-motion: no-preference) {
+  .lp-hero { transition: opacity 240ms ease-out, transform 300ms var(--lp-ease); }
+  .lp-hero.is-off { transform: translateY(8px) scale(0.985); transition: opacity 150ms ease-in, transform 200ms ease-in, visibility 0s linear 200ms; }
+}
+
+/* the quests: dark glass over the card's base, the title, a rule that fills as quests are done, and the count */
+.lp-quests { min-inline-size: 0; padding: 16px 18px 12px; border: 1px solid rgba(237, 228, 207, 0.16); border-radius: 14px;
+  background: rgba(12, 16, 13, 0.5); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), 0 10px 18px -8px rgba(0, 0, 0, 0.5); }
+@supports (backdrop-filter: blur(1px)) { .lp-quests { background: rgba(12, 16, 13, 0.4); -webkit-backdrop-filter: blur(14px) saturate(1.2); backdrop-filter: blur(14px) saturate(1.2); } }
+.lp-quests-head { display: flex; align-items: center; gap: 12px; }
+.lp-quests-title { font: 500 1.4rem/1.1 var(--font-display); color: var(--oak-parchment-50); }
+.lp-count { font: 500 1.02rem/1 var(--font-display); font-variant-numeric: tabular-nums; color: var(--oak-parchment-200); }
+.lp-rule { position: relative; flex: 1; min-inline-size: 24px; block-size: 7px; }
+.lp-rule::before { content: ''; position: absolute; inset-block-start: 3px; inset-inline: 0; block-size: 1px; background: rgba(210, 181, 116, 0.28); }
+.lp-rule-fill { position: absolute; inset-block-start: 2px; inset-inline: 0; block-size: 3px; border-radius: 2px; background: var(--oak-brass-500); transform-origin: left center; transform: scaleX(var(--p, 0.333)); }   /* 0.333: the first state, one of three done, is carried by the markup */
+.lp-rule::after { content: ''; position: absolute; inset-block-start: 0; inset-inline-start: calc(50% - 3.5px); inline-size: 7px; block-size: 7px; background: var(--oak-brass-300); transform: rotate(45deg) scale(0.72); box-shadow: 0 0 0 3px rgba(20, 24, 19, 0.5); }
+.lp-quests.is-complete .lp-count { color: var(--oak-brass-300); }
+.lp-quests.is-complete .lp-rule-fill { background: var(--oak-brass-300); }
+.lp-steps { display: grid; gap: 2px; margin-block-start: 10px; }
+.lp-step { position: relative; display: flex; align-items: center; gap: 13px; min-block-size: 42px; margin-inline: -8px; padding-inline: 8px; border-radius: 10px; cursor: pointer; font: 400 1.06rem/1.25 var(--font-display); color: var(--oak-parchment-100); }
+.lp-step input { position: absolute; inline-size: 1px; block-size: 1px; opacity: 0; }
+.lp-ring { position: relative; flex: none; inline-size: 26px; block-size: 26px; border: 1.5px solid rgba(237, 228, 207, 0.55); border-radius: 50%; }
+.lp-ring::after { content: ''; position: absolute; inset-inline-start: 8px; inset-block-start: 3px; inline-size: 6px; block-size: 12px; border: solid #fbf6e9; border-width: 0 2px 2px 0; transform: rotate(45deg) scale(0); }
+.lp-step input:checked + .lp-ring { background: var(--oak-moss-500); border-color: var(--oak-moss-300); }
+.lp-step input:checked + .lp-ring::after { transform: rotate(45deg) scale(1); }
+.lp-step input:focus-visible + .lp-ring { outline: 2px solid var(--oak-brass-300); outline-offset: 3px; }
+.lp-step input:checked ~ .lp-step-text { color: rgba(237, 228, 207, 0.72); }
+@media (hover: hover) { .lp-step:hover { background: rgba(237, 228, 207, 0.07); } .lp-step:hover .lp-ring { border-color: var(--oak-brass-300); } .lp-step input:checked:hover + .lp-ring { border-color: var(--oak-moss-300); } }
+@media (prefers-reduced-motion: no-preference) {
+  .lp-step { transition: background-color 160ms ease; }
+  .lp-ring { transition: background-color 160ms ease, border-color 160ms ease, transform 160ms var(--lp-ease); }
+  .lp-step:active .lp-ring { transform: scale(0.92); }
+  .lp-ring::after { transition: transform 180ms var(--lp-ease); }
+  .lp-step-text { transition: color 200ms ease; }
+  .lp-rule-fill { transition: transform 260ms var(--lp-ease), background-color 200ms ease; }
+  .lp-count { transition: color 200ms ease; }
+}
+
+/* ---------- Narrow frames (the frame, not the window, is measured): the card and the quests stack ---------- */
+@container (max-width: 560px) {
+  .lp-main { grid-template-columns: 1fr; gap: 12px; }
+  .lp-hero { grid-template-columns: minmax(0, 0.5fr) minmax(0, 1fr); }
+  .lp-hero-body { padding-block: 14px; }
+  .lp-quests { padding: 14px 16px 10px; }
+  .lp-step { min-block-size: 44px; }                           /* a thumb-sized row */
+}

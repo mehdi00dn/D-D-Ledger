@@ -1,4 +1,4 @@
-"""Postgres data layer for Campaign Ledger.
+"""Postgres data layer for Oaken.
 
 A thin compatibility wrapper over psycopg 3 that lets the application keep its
 existing call style, so ~160 query call sites did not have to be rewritten:

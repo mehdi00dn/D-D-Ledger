@@ -1,20 +1,24 @@
-"""Backend-agnostic regression suite for Campaign Ledger.
+"""Backend-agnostic regression suite for Oaken.
 
 Run from the application directory:
-    LEDGER_TEST_BACKEND=sqlite   pytest tests     # legacy build (baseline)
-    LEDGER_TEST_BACKEND=postgres pytest tests     # migrated build
+    OAKEN_TEST_BACKEND=sqlite   pytest tests     # legacy build (baseline)
+    OAKEN_TEST_BACKEND=postgres pytest tests     # migrated build
 
 Everything goes through HTTP (Flask test client / real servers) so the same
 assertions hold on both backends.  DB helpers use the app's own get_db().
 """
 import io, os, re, sys, uuid, json, shutil, socket, subprocess, tempfile, time, atexit
+import pubid
 import pytest
 
 APP_DIR = os.getcwd()
 sys.path.insert(0, APP_DIR)
-BACKEND = os.environ.get('LEDGER_TEST_BACKEND', 'sqlite')
+BACKEND = os.environ.get('OAKEN_TEST_BACKEND', 'sqlite')
 SECRET = 'test-secret-key-not-for-production'
 os.environ['SECRET_KEY'] = SECRET
+# DL-184: every account would get the tutorial campaign on its first visit to the list; most tests count campaigns, so it is off here
+# (tests/test_tutorial_campaign.py switches it on for itself).
+os.environ['OAKEN_TUTORIAL_CAMPAIGN'] = '0'
 # The suite registers/logs in hundreds of times from one address; production limits would trip.
 # (tests/test_login_throttle.py lowers them explicitly to prove they work.)
 os.environ.update(REGISTER_LIMIT_IP='1000000', LOGIN_LIMIT_PAIR='1000000', LOGIN_LIMIT_USER='1000000', LOGIN_LIMIT_IP='1000000',
@@ -22,13 +26,13 @@ os.environ.update(REGISTER_LIMIT_IP='1000000', LOGIN_LIMIT_PAIR='1000000', LOGIN
                   WRITE_LIMIT_USER='1000000', DICE_LIMIT_USER='1000000', CAMPAIGN_CREATE_LIMIT='1000000')
 os.environ.pop('VERCEL', None)
 
-_TMP = tempfile.mkdtemp(prefix='ledger-tests-')
+_TMP = tempfile.mkdtemp(prefix='oaken-tests-')
 atexit.register(lambda: shutil.rmtree(_TMP, ignore_errors=True))
 
 PG_ADMIN = os.environ.get('TEST_PG_ADMIN', 'host=/tmp port=5433 user=postgres dbname=postgres')
-STORAGE = os.environ.get('LEDGER_TEST_STORAGE', 'supabase')     # 'supabase' (fake server) | 'local'
+STORAGE = os.environ.get('OAKEN_TEST_STORAGE', 'supabase')     # 'supabase' (fake server) | 'local'
 PG_APP = os.environ.get('TEST_PG_APP', PG_ADMIN)   # how the APP connects (set to a pooler DSN to test through it)
-PG_DBNAME = f'ledger_test_{os.getpid()}'
+PG_DBNAME = f'oaken_test_{os.getpid()}'
 
 
 def _pg_url(dbname):
@@ -82,7 +86,7 @@ def appmod():
 from flask.testing import FlaskClient
 import requests as _requests
 
-SESSION_COOKIE = 'ledger_session'
+SESSION_COOKIE = 'oaken_session'
 
 
 class CsrfClient(FlaskClient):
@@ -185,7 +189,7 @@ class User:
         name = name or f'Camp {uuid.uuid4().hex[:6]}'
         r = self.post('/campaigns/new', data={'name': name, 'description': 'd'})
         assert r.status_code == 302, r.status_code
-        return int(re.search(r'/campaigns/(\d+)/', r.headers['Location']).group(1))
+        return pubid.pk('campaigns', r.headers['Location'])
 
     def new_character(self, cid, name=None, **fields):
         name = name or f'Char {uuid.uuid4().hex[:6]}'
@@ -219,7 +223,7 @@ class User:
                       data={'name': name, 'blank_width': str(w), 'blank_height': str(h)},
                       content_type='multipart/form-data')
         assert r.status_code == 302, r.status_code
-        return int(re.search(r'/maps/(\d+)', r.headers['Location']).group(1))
+        return pubid.pk('maps', r.headers['Location'])
 
     def add_to_battle(self, cid, char_id):
         r = self.json(f'/campaigns/{cid}/api/battle/add', {'character_id': char_id})
@@ -250,7 +254,7 @@ def _free_port():
 class Server:
     def __init__(self, env_extra):
         self.port = _free_port()
-        env = dict(os.environ, EMAIL_CONFIRM_REQUIRED='0', **env_extra, PYTHONPATH=APP_DIR, LEDGER_PORT=str(self.port))     # DL-165: test servers do not lock new accounts
+        env = dict(os.environ, EMAIL_CONFIRM_REQUIRED='0', **env_extra, PYTHONPATH=APP_DIR, OAKEN_PORT=str(self.port))     # DL-165: test servers do not lock new accounts
         # Output goes to a file, NOT a pipe: nothing ever reads a pipe, and once ~64 KB of request-log
         # lines pile up in it the server blocks on its next write and every later request hangs.
         self.log_path = os.path.join(_TMP, f'server-{self.port}.log')

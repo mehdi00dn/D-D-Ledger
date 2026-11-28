@@ -1,12 +1,12 @@
-{% extends "base.html" %}
+{% extends "site_base.html" %}
 {% from "_icons.html" import icon, class_icon %}
 {% set active_page = 'library' %}
-{% block title %}Your characters — Campaign Ledger{% endblock %}
+{% block title %}Your characters — Oaken{% endblock %}
 
 {% block content %}
 <div class="page-header">
   <div>
-    <h1 class="page-title">Your characters</h1>
+    <h1 class="page-title">Your Characters</h1>
     <p class="page-sub">{{ items|length }} of {{ limit }}. Yours alone, kept outside any campaign. Add a copy to a table, or show up to {{ showcase_limit }} on your profile.</p>
   </div>
   <div class="page-actions toolbar">
@@ -32,14 +32,14 @@
 {% if items %}
 <div class="card-grid lib-grid">
   {% for c in items %}
-  <div class="dossier-card lib-card" data-id="{{ c.id }}">
+  <div class="dossier-card lib-card o-paper o-lift" data-id="{{ c.id }}">
     <span class="dossier-tag">{{ 'On profile' if c.featured else 'Yours' }}</span>
     <div class="dossier-head">
       <div class="avatar-frame">
         {% if c.avatar_path %}
-          <img src="{{ url_for('uploaded_file', filename=c.avatar_path) }}" alt="{{ c.name }} avatar">
+          <img src="{{ url_for('uploaded_file', filename=c.avatar_path) }}" alt="{{ c.name }} avatar" loading="lazy" decoding="async">
         {% elif c.class_key and c.class_key in class_labels %}
-          <span class="avatar-class" title="{{ class_labels[c.class_key] }}" role="img" aria-label="{{ class_labels[c.class_key] }}"><svg aria-hidden="true"><use href="/static/icons/classes.svg#{{ c.class_key }}"></use></svg></span>
+          <span class="avatar-class" data-class="{{ c.class_key }}" title="{{ class_labels[c.class_key] }}" role="img" aria-label="{{ class_labels[c.class_key] }}"><svg aria-hidden="true"><use href="/static/icons/classes.svg#{{ c.class_key }}"></use></svg></span>
         {% else %}
           <span class="avatar-initial" aria-hidden="true">{{ (c.name or '?')[:1]|upper }}</span>
         {% endif %}
@@ -110,7 +110,7 @@
   {% endfor %}
 </div>
 {% else %}
-<div class="empty-state">
+<div class="empty-state o-paper">
   {{ icon('archive') }}
   <h2>No characters kept here yet</h2>
   <p>Build one here, import a file, or open a character from a campaign and choose Save to your characters.</p>

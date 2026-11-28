@@ -33,14 +33,14 @@ RANK = {PUBLIC: 0, LOGIN: 1, MEMBER: 2, DM: 3, OWNER: 4}
 
 POLICY = {
     # --- outside any campaign ---
-    'healthz': PUBLIC, 'robots_txt': PUBLIC, 'security_txt': PUBLIC, 'csp_report': PUBLIC, 'register': PUBLIC, 'forgot_password': PUBLIC, 'reset_password': PUBLIC, 'login': PUBLIC, 'static': PUBLIC, 'google_start': PUBLIC, 'privacy': PUBLIC, 'terms': PUBLIC, 'about': PUBLIC, 'contact': PUBLIC, 'verify_email': PUBLIC, 'cookies': PUBLIC, 'google_callback': PUBLIC,
-    'logout': LOGIN, 'index': LOGIN, 'campaigns_list': LOGIN, 'campaign_new': LOGIN,
+    'healthz': PUBLIC, 'robots_txt': PUBLIC, 'security_txt': PUBLIC, 'csp_report': PUBLIC, 'register': PUBLIC, 'forgot_password': PUBLIC, 'reset_password': PUBLIC, 'login': PUBLIC, 'static': PUBLIC, 'google_start': PUBLIC, 'privacy': PUBLIC, 'terms': PUBLIC, 'about': PUBLIC, 'contact': PUBLIC, 'verify_email': PUBLIC, 'cookies': PUBLIC, 'index': PUBLIC, 'google_callback': PUBLIC,
+    'logout': LOGIN, 'reference_global': LOGIN, 'reference_global_search': LOGIN, 'reference_global_detail': LOGIN, 'campaigns_list': LOGIN, 'campaign_new': LOGIN, 'campaign_import': LOGIN,
     'join_via_link': LOGIN, 'join_via_link_accept': LOGIN,
-    'notifications_page': LOGIN, 'account': LOGIN, 'welcome': LOGIN, 'account_password': LOGIN, 'account_username': LOGIN, 'account_logout_all': LOGIN, 'account_delete': LOGIN, 'account_export': LOGIN, 'account_email': LOGIN, 'account_email_resend': LOGIN, 'account_email_remove': LOGIN, 'confirm_email': LOGIN, 'confirm_email_resend': LOGIN, 'profile_view': LOGIN, 'library_list': LOGIN, 'library_new': LOGIN, 'library_detail': LOGIN, 'library_edit': LOGIN, 'library_delete': LOGIN, 'library_sheet_delete': LOGIN, 'library_add_to_campaign': LOGIN, 'library_save': LOGIN, 'library_export': LOGIN, 'library_export_one': LOGIN, 'library_import': LOGIN, 'library_add_many': LOGIN, 'library_showcase': LOGIN, 'notification_read': LOGIN, 'notifications_read_all': LOGIN,
+    'notifications_page': LOGIN, 'account': LOGIN, 'welcome': LOGIN, 'account_password': LOGIN, 'account_username': LOGIN, 'account_logout_all': LOGIN, 'account_delete': LOGIN, 'account_export': LOGIN, 'account_email': LOGIN, 'account_email_resend': LOGIN, 'account_email_remove': LOGIN, 'confirm_email': LOGIN, 'confirm_email_resend': LOGIN, 'profile_view': LOGIN, 'friends_page': LOGIN, 'friend_add': LOGIN, 'friend_action': LOGIN, 'library_list': LOGIN, 'library_new': LOGIN, 'library_detail': LOGIN, 'library_edit': LOGIN, 'library_delete': LOGIN, 'library_sheet_delete': LOGIN, 'library_add_to_campaign': LOGIN, 'library_save': LOGIN, 'library_export': LOGIN, 'library_export_one': LOGIN, 'library_import': LOGIN, 'library_add_many': LOGIN, 'library_showcase': LOGIN, 'notification_read': LOGIN, 'notifications_read_all': LOGIN,
     'invitation_accept': LOGIN, 'invitation_decline': LOGIN,
     'uploaded_file': LOGIN, 'upload_sign': LOGIN, 'local_direct_upload': LOGIN, 'local_download': LOGIN,
     # --- campaign management ---
-    'preview_as_player': DM, 'campaign_npc_visibility': DM, 'campaign_member_characters': DM, 'campaign_session_set': DM, 'quest_add': DM, 'quest_change': DM, 'treasury_view': MEMBER, 'treasury_panels': MEMBER, 'treasury_add': MEMBER, 'treasury_split': MEMBER, 'treasury_delete': DM, 'campaign_session_rsvp': MEMBER, 'campaign_session_ics': MEMBER,
+    'preview_as_player': DM, 'campaign_npc_visibility': DM, 'campaign_member_characters': DM, 'campaign_session_set': DM, 'quest_add': DM, 'quest_change': DM, 'journal_list': MEMBER, 'journal_view': MEMBER, 'journal_new': DM, 'journal_edit': DM, 'journal_delete': DM, 'treasury_view': MEMBER, 'treasury_panels': MEMBER, 'treasury_add': MEMBER, 'treasury_split': MEMBER, 'treasury_delete': DM, 'campaign_session_rsvp': MEMBER, 'campaign_session_ics': MEMBER,
     'campaign_edit': {'GET': MEMBER, 'POST': OWNER},
     'campaign_member_add': OWNER, 'campaign_member_uninvite': OWNER,
     'invite_link_create': OWNER, 'invite_link_revoke': OWNER, 'api_member_search': OWNER,
@@ -52,9 +52,9 @@ POLICY = {
     'character_edit': DM, 'character_delete': OWNER, 'sheet_delete': OWNER,       # delete: owner or the member who made it
     'factions_list': MEMBER, 'faction_detail': MEMBER,
     'faction_new': DM, 'faction_edit': DM, 'faction_delete': OWNER, 'faction_member_remove': DM,
-    'api_characters': MEMBER, 'api_character_detail': MEMBER,
+    'api_characters': MEMBER, 'api_character_detail': MEMBER, 'api_character_slots': MEMBER,      # slots: the DM or the character's player, checked inside
     'campaign_home': MEMBER, 'dice_view': MEMBER, 'activity_view': MEMBER, 'dice_roll': MEMBER, 'dice_rolls': MEMBER, 'reference_view': MEMBER, 'reference_search': MEMBER, 'reference_detail': MEMBER, 'export_data': MEMBER, 'character_export': MEMBER, 'faction_export': MEMBER,
-    'import_data': MEMBER,
+    'import_data': MEMBER, 'campaign_export': DM,
     # --- battle ---  (api_battle_death_save: DM, or the Player who made the character; the matrix's Player did not -> refused; tests/test_death_saves.py covers the maker)
     'battle_view': MEMBER, 'api_battle_list': MEMBER, 'api_battle_log': MEMBER,
     **{e: DM for e in (
@@ -64,8 +64,8 @@ POLICY = {
         'api_battle_restart_turns', 'api_battle_remove', 'api_battle_clear')},
     # --- maps (Players may edit a map the DM has not locked; see test_locked_map_* below) ---
     'maps_list': MEMBER, 'map_new': MEMBER, 'map_editor': MEMBER, 'map_delete': OWNER,
-    'api_map_state': MEMBER, 'map_image': MEMBER, 'api_map_fog_get': MEMBER, 'api_map_fog_set': DM,
-    'api_map_settings': MEMBER, 'api_map_drawings_list': MEMBER, 'api_map_drawings_add': MEMBER,
+    'api_map_state': MEMBER, 'api_map_measure': MEMBER, 'api_map_measure_clear': MEMBER, 'map_image': MEMBER, 'api_map_fog_get': MEMBER, 'api_map_fog_set': DM,
+    'api_map_settings': MEMBER, 'api_map_drawings_list': MEMBER, 'api_map_drawings_add': MEMBER, 'api_map_image_add': MEMBER,
     'api_map_drawing_update': MEMBER, 'api_map_drawing_delete': MEMBER, 'api_map_drawings_clear': MEMBER,
     'api_map_pins_list': MEMBER, 'api_map_sync': MEMBER, 'api_map_pins_add': MEMBER,
     'api_map_pin_update': MEMBER, 'api_map_pin_delete': MEMBER,
@@ -182,7 +182,7 @@ def test_anonymous_is_sent_to_login_everywhere_except_public_routes(appmod, make
     for rule, method in all_routes(appmod):
         if level(rule.endpoint, method) == PUBLIC:
             continue
-        url = t.url(rule) if 'campaign_id' in rule.arguments else re.sub(r'<(?:int:)?\w+>', '1', re.sub(r'<path:\w+>', 'x.png', rule.rule))
+        url = t.url(rule) if 'campaign_id' in rule.arguments else re.sub(r'<(?:\w+:)?\w+>', '1', re.sub(r'<path:\w+>', 'x.png', rule.rule))
         resp = send(t.anon, method, url)
         assert is_login_redirect(resp), f'anonymous {method} {url} -> {resp.status_code} {resp.headers.get("Location")}'
         checked += 1

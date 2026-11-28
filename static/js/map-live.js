@@ -15,6 +15,7 @@
   'use strict';
 
   var SEND_EVERY = 100;      // ms between messages while dragging (about 10 a second -- kind to the Realtime rate limits)
+  var EVERY = { ptr: 50 };   // the right-click pointer goes out 20 times a second, so other people see it move the way it really moved
   var EASE_MS = 70;          // how quickly the receiving side catches up with the newest position
   var STALE_MS = 2500;       // a live item that goes quiet this long snaps back to its saved state
   var MAX_ITEMS = 200, MAX_POINTS = 200, MAX_PEN = 4000;
@@ -35,7 +36,7 @@
     function throttled(key, build) {
       pending[key] = build;
       if (timers[key]) return;
-      var wait = Math.max(0, SEND_EVERY - (now() - (lastSent[key] || 0)));
+      var wait = Math.max(0, (EVERY[key] || SEND_EVERY) - (now() - (lastSent[key] || 0)));
       timers[key] = setTimeout(function () {
         timers[key] = 0;
         var b = pending[key]; pending[key] = null;
@@ -112,6 +113,23 @@
       drafting = false; penSent = 0;
       flush('draft'); delete lastSent.draft;
       raw({ k: 'draft', end: 1 });
+    }
+
+    // ---- the ruler or a template being shown to the table (end: 0 moving, 1 let go, 2 taken away)
+    function measure(m) {
+      if (!rt) return;
+      if (m.end === 2) { flush('measure'); raw({ k: 'measure', w: host.userId, end: 2 }); return; }
+      var build = function () { return { k: 'measure', w: host.userId, kind: m.kind, a: { x: Math.round(m.a.x), y: Math.round(m.a.y) }, b: { x: Math.round(m.b.x), y: Math.round(m.b.y) }, end: m.end ? 1 : 0 }; };
+      if (m.end) { flush('measure'); raw(build()); return; }
+      throttled('measure', build);
+    }
+
+    // ---- the right-click pointer dot (map-pointer.js): {x, y} while the button is held, {end: 1} when it is let go
+    function pointer(m) {
+      if (!rt) return;
+      if (m.end) { flush('ptr'); delete lastSent.ptr; raw({ k: 'ptr', end: 1 }); return; }
+      var x = Math.round(m.x), y = Math.round(m.y);
+      throttled('ptr', function () { return { k: 'ptr', x: x, y: y, w: host.userId }; });
     }
 
     // ---- fog being painted or erased
@@ -290,6 +308,14 @@
           if (msg.end) host.fog.liveEnd(from);
           else host.fog.liveStroke(from, msg.mode === 'erase' ? 'erase' : 'paint', num(msg.brush, 100), Array.isArray(msg.pts) ? msg.pts.slice(0, MAX_POINTS) : []);
           break;
+        case 'ptr':
+          if (host.pointer) host.pointer(from, { x: num(msg.x, NaN), y: num(msg.y, NaN), end: msg.end ? 1 : 0, w: String(msg.w || '').slice(0, 40) });
+          break;
+        case 'measure':
+          if (host.measure) host.measure({ w: String(msg.w || ''), kind: String(msg.kind || ''), end: num(msg.end, 0),
+            a: msg.a && typeof msg.a === 'object' ? { x: num(msg.a.x, 0), y: num(msg.a.y, 0) } : null,
+            b: msg.b && typeof msg.b === 'object' ? { x: num(msg.b.x, 0), y: num(msg.b.y, 0) } : null });
+          break;
         default: break;
       }
     }
@@ -300,6 +326,8 @@
       dragMoved: dragMoved, dragEnded: dragEnded,
       draftMoved: draftMoved, draftEnded: draftEnded,
       fogMoved: fogMoved, fogEnded: fogEnded,
+      measure: measure,
+      pointer: pointer,
       // Used by the canvas redraw: the shape as it should look right now (mid-glide), plus other people's unfinished drawings.
       shapeView: function (d) {
         var e = liveShapes.size ? liveShapes.get(d.id) : null;

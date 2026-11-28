@@ -8,7 +8,7 @@
  *   - backs off exponentially after failures (server hiccup, offline) instead of hammering
  *
  * Usage:
- *   const poll = LedgerPoll.every(async () => {
+ *   const poll = OakenPoll.every(async () => {
  *     ...fetch + apply...
  *     return true;      // something changed          -> next poll at base speed
  *     return false;     // nothing changed             -> gradually slower
@@ -21,8 +21,8 @@
   'use strict';
 
   function tuning(opts) {
-    // Test hook: a page may define window.__LEDGER_POLL__ = {base, max, step} to speed things up.
-    var t = window.__LEDGER_POLL__ || {};
+    // Test hook: a page may define window.__OAKEN_POLL__ = {base, max, step} to speed things up.
+    var t = window.__OAKEN_POLL__ || {};
     return {
       base: t.base || opts.base || 3000,
       max: t.max || opts.max || 12000,
@@ -106,5 +106,5 @@
     };
   }
 
-  window.LedgerPoll = { every: every };
+  window.OakenPoll = { every: every };
 })();

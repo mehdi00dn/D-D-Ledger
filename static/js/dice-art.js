@@ -1,6 +1,6 @@
 /* The dice drawings, shared by the corner widget and the Dice page: one outlined silhouette per die (a few facets,
- * the number inside).  LedgerDiceArt.svg(sides, {label}) returns an <svg> that takes its colour from `currentColor`;
- * a d6 can also carry pips (LedgerDiceArt.showPips) for a result.
+ * the number inside).  OakenDiceArt.svg(sides, {label}) returns an <svg> that takes its colour from `currentColor`;
+ * a d6 can also carry pips (OakenDiceArt.showPips) for a result.
  */
 (function () {
   'use strict';
@@ -57,5 +57,5 @@
     svgEl.appendChild(g);
   }
 
-  window.LedgerDiceArt = { svg: svg, setNumber: setNumber, showPips: showPips, SIDES: [4, 6, 8, 10, 12, 20, 100] };
+  window.OakenDiceArt = { svg: svg, setNumber: setNumber, showPips: showPips, SIDES: [4, 6, 8, 10, 12, 20, 100] };
 })();

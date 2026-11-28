@@ -1,5 +1,6 @@
 """Real-browser checks (Chromium via Playwright) against a live server process."""
 import json, os, re, uuid, time
+import pubid
 import pytest
 import requests
 if os.path.isdir('/opt/pw-browsers'):                       # pre-installed browsers (some sandboxes); CI installs its own
@@ -30,7 +31,7 @@ class Api:
     def post(self, path, **kw): return self.s.post(self.base + path, allow_redirects=False, **kw)
     def get(self, path, **kw): return self.s.get(self.base + path, **kw)
     def campaign(self, name='E2E'):
-        r = self.post('/campaigns/new', data={'name': name}); return int(re.search(r'/campaigns/(\d+)/', r.headers['Location']).group(1))
+        r = self.post('/campaigns/new', data={'name': name}); return pubid.pk('campaigns', r.headers['Location'])
     def character(self, cid, name, **f):
         self.post(f'/campaigns/{cid}/characters/new', data={'name': name, 'max_hp': '30', **{k: str(v) for k, v in f.items()}}, **({'files': f.pop('files')} if 'files' in f else {}))
         return next(c['id'] for c in self.get(f'/campaigns/{cid}/api/characters').json() if c['name'] == name)
@@ -57,6 +58,11 @@ def wait_text(page, needles, timeout=12.0):
             return
         page.wait_for_timeout(300)
     raise AssertionError(f'{needles} never appeared; page said: {text[:300]!r}')
+
+
+def _settled(page):
+    """Wait for the finite animations (the page-enter slide) to finish, so a position is measured where it will stay."""
+    page.evaluate("() => Promise.all(document.getAnimations().filter(a => a.effect && a.effect.getComputedTiming().iterations !== Infinity).map(a => a.finished.catch(() => null)))")
 
 
 def _collect(page):
@@ -88,7 +94,7 @@ def test_ui_delete_flows_never_land_on_a_404(pw, shared_server):
         landed = page.request.get(page.url)
         assert landed.status == 200, f'{path}: after delete landed on {page.url} -> {landed.status}'
     page.goto(base + '/campaigns')
-    resp = _confirm_delete(page, f'form[action$="/campaigns/{cid}/delete"]')
+    resp = _confirm_delete(page, f'form[action$="/campaigns/{pubid.short("campaigns", cid)}/delete"]')
     assert page.request.get(page.url).status == 200 and page.url.rstrip('/').endswith('/campaigns')
     assert not [b for b in bad if b[0] >= 400 and '/delete' not in b[1]], bad
     ctx.close()
@@ -170,7 +176,7 @@ def test_invite_autocomplete_and_inline_feedback(pw, shared_server):
 def test_drawing_persists_after_reload(pw, shared_server):
     base = shared_server.url; api = Api(base); cid = api.campaign('Map')
     r = api.post(f'/campaigns/{cid}/maps/new', data={'name': 'Draw', 'blank_width': '800', 'blank_height': '600'})
-    mid = int(re.search(r'/maps/(\d+)', r.headers['Location']).group(1))
+    mid = pubid.pk('maps', r.headers['Location'])
     ctx = api.context(pw, base); page = ctx.new_page(); bad, errs = _collect(page)
     page.goto(base + f'/campaigns/{cid}/maps/{mid}'); page.wait_for_load_state('networkidle'); page.wait_for_timeout(800)
     if page.locator('#setup-confirm-btn').is_visible():
@@ -194,7 +200,7 @@ def test_drawing_persists_after_reload(pw, shared_server):
 def test_fog_flyout_paints_fog_over_tokens_and_animates(pw, shared_server):
     base = shared_server.url; api = Api(base); cid = api.campaign('Fog')
     r = api.post(f'/campaigns/{cid}/maps/new', data={'name': 'Mist', 'blank_width': '800', 'blank_height': '600'})
-    mid = int(re.search(r'/maps/(\d+)', r.headers['Location']).group(1))
+    mid = pubid.pk('maps', r.headers['Location'])
     ctx = api.context(pw, base); page = ctx.new_page(); bad, errs = _collect(page)
     page.goto(base + f'/campaigns/{cid}/maps/{mid}'); page.wait_for_load_state('networkidle'); page.wait_for_timeout(800)
     if page.locator('#setup-confirm-btn').is_visible():
@@ -229,7 +235,7 @@ def test_lightbox_arrows_sit_beside_the_image(pw, shared_server):
     char_id = next(c['id'] for c in api.get(f'/campaigns/{cid}/api/characters').json() if c['name'] == 'Gallery')
     ctx = api.context(pw, base); page = ctx.new_page(); bad, errs = _collect(page)
     page.goto(base + f'/campaigns/{cid}/characters/{char_id}'); page.wait_for_load_state('networkidle')
-    page.locator('.sheet-thumbs img[data-sheet-src]').nth(1).click()           # the thumbnail picks the sheet in the viewer ...
+    page.locator('[data-sheet-next]').click()                                  # the arrow steps to the next image in the viewer ...
     page.click('#sheet-viewer-img')                                            # ... and the viewer opens the lightbox on it
     page.wait_for_selector('#image-lightbox:not([hidden])'); page.wait_for_timeout(400)
     img, prev, nxt = (page.locator(s).bounding_box() for s in ('#lightbox-img', '#lightbox-prev-btn', '#lightbox-next-btn'))
@@ -400,7 +406,7 @@ def test_class_dropdown_hover_guide_select_clear_and_icons(pw, shared_server):
     assert page.input_value('#class_key') == '' and page.inner_text('#class-trigger-text') == 'No class'
     page.mouse.move(5, 5)                                                      # a resting pointer over the menu would hover-select over the keys
     page.focus('#class-trigger'); page.keyboard.press('ArrowDown')            # keyboard: open, move, choose
-    page.keyboard.press('ArrowDown'); page.keyboard.press('ArrowDown'); page.keyboard.press('ArrowDown'); page.keyboard.press('Enter')
+    page.keyboard.press('ArrowDown'); page.keyboard.press('ArrowDown'); page.keyboard.press('Enter')       # the menu has two columns: down moves a row
     assert page.input_value('#class_key') == 'bard'
     page.click('#class-trigger')
     page.evaluate("() => document.documentElement.setAttribute('data-theme', 'light')")
@@ -454,15 +460,15 @@ def test_invitation_flow_in_the_browser(pw, shared_server):
     dpage.screenshot(path='/tmp/invite-owner.png')
 
     pctx = pl.context(pw, base); ppage = pctx.new_page(); pbad, perrs = _collect(ppage)
-    ppage.goto(base + '/campaigns'); ppage.wait_for_selector('.nav-badge')
-    assert ppage.inner_text('.nav-badge') == '1'
-    assert 'Campaigns' in ppage.inner_text('.sidebar-nav') and ppage.locator('.foot-bell:not(.foot-privacy)').count() == 0     # outside a campaign: Campaigns + Notifications in the menu
-    ppage.click('.nav-notifications'); ppage.wait_for_selector('.notification-card.is-unread'); ppage.wait_for_timeout(700)
+    ppage.goto(base + '/campaigns'); ppage.wait_for_selector('.pub-badge')
+    assert ppage.inner_text('.pub-badge') == '1'
+    assert ppage.locator('.sidebar').count() == 0 and 'Campaigns' in ppage.inner_text('.pub-links') and ppage.locator('.pub-bell .pub-badge').inner_text() == '1'       # outside a campaign: the site header (Campaigns, Notifications), no sidebar
+    ppage.click('.pub-bell'); ppage.wait_for_selector('.notification-card.is-unread'); ppage.wait_for_timeout(700)
     assert 'invited you to Invites' in ppage.inner_text('.notification-card')
     ppage.screenshot(path='/tmp/invite-player.png')
     ppage.evaluate("() => document.documentElement.setAttribute('data-theme', 'light')")
     ppage.wait_for_timeout(400); ppage.screenshot(path='/tmp/invite-player-light.png')
-    ppage.click('.notification-card button:has-text("Accept")'); ppage.wait_for_url(f'**/campaigns/{cid}/**')
+    ppage.click('.notification-card button:has-text("Accept")'); ppage.wait_for_url(f'**/campaigns/{pubid.short("campaigns", cid)}/**')
     assert ppage.locator('.nav-badge').count() == 0
     # inside a campaign the bell is an icon-only button beside the theme switch, not a menu entry
     assert ppage.locator('.sidebar-nav .nav-notifications').count() == 0
@@ -580,6 +586,7 @@ def test_custom_conditions_are_typed_in_place_and_capped_at_three(pw, shared_ser
     dpage.click('#close-conditions-modal')
     assert sorted(dpage.locator('.battle-row .cond-chip.cond-custom').all_text_contents()) == ['<b onclick=alert(1)>x', 'On fire']
     ppage.wait_for_selector('.battle-row .cond-chip.cond-custom', timeout=15000)           # the party sees it on a PC row
+    ppage.wait_for_function("() => document.querySelectorAll('.battle-row .cond-chip.cond-custom').length === 2", timeout=15000)   # the live update can lag one beat behind the first chip
     assert ppage.locator('.battle-row .cond-chip.cond-custom').count() == 2
     assert dpage.locator('.battle-row .cond-chip.cond-custom svg').count() == 0 and dpage.locator('.battle-row .cond-chip.cond-custom b').count() == 0 and dialogs == []   # markup stays text
     assert not derrs
@@ -598,6 +605,7 @@ def test_condition_chip_x_removes_it_on_hover(pw, shared_server):
     chip = dpage.locator('.cond-chip.cond-prone')
     x = chip.locator('.cond-x')
     opacity = lambda: float(x.evaluate("(el) => getComputedStyle(el).opacity"))
+    _settled(dpage)
     before = chip.bounding_box(); row_before = dpage.locator('.cond-row').bounding_box()
     assert opacity() == 0                                                            # invisible until hover
     chip.hover(); dpage.wait_for_timeout(400)
@@ -625,7 +633,7 @@ def test_dm_places_characters_on_a_map_without_a_battle(pw, shared_server):
     dm.add_member(cid, player)
     dm.character(cid, 'Aria'); dm.character(cid, 'Goblin')
     r = dm.post(f'/campaigns/{cid}/maps/new', data={'name': 'Cave', 'blank_width': '800', 'blank_height': '600'})
-    mid = int(re.search(r'/maps/(\d+)', r.headers['Location']).group(1))
+    mid = pubid.pk('maps', r.headers['Location'])
     dctx = dm.context(pw, base); page = dctx.new_page(); bad, errs = _collect(page)
     pctx = player.context(pw, base); ppage = pctx.new_page()
     page.goto(base + f'/campaigns/{cid}/maps/{mid}'); page.wait_for_load_state('networkidle'); page.wait_for_timeout(800)
@@ -669,7 +677,7 @@ def test_dm_places_characters_on_a_map_without_a_battle(pw, shared_server):
 
 def _open_map(pw, base, api, cid, name='Arena'):
     r = api.post(f'/campaigns/{cid}/maps/new', data={'name': name, 'blank_width': '1000', 'blank_height': '700'})
-    mid = int(re.search(r'/maps/(\d+)', r.headers['Location']).group(1))
+    mid = pubid.pk('maps', r.headers['Location'])
     ctx = api.context(pw, base); page = ctx.new_page(); bad, errs = _collect(page)
     page.goto(base + f'/campaigns/{cid}/maps/{mid}'); page.wait_for_load_state('networkidle'); page.wait_for_timeout(800)
     if page.locator('#setup-confirm-btn').is_visible():
@@ -770,7 +778,7 @@ def test_a_player_drags_only_the_token_assigned_to_them(pw, shared_server):
     base = shared_server.url; dm = Api(base); cid = dm.campaign('Owners')
     pl = Api(base); dm.add_member(cid, pl)
     r = dm.post(f'/campaigns/{cid}/maps/new', data={'name': 'Arena', 'blank_width': '1000', 'blank_height': '700'})
-    mid = int(re.search(r'/maps/(\d+)', r.headers['Location']).group(1))
+    mid = pubid.pk('maps', r.headers['Location'])
     api = f'/campaigns/{cid}/api/maps/{mid}'
     ids = {}
     for key, x in (('mine', 200), ('theirs', 600)):
@@ -841,7 +849,7 @@ def test_the_token_menu_stays_inside_the_map_and_the_owner_list_flips(pw, shared
     base = shared_server.url; dm = Api(base); cid = dm.campaign('Edges')
     for _ in range(3): dm.add_member(cid, Api(base))
     r = dm.post(f'/campaigns/{cid}/maps/new', data={'name': 'Arena', 'blank_width': '1000', 'blank_height': '700'})
-    mid = int(re.search(r'/maps/(\d+)', r.headers['Location']).group(1))
+    mid = pubid.pk('maps', r.headers['Location'])
     api = f'/campaigns/{cid}/api/maps/{mid}'
     ids = {k: dm.post(f'{api}/pins', json={'pin_type': 'prop', 'icon_key': 'skull', 'custom_name': k, 'x': x, 'y': y}).json()['id']
            for k, (x, y) in {'left': (25, 300), 'right': (975, 300), 'corner': (25, 25), 'top': (500, 40)}.items()}
@@ -1001,10 +1009,10 @@ def test_phone_and_tablet_pages_fit_the_screen_with_a_bottom_tab_bar(pw, shared_
     hero = dm.character(cid, 'Hero', dex_score=14); dm.character(cid, 'Ogre', is_npc='on')
     dm.post(f'/campaigns/{cid}/api/battle/add', json={'character_id': hero})
     r = dm.post(f'/campaigns/{cid}/maps/new', data={'name': 'Cave', 'blank_width': '800', 'blank_height': '600'})
-    mid = int(re.search(r'/maps/(\d+)', r.headers['Location']).group(1))
+    mid = pubid.pk('maps', r.headers['Location'])
     ctx = _touch_context(pw, dm, base, *size); page = ctx.new_page(); bad, errs = _collect(page)
     w, h = size
-    paths = ['/campaigns', f'/campaigns/{cid}/characters', f'/campaigns/{cid}/characters/{hero}', f'/campaigns/{cid}/characters/new',
+    paths = [f'/campaigns/{cid}/characters', f'/campaigns/{cid}/characters/{hero}', f'/campaigns/{cid}/characters/new',
              f'/campaigns/{cid}/factions', f'/campaigns/{cid}/battle', f'/campaigns/{cid}/maps', f'/campaigns/{cid}/maps/{mid}',
              f'/campaigns/{cid}/dice', f'/campaigns/{cid}/reference']
     for path in paths:
@@ -1014,6 +1022,11 @@ def test_phone_and_tablet_pages_fit_the_screen_with_a_bottom_tab_bar(pw, shared_
         bar = page.locator('.sidebar-nav').bounding_box()
         assert bar and abs(bar['y'] + bar['height'] - h) <= 1 and bar['width'] >= w - 2, (path, bar)   # the tab bar sits on the bottom edge
         assert page.locator('.sidebar').bounding_box()['height'] < 90, path                          # a slim top bar, not a tall block
+    for path in ('/campaigns', '/account', '/library', '/reference', '/notifications'):                # outside a campaign: the site, no sidebar, still no sideways scroll
+        page.goto(base + path); page.wait_for_load_state('load'); page.wait_for_timeout(400)
+        sideways = page.evaluate('() => document.documentElement.scrollWidth - document.documentElement.clientWidth')
+        assert sideways <= 1, f'{path} scrolls sideways by {sideways}px at {w}px'
+        assert page.locator('.sidebar').count() == 0 and page.locator('.pub-header').is_visible(), path
     # every tab of the campaign is on screen at once and one tap goes there
     page.goto(base + f'/campaigns/{cid}/characters')
     tabs = page.locator('.sidebar-nav .nav-tab:visible')                                       # four tabs and a More button; the rest live in the More sheet
@@ -1033,7 +1046,7 @@ def test_phone_and_tablet_pages_fit_the_screen_with_a_bottom_tab_bar(pw, shared_
 def test_phone_map_touch_drag_moves_a_token_and_pinch_zooms(pw, shared_server):
     base = shared_server.url; dm = Api(base); cid = dm.campaign('Touch')
     r = dm.post(f'/campaigns/{cid}/maps/new', data={'name': 'Arena', 'blank_width': '1000', 'blank_height': '700'})
-    mid = int(re.search(r'/maps/(\d+)', r.headers['Location']).group(1))
+    mid = pubid.pk('maps', r.headers['Location'])
     api = f'/campaigns/{cid}/api/maps/{mid}'
     pin = dm.post(f'{api}/pins', json={'pin_type': 'prop', 'icon_key': 'skull', 'custom_name': 'Trap', 'x': 200, 'y': 200}).json()['id']
     ctx = _touch_context(pw, dm, base); page = ctx.new_page(); bad, errs = _collect(page)
@@ -1075,7 +1088,7 @@ def test_phone_map_touch_drag_moves_a_token_and_pinch_zooms(pw, shared_server):
 
 def _map_with_pin(dm, cid, character_id):
     r = dm.post(f'/campaigns/{cid}/maps/new', data={'name': 'Cave', 'blank_width': '1000', 'blank_height': '700'})
-    mid = int(re.search(r'/maps/(\d+)', r.headers['Location']).group(1))
+    mid = pubid.pk('maps', r.headers['Location'])
     dm.post(f'/campaigns/{cid}/api/maps/{mid}/pins', json={'pin_type': 'character', 'character_id': character_id, 'x': 300, 'y': 300})
     return mid
 
@@ -1125,7 +1138,7 @@ def test_phone_characters_battle_and_map_pages_are_compact(pw, shared_server):
     mid = _map_with_pin(dm, cid, ids[0])
     ctx = _touch_context(pw, dm, base, 390, 844); page = ctx.new_page(); bad, errs = _collect(page)
     # characters: one row of small buttons, a search that is a button until tapped
-    page.goto(base + f'/campaigns/{cid}/characters'); page.wait_for_load_state('load')
+    page.goto(base + f'/campaigns/{cid}/characters'); page.wait_for_load_state('load'); _settled(page)
     ys = {round(page.locator(s).first.bounding_box()['y']) for s in ('.page-actions details.menu summary', '.page-actions .btn-primary')}
     assert max(ys) - min(ys) <= 3, ys                                                                  # the primary button and the more menu share one row
     assert page.locator('#character-search').is_hidden() and page.locator('.search-bar').bounding_box()['width'] <= 44
@@ -1244,7 +1257,7 @@ def _swipe(page, x, y, dx, dy, steps=8):
 def test_phone_map_scrolls_the_page_from_empty_map_but_not_from_a_token(pw, shared_server):
     base = shared_server.url; dm = Api(base); cid = dm.campaign('Scrolly')
     r = dm.post(f'/campaigns/{cid}/maps/new', data={'name': 'Arena', 'blank_width': '1000', 'blank_height': '1400'})
-    mid = int(re.search(r'/maps/(\d+)', r.headers['Location']).group(1))
+    mid = pubid.pk('maps', r.headers['Location'])
     pin = dm.post(f'/campaigns/{cid}/api/maps/{mid}/pins', json={'pin_type': 'prop', 'icon_key': 'skull', 'custom_name': 'Trap', 'x': 300, 'y': 300}).json()['id']
     ctx = _touch_context(pw, dm, base, 390, 700); page = ctx.new_page(); bad, errs = _collect(page)
     page.goto(base + f'/campaigns/{cid}/maps/{mid}'); page.wait_for_load_state('load'); page.wait_for_timeout(800)
@@ -1323,7 +1336,7 @@ def test_roll_initiative_button_fills_in_every_row_and_fits_the_phone_header(pw,
 def test_phone_shape_action_bubble_is_docked_bottom_centre_and_floats_on_desktop(pw, shared_server):
     base = shared_server.url; dm = Api(base); cid = dm.campaign('Bubble')
     r = dm.post(f'/campaigns/{cid}/maps/new', data={'name': 'Arena', 'blank_width': '1000', 'blank_height': '700'})
-    mid = int(re.search(r'/maps/(\d+)', r.headers['Location']).group(1))
+    mid = pubid.pk('maps', r.headers['Location'])
     dm.post(f'/campaigns/{cid}/api/maps/{mid}/drawings', json={'kind': 'rect', 'cx': 900, 'cy': 120, 'w': 160, 'h': 120, 'fill': True, 'data': {}})   # hard against the right edge
     ctx = _touch_context(pw, dm, base, 390, 800); page = ctx.new_page(); bad, errs = _collect(page)
     page.goto(base + f'/campaigns/{cid}/maps/{mid}'); page.wait_for_load_state('load'); page.wait_for_timeout(800)
@@ -1382,7 +1395,7 @@ def test_dm_hides_a_token_and_a_shape_from_players_in_the_browser(pw, shared_ser
     base = shared_server.url; dm = Api(base); cid = dm.campaign('Hidden')
     pl = Api(base); dm.add_member(cid, pl)
     r = dm.post(f'/campaigns/{cid}/maps/new', data={'name': 'Vault', 'blank_width': '1000', 'blank_height': '700'})
-    mid = int(re.search(r'/maps/(\d+)', r.headers['Location']).group(1))
+    mid = pubid.pk('maps', r.headers['Location'])
     api = f'/campaigns/{cid}/api/maps/{mid}'
     pin = dm.post(f'{api}/pins', json={'pin_type': 'prop', 'icon_key': 'skull', 'custom_name': 'Trap', 'x': 250, 'y': 250}).json()['id']
     shape = dm.post(f'{api}/drawings', json={'kind': 'rect', 'cx': 650, 'cy': 400, 'w': 200, 'h': 150, 'color': '#ff0000', 'fill': True, 'fill_opacity': 0.5, 'data': {}}).json()['id']
@@ -1435,7 +1448,7 @@ def test_phone_more_sheet_holds_the_extras_and_closes_every_way(pw, shared_serve
     assert page.locator('#more-sheet').is_hidden()
     page.click('#nav-more-btn'); page.wait_for_timeout(500)
     assert page.locator('#more-sheet').is_visible()
-    for text in ('Factions', 'Reference', 'View as player', 'Theme', 'Log out'):
+    for text in ('Factions', 'Compendium', 'View as player', 'Theme', 'Log out'):
         assert page.locator('#more-sheet').get_by_text(text).first.is_visible(), text
     box = page.locator('#more-sheet').bounding_box()
     assert box['y'] + box['height'] <= 844 + 1 and box['y'] > 150                  # a sheet, not a full page
@@ -1452,7 +1465,7 @@ def test_phone_more_sheet_holds_the_extras_and_closes_every_way(pw, shared_serve
     assert not [b for b in bad if b[0] >= 400], bad
     assert not errs, errs
     page.click('#nav-more-btn'); page.wait_for_timeout(500)
-    page.locator('#more-sheet').get_by_text('Reference').click(); page.wait_for_load_state('domcontentloaded')
+    page.locator('#more-sheet').get_by_text('Compendium').click(); page.wait_for_load_state('domcontentloaded')
     assert '/reference' in page.url
     ctx.close()
 
@@ -1462,7 +1475,7 @@ def test_map_bubble_scales_with_the_screen_and_rides_with_the_bars(pw, shared_se
     the bars slide away (like the full-screen button)."""
     base = shared_server.url; dm = Api(base); cid = dm.campaign('Scale')
     r = dm.post(f'/campaigns/{cid}/maps/new', data={'name': 'Hall', 'blank_width': '1000', 'blank_height': '700'})
-    mid = int(re.search(r'/maps/(\d+)', r.headers['Location']).group(1)); api = f'/campaigns/{cid}/api/maps/{mid}'
+    mid = pubid.pk('maps', r.headers['Location']); api = f'/campaigns/{cid}/api/maps/{mid}'
     pin = dm.post(f'{api}/pins', json={'pin_type': 'prop', 'icon_key': 'skull', 'x': 300, 'y': 300}).json()['id']
     shape = dm.post(f'{api}/drawings', json={'kind': 'rect', 'cx': 600, 'cy': 350, 'w': 200, 'h': 120, 'color': '#ff4040', 'fill': True, 'fill_opacity': 0.4, 'data': {}}).json()['id']
     k = {}
@@ -1542,14 +1555,15 @@ def test_reference_item_tables_render_as_real_tables_and_ability_modifiers_sit_c
         srv.stop(); api.shutdown()
 
 
-def test_the_three_typefaces_load_from_this_site(pw, shared_server):
+def test_the_two_typefaces_load_from_this_site(pw, shared_server):
     base = shared_server.url; dm = Api(base); cid = dm.campaign('Type')
     dm.character(cid, 'Hero')
     ctx = dm.context(pw, base); page = ctx.new_page(); bad, errs = _collect(page)
     hosts = set(); page.on('request', lambda r: hosts.add(r.url.split('/')[2]))
     page.goto(base + f'/campaigns/{cid}/characters'); page.wait_for_load_state('load'); page.wait_for_timeout(800)
     loaded = page.evaluate("async () => { await document.fonts.ready; return [...document.fonts].filter(f => f.status === 'loaded').map(f => f.family.replace(/\"/g, '')); }")
-    assert {'Inter', 'Fraunces', 'IBM Plex Mono'} <= set(loaded), loaded
+    assert {'Newsreader', 'Lato'} <= set(loaded), loaded
+    assert not {'Inter', 'Fraunces', 'IBM Plex Mono'} & set(loaded), loaded
     assert hosts == {base.split('/')[2]}, hosts                                                         # nothing but our own server
     assert not bad and not errs, (bad, errs)
     ctx.close()
@@ -1564,7 +1578,7 @@ def test_lightbox_turns_the_page_quickly_and_calms_down_for_reduced_motion(pw, s
         ctx = api.context(pw, base); page = ctx.new_page(); bad, errs = _collect(page)
         page.emulate_media(reduced_motion=reduced)
         page.goto(base + f'/campaigns/{cid}/characters/{char_id}'); page.wait_for_load_state('networkidle')
-        page.locator('.sheet-thumbs img[data-sheet-src]').nth(0).click(); page.click('#sheet-viewer-img')
+        page.click('#sheet-viewer-img')
         page.wait_for_selector('#image-lightbox:not([hidden])'); page.wait_for_timeout(500)
         assert page.evaluate("() => document.getElementById('lightbox-img').getAnimations().length") == 0     # opening is not a page turn
         before = page.locator('#lightbox-img').get_attribute('src')
@@ -1703,7 +1717,7 @@ def test_full_screen_choice_is_remembered_between_pages(pw, shared_server):
         page.evaluate("document.querySelector('.js-fullscreen').hidden = false; document.querySelector('.js-fullscreen').style.display = 'inline-flex'")
         btn = page.locator('.js-fullscreen').first
     btn.click(); page.wait_for_timeout(400)
-    assert page.evaluate("sessionStorage.getItem('ledger-fullscreen')") == '1'
+    assert page.evaluate("sessionStorage.getItem('oaken-fullscreen')") == '1'
     # a new page does not start in full screen (the browser does not allow that): a note appears and the first tap goes back in
     page.goto(base + f'/campaigns/{cid}/battle'); page.wait_for_load_state('load')
     playwright.expect(page.locator('.fs-resume')).to_be_visible()
@@ -1711,7 +1725,7 @@ def test_full_screen_choice_is_remembered_between_pages(pw, shared_server):
     assert page.evaluate("!!document.fullscreenElement"); assert page.locator('.fs-resume').count() == 0
     # leaving full screen yourself (Escape / the button) forgets it
     page.evaluate("document.exitFullscreen()"); page.wait_for_timeout(800)
-    assert page.evaluate("sessionStorage.getItem('ledger-fullscreen')") is None
+    assert page.evaluate("sessionStorage.getItem('oaken-fullscreen')") is None
     page.goto(base + f'/campaigns/{cid}/maps'); page.wait_for_load_state('load')
     assert page.locator('.fs-resume').count() == 0
     assert not errs, errs; ctx.close()
@@ -1792,6 +1806,7 @@ def test_dice_card_does_not_grow_when_a_die_is_picked(pw, shared_server):
         ctx = dm.context(pw, base); page = ctx.new_page(); page.set_viewport_size(size)
         page.goto(base + f'/campaigns/{cid}/dice'); page.wait_for_load_state('load'); page.wait_for_timeout(300)
         probe = "() => ['.dice-card', '#dice-tray', '#dice-formula', '#roll-btn'].map(s => Math.round(document.querySelector(s).getBoundingClientRect().top * 10) / 10)"
+        _settled(page)      # the page-enter slide would otherwise still be moving when "before" is measured
         before = page.evaluate(probe)
         assert page.evaluate("getComputedStyle(document.getElementById('clear-tray-btn')).visibility") == 'hidden'
         page.click('.die-selector[data-die="20"] .die-btn'); page.wait_for_timeout(300)
@@ -1832,7 +1847,7 @@ def test_battle_page_shows_turn_rank_and_gives_hit_and_heal_feedback(pw, shared_
 def test_phone_grid_settings_lightbox_fits_and_the_grid_drags_by_touch(pw, shared_server, size):
     base = shared_server.url; dm = Api(base); cid = dm.campaign('Lightbox')
     r = dm.post(f'/campaigns/{cid}/maps/new', data={'name': 'Hall', 'blank_width': '1000', 'blank_height': '700'})
-    mid = int(re.search(r'/maps/(\d+)', r.headers['Location']).group(1))
+    mid = pubid.pk('maps', r.headers['Location'])
     w, h = size
     ctx = _touch_context(pw, dm, base, w, h); page = ctx.new_page(); bad, errs = _collect(page)
     page.goto(base + f'/campaigns/{cid}/maps/{mid}'); page.wait_for_load_state('load'); page.wait_for_timeout(800)
@@ -1955,7 +1970,8 @@ def test_battle_log_is_collapsible_small_and_live(pw, shared_server):
     playwright.expect(dpage.locator('#battle-log-sheet')).to_be_visible()
     assert dpage.locator('#battle-log-list .bl-item').count() == 1
     blur = lambda sel: dpage.locator(sel).evaluate('(el) => getComputedStyle(el).backdropFilter || getComputedStyle(el).webkitBackdropFilter')
-    assert blur('#battle-log-sheet') != 'none'                                       # the card itself is frosted glass...
+    sheet_bg = dpage.locator('#battle-log-sheet').evaluate('(el) => getComputedStyle(el).backgroundColor')
+    assert sheet_bg.startswith('rgb(') or sheet_bg.endswith(', 1)')                  # the card itself is solid paper (Oaken, no frosted glass)...
     assert blur('#battle-log-backdrop') in ('none', '')                              # ...and the page behind is NOT blurred
     assert dpage.locator('#battle-log-sheet').bounding_box()['y'] + dpage.locator('#battle-log-sheet').bounding_box()['height'] < dpage.locator('#battle-log-toggle').bounding_box()['y']   # floats above the bar
     dm.post(f'/campaigns/{cid}/api/battle/{pid}/damage', json={'amount': 4})
@@ -1981,3 +1997,55 @@ def test_character_sheet_prints_without_the_app_chrome(pw, shared_server):
     assert not page.locator('.sidebar').is_visible() and not page.locator('[data-print]').is_visible()      # menus and buttons stay off the paper
     assert page.locator('.cd-hero').is_visible()
     assert page.evaluate("getComputedStyle(document.body).backgroundColor") == 'rgb(255, 255, 255)'
+
+
+def test_clicking_an_avatar_previews_it_without_leaving_the_page(pw, shared_server):
+    """Avatars open the lightbox: on the character page, the Characters list and the Overview party (where the avatar sits
+    inside a link and must not follow it); Enter opens it by keyboard; Escape closes it."""
+    base = shared_server.url; api = Api(base); cid = api.campaign('Avatars')
+    api.post(f'/campaigns/{cid}/characters/new', data={'name': 'Pictured', 'max_hp': '5'}, files={'avatar': ('a.png', png_bytes(200, 200), 'image/png')})
+    char_id = next(c['id'] for c in api.get(f'/campaigns/{cid}/api/characters').json() if c['name'] == 'Pictured')
+    ctx = api.context(pw, base); page = ctx.new_page(); bad, errs = _collect(page)
+    # character page: click, then keyboard
+    page.goto(base + f'/campaigns/{cid}/characters/{char_id}'); page.wait_for_load_state('networkidle')
+    page.click('.cd-avatar[data-lightbox-src]')
+    page.wait_for_selector('#image-lightbox:not([hidden])')
+    assert '/uploads/' in page.get_attribute('#lightbox-img', 'src')
+    page.keyboard.press('Escape'); page.wait_for_selector('#image-lightbox', state='hidden')
+    page.focus('.cd-avatar[data-lightbox-src]'); page.keyboard.press('Enter')
+    page.wait_for_selector('#image-lightbox:not([hidden])')
+    page.keyboard.press('Escape'); page.wait_for_selector('#image-lightbox', state='hidden')
+    # list: the card stays on the list
+    page.goto(base + f'/campaigns/{cid}/characters'); page.wait_for_load_state('networkidle')
+    page.click('.dossier-card .avatar-frame[data-lightbox-src]')
+    page.wait_for_selector('#image-lightbox:not([hidden])')
+    page.keyboard.press('Escape'); page.wait_for_selector('#image-lightbox', state='hidden')
+    # card: the name opens the character page
+    page.goto(base + f'/campaigns/{cid}/characters'); page.wait_for_load_state('networkidle')
+    page.click('.dossier-card .dossier-name-link')
+    page.wait_for_url(f'**/characters/{pubid.short("characters", char_id)}')
+    # Overview party: the whole tile, avatar included, opens the character page
+    page.goto(base + f'/campaigns/{cid}/home'); page.wait_for_load_state('networkidle')
+    assert page.locator('.home-pc .home-pc-avatar[data-lightbox-src]').count() == 0
+    page.click('.home-pc .home-pc-avatar')
+    page.wait_for_url(f'**/characters/{pubid.short("characters", char_id)}')
+    assert not bad and not errs, (bad, errs)
+
+
+def test_journal_search_filters_rows_and_hides_empty_months(pw, shared_server):
+    base = shared_server.url; dm = Api(base); cid = dm.campaign('Journal list')
+    for title, day in (('The bridge', '2026-09-03'), ('The ambush', '2026-09-20'), ('Market day', '2026-10-05'), ('Ruins', '2026-10-19')):
+        dm.post(f'/campaigns/{cid}/journal/new', data={'title': title, 'played_on': day, 'body': '["We played."]'})
+    ctx = dm.context(pw, base); page = ctx.new_page(); bad, errs = _collect(page)
+    page.goto(base + f'/campaigns/{cid}/journal'); page.wait_for_load_state('networkidle')
+    assert page.locator('.journal-row:visible').count() == 4 and '4 sessions' in page.inner_text('#journal-count')
+    page.fill('#journal-search', 'bridge')
+    assert page.locator('.journal-row:visible').count() == 1
+    assert page.locator('.journal-month:visible').count() == 1 and '1 of 4' in page.inner_text('#journal-count')
+    page.fill('#journal-search', 'zzz')
+    assert page.locator('#journal-no-matches').is_visible()
+    page.fill('#journal-search', '')
+    assert page.locator('.journal-row:visible').count() == 4
+    page.click('.journal-row >> nth=0 >> a[aria-label^="Edit"]')
+    page.wait_for_url('**/edit?from=list')
+    assert not bad and not errs, (bad, errs)

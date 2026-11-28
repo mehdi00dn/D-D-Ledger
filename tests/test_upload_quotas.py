@@ -48,7 +48,7 @@ def test_campaign_limit_refuses_with_a_banner_and_saves_nothing(camp, monkeypatc
     u, cid = camp
     assert _char(u, cid, 'First').status_code == 302
     used = _used(campaign_id=cid)
-    monkeypatch.setenv('LEDGER_QUOTA_CAMPAIGN_MB', str((used + 1) / 1048576))
+    monkeypatch.setenv('OAKEN_QUOTA_CAMPAIGN_MB', str((used + 1) / 1048576))
     r = _char(u, cid, 'Second', w=200, h=150)
     assert r.status_code == 302 and r.headers['Location'].endswith('quota_error=campaign')
     assert not q('SELECT id FROM characters WHERE campaign_id = ? AND name = ?', cid, 'Second')
@@ -60,7 +60,7 @@ def test_campaign_limit_refuses_with_a_banner_and_saves_nothing(camp, monkeypatc
 def test_user_limit_spans_campaigns(user, monkeypatch):
     c1, c2 = user.new_campaign(), user.new_campaign()
     assert _char(user, c1, 'One').status_code == 302
-    monkeypatch.setenv('LEDGER_QUOTA_USER_MB', str((_used(user_id=q('SELECT id FROM users WHERE username = ?', user.name)[0]['id']) + 1) / 1048576))
+    monkeypatch.setenv('OAKEN_QUOTA_USER_MB', str((_used(user_id=q('SELECT id FROM users WHERE username = ?', user.name)[0]['id']) + 1) / 1048576))
     r = _char(user, c2, 'Two', w=210, h=130)
     assert r.headers['Location'].endswith('quota_error=user')
     assert not q('SELECT id FROM characters WHERE campaign_id = ? AND name = ?', c2, 'Two')
@@ -70,7 +70,7 @@ def test_other_users_are_not_affected_by_someone_elses_usage(camp, make_user, mo
     u, cid = camp
     _char(u, cid, 'Mine')
     used = _used(campaign_id=cid)
-    monkeypatch.setenv('LEDGER_QUOTA_USER_MB', str((used + 0.4) / 1048576))   # u is exactly full
+    monkeypatch.setenv('OAKEN_QUOTA_USER_MB', str((used + 0.4) / 1048576))   # u is exactly full
     again = _char(u, cid, 'Mine2')
     assert again.headers['Location'].endswith('quota_error=user')
     other = make_user()
@@ -81,7 +81,7 @@ def test_other_users_are_not_affected_by_someone_elses_usage(camp, make_user, mo
 
 def test_zero_turns_a_limit_off(camp, monkeypatch):
     u, cid = camp
-    monkeypatch.setenv('LEDGER_QUOTA_USER_MB', '0'); monkeypatch.setenv('LEDGER_QUOTA_CAMPAIGN_MB', '0')
+    monkeypatch.setenv('OAKEN_QUOTA_USER_MB', '0'); monkeypatch.setenv('OAKEN_QUOTA_CAMPAIGN_MB', '0')
     for i in range(3):
         assert _char(u, cid, f'N{i}', w=100 + i, h=80).status_code == 302
     assert len(q('SELECT key FROM stored_files WHERE campaign_id = ?', cid)) == 3
@@ -97,7 +97,7 @@ def test_rejected_non_image_records_nothing(camp):
 def test_sign_endpoint_says_so_when_storage_is_full(camp, monkeypatch):
     u, cid = camp
     _char(u, cid, 'Fill')
-    monkeypatch.setenv('LEDGER_QUOTA_USER_MB', str(1 / 1048576))
+    monkeypatch.setenv('OAKEN_QUOTA_USER_MB', str(1 / 1048576))
     r = u.json('/uploads/sign', {'purpose': 'avatar', 'size': 1000, 'content_type': 'image/png'})
     assert r.status_code == 413 and 'storage is full' in r.get_json()['error']
     # imports are not blocked at signing time: the ZIP is checked against the quota when it is read
@@ -113,12 +113,12 @@ def test_import_over_the_limit_imports_nothing(make_user, monkeypatch):
     export = src.get(f'/campaigns/{sc}/export/data')
     assert export.status_code == 200
     dst = make_user(); dc = dst.new_campaign()
-    monkeypatch.setenv('LEDGER_QUOTA_CAMPAIGN_MB', str(1 / 1048576))
+    monkeypatch.setenv('OAKEN_QUOTA_CAMPAIGN_MB', str(1 / 1048576))
     r = dst.post(f'/campaigns/{dc}/import/data', data={'import_file': (io.BytesIO(export.data), 'x.zip')},
                  content_type='multipart/form-data', headers={'Referer': f'{HOST}/campaigns/{dc}/characters'})
     assert r.status_code == 302 and 'import_error=quota' in r.headers['Location']
     assert not q('SELECT id FROM characters WHERE campaign_id = ?', dc)
-    monkeypatch.setenv('LEDGER_QUOTA_CAMPAIGN_MB', '300')
+    monkeypatch.setenv('OAKEN_QUOTA_CAMPAIGN_MB', '300')
     r = dst.post(f'/campaigns/{dc}/import/data', data={'import_file': (io.BytesIO(export.data), 'x.zip')},
                  content_type='multipart/form-data', headers={'Referer': f'{HOST}/campaigns/{dc}/characters'})
     assert 'imported=1' in r.headers['Location']

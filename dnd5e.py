@@ -172,6 +172,63 @@ def clean_attacks(rows):
     return out[:MAX_ATTACKS]
 
 
+MAX_SPELLS = 80
+MAX_SLOTS_PER_LEVEL = 9
+SLOT_LEVELS = tuple(range(1, 10))
+
+
+def clean_slot_maxes(raw):
+    """{level: max} (keys and values may be strings) -> {level: max} for levels 1 to 9 with at least one slot, each max 0 to 9."""
+    out = {}
+    for lvl in SLOT_LEVELS:
+        try:
+            n = int(str((raw or {}).get(lvl, (raw or {}).get(str(lvl), 0))).strip() or 0)
+        except (TypeError, ValueError, AttributeError):
+            n = 0
+        n = max(0, min(MAX_SLOTS_PER_LEVEL, n))
+        if n:
+            out[lvl] = n
+    return out
+
+
+def clean_spell(name, level, damage, damage_type, note):
+    """One spell as stored, or None when it has no name.  Level 0 is a cantrip."""
+    name = ' '.join(str(name or '').split())[:60]
+    if not name:
+        return None
+    try:
+        level = max(0, min(9, int(str(level).strip() or 0)))
+    except (TypeError, ValueError):
+        level = 0
+    return {'name': name, 'spell_level': level, 'damage': clean_damage(damage),
+            'damage_type': ' '.join(str(damage_type or '').split())[:16], 'note': ' '.join(str(note or '').split())[:100]}
+
+
+def clean_spells(rows):
+    """A list of (name, level, damage, type, note) or dicts -> at most MAX_SPELLS cleaned spells, nameless ones dropped."""
+    out = []
+    for r in rows or []:
+        if isinstance(r, dict):
+            r = (r.get('name'), r.get('spell_level'), r.get('damage'), r.get('damage_type'), r.get('note'))
+        s = clean_spell(*r)
+        if s:
+            out.append(s)
+    return out[:MAX_SPELLS]
+
+
+_SPELL_DAMAGE_RE = re.compile(r'\b(\d{1,2})\s*d\s*(\d{1,3})(?:\s*\+\s*(\d{1,3}))?\s+([a-z]+)\s+damage\b', re.IGNORECASE)
+
+
+def spell_damage_from_text(text):
+    """The first 'NdM [+K] <type> damage' in a spell's description -> ('8d6', 'fire'), or ('', '') when there is none the dice
+    route can roll.  Used to prefill a spell added from the spell book; the person can always change it."""
+    m = _SPELL_DAMAGE_RE.search(str(text or ''))
+    if not m:
+        return '', ''
+    dice = clean_damage('%sd%s%s' % (m.group(1), m.group(2), ('+' + m.group(3)) if m.group(3) else ''))
+    return (dice, m.group(4).lower()[:16]) if dice else ('', '')
+
+
 def damage_roll_spec(damage):
     """The dice map and flat bonus for the dice route, e.g. '2d6+3' -> ({'6': 2}, 3); None without a damage roll."""
     parsed = parse_damage(damage)

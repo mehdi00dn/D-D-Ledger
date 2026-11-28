@@ -77,8 +77,9 @@ def _image_ref(value):
     return value if isinstance(value, str) and _IMAGE_REF.match(value) else None
 
 
-def open_zip(data):
-    """Validate the archive envelope and return (ZipFile, raw manifest dict)."""
+def open_zip(data, manifest_limit=MAX_MANIFEST_BYTES):
+    """Validate the archive envelope and return (ZipFile, raw manifest dict).  `manifest_limit` is the most
+    manifest.json may hold once unpacked (a whole-campaign export needs more than a characters one)."""
     if len(data) > MAX_ZIP_BYTES:
         raise ImportRejected('The file is too large (limit %d MB).' % (MAX_ZIP_BYTES // (1024 * 1024)))
     try:
@@ -95,9 +96,9 @@ def open_zip(data):
         total += info.file_size
     if total > MAX_TOTAL_UNCOMPRESSED:
         raise ImportRejected('The archive expands to too much data.')
-    raw = read_member(zf, 'manifest.json', MAX_MANIFEST_BYTES)
+    raw = read_member(zf, 'manifest.json', manifest_limit)
     if raw is None:
-        raise ImportRejected('manifest.json is missing - this is not a Campaign Ledger export.')
+        raise ImportRejected('manifest.json is missing - this is not a Oaken export.')
     try:
         manifest = json.loads(raw.decode('utf-8'))
     except (UnicodeDecodeError, json.JSONDecodeError):
@@ -158,6 +159,8 @@ def normalize_manifest(manifest, sanitize_notes):
             'skill_prof': dnd5e.clean_skill_prof(c.get('skill_prof')),
             'save_prof': dnd5e.clean_save_prof(c.get('save_prof')),
             'attacks': dnd5e.clean_attacks(c.get('attacks') if isinstance(c.get('attacks'), list) else []),
+            'slots': dnd5e.clean_slot_maxes(c.get('slots') if isinstance(c.get('slots'), dict) else {}),
+            'spells': dnd5e.clean_spells(c.get('spells') if isinstance(c.get('spells'), list) else []),
             'class_key': _clean(c.get('class_key'), 40).strip().lower() or None,   # checked against the known classes on import
             'notes': sanitize_notes(_clean(c.get('notes'), 200000)),
             'group_name': _clean(c.get('group_name'), 120).strip() or None,

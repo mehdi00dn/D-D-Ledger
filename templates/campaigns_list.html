@@ -1,7 +1,8 @@
-{% extends "base.html" %}
+{% extends "site_base.html" %}
 {% from "_icons.html" import icon %}
 {% set active_page = 'campaigns' %}
-{% block title %}Campaigns — Campaign Ledger{% endblock %}
+{% block title %}Campaigns — Oaken{% endblock %}
+{% block site_class %} is-dim{% endblock %}
 
 {% block content %}
 <div class="page-header">
@@ -9,31 +10,47 @@
     <h1 class="page-title">Campaigns</h1>
     <p class="page-sub">{{ campaigns|length }} {{ 'campaign' if campaigns|length == 1 else 'campaigns' }}. Each keeps its own characters, groups, battle, and maps.</p>
   </div>
-  <a href="{{ url_for('campaign_new') }}" class="btn btn-primary">{{ icon('plus') }} New Campaign</a>
+  <div class="u-row-wrap">
+    <form method="POST" action="{{ url_for('campaign_import') }}" enctype="multipart/form-data" class="import-form" title="Start a new campaign from a file made by Export whole campaign">{{ csrf_field() }}
+      <label class="btn btn-ghost import-label">
+        {{ icon('download') }} <span class="btn-label">Import a campaign</span>
+        <input type="file" name="import_file" accept=".zip" data-auto-submit-request>
+      </label>
+      <div class="upload-progress" hidden><div class="upload-progress-bar"></div></div>
+    </form>
+    <a href="{{ url_for('campaign_new') }}" class="btn btn-primary">{{ icon('plus') }} New campaign</a>
+  </div>
 </div>
 
+{% if import_note %}<div class="banner-notice banner-error" role="alert">{{ import_note }}</div>{% endif %}
+
 {% if campaigns %}
-<div class="group-grid">
+<div class="group-grid campaign-grid">
   {% for c in campaigns %}
-  <div class="group-card">
-    <div class="group-image-block{{ '' if c.avatar_path else ' is-generated' }}" style="--cover-hue: {{ (c.id * 53) % 360 }}">
+  <div class="group-card o-paper o-lift">
+    <div class="group-image-block{{ '' if c.avatar_path else ' is-generated' }}" data-hue="{{ (c.id * 53) % 360 }}">
       {% if c.avatar_path %}
-        <img src="{{ url_for('uploaded_file', filename=c.avatar_path) }}" alt="{{ c.name }} avatar">
+        <img src="{{ url_for('uploaded_file', filename=c.avatar_path) }}" alt="{{ c.name }} avatar" loading="lazy" decoding="async">
       {% else %}
         {% set words = c.name.split() %}
         <div class="cover-monogram" aria-hidden="true">{{ ((words[0][:1] ~ (words[1][:1] if words|length > 1 else '')) if words else '?')|upper }}</div>
       {% endif %}
+      <span class="role-badge role-badge-{{ c.my_role }} camp-role">{{ c.my_role }}</span>
     </div>
     <div class="group-body">
-      <h2 class="group-name">{{ c.name }} <span class="role-badge role-badge-{{ c.my_role }}">{{ c.my_role }}</span></h2>
-      <p class="group-count">{{ c.character_count }} character{{ '' if c.character_count == 1 else 's' }} &middot; {{ c.group_count }} group{{ '' if c.group_count == 1 else 's' }} &middot; {{ c.map_count }} map{{ '' if c.map_count == 1 else 's' }}</p>
+      <h2 class="group-name">{{ c.name }}</h2>
+      <ul class="camp-stats" aria-label="What this campaign holds">
+        <li>{{ icon('user') }} <strong>{{ c.character_count }}</strong> character{{ '' if c.character_count == 1 else 's' }}</li>
+        <li>{{ icon('shield') }} <strong>{{ c.group_count }}</strong> group{{ '' if c.group_count == 1 else 's' }}</li>
+        <li>{{ icon('map') }} <strong>{{ c.map_count }}</strong> map{{ '' if c.map_count == 1 else 's' }}</li>
+      </ul>
       <p class="group-bio">{{ c.description | notes_preview }}</p>
       <div class="group-actions">
         <a href="{{ url_for('campaign_home', campaign_id=c.id) }}" class="btn btn-primary btn-sm">{{ icon('scroll') }} Enter</a>
         {% if c.my_role == 'owner' %}
-        <a href="{{ url_for('campaign_edit', campaign_id=c.id) }}" class="btn-icon" title="Edit campaign">{{ icon('pencil') }}</a>
+        <a href="{{ url_for('campaign_edit', campaign_id=c.id) }}" class="btn-icon" title="Campaign settings" aria-label="Settings for {{ c.name }}">{{ icon('pencil') }}</a>
         <form method="POST" action="{{ url_for('campaign_delete', campaign_id=c.id) }}" data-confirm="Delete campaign '{{ c.name }}'? This permanently deletes all its characters, groups, and maps. This cannot be undone.">{{ csrf_field() }}
-          <button type="submit" class="btn btn-danger btn-sm">{{ icon('trash-2') }} Delete</button>
+          <button type="submit" class="btn-icon btn-icon-danger" title="Delete campaign" aria-label="Delete {{ c.name }}">{{ icon('trash-2') }}</button>
         </form>
         {% endif %}
       </div>
@@ -42,11 +59,11 @@
   {% endfor %}
 </div>
 {% else %}
-<div class="empty-state">
+<div class="empty-state o-paper">
   {{ icon('scroll') }}
   <h2>No campaigns yet</h2>
   <p>Create your first campaign to start adding characters, groups, and maps.</p>
-  <a href="{{ url_for('campaign_new') }}" class="btn btn-primary">{{ icon('plus') }} New Campaign</a>
+  <a href="{{ url_for('campaign_new') }}" class="btn btn-primary">{{ icon('plus') }} New campaign</a>
 </div>
 {% endif %}
 {% endblock %}
