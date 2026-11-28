@@ -150,17 +150,22 @@ def test_the_header_and_footer_are_the_shared_ones(visitor):
     assert 'aria-current="page">About' in other and 'aria-current="page"' not in home
 
 
-def test_the_campaign_preview_is_the_tutorial_campaign(visitor):
-    """DL-186: IMG-02 is a working, lighter campaign overview built from the tutorial campaign every new account gets."""
+def test_the_campaign_preview_is_a_scene_from_the_tutorial_campaign(visitor):
+    """DL-186: IMG-02 is a working scene (a painted world, the party as a radio group, a hero card, a mission) built from the tutorial campaign."""
     html = visitor.get('/').get_data(as_text=True)
     frame = html[html.index('data-slot="IMG-02"'):html.index('<!-- 05 ')]
     assert 'shot--empty' not in frame and 'data-lp="campaign"' in frame
     for name in ('Kael Thorne', 'Sera Veyl', 'Thalric Stonefist', 'Nyx'):                        # the party is the tutorial party
         assert name in frame, name
-    tiles = re.findall(r'<button type="button" class="lp-pc"[^>]*>', frame)
-    assert len(tiles) == 4 and all('aria-pressed="false"' in b for b in tiles)                   # real buttons that say whether they are picked
-    assert len(re.findall(r'data-note-for="', frame)) == 4                                       # one line of the story per hero
-    assert frame.count('<input type="checkbox"') == 1 and 'class="o-paper lp-card"' in frame      # the quest is a real checkbox; the cards use the app's paper
+    assert 'role="radiogroup"' in frame
+    radios = re.findall(r'<button type="button" class="lp-rail-btn"[^>]*>', frame)
+    assert len(radios) == 4 and all('role="radio"' in r and 'aria-label="' in r for r in radios)
+    assert sum('aria-checked="true"' in r for r in radios) == 1 and sum('tabindex="0"' in r for r in radios) == 1   # one stop in the tab order
+    cards = re.findall(r'<article class="o-paper lp-hero([^"]*)" id="(lp-hero-[a-z]+)"', frame)
+    assert len(cards) == 4 and sum('is-off' not in c for c, _id in cards) == 1                   # four cards, one shown (the first state works without the script)
+    for r in radios:
+        assert re.search(r'aria-controls="(lp-hero-[a-z]+)"', r).group(1) in {i for _c, i in cards}
+    assert frame.count('<input type="checkbox"') == 3 and 'class="o-paper lp-mission' in frame    # the mission steps are real checkboxes on the app's paper
     assert all('alt=' in i for i in re.findall(r'<img\b[^>]*>', frame)) and ' style="' not in frame
 
 

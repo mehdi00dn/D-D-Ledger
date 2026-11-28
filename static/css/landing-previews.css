@@ -1,100 +1,138 @@
-/* DL-186: the landing page previews.  Small working pieces of the real product, built from the app's own look (the paper cards, the painted banner,
-   the round portraits in a ring) and from the tutorial campaign every new account gets, so what a visitor sees here is what they get.
+/* DL-186: the landing page previews.  Small working scenes from the real product, composed for the page rather than copied from it: the painted
+   world behind, paper cards from the app's own material (.o-paper, oaken.css) laid over it, the tutorial campaign's real people and text.
    They fill the frames the page used to leave empty.  Demo data only: nothing here is saved, sent or read from the server.
    Loaded after landing.css.  Every class starts with lp- so it can sit beside landing.css and public.css.
-   No inline styles (the Content-Security-Policy forbids them).  Motion is transform and opacity only, 150 to 240 ms, ease-out, and off under
+   No inline styles (the Content-Security-Policy forbids them).  Motion is transform and opacity only, 150 to 450 ms, ease-out, and off under
    prefers-reduced-motion. */
 
 .lp {
   --lp-ease: cubic-bezier(0.23, 1, 0.32, 1);
   container-type: inline-size;
-  background: linear-gradient(180deg, #1c211d, #141813);
+  border-radius: 20px;                                       /* a scene is a picture, so it gets a rounder frame than a plain screenshot (landing.css: 12px) */
+  border-color: rgba(237, 228, 207, 0.16);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), 0 2px 4px rgba(0, 0, 0, 0.28), 0 14px 26px -12px rgba(0, 0, 0, 0.5), 0 44px 80px -30px rgba(0, 0, 0, 0.78);
   color: var(--oak-parchment-200);
   font-family: var(--font-body); font-size: 14px; line-height: 1.4; text-align: start;
 }
 :where(.lp) :is(p, ul, ol) { margin: 0; padding: 0; list-style: none; }   /* :where keeps this reset from outranking the classes below */
-.lp :focus-visible { outline: 2px solid var(--oak-brass-300); outline-offset: 2px; border-radius: 8px; }
+.lp :focus-visible { outline: 2px solid var(--oak-brass-300); outline-offset: 3px; border-radius: 10px; }
 .lp .o-paper :focus-visible { outline-color: var(--paper-accent-ink); }
+.lp-kicker { display: block; font-size: 10.5px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--paper-accent-ink); }
 
-/* ---------- The window: a painted banner and paper cards on the dark page, like the campaign overview in the app ---------- */
-.lp-home { display: grid; gap: 12px; padding: 12px; }
-
-.lp-banner {
-  position: relative; display: grid; gap: 8px; justify-items: start; padding: 20px 22px 18px; border-radius: 10px; overflow: hidden;
-  background: linear-gradient(90deg, rgba(14, 18, 15, 0.9) 0%, rgba(14, 18, 15, 0.62) 55%, rgba(14, 18, 15, 0.3) 100%), var(--bg-valley) center 40% / cover no-repeat;
-  box-shadow: inset 0 0 0 1px rgba(237, 228, 207, 0.16);
-}
-.lp-pill { display: inline-flex; align-items: center; gap: 7px; padding: 5px 10px 5px 9px; border: 1px solid rgba(237, 228, 207, 0.22); border-radius: 999px; background: rgba(14, 18, 15, 0.5); font: 600 10.5px/1 var(--font-body); letter-spacing: 0.14em; text-transform: uppercase; color: var(--oak-parchment-200); }
-.lp-pill::before { content: ''; inline-size: 7px; block-size: 7px; border-radius: 50%; background: #8fb596; }
-.lp-banner-title { margin: 0; font: 500 clamp(1.9rem, 6.2cqi, 2.45rem)/1.05 var(--font-display); letter-spacing: -0.012em; color: var(--oak-parchment-100); }
-.lp-banner-sub { max-inline-size: 34ch; font-size: 14px; color: rgba(237, 228, 207, 0.88); }
-.lp-stats { display: flex; gap: 22px; margin-block-start: 4px; }
-.lp-stat { display: flex; align-items: baseline; gap: 7px; }
-.lp-stat strong { font: 500 1.5rem/1 var(--font-display); color: var(--oak-brass-300); }
-.lp-stat span { font-size: 10.5px; font-weight: 600; letter-spacing: 0.13em; text-transform: uppercase; color: rgba(237, 228, 207, 0.78); }
-
-/* paper card: the .o-paper material (oaken.css) with the app's card title */
-.lp-card { padding: 16px 18px 18px; border-radius: 10px; }
-.lp-card-title { display: flex; align-items: center; gap: 9px; margin: 0 0 13px; padding-block-end: 9px; border-block-end: 1px solid var(--paper-line-strong); font: 500 1.12rem/1.2 var(--font-display); color: var(--paper-ink); }
-.lp-card-title .ico { flex: none; inline-size: 18px; block-size: 18px; color: var(--paper-accent-ink); }
-.lp-count { margin-inline-start: auto; font: 500 12px/1 var(--font-mono); color: var(--paper-ink-dim); }
-
-/* ---------- The party: four portraits, pick one ---------- */
-.lp-party { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
-.lp-pc {
-  display: flex; flex-direction: column; align-items: center; gap: 7px; inline-size: 100%; padding: 12px 6px 10px;
-  border: 1px solid var(--paper-line-strong); border-radius: 10px; background: var(--bg-panel-inset); color: var(--paper-ink);
-  font: inherit; text-align: center; cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-color: transparent;
-}
-.lp-pc-avatar { inline-size: 58px; block-size: 58px; border-radius: 50%; overflow: hidden; background: rgba(255, 252, 244, 0.7); box-shadow: 0 0 0 3px rgba(255, 252, 244, 0.6), 0 0 0 4px var(--paper-line); }
-.lp-pc-avatar img { display: block; inline-size: 100%; block-size: 100%; object-fit: cover; }
-.lp-pc-name { display: flex; align-items: flex-start; justify-content: center; gap: 5px; font-weight: 600; font-size: 13.5px; line-height: 1.2; text-wrap: balance; }
-.lp-cls { flex: none; inline-size: 15px; block-size: 15px; margin-block-start: 1px; fill: currentColor; color: var(--paper-accent-ink); }
-.lp-pc-meta { font: 500 11px/1.2 var(--font-mono); color: var(--paper-ink-dim); }
-.lp-pc[aria-pressed="true"] { border-color: var(--paper-accent-ink); background: rgba(255, 252, 244, 0.88); box-shadow: 0 6px 14px -6px rgba(70, 50, 20, 0.45); }
-@media (hover: hover) { .lp-pc:hover { border-color: var(--paper-accent-ink); } }
+/* ---------- Entrance: a frame that starts below the fold is armed by the script (.lp-reveal), and its pieces rise in once when it scrolls into view (.is-in).
+   A frame already in view, or no script, or reduced motion: the pieces are simply there. ---------- */
 @media (prefers-reduced-motion: no-preference) {
-  .lp-pc { transition: transform 160ms var(--lp-ease), border-color 160ms ease, background-color 160ms ease, box-shadow 160ms ease; }
-  .lp-pc:hover, .lp-pc[aria-pressed="true"] { transform: translateY(-2px); }
-  .lp-pc:active { transform: scale(0.98); }
+  .lp-reveal:not(.is-in) .lp-rise { opacity: 0; transform: translateY(16px) scale(0.985); }
+  .lp-reveal.is-in .lp-rise { animation: lp-rise 480ms var(--lp-ease) both; }
+  .lp-reveal.is-in .lp-rise-2 { animation-delay: 80ms; }
+  .lp-reveal.is-in .lp-rise-3 { animation-delay: 160ms; }
+  .lp-reveal.is-in .lp-rise-4 { animation-delay: 260ms; }
+  @keyframes lp-rise { from { opacity: 0; transform: translateY(16px) scale(0.985); } to { opacity: 1; transform: none; } }
 }
 
-/* ---------- Campaign notes and the quest ---------- */
-.lp-lower { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr); gap: 12px; }
-.lp-notes-list { display: grid; gap: 3px; margin-inline: -6px; }
-.lp-notes-list li { padding: 7px 10px; border-inline-start: 3px solid transparent; border-radius: 6px; font-size: 13.5px; line-height: 1.4; color: var(--paper-ink); }
-.lp-notes-list li.is-lit { background: rgba(255, 252, 244, 0.7); border-inline-start-color: var(--paper-accent-ink); }
-.lp-notes-list[data-lit] li:not(.is-lit) { opacity: 0.72; }   /* dimmed, still above 4.5:1 on the paper */
-@media (prefers-reduced-motion: no-preference) { .lp-notes-list li { transition: opacity 200ms ease, background-color 200ms ease, border-color 200ms ease; } }
+/* ======================================================================== 01 / the campaign scene ======================================================================== */
+.lp-scene {
+  position: relative; isolation: isolate;
+  display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: auto 1fr; gap: 20px 22px;
+  padding: 28px 28px 30px; min-block-size: 580px; background: #141813;
+}
+/* the painted world, and a scrim so the writing stays readable */
+.lp-scene::before { content: ''; position: absolute; inset: 0; z-index: -2; background: var(--bg-valley) 62% 40% / cover no-repeat; }
+.lp-scene::after { content: ''; position: absolute; inset: 0; z-index: -1; background:
+  linear-gradient(90deg, rgba(12, 16, 13, 0.9) 0%, rgba(12, 16, 13, 0.5) 52%, rgba(12, 16, 13, 0.12) 100%),
+  linear-gradient(180deg, rgba(12, 16, 13, 0.18) 0%, rgba(12, 16, 13, 0.0) 40%, rgba(12, 16, 13, 0.72) 100%),
+  radial-gradient(130% 100% at 50% 38%, rgba(12, 16, 13, 0) 56%, rgba(12, 16, 13, 0.5) 100%); }
+/* a thin brass inlay a little inside the edge, like the border of a framed plate: dark hairline outside, brass inside.  Concentric with the frame. */
+.lp-inlay { position: absolute; inset: 12px; border: 1px solid rgba(185, 154, 87, 0.4); border-radius: 7px; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.32), inset 0 0 0 1px rgba(0, 0, 0, 0.18); pointer-events: none; }
 
-.lp-quest { position: relative; display: grid; grid-template-columns: auto 1fr; gap: 12px; align-items: start; cursor: pointer; }
-.lp-quest input { position: absolute; inline-size: 1px; block-size: 1px; opacity: 0; }
-.lp-ring { position: relative; inline-size: 22px; block-size: 22px; margin-block-start: 1px; border: 1.5px solid var(--paper-ink-dim); border-radius: 50%; }
+.lp-head { grid-column: 1 / -1; display: grid; justify-items: start; gap: 6px; }
+.lp-pill { display: inline-flex; align-items: center; gap: 7px; padding: 5px 11px 5px 9px; border: 1px solid rgba(237, 228, 207, 0.26); border-radius: 999px; background: rgba(12, 16, 13, 0.5); font: 600 10.5px/1 var(--font-body); letter-spacing: 0.14em; text-transform: uppercase; color: var(--oak-parchment-200); }
+.lp-pill::before { content: ''; inline-size: 7px; block-size: 7px; border-radius: 50%; background: #8fb596; }
+.lp-scene-title { margin-block-start: 6px; font: 500 clamp(2.2rem, 8.4cqi, 3.05rem)/1 var(--font-display); letter-spacing: -0.015em; color: var(--oak-parchment-100); text-shadow: 0 2px 24px rgba(0, 0, 0, 0.5); }
+.lp-scene-sub { font-size: 15px; color: rgba(237, 228, 207, 0.92); }
+.lp-facts { font: 500 12px/1.3 var(--font-mono); letter-spacing: 0.02em; color: rgba(237, 228, 207, 0.76); }
+
+/* the party: a column of round portraits that picks who is on the card */
+.lp-rail { display: grid; align-content: end; gap: 12px; padding-block-end: 4px; }
+.lp-rail-btn {
+  position: relative; display: block; inline-size: 58px; block-size: 58px; padding: 0; border: 0; border-radius: 50%; overflow: hidden;
+  background: rgba(255, 252, 244, 0.7); cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+  box-shadow: 0 0 0 2px rgba(237, 228, 207, 0.5), 0 8px 16px -6px rgba(0, 0, 0, 0.7);
+}
+.lp-rail-btn img { display: block; inline-size: 100%; block-size: 100%; object-fit: cover; }
+.lp-rail-btn::after, .lp-hero-avatar::after { content: ''; position: absolute; inset: 0; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(20, 14, 6, 0.24); pointer-events: none; }
+.lp-rail-btn[aria-checked="false"] img { opacity: 0.78; }
+.lp-rail-btn[aria-checked="true"] { box-shadow: 0 0 0 3px var(--oak-brass-300), 0 0 0 7px rgba(185, 154, 87, 0.28), 0 10px 20px -6px rgba(0, 0, 0, 0.75); }
+@media (hover: hover) { .lp-rail-btn:hover { box-shadow: 0 0 0 2px var(--oak-brass-300), 0 8px 16px -6px rgba(0, 0, 0, 0.7); } .lp-rail-btn:hover img { opacity: 1; } }
+@media (prefers-reduced-motion: no-preference) {
+  .lp-rail-btn { transition: transform 200ms var(--lp-ease), box-shadow 200ms ease; }
+  .lp-rail-btn img { transition: opacity 200ms ease; }
+  .lp-rail-btn[aria-checked="true"] { transform: translateX(8px); }
+  .lp-rail-btn:active { transform: scale(0.95); }
+  .lp-rail-btn[aria-checked="true"]:active { transform: translateX(8px) scale(0.95); }
+}
+
+/* the cards: the selected hero, and the mission, laid over the painting at different depths */
+.lp-main { display: grid; align-content: end; gap: 0; min-inline-size: 0; padding-block-start: 46px; }
+.lp-heroes { display: grid; }                                  /* the four cards share one cell, so the scene never changes height when you pick someone else */
+.lp-hero { grid-area: 1 / 1; }
+.lp-hero, .lp-mission { border: 1px solid rgba(98, 70, 30, 0.36); border-radius: 14px; box-shadow: inset 0 1px 0 rgba(255, 252, 244, 0.78), 0 1px 1px rgba(30, 20, 8, 0.3), 0 8px 14px -6px rgba(0, 0, 0, 0.42), 0 30px 46px -22px rgba(0, 0, 0, 0.82); }
+.lp-hero { position: relative; padding: 52px 24px 34px; }
+/* picking another hero is a transition, not a keyframe, so it can be interrupted and retargeted when someone clicks through the party quickly */
+.lp-hero { transition: opacity 220ms ease-out; }
+.lp-hero.is-off { visibility: hidden; opacity: 0; pointer-events: none; transition: opacity 150ms ease-in, visibility 0s linear 150ms; }
+.lp-hero-avatar { position: absolute; inset-block-start: -38px; inset-inline-start: 22px; inline-size: 88px; block-size: 88px; border-radius: 50%; overflow: hidden; background: #e9dcb8; box-shadow: 0 0 0 4px rgba(255, 252, 244, 0.85), 0 0 0 5.5px var(--paper-line-strong), 0 14px 22px -8px rgba(40, 28, 10, 0.6); }
+.lp-hero-avatar img { display: block; inline-size: 100%; block-size: 100%; object-fit: cover; }
+.lp-hero-id { margin-inline-start: 106px; min-block-size: 40px; display: grid; align-content: center; gap: 3px; margin-block-start: -34px; }
+.lp-hero-name { font: 500 clamp(1.4rem, 5.6cqi, 1.8rem)/1.1 var(--font-display); letter-spacing: -0.01em; color: var(--paper-ink); }
+.lp-hero-class { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--paper-ink-dim); }
+.lp-cls { flex: none; inline-size: 16px; block-size: 16px; fill: currentColor; color: var(--paper-accent-ink); }
+.lp-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-block-start: 18px; }
+.lp-chips li { display: inline-flex; align-items: baseline; gap: 6px; padding: 6px 12px; border: 1px solid var(--paper-line-strong); border-radius: 999px; background: var(--bg-panel-inset); font: 500 11px/1.2 var(--font-body); letter-spacing: 0.1em; text-transform: uppercase; color: var(--paper-ink-dim); }
+.lp-chips b { font: 500 1.25rem/1 var(--font-display); letter-spacing: 0; text-transform: none; color: var(--paper-ink); }
+.lp-hero-note { margin-block-start: 16px; padding-block-start: 14px; border-block-start: 1px solid var(--paper-line-strong); font: italic 400 1.04rem/1.45 var(--font-display); color: var(--paper-ink); }
+.lp-hero-note .lp-kicker { margin-block-end: 5px; font-style: normal; }
+@media (prefers-reduced-motion: no-preference) {
+  .lp-hero { transition: opacity 240ms ease-out, transform 300ms var(--lp-ease); }
+  .lp-hero.is-off { transform: translateY(10px) scale(0.985); transition: opacity 150ms ease-in, transform 200ms ease-in, visibility 0s linear 200ms; }
+}
+
+.lp-mission { position: relative; margin-block-start: -16px; margin-inline-start: 9%; padding: 18px 22px 18px; }
+.lp-mission-title { margin-block-start: 5px; font: 500 1.12rem/1.25 var(--font-display); color: var(--paper-ink); max-inline-size: 28ch; }
+.lp-steps { display: grid; margin-block-start: 8px; }
+.lp-steps li + li { border-block-start: 1px dashed var(--paper-line-strong); }
+.lp-step { position: relative; display: flex; align-items: center; gap: 11px; min-block-size: 38px; cursor: pointer; font-size: 14.5px; font-weight: 500; color: var(--paper-ink); }
+.lp-step input { position: absolute; inline-size: 1px; block-size: 1px; opacity: 0; }
+.lp-ring { position: relative; flex: none; inline-size: 22px; block-size: 22px; border: 1.5px solid var(--paper-ink-dim); border-radius: 50%; }
 .lp-ring::after { content: ''; position: absolute; inset-inline-start: 6px; inset-block-start: 2px; inline-size: 5px; block-size: 10px; border: solid #fbf6e9; border-width: 0 2px 2px 0; transform: rotate(45deg) scale(0); }
-.lp-quest input:checked + .lp-ring { background: var(--paper-accent-ink); border-color: var(--paper-accent-ink); }
-.lp-quest input:checked + .lp-ring::after { transform: rotate(45deg) scale(1); }
-.lp-quest input:focus-visible + .lp-ring { outline: 2px solid var(--paper-accent-ink); outline-offset: 2px; }
-.lp-quest-title { margin: 0; font-size: 14.5px; font-weight: 600; line-height: 1.3; color: var(--paper-ink); }
-.lp-quest-details { margin-block-start: 4px; font-size: 13px; line-height: 1.45; color: var(--paper-ink-dim); display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
-.lp-tag { display: none; margin-inline-start: 6px; padding: 1px 8px; border: 1px solid var(--paper-line-strong); border-radius: 999px; font: 500 11px/1.5 var(--font-body); color: #27503a; vertical-align: 1px; }
-.lp-quest input:checked ~ div .lp-tag { display: inline-block; }
-.lp-quest input:checked ~ div .lp-quest-name { text-decoration: line-through; text-decoration-color: var(--paper-line-strong); }
-.lp-quest input:checked ~ div .lp-quest-details { opacity: 0.7; }
+.lp-step input:checked + .lp-ring { background: var(--paper-accent-ink); border-color: var(--paper-accent-ink); }
+.lp-step input:checked + .lp-ring::after { transform: rotate(45deg) scale(1); }
+.lp-step input:focus-visible + .lp-ring { outline: 2px solid var(--paper-accent-ink); outline-offset: 2px; }
+.lp-step input:checked ~ span:last-child { color: var(--paper-ink-dim); text-decoration: line-through; text-decoration-color: var(--paper-line-strong); }
+.lp-meter-row { display: flex; align-items: center; gap: 12px; margin-block-start: 8px; font: 500 12px/1 var(--font-mono); color: var(--paper-ink-dim); }
+.lp-meter { flex: 1; block-size: 6px; border-radius: 3px; background: var(--paper-line); overflow: hidden; }
+.lp-meter-fill { display: block; block-size: 100%; border-radius: 3px; background: var(--paper-accent-ink); transform-origin: left center; transform: scaleX(var(--p, 0)); }
+/* the stamp that lands when the last step is ticked */
+.lp-stamp { position: absolute; inset-block-start: 14px; inset-inline-end: 18px; padding: 5px 11px; border: 2px solid var(--paper-accent-ink); border-radius: 6px; font: 600 11px/1 var(--font-body); letter-spacing: 0.16em; text-transform: uppercase; color: var(--paper-accent-ink); outline: 1px solid var(--paper-accent-ink); outline-offset: 2px; opacity: 0; transform: rotate(-8deg) scale(1.5); pointer-events: none; }
+.lp-mission.is-complete .lp-stamp { opacity: 0.92; transform: rotate(-8deg) scale(1); }
 @media (prefers-reduced-motion: no-preference) {
   .lp-ring { transition: background-color 160ms ease, border-color 160ms ease; }
   .lp-ring::after { transition: transform 180ms var(--lp-ease); }
+  .lp-meter-fill { transition: transform 260ms var(--lp-ease); }
+  .lp-stamp { transition: opacity 120ms ease, transform 280ms var(--lp-ease); }
 }
 
-/* ---------- Narrow frames (the frame, not the window, is measured) ---------- */
+/* ---------- Narrow frames (the frame, not the window, is measured): the party becomes a row above the cards ---------- */
 @container (max-width: 540px) {
-  .lp-lower { grid-template-columns: 1fr; }
-  .lp-stats { gap: 16px; }
+  .lp-scene { grid-template-columns: 1fr; grid-template-rows: auto auto 1fr; gap: 16px; padding: 22px 18px 22px; min-block-size: 0; }
+  .lp-rail { display: flex; align-content: normal; justify-content: flex-start; gap: 12px; padding: 0 0 2px 0; }
+  .lp-rail-btn { inline-size: 54px; block-size: 54px; }
+  .lp-rail-btn[aria-checked="true"] { transform: translateY(-4px); }
+  .lp-main { padding-block-start: 42px; }
+  .lp-hero { padding: 50px 18px 30px; }
+  .lp-hero-avatar { inset-inline-start: 18px; }
+  .lp-mission { margin-inline-start: 0; padding: 16px 18px; }
+  .lp-stamp { inset-block-start: 5px; inset-inline-end: 10px; padding: 4px 8px; font-size: 9.5px; letter-spacing: 0.14em; outline-offset: 1.5px; }   /* small, on the kicker line, clear of the title */
+  .lp-inlay { inset: 8px; border-radius: 11px; }
 }
-@container (max-width: 440px) {
-  .lp-home { padding: 10px; gap: 10px; }
-  .lp-banner { padding: 16px 16px 14px; }
-  .lp-card { padding: 14px 14px 16px; }
-  .lp-party { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .lp-pc-avatar { inline-size: 54px; block-size: 54px; }
-  .lp-pc-name { min-block-size: 2.4em; }   /* two columns: a long name may take two lines, so the tiles stay level */
-}
+@container (max-width: 540px) { @media (prefers-reduced-motion: no-preference) { .lp-rail-btn[aria-checked="true"]:active { transform: translateY(-4px) scale(0.95); } } }
